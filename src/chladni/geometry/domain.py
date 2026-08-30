@@ -380,6 +380,18 @@ class Domain(Frozen):
 
     __rmul__ = __mul__
 
+    def plot(self, **kwargs):
+        """Draw the domain. See `chladni.plotting.plot_domain`."""
+        from ..plotting import plot_domain
+
+        return plot_domain(self, **kwargs)
+
+    def plot_diagnostic(self, **kwargs):
+        """Colour-coded, index-labelled view. See `chladni.plotting.plot_diagnostic`."""
+        from ..plotting import plot_diagnostic
+
+        return plot_diagnostic(self, **kwargs)
+
     def __repr__(self):
         holes = f", {len(self.holes)} holes" if self.holes else ""
         return f"{type(self).__name__}(area={self.area:.6g}{holes})"

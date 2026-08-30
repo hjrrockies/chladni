@@ -118,6 +118,13 @@ def annulus():
 
 
 @pytest.fixture
+def plus_shape_domain():
+    from chladni.geometry import plus_shape
+
+    return plus_shape()
+
+
+@pytest.fixture
 def square_with_square_hole():
     """[0,3]^2 with [1,2]^2 removed. Area 8, perimeter 12 + 4 = 16."""
     outer = Boundary.from_vertices(np.array([0, 3, 3 + 3j, 3j], dtype=complex))

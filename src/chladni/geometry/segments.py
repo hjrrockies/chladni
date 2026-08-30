@@ -343,6 +343,17 @@ class Segment(Frozen, ABC):
     def __neg__(self):
         return self.reversed()
 
+    def plot(self, **kwargs):
+        """Draw this segment. See `chladni.plotting.plot_segment`.
+
+        matplotlib is imported here, not at module scope: the geometry layer must stay
+        usable without it. lappy's geometry.py carries a top-level
+        `import matplotlib.pyplot as plt`, which makes layer 1 depend on a plotting library.
+        """
+        from ..plotting import plot_segment
+
+        return plot_segment(self, **kwargs)
+
     def __repr__(self):
         return f"{type(self).__name__}(p0={self.p0:.4g}, p1={self.p1:.4g}, length={self.length:.6g})"
 

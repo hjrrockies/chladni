@@ -620,5 +620,11 @@ class Boundary(Frozen):
     def __iter__(self):
         return iter(self.segments)
 
+    def plot(self, **kwargs):
+        """Draw this boundary. See `chladni.plotting.plot_boundary`."""
+        from ..plotting import plot_boundary
+
+        return plot_boundary(self, **kwargs)
+
     def __repr__(self):
         return f"Boundary({len(self.segments)} segments, length={self.length:.6g})"
