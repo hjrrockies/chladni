@@ -26,6 +26,10 @@ from ._core import PREC, Frozen, _set, check_prec, normalize_bc
 from .quadrature import Quadrature, segment_nodes
 
 
+#: Above this many (point, chord) pairs, sweep instead of forming the outer product.
+_DENSE_CROSSING_BUDGET = 1 << 22
+
+
 def _cross(a, b):
     """2D cross product of complex-encoded vectors."""
     return a.real * b.imag - a.imag * b.real
@@ -45,18 +49,58 @@ def _polyline_dist(b0, b1, pt):
 
 
 def _chord_crossings(b0, b1, z):
-    """Horizontal +x ray crossing count against a set of chords, half-open in y."""
+    """Horizontal +x ray crossing count against a set of chords, half-open in y.
+
+    Two algorithms, chosen by problem size. Sort-and-sweep rather than an (N, M) outer
+    product once the chord count makes the product expensive. The straddle test
+    ``(ya <= y) != (yb <= y)`` is exactly ``min(ya,yb) <= y < max(ya,yb)``, so sorting the
+    query heights once turns each chord's affected points into a contiguous slice found by
+    two binary searches. Work is then proportional to the straddles that actually occur --
+    about 2N for a polyline of a bounded curve -- instead of N times the chord count.
+
+    The outer-product form was O(N*M) in memory as well as time: a spline boundary carries
+    ~16k chords at prec=1e-8, so one temporary at N=1e5 wanted ~13 GB, and containment on a
+    spline domain took 605 ms at N=1e4 against 2 ms for a polygon.
+    """
     z = np.asarray(z, dtype=complex)
     flat = np.atleast_1d(z).ravel()
-    y = flat.real * 0 + flat.imag
-    ya, yb = b0.imag[None, :], b1.imag[None, :]
-    yy = y[:, None]
-    straddles = (ya <= yy) != (yb <= yy)
-    dy = np.where(yb == ya, 1.0, yb - ya)
-    t = (yy - ya) / dy
-    xi = b0.real[None, :] + t * (b1.real - b0.real)[None, :]
-    hits = (straddles & (xi > flat.real[:, None])).sum(axis=1)
-    return hits.reshape(np.shape(z))
+    n = len(flat)
+    if n == 0:
+        return np.zeros(np.shape(z), dtype=int)
+    y, x = flat.imag, flat.real
+    ya, yb = b0.imag, b1.imag
+
+    if n * len(b0) <= _DENSE_CROSSING_BUDGET:
+        # Few chords: the outer product beats the sweep, which would pay an O(N log N)
+        # sort to save work that is not there. A LineSegment carries ONE chord, so every
+        # polygon lands here -- sorting per segment made an L-shape 19x slower.
+        straddles = (ya[None, :] <= y[:, None]) != (yb[None, :] <= y[:, None])
+        dy = np.where(yb == ya, 1.0, yb - ya)
+        t = (y[:, None] - ya[None, :]) / dy[None, :]
+        xi = b0.real[None, :] + t * (b1.real - b0.real)[None, :]
+        return (straddles & (xi > x[:, None])).sum(axis=1).reshape(np.shape(z))
+
+    order = np.argsort(y, kind="stable")
+    ys = y[order]
+
+    ylo, yhi = np.minimum(ya, yb), np.maximum(ya, yb)
+    lo = np.searchsorted(ys, ylo, side="left")
+    hi = np.searchsorted(ys, yhi, side="left")
+    counts = hi - lo
+    total = int(counts.sum())
+    if total == 0:
+        return np.zeros(np.shape(z), dtype=int)
+
+    chord = np.repeat(np.arange(len(b0)), counts)
+    starts = np.repeat(lo, counts)
+    offsets = np.arange(total) - np.repeat(np.cumsum(counts) - counts, counts)
+    pt = order[starts + offsets]
+
+    dy = yb[chord] - ya[chord]
+    t = (y[pt] - ya[chord]) / dy
+    xi = b0.real[chord] + t * (b1.real - b0.real)[chord]
+    hit = pt[xi > x[pt]]
+    return np.bincount(hit, minlength=n).reshape(np.shape(z))
 
 
 def _vectorized(f, sample):
