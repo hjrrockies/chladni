@@ -8,6 +8,7 @@ that were merely unexamined: mixed line/arc boundaries, near-slit and sliver cor
 aspect ratio, and domains far from the origin or at extreme scale.
 """
 import time
+import warnings
 
 import numpy as np
 import pytest
@@ -213,8 +214,13 @@ def test_small_domain_far_from_the_origin_degrades_predictably(offset, scale):
     caller and belongs upstream: build the domain about its own centre and carry the
     offset separately.
     """
+    from chladni.geometry import PrecisionWarning
+
     base = L_shape()
-    d = base.scaled(scale).translated(offset)
+    with warnings.catch_warnings():
+        # the domain announces this shortfall itself; that behaviour is tested separately
+        warnings.simplefilter("ignore", PrecisionWarning)
+        d = base.scaled(scale).translated(offset)
     limit = 10 * np.finfo(float).eps * abs(offset) / (scale * base.diameter)
     tol = max(1e-10, limit)
     assert d.perimeter == pytest.approx(base.perimeter * scale, rel=tol)
@@ -241,3 +247,77 @@ def test_robin_and_mixed_conditions_survive_a_reentrant_corner(bc):
     q = d.bdry_quad(400)
     assert np.all(q.bc == (0.0 if bc == "dir" else 1.0 if bc == "neu" else bc))
     assert len([c for c in d.corners if c.is_reentrant]) == 1
+
+
+# --- honesty about precision ------------------------------------------------------------
+
+
+def test_shipped_domains_claim_no_precision_they_lack():
+    """No false positives: everything in the library must clear the default prec easily."""
+    from chladni.geometry import GWW1, annulus, disk, plus_shape
+
+    for d in (L_shape(), GWW1(), plus_shape(), disk(), annulus(), reg_ngon(500), rect(1000, 1)):
+        assert d.achievable_prec <= d.prec
+        assert d.achievable_prec < 1e-12
+
+
+@pytest.mark.parametrize("offset,scale", [(1e3, 1e-3), (1e6, 1e-4)])
+def test_achievable_prec_bounds_the_error_that_actually_occurs(offset, scale):
+    """The estimate has to be an upper bound, or it is worse than no estimate at all."""
+    base = L_shape()
+    d = base.scaled(scale).translated(offset)
+    err = abs(d.perimeter - base.perimeter * scale) / (base.perimeter * scale)
+    assert err <= d.achievable_prec
+
+
+def test_far_offset_domain_warns():
+    from chladni.geometry import PrecisionWarning
+
+    with pytest.warns(PrecisionWarning, match="from the origin"):
+        L_shape().scaled(1e-4).translated(1e6)
+
+
+def test_near_degenerate_edge_warns():
+    """The case a shape optimizer produces: a well-placed domain with one tiny edge."""
+    from chladni.geometry import PrecisionWarning
+
+    v = np.array([0, 1, 1 + 1e-11j, 1 + 1j, 1j], dtype=complex)
+    with pytest.warns(PrecisionWarning, match="shortest segment"):
+        Polygon(v)
+
+
+def test_validate_false_does_not_suppress_the_precision_warning():
+    """`validate` skips the O(n^2) checks; it is not a licence to misreport precision.
+    Gating on it would also have let `translated()` -- the operation that creates the
+    problem -- rebuild silently."""
+    from chladni.geometry import PrecisionWarning
+
+    v = np.array([0, 1, 1 + 1e-11j, 1 + 1j, 1j], dtype=complex)
+    with pytest.warns(PrecisionWarning):
+        Polygon(v, validate=False)
+
+
+def test_precision_warning_is_filterable_on_its_own():
+    """douse trials thousands of shapes and needs to silence this specifically, not with a
+    blanket filter that would hide everything else."""
+    import warnings
+
+    from chladni.geometry import PrecisionWarning
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        warnings.simplefilter("ignore", PrecisionWarning)
+        L_shape().scaled(1e-4).translated(1e6)
+    assert caught == []
+
+
+def test_a_loose_prec_request_is_honoured_without_a_warning():
+    """The warning is about the gap, not about the geometry: ask for less and it is quiet."""
+    import warnings
+
+    v = np.array([0, 1, 1 + 1e-11j, 1 + 1j, 1j], dtype=complex)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        d = Polygon(v, prec=1e-3)
+    assert caught == []
+    assert d.achievable_prec <= 1e-3

@@ -6,13 +6,14 @@ signed areas simply add, because a hole's clockwise loop contributes negatively.
 """
 from __future__ import annotations
 
+import warnings
 from functools import cached_property
 
 import numpy as np
 from scipy.optimize import minimize
 
 from ._adaptive import allocate, refine
-from ._core import PREC, Frozen, _set, bc_kind
+from ._core import PREC, Frozen, PrecisionWarning, _set, bc_kind
 from .boundary import Boundary
 from .quadrature import Quadrature
 from .segments import LineSegment
@@ -35,6 +36,21 @@ class Domain(Frozen):
         holes = tuple(h.reversed() if h.orientation > 0 else h for h in holes)
         _set(self, outer=outer, holes=holes,
              prec=min([outer.prec] + [h.prec for h in holes]), _validated=bool(validate))
+        # Checked whatever `validate` says. That flag exists to skip the O(n^2) geometric
+        # checks, not to suppress an honest statement about precision -- and a transform
+        # rebuilds with validate=False, so gating this would have let `translated()`, the
+        # very operation that moves a domain away from the origin, silently create the
+        # problem. It costs microseconds; PrecisionWarning is the switch for callers who
+        # genuinely do not want it.
+        shortfall = self.achievable_prec
+        if shortfall > self.prec:
+            warnings.warn(
+                f"geometry supports about {shortfall:.1e} relative precision, below the "
+                f"requested prec={self.prec:.1e}: {self._precision_limit_cause()}. "
+                f"Results will be accurate to roughly {shortfall:.1e}, not {self.prec:.1e}.",
+                PrecisionWarning,
+                stacklevel=2,
+            )
         if validate:
             check_simple(outer, "outer boundary")
             for k, h in enumerate(holes):
@@ -66,6 +82,51 @@ class Domain(Frozen):
         except ValueError:
             return False
         return True
+
+    @cached_property
+    def achievable_prec(self):
+        """Relative precision this geometry can actually support in float64.
+
+        Never a promise that something else contradicts: if this exceeds `prec`, the domain
+        says so at construction rather than quietly returning worse numbers than asked for.
+        Two effects bound it, both from the spacing of floats rather than from any algorithm:
+
+        * offset -- a feature of size `h` at coordinate `R` is resolved to about
+          `eps * R / h`. Measured on the L-shape at (R, h) = (1e6, 1e-4): 2.7e-7.
+        * feature contrast -- an edge much shorter than the domain is resolved to about
+          `eps * h / min_edge`, which is how a near-degenerate iterate loses precision even
+          sitting at the origin.
+
+        Computed from the exact bounding box and the segment lengths, so it costs
+        microseconds and does not force any lazy quantity into existence.
+
+        It describes the coordinates the domain holds NOW, not the history that produced
+        them: a domain built far out and then translated back reports a healthy number
+        while still carrying the digits it lost on the way. That is the right reading --
+        this bounds what further work can resolve, and no property can recover bits that
+        were rounded away earlier.
+        """
+        lo, hi = self.bbox
+        h = abs(hi - lo)
+        if h == 0.0:
+            return 1.0
+        eps = float(np.finfo(float).eps)
+        offset = eps * max(abs(lo), abs(hi), h) / h
+        shortest = min(s.length for b in self.boundaries for s in b.segments)
+        feature = eps * h / shortest if shortest > 0 else 1.0
+        return float(max(offset, feature, eps))
+
+    def _precision_limit_cause(self):
+        lo, hi = self.bbox
+        h = abs(hi - lo)
+        eps = float(np.finfo(float).eps)
+        offset = eps * max(abs(lo), abs(hi), h) / h
+        shortest = min(s.length for b in self.boundaries for s in b.segments)
+        feature = eps * h / shortest if shortest > 0 else 1.0
+        if offset >= feature:
+            return (f"the domain spans {h:.3g} but sits {max(abs(lo), abs(hi)):.3g} from the "
+                    f"origin, so build it about its own centre and carry the offset separately")
+        return (f"its shortest segment is {shortest:.3g} against a span of {h:.3g}")
 
     @property
     def bc_type(self):

@@ -13,6 +13,15 @@ import numpy as np
 PREC = 1e-8
 
 
+class PrecisionWarning(UserWarning):
+    """The requested `prec` exceeds what this geometry can support in float64.
+
+    Its own category so a caller can act on it in one line -- `douse` grids trial thousands
+    of shapes and want `simplefilter("ignore", PrecisionWarning)`, not a blanket -W ignore
+    that would also hide everything else.
+    """
+
+
 class Frozen:
     """Base for the immutable geometry objects.
 
