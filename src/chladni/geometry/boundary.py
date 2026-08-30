@@ -13,14 +13,14 @@ notices three layers up, in `eigfun_integrals.corner_specs`, as a reason to bail
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 
 import numpy as np
 
 from ._adaptive import allocate, refine
 from ._core import PREC, Frozen, _set
-from .quadrature import Quadrature, segment_nodes
+from .quadrature import Panel, Quadrature, nodes_from_plan, segment_nodes
 from .segments import LineSegment, Segment, chord_dist_matrix, polyline_is_simple
 
 _MAX_BLOCKING_CHORDS = 4000
@@ -53,6 +53,20 @@ class Corner:
     clearance: float
     branch_angle: float
     angle_atol: float = 1e-12
+    bdry_idx: int = 0
+    #: True when this corner sits on a hole rather than on the outer boundary. Set by
+    #: `Domain.corners`; a Boundary on its own cannot know.
+    on_hole: bool = False
+    #: The adjacent segments themselves. Indices are the JOIN KEY -- `Quadrature.seg_idx`
+    #: and `bdry_idx` are integer arrays, so selecting a corner's nodes is
+    #: `q.seg_idx == c.seg_out` -- while these are the accessor, because the first thing a
+    #: caller does with `clearance` is divide it by the adjacent segment's length.
+    #: Safe to hold only because segments are immutable and can never drift. They point at
+    #: leaves, never at the owning Boundary or Domain: a back-reference would close the
+    #: cycle that lappy's cache.py exists to undo. Excluded from equality and repr so a
+    #: Corner still compares by value and prints as numbers.
+    segment_out: object = field(default=None, compare=False, repr=False)
+    segment_in: object = field(default=None, compare=False, repr=False)
 
     @property
     def is_geometric(self):
@@ -69,6 +83,33 @@ class Corner:
     @property
     def is_singular(self):
         return self.is_geometric or self.is_bc_junction
+
+    @property
+    def admits_exterior_branch_cut(self):
+        """Whether a fractional-order expansion can be branch-cut without cutting Omega.
+
+        A corner-adapted Fourier-Bessel function carries r^(k*nu) with nu = pi/theta, which
+        for fractional k*nu needs a branch cut from the corner. The cut must kill every loop
+        in Omega that winds around the corner point.
+
+        On the outer boundary the adjacent exterior component reaches infinity, so the ray
+        at `branch_angle` does it. On a HOLE it cannot: a loop in Omega encircling the hole
+        winds around every point of that hole's boundary, this corner included, so theta
+        gains 2*pi on it. Killing that loop needs a cut joining the hole to the outer
+        boundary, which necessarily crosses Omega, and a cut confined to the bounded hole
+        blocks nothing at all. The obstruction is topological, not a matter of searching
+        harder for a direction.
+
+        A hole corner is therefore usable only by expansions that are single-valued without
+        a cut -- nu integral, i.e. theta = pi/m -- which is the caller's test to make, since
+        geometry does not compute nu.
+
+        `branch_angle` stays finite at a hole corner: it is still a genuine direction into
+        the adjacent exterior component, which is what you want for placing a fundamental
+        solution's source inside the hole. It is this flag, not that angle, that says
+        whether the direction extends to a legitimate cut.
+        """
+        return (not self.on_hole) and bool(np.isfinite(self.branch_angle))
 
 
 def _blocked_arcs(z, b0, b1):
@@ -256,12 +297,19 @@ class Boundary(Frozen):
             Corner(z=zs[k], seg_out=int(idx[k]), seg_in=int(prev[k]), theta=float(theta[k]),
                    t_in=t_in[k], t_out=t_out[k], bc_in=float(bc_in[k]), bc_out=float(bc_out[k]),
                    clearance=float(clear[k]), branch_angle=float(branch[k]),
-                   angle_atol=self.angle_atol)
+                   angle_atol=self.angle_atol,
+                   segment_out=self.segments[int(idx[k])],
+                   segment_in=self.segments[int(prev[k])])
             for k in range(len(idx))
         )
 
     def _clearances(self, zs, seg_out, seg_in):
-        """Distance from each corner to the nearest NON-adjacent segment."""
+        """Distance from each corner to the nearest NON-adjacent segment OF THIS BOUNDARY.
+
+        `Domain.corners` tightens this against the other boundaries. Read from a Boundary
+        in isolation it is an upper bound, which is the honest answer a lone boundary can
+        give: it cannot see a hole it knows nothing about.
+        """
         d = self._dist_matrix(zs)
         rows = np.arange(len(zs))
         d[rows, seg_out] = np.inf
@@ -277,6 +325,17 @@ class Boundary(Frozen):
         pays for the fallback scan.
         """
         bisector = (np.angle(t_out) + theta / 2 + np.pi) % (2 * np.pi)
+        if self.orientation < 0:
+            # A clockwise loop is a hole: the exterior component next to these corners is
+            # the hole's own bounded interior. "Does the ray escape without re-entering
+            # Omega" has no answer there -- every ray crosses the hole and leaves -- so the
+            # blocking test fires on the correct direction and the fallback then hands back
+            # one pointing INTO Omega. Measured on a unit hole in a 3x3 square: the true
+            # exterior bisector at (1,1) is 0.25*pi, and the fallback returned 1.25*pi.
+            # The bisector is right; it is the escape test that does not apply. Whether the
+            # direction extends to a legitimate branch cut is `admits_exterior_branch_cut`,
+            # and for a hole corner it does not, for topological reasons.
+            return bisector
         b0, b1, owner = self.polyline()
         if len(b0) > _MAX_BLOCKING_CHORDS:
             pick = np.linspace(0, len(b0) - 1, _MAX_BLOCKING_CHORDS).astype(int)
@@ -341,7 +400,8 @@ class Boundary(Frozen):
         ends = [((i + 1) % n) in singular for i in range(n)]
         return starts, ends
 
-    def quad(self, n=None, *, n_per_seg=None, rule="legendre", grading=None, bdry_idx=0):
+    def quad(self, n=None, *, n_per_seg=None, rule="legendre", grading=None, bdry_idx=0,
+             panels=None, weight_family="arclength"):
         """Boundary quadrature.
 
         `n` is a TOTAL, split across segments by arclength with a floor. lappy offers only
@@ -349,6 +409,8 @@ class Boundary(Frozen):
         someone wrote the basis-aware `pts_per_seg` to make it for them.
         """
         segs = self.segments
+        if panels is not None:
+            return self._quad_from_plan(panels, bdry_idx, weight_family)
         if n_per_seg is not None:
             counts = np.asarray(n_per_seg, dtype=int)
             if len(counts) != len(segs):
@@ -377,6 +439,31 @@ class Boundary(Frozen):
             wts=cat("wts"), tau=cat("tau"), seg_idx=cat("seg_idx"),
             bdry_idx=np.full(m, bdry_idx, dtype=int), bc=cat("bc"),
             panel_id=cat("panel_id"), panels=tuple(panels),
+        )
+
+    def _quad_from_plan(self, panels, bdry_idx, weight_family):
+        """Assemble a caller's panel plan. Geometry supplies frames, weights, provenance
+        and BC tagging; the plan supplies only where the nodes go and what they weigh."""
+        by_seg = {}
+        for pan in panels:
+            by_seg.setdefault(int(pan.seg_idx), []).append(pan)
+        panel0 = 0
+        blocks, spans = [], []
+        for i in sorted(by_seg):
+            plan = sorted(by_seg[i], key=lambda q: q.tau0)
+            d = nodes_from_plan(self.segments[i], plan, panel0=panel0)
+            panel0 += d["n_panels"]
+            d["seg_idx"] = np.full(len(d["tau"]), i, dtype=int)
+            d["bc"] = np.full(len(d["tau"]), self.segments[i].bc)
+            blocks.append(d)
+            spans.extend((i, lo, hi) for lo, hi in d["panels"])
+        cat = lambda key: np.concatenate([b[key] for b in blocks])
+        m = sum(len(b["tau"]) for b in blocks)
+        return Quadrature(
+            pts=cat("pts"), normals=cat("normals"), tangents=cat("tangents"),
+            wts=cat("wts"), tau=cat("tau"), seg_idx=cat("seg_idx"),
+            bdry_idx=np.full(m, bdry_idx, dtype=int), bc=cat("bc"),
+            panel_id=cat("panel_id"), panels=tuple(spans), weight_family=weight_family,
         )
 
     def sample(self, n=None, *, n_per_seg=None, grading=None):

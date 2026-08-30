@@ -6,6 +6,7 @@ signed areas simply add, because a hole's clockwise loop contributes negatively.
 """
 from __future__ import annotations
 
+import dataclasses
 import warnings
 from functools import cached_property
 
@@ -69,7 +70,27 @@ class Domain(Frozen):
 
     @cached_property
     def corners(self):
-        return tuple(c for b in self.boundaries for c in b.corners)
+        """Every singular corner of the domain, tagged with its boundary.
+
+        Two things happen here that a lone Boundary cannot do. Each corner is stamped with
+        `bdry_idx`, without which the flattened tuple is ambiguous -- corner 0 of the outer
+        boundary and corner 0 of a hole both report `seg_out=0`, and `Quadrature` carries
+        `bdry_idx` for exactly this reason. And `clearance` is tightened against the OTHER
+        boundaries: it is the radius of the largest disk about the corner inside Omega, so
+        a hole must shorten it. On a 3x3 square with a unit hole, the corner at the origin
+        reported 3.0 against a true 1.414 -- and clearance is what sizes corner panels,
+        where lappy measured up to twelve orders of accuracy riding on that length.
+        """
+        out = []
+        for bi, b in enumerate(self.boundaries):
+            others = [ob for k, ob in enumerate(self.boundaries) if k != bi]
+            for c in b.corners:
+                clear = c.clearance
+                for ob in others:
+                    clear = min(clear, float(ob.dist(c.z)))
+                out.append(dataclasses.replace(c, bdry_idx=bi, clearance=clear,
+                                               on_hole=bi > 0))
+        return tuple(out)
 
     @cached_property
     def is_valid(self):
@@ -254,8 +275,23 @@ class Domain(Frozen):
 
     # --- quadrature and sampling --------------------------------------------------------
 
-    def bdry_quad(self, n=None, *, n_per_bdry=None, rule="legendre", grading=None):
+    def bdry_quad(self, n=None, *, n_per_bdry=None, rule="legendre", grading=None,
+                  panels=None, weight_family="arclength"):
+        """Boundary quadrature over every boundary.
+
+        `panels` is the seam for a corner-adapted rule built one layer up: a flat sequence
+        of `Panel`, each naming its boundary, segment, tau span and node generator. See
+        `Panel` for why the weights come back in tau and geometry only converts to ds.
+        """
         bs = self.boundaries
+        if panels is not None:
+            by_bdry = {}
+            for pan in panels:
+                by_bdry.setdefault(int(pan.bdry_idx), []).append(pan)
+            return Quadrature.concat([
+                bs[k].quad(panels=by_bdry[k], bdry_idx=k, weight_family=weight_family)
+                for k in sorted(by_bdry)
+            ])
         if n_per_bdry is not None:
             counts = np.asarray(n_per_bdry, dtype=int)
         elif n is not None:

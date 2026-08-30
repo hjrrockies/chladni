@@ -23,7 +23,7 @@ from ._adaptive import (
     gauss_legendre,
 )
 from ._core import PREC, Frozen, _set, check_prec, normalize_bc
-from .quadrature import Quadrature, segment_nodes
+from .quadrature import Quadrature, nodes_from_plan, segment_nodes
 
 
 #: Above this many (point, chord) pairs, sweep instead of forming the outer product.
@@ -241,12 +241,26 @@ class Segment(Frozen, ABC):
     def sample(self, n, *, grading=None):
         return self.quad(n, grading=grading).pts
 
-    def quad(self, n, *, rule="legendre", grading=None, grade_start=False, grade_end=False):
-        if grading == "corner":
-            grade_start = grade_end = True
-        elif grading is not None:
-            raise ValueError(f"unknown grading {grading!r}")
-        d = segment_nodes(self, n, rule=rule, grade_start=grade_start, grade_end=grade_end)
+    def quad(self, n=None, *, rule="legendre", grading=None, grade_start=False,
+             grade_end=False, panels=None, weight_family="arclength"):
+        """Quadrature on this segment.
+
+        `panels` lets a higher layer supply its own plan -- the seam a corner-adapted
+        Gauss-Jacobi rule needs. Geometry still owns the arclength map, the frames, the
+        provenance and the BC tagging; only the choice of rule, which needs nu, sits above.
+        Without it that layer would have to redo the affine panel map by hand, which is what
+        lappy's PointSet docstring records a downstream package having to do.
+        """
+        if panels is not None:
+            d = nodes_from_plan(self, panels)
+        else:
+            if grading == "corner":
+                grade_start = grade_end = True
+            elif grading is not None:
+                raise ValueError(f"unknown grading {grading!r}")
+            if n is None:
+                raise ValueError("give either n or panels")
+            d = segment_nodes(self, n, rule=rule, grade_start=grade_start, grade_end=grade_end)
         m = len(d["tau"])
         return Quadrature(
             pts=d["pts"],
@@ -259,6 +273,7 @@ class Segment(Frozen, ABC):
             bc=np.full(m, self.bc),
             panel_id=d["panel_id"],
             panels=d["panels"],
+            weight_family=weight_family,
         )
 
     # --- predicates ---------------------------------------------------------------------

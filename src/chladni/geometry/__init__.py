@@ -11,13 +11,13 @@ from .library import (
     GWW1, GWW2, L_shape, annulus, disk, eq_tri, iso_right_tri, plus_shape, polyomino,
     rect, reg_ngon,
 )
-from .quadrature import Quadrature
+from .quadrature import Panel, Quadrature, legendre_nodes
 from .segments import ArcSegment, LineSegment, ParametricSegment, Segment, SplineSegment
 
 __all__ = [
     "PREC", "PrecisionWarning", "as_xy", "from_xy",
     "Segment", "LineSegment", "ArcSegment", "ParametricSegment", "SplineSegment",
-    "Boundary", "Corner", "Domain", "Polygon", "Quadrature",
+    "Boundary", "Corner", "Domain", "Polygon", "Quadrature", "Panel", "legendre_nodes",
     "rect", "L_shape", "eq_tri", "iso_right_tri", "reg_ngon", "disk", "annulus",
     "GWW1", "GWW2", "polyomino", "plus_shape",
 ]

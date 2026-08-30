@@ -14,7 +14,8 @@ into private helpers and redo the affine panel map by hand.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Callable
 
 import numpy as np
 
@@ -121,6 +122,57 @@ class Quadrature:
             panels=tuple(pan for p in parts for pan in p.panels),
             weight_family=parts[0].weight_family,
         )
+
+
+@dataclass(frozen=True)
+class Panel:
+    """One panel of an externally supplied quadrature plan.
+
+    `nodes(tau0, tau1)` returns `(tau, w)`: node positions inside `[tau0, tau1]`, and
+    weights **in the tau variable**, so that `sum(w * f(tau))` approximates
+    `integral f(tau) * weight(tau) dtau` over the panel. Geometry multiplies by the
+    segment's length to convert dtau into ds, and does nothing else to them.
+
+    That split is deliberate. Rescaling a singular weight onto a shorter panel introduces a
+    power of the panel width set by the weight's homogeneity -- `(1-x)^a` picks up
+    `h^(1+a)` -- and only the layer that chose the weight knows the exponent. Geometry
+    owning that arithmetic would be a silent factor-of-h bug waiting for the first
+    corner-adapted rule.
+    """
+
+    bdry_idx: int
+    seg_idx: int
+    tau0: float
+    tau1: float
+    nodes: Callable = field(compare=False, repr=False, default=None)
+
+
+def legendre_nodes(order):
+    """A `Panel.nodes` callable for plain Gauss-Legendre -- the arclength family."""
+
+    def build(tau0, tau1):
+        x, w = gauss_legendre(int(order))
+        return tau0 + (tau1 - tau0) * x, (tau1 - tau0) * w
+
+    return build
+
+
+def nodes_from_plan(seg, panels, panel0=0):
+    """Materialize a caller's panel plan on one segment: frames, weights, provenance."""
+    taus, wts, pids, spans = [], [], [], []
+    for k, pan in enumerate(panels):
+        tau, w = pan.nodes(float(pan.tau0), float(pan.tau1))
+        tau = np.asarray(tau, dtype=float)
+        taus.append(tau)
+        wts.append(np.asarray(w, dtype=float) * seg.length)
+        pids.append(np.full(len(tau), panel0 + k, dtype=int))
+        spans.append((float(pan.tau0), float(pan.tau1)))
+    tau = np.concatenate(taus)
+    return {
+        "tau": tau, "pts": seg.p(tau), "tangents": seg.T(tau), "normals": seg.N(tau),
+        "wts": np.concatenate(wts), "panel_id": np.concatenate(pids),
+        "n_panels": len(panels), "panels": tuple(spans),
+    }
 
 
 def _graded_edges(grade_start, grade_end, layers=_GRADE_LAYERS, ratio=_GRADE_RATIO):
