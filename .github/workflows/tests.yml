@@ -1,0 +1,61 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    env:
+      # The notebook test drives matplotlib through a Jupyter kernel, where there is no
+      # display. Setting the backend in the environment reaches that kernel; a
+      # matplotlib.use() call inside a test module would not.
+      MPLBACKEND: Agg
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Install
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install -e ".[test]"
+
+      # Steps below call .venv/bin/python directly rather than `uv run`, which would sync
+      # the project environment itself and could undo the `[test]` install above.
+
+      - name: Check the notebook test can actually run
+        # test_examples.py uses importorskip, so a missing dependency would SKIP rather than
+        # fail and the guard would quietly stop guarding. Fail loudly here instead.
+        run: .venv/bin/python -c "import nbformat, nbclient, ipykernel; print('notebook deps present')"
+
+      - name: Run the full suite
+        # -m "" overrides the `-m 'not slow'` in pyproject's addopts, which exists to keep
+        # the local inner loop near 1.5 s. CI has no inner loop, and the two slow tests are
+        # the notebook execution and the corner-construction scaling guard -- precisely the
+        # things that rot silently. -W error::UserWarning makes an unexpected warning a
+        # failure; the suite is clean under it, and the one deliberate PrecisionWarning is
+        # raised inside catch_warnings.
+        run: .venv/bin/python -m pytest -m "" -W error::UserWarning
+
+      - name: Confirm geometry still imports without matplotlib
+        # A test asserts this too, in a subprocess. Repeated here because it is the one
+        # architectural rule of the package and it costs a second to check directly.
+        run: .venv/bin/python -c "import sys, chladni.geometry; leaked = sorted(m for m in sys.modules if m.split('.')[0] == 'matplotlib'); assert not leaked, leaked; print('geometry is matplotlib-free')"
