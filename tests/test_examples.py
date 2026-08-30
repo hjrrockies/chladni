@@ -1,9 +1,8 @@
 """Execute the example notebooks.
 
 An example that breaks silently is worse than no example, so the tour is run end to end
-against the current API. Marked slow -- it spins up a kernel and costs ~5 s -- but slow tests still run by default
-in this project, matching the marker's declared meaning. Use `-m "not slow"` for a fast
-inner loop.
+against the current API. Marked slow -- it spins up a kernel and costs ~5 s -- and slow tests are deselected by
+default here. Run it with `pytest -m slow`.
 """
 import pathlib
 

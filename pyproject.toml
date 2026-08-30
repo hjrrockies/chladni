@@ -36,7 +36,7 @@ where = ["src"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -m 'not slow'"
 markers = [
-    "slow: end-to-end solves; slower than a unit test but still run by default",
+    "slow: costs seconds rather than milliseconds -- end-to-end solves, notebook\n        execution, scaling guards. DESELECTED BY DEFAULT via addopts, to keep the inner\n        loop at ~1.5 s. Run them with `-m slow`, or everything with `-m ''`.",
 ]

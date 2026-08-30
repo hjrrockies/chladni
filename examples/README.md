@@ -13,5 +13,9 @@ jupyter lab examples/geometry_tour.ipynb
 ```
 
 `tests/test_examples.py` executes the notebook so it cannot rot silently. It is marked
-`slow` and, like the other slow tests here, runs by default; `pytest -m "not slow"` skips it
-for a faster inner loop.
+`slow`, which this project deselects by default to keep the inner loop fast, so run it
+explicitly:
+
+```bash
+pytest -m slow
+```
