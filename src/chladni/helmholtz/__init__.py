@@ -2,7 +2,7 @@
 
 The spectral parameter is the wavenumber `k`, real and positive, in
 `laplacian(u) + k**2 * u = 0`. `lam = k**2` is the user-facing eigenvalue and belongs to the
-`mps` layer, converted at one seam. See docs/design/conventions.md.
+`mps` layer, converted at one seam. See docs/conventions.md.
 
 Matrices are `(n_pts, n_cols)`, float64. Gradients are one complex array, `du_dx + 1j*du_dy`.
 

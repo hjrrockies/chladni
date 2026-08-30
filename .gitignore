@@ -100,6 +100,9 @@ cython_debug/
 # zip archives
 *.zip
 
-# Local-only: design notes and Claude instructions are not shared
-docs/
+# Working notes: dated, superseded, addressed to a moment. Memos, work orders, benchmark
+# run logs. docs/ is tracked; this is the place for what does not survive its own week.
+notes/
+
+# Assistant instructions: tooling configuration, not documentation
 CLAUDE.md
