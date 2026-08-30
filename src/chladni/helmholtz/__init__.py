@@ -17,10 +17,12 @@ from .._core import PREC, PrecisionWarning
 from ._core import HelmholtzFamily, Sampling, SingularStructure, check_k
 from .corners import CornerModes
 from .fourier_bessel import FourierBessel
+from .sources import Fundamental, SourcesInsideDomain
+from .waves import PlaneWave
 
 __all__ = [
     "PREC", "PrecisionWarning", "check_k",
     "HelmholtzFamily", "Sampling", "SingularStructure",
     "CornerModes",
-    "FourierBessel",
+    "FourierBessel", "Fundamental", "PlaneWave", "SourcesInsideDomain",
 ]
