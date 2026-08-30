@@ -24,6 +24,8 @@ from .quadrature import Panel, Quadrature, nodes_from_plan, segment_nodes
 from .segments import LineSegment, Segment, chord_dist_matrix, polyline_is_simple
 
 _MAX_BLOCKING_CHORDS = 4000
+#: Wall-following steps tried in each direction when hunting a polyline branch cut.
+_MAX_WALK_STEPS = 400
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,18 @@ class Corner:
     #: Corner still compares by value and prints as numbers.
     segment_out: object = field(default=None, compare=False, repr=False)
     segment_in: object = field(default=None, compare=False, repr=False)
+    #: Intermediate vertices of a polyline branch cut, empty when a straight ray suffices.
+    #: `branch_angle` is then the direction of the FINAL ray, leaving the last vertex.
+    branch_vertices: tuple = ()
+
+    def branch_path(self, length):
+        """The cut as a polyline: the corner, any intermediate vertices, then a point
+        `length` along the final ray. What a plotter draws and a test walks."""
+        if not np.isfinite(self.branch_angle):
+            raise ValueError("this corner has no branch cut")
+        tail = self.branch_vertices[-1] if self.branch_vertices else self.z
+        return np.array([self.z, *self.branch_vertices,
+                         tail + length * np.exp(1j * self.branch_angle)])
 
     @property
     def is_geometric(self):
@@ -122,6 +136,29 @@ def _blocked_arcs(z, b0, b1):
 
 def _is_blocked(phi, start, width):
     return np.any(((np.asarray(phi)[..., None] - start) % (2 * np.pi)) <= width, axis=-1)
+
+
+def _path_crosses(path, b0, b1, origin, atol=1e-9):
+    """Does the open polyline `path` cross any boundary chord, ignoring the start point?
+
+    The cut begins ON the boundary, at the corner, so intersections within `atol` of
+    `origin` are the cut leaving its own corner and are not crossings.
+    """
+    p0, p1 = path[:-1], path[1:]
+    r = (p1 - p0)[:, None]
+    a = b0[None, :]
+    sv = (b1 - b0)[None, :]
+    denom = r.real * sv.imag - r.imag * sv.real
+    ok = np.abs(denom) > 1e-14
+    d = a - p0[:, None]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        t = np.where(ok, (d.real * sv.imag - d.imag * sv.real) / np.where(ok, denom, 1.0), -1.0)
+        u = np.where(ok, (d.real * r.imag - d.imag * r.real) / np.where(ok, denom, 1.0), -1.0)
+    hit = ok & (t > atol) & (t < 1 - atol) & (u > atol) & (u < 1 - atol)
+    if not hit.any():
+        return False
+    where = p0[:, None] + t * r
+    return bool((hit & (np.abs(where - origin) > atol)).any())
 
 
 class Boundary(Frozen):
@@ -292,14 +329,15 @@ class Boundary(Frozen):
         zs = np.array([self.segments[i].p0 for i in idx])
 
         clear = self._clearances(zs, idx, prev)
-        branch = self._branch_angles(zs, idx, prev, t_out, theta)
+        branch, branch_polys = self._branch_angles(zs, idx, prev, t_out, theta)
         return tuple(
             Corner(z=zs[k], seg_out=int(idx[k]), seg_in=int(prev[k]), theta=float(theta[k]),
                    t_in=t_in[k], t_out=t_out[k], bc_in=float(bc_in[k]), bc_out=float(bc_out[k]),
                    clearance=float(clear[k]), branch_angle=float(branch[k]),
                    angle_atol=self.angle_atol,
                    segment_out=self.segments[int(idx[k])],
-                   segment_in=self.segments[int(prev[k])])
+                   segment_in=self.segments[int(prev[k])],
+                   branch_vertices=branch_polys[k])
             for k in range(len(idx))
         )
 
@@ -325,7 +363,7 @@ class Boundary(Frozen):
         pays for the fallback scan.
         """
         bisector = (np.angle(t_out) + theta / 2 + np.pi) % (2 * np.pi)
-        if self.orientation < 0:
+        if self.orientation < 0:  # noqa: SIM108
             # A clockwise loop is a hole: the exterior component next to these corners is
             # the hole's own bounded interior. "Does the ray escape without re-entering
             # Omega" has no answer there -- every ray crosses the hole and leaves -- so the
@@ -335,7 +373,7 @@ class Boundary(Frozen):
             # The bisector is right; it is the escape test that does not apply. Whether the
             # direction extends to a legitimate branch cut is `admits_exterior_branch_cut`,
             # and for a hole corner it does not, for topological reasons.
-            return bisector
+            return bisector, [() for _ in range(len(zs))]
         b0, b1, owner = self.polyline()
         if len(b0) > _MAX_BLOCKING_CHORDS:
             pick = np.linspace(0, len(b0) - 1, _MAX_BLOCKING_CHORDS).astype(int)
@@ -361,14 +399,27 @@ class Boundary(Frozen):
             free[lo:hi] = ~hit.any(axis=1)
 
         out = bisector.copy()
+        polylines = [() for _ in range(len(zs))]
         for k in np.flatnonzero(~free):
-            out[k] = self._branch_fallback(zs[k], int(seg_out[k]), int(seg_in[k]))
-        return out
+            angle = self._branch_fallback(zs[k], int(seg_out[k]), int(seg_in[k]))
+            if not np.isfinite(angle):
+                # surrounded: no straight ray escapes, so wall-follow one out
+                verts, angle = self._polyline_branch_cut(zs[k], int(seg_out[k]), int(seg_in[k]))
+                polylines[k] = verts
+            out[k] = angle
+        return out, polylines
 
-    def _branch_fallback(self, z, seg_out, seg_in):
-        """Midpoint of the widest unobstructed run of directions, when the bisector is not."""
+    def free_ray_from(self, z, exclude=()):
+        """Midpoint of the widest run of directions from `z` that no chord blocks, or NaN.
+
+        A direction that meets nothing escapes to infinity, so this is the sightline test.
+        `exclude` drops segments by index -- used only at a corner, whose own two segments
+        touch it and would block everything.
+        """
         b0, b1, owner = self.polyline()
-        keep = (owner != seg_out) & (owner != seg_in)
+        keep = np.ones(len(b0), dtype=bool)
+        for o in exclude:
+            keep &= owner != o
         if not keep.any():
             return float("nan")
         b0, b1 = b0[keep], b1[keep]
@@ -386,6 +437,59 @@ class Boundary(Frozen):
             runs = [np.concatenate([runs[-1], runs[0]])] + runs[1:-1]
         best = max(runs, key=len)
         return float(grid[best[len(best) // 2]])
+
+    def _branch_fallback(self, z, seg_out, seg_in):
+        return self.free_ray_from(z, exclude=(seg_out, seg_in))
+
+    def _polyline_branch_cut(self, z, seg_out, seg_in, max_steps=_MAX_WALK_STEPS):
+        """A polyline cut for a corner with no straight sightline out.
+
+        Ported from lappy's `corner_branch_cut_polyline`: offset the boundary outward by a
+        small eps, wall-follow it from the corner until reaching a vertex that CAN see
+        infinity, then attach that ray. Both directions round the boundary are tried and
+        the shorter valid cut wins.
+
+        A spiral is the shape that needs it -- its inner coils surround corners whose
+        exterior is a channel that turns, so no ray escapes. On lappy's 24-vertex spiral
+        13 of 24 corners are in that position, and without this they carry no branch cut at
+        all, which quietly bars a fractional-order expansion from every one of them.
+
+        Heuristic, and honestly so: it follows the wall rather than searching for a
+        shortest cut, and it can fail, in which case the corner reports no cut rather than
+        a wrong one.
+        """
+        b0, b1, owner = self.polyline()
+        pts, edge = b0, b1 - b0
+        n = len(pts)
+        seg_n = -1j * edge / np.abs(edge)
+        vert_n = seg_n + np.roll(seg_n, 1)
+        mag = np.abs(vert_n)
+        vert_n = np.where(mag > 1e-12, vert_n / np.where(mag > 1e-12, mag, 1.0), seg_n)
+        eps = 0.05 * float(np.min(np.abs(edge)))
+        offset = pts + eps * vert_n
+        k0 = int(np.abs(pts - z).argmin())
+        stride = max(1, n // max_steps)
+
+        best = None
+        for direction in (+1, -1):
+            verts = []
+            for j in range(1, max_steps + 1):
+                q = offset[(k0 + direction * j * stride) % n]
+                verts.append(q)
+                beta = self.free_ray_from(q)
+                if not np.isfinite(beta):
+                    continue
+                path = np.array([z, *verts])
+                if _path_crosses(path, b0, b1, z):
+                    break
+                length = float(np.abs(np.diff(path)).sum())
+                cand = (len(verts), length, tuple(verts), float(beta))
+                if best is None or cand[:2] < best[:2]:
+                    best = cand
+                break
+        if best is None:
+            return (), float("nan")
+        return best[2], best[3]
 
     # --- sampling and quadrature --------------------------------------------------------
 

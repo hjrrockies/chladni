@@ -111,3 +111,23 @@ def polyomino(cells, bc="dir", validate=True, prec=PREC):
 def plus_shape(bc="dir", prec=PREC):
     """The 5-cell plus: four reentrant corners, twelve corners in all."""
     return polyomino([(1, 0), (0, 1), (1, 1), (2, 1), (1, 2)], bc=bc, prec=prec)
+
+
+def spiral(turns=1.5, pitch=1.0, width=0.35, n=12, r0=0.6, bc="dir", prec=PREC):
+    """A polygonal spiral strip, counter-clockwise.
+
+    The shape that motivates polyline branch cuts: its inner coils surround corners whose
+    exterior is a channel that turns, so no straight ray escapes to infinity. At the
+    default settings half of its 24 corners are in that position, and with ray-only cuts
+    every one of them would carry no branch cut at all -- quietly barring a fractional-order
+    expansion there. See `Corner.branch_vertices`.
+    """
+    phi = np.linspace(0, 2 * np.pi * turns, int(n))
+    centre = (r0 + pitch * phi / (2 * np.pi)) * np.exp(1j * phi)
+    tangent = np.gradient(centre)
+    tangent /= np.abs(tangent)
+    normal = 1j * tangent
+    v = np.concatenate([centre + width / 2 * normal, (centre - width / 2 * normal)[::-1]])
+    if 0.5 * np.imag(np.sum(np.conj(v) * np.roll(v, -1))) < 0:
+        v = v[::-1]
+    return Polygon(v, bc=bc, prec=prec)

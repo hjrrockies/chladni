@@ -325,3 +325,84 @@ def test_a_loose_prec_request_is_honoured_without_a_warning():
         d = Polygon(v, prec=1e-3)
     assert caught == []
     assert d.achievable_prec <= 1e-3
+
+
+# --- branch cuts for surrounded corners --------------------------------------------------
+
+
+def cut_stays_outside(d, c, per_leg=2000):
+    """Sample the whole cut -- every leg of the polyline plus a long final ray."""
+    path = c.branch_path(20 * d.diameter)
+    u = np.linspace(0.0, 1.0, per_leg)[1:-1]
+    z = np.concatenate([a + u * (b - a) for a, b in zip(path[:-1], path[1:])])
+    return not bool(d.contains(z).any())
+
+
+def test_spiral_corners_all_get_a_branch_cut():
+    """Half the spiral's corners are surrounded: their exterior is a channel that turns,
+    so no straight ray escapes. Without a polyline cut they would carry none at all."""
+    from chladni.geometry import spiral
+
+    d = spiral()
+    assert all(np.isfinite(c.branch_angle) for c in d.corners)
+    assert all(c.admits_exterior_branch_cut for c in d.corners)
+    walled = [c for c in d.corners if c.branch_vertices]
+    assert len(walled) > 0, "the spiral is supposed to need polyline cuts"
+
+
+def test_every_spiral_cut_stays_out_of_the_domain():
+    """The property that matters: a cut that re-enters Omega makes the expansion it
+    supports discontinuous inside the domain."""
+    from chladni.geometry import spiral
+
+    d = spiral()
+    for c in d.corners:
+        assert cut_stays_outside(d, c), f"cut from {c.z} re-enters the domain"
+
+
+def test_simple_domains_need_no_polyline(l_shape, square, eq_tri):
+    """The walk is a fallback and must stay one: a straight ray works everywhere here, so
+    no wall-following should be attempted."""
+    from chladni.geometry import plus_shape
+
+    for d in (l_shape, square, eq_tri, plus_shape()):
+        assert all(c.branch_vertices == () for c in d.corners)
+
+
+def test_branch_path_shape():
+    from chladni.geometry import spiral
+
+    d = spiral()
+    for c in d.corners:
+        path = c.branch_path(1.0)
+        assert len(path) == len(c.branch_vertices) + 2
+        assert path[0] == pytest.approx(c.z, abs=EXACT)
+        if c.branch_vertices:
+            assert path[1] == pytest.approx(c.branch_vertices[0], abs=EXACT)
+
+
+def test_branch_path_refuses_when_there_is_no_cut():
+    from chladni.geometry import Corner
+
+    c = Corner(z=0j, seg_out=0, seg_in=1, theta=1.0, t_in=1 + 0j, t_out=1j,
+               bc_in=0.0, bc_out=0.0, clearance=1.0, branch_angle=float("nan"))
+    with pytest.raises(ValueError, match="no branch cut"):
+        c.branch_path(1.0)
+
+
+def test_hole_corners_do_not_attempt_a_walk(square_with_square_hole):
+    """A hole corner has no valid cut for topological reasons, so there is nothing to
+    wall-follow towards; the bisector is reported as a local direction and nothing else."""
+    for c in square_with_square_hole.corners:
+        if c.on_hole:
+            assert c.branch_vertices == ()
+            assert not c.admits_exterior_branch_cut
+
+
+def test_spiral_is_a_well_formed_domain():
+    from chladni.geometry import spiral
+
+    d = spiral()
+    assert d.is_valid and d.outer.orientation == 1 and d.area > 0
+    q = d.bdry_quad(2000)
+    assert (q.radial(0j) * q.wts).sum() == pytest.approx(2 * d.area, rel=1e-8)
