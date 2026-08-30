@@ -9,9 +9,9 @@ It is a ground-up rebuild of `lappy`, designed around the lessons learned there:
 geometry, a clean separation between geometry / basis / solver, and a black-box path that
 works without hand-tuning.
 
-> **Status: in development.** The geometry layer and its plotting are implemented and
-> tested; the particular-solution families and the eigensolver are not written yet.
-> Nothing here solves an eigenvalue problem so far.
+> **Status: in development.** The geometry layer, the Helmholtz particular-solution families
+> and the plotting are implemented and tested. The eigensolver is not written yet, so nothing
+> here solves an eigenvalue problem so far.
 
 ## A first look
 
@@ -32,8 +32,13 @@ d.plot_diagnostic()                 # colour-coded segments, annotated corners
 
 **[`examples/geometry_tour.ipynb`](examples/geometry_tour.ipynb)** tours the whole geometry
 layer with figures — segments and arclength parameterization, corners and their boundary
-conditions, branch cuts, domains with holes, boundary quadrature and its convergence. It is
-committed with outputs, so it reads without being run.
+conditions, branch cuts, domains with holes, boundary quadrature and its convergence.
+
+**[`examples/helmholtz_tour.ipynb`](examples/helmholtz_tour.ipynb)** tours the layer above it —
+where `scipy.special.jv` gives up and what is done about it, the corner exponent table
+including mixed boundary conditions, branch cuts drawn over the field they act on, source
+placement, and assembling a boundary matrix. Both notebooks assert their own numbers, so the
+test suite runs them end to end.
 
 ## Goals
 
@@ -53,8 +58,8 @@ committed with outputs, so it reads without being run.
 | Layer | Status | What it provides |
 | --- | --- | --- |
 | `geometry` | **implemented** | Segments with arclength parameterization; boundaries, orientation and frames; domains with holes; corners carrying angle, boundary conditions, clearance and branch cuts; boundary quadrature with weights and provenance. |
+| `helmholtz` | **implemented** | Corner-adapted Fourier-Bessel families with branch cuts and Zaremba (mixed-BC) corners; `Y_m` multipoles at exterior sources, offset layers and lightning clusters; plane waves; a composite `Basis`. A scaled Bessel kernel that keeps full relative accuracy past the point where `scipy.special.jv` underflows to zero, and an analytic per-column scale that leaves the columns O(1). |
 | `plotting` | **implemented** | Domains, boundary conditions, normals and tangents, and a colour-coded diagnostic view. Kept in its own layer so `geometry` never imports matplotlib. |
-| `particular_solutions` | planned | Vectorized families of Helmholtz-exact solutions — corner-adapted fractional-order Fourier–Bessel functions, real-valued fundamental solutions, multipoles, plane waves — with derivatives. |
 | `mps` | planned | The GSVD-regularized MPS eigensolver, plus orthonormal eigenfunctions via Rellich-identity boundary integrals evaluated by quadrature. |
 
 ## Installation
