@@ -21,7 +21,7 @@ import numpy as np
 from ._adaptive import allocate, refine
 from ._core import PREC, Frozen, _set
 from .quadrature import Quadrature, segment_nodes
-from .segments import LineSegment, Segment, polyline_is_simple
+from .segments import LineSegment, Segment, chord_dist_matrix, polyline_is_simple
 
 _MAX_BLOCKING_CHORDS = 4000
 
@@ -191,8 +191,31 @@ class Boundary(Frozen):
     def orientation(self):
         return 1 if self.signed_area >= 0 else -1
 
+    @cached_property
+    def _line_endpoints(self):
+        """Endpoint arrays when every segment is straight, else None.
+
+        Lets `dist` answer for all segments in one vectorized call instead of one Python
+        call per segment. inradius's compass search evaluates ~48 times, so a 400-gon was
+        paying 19k small numpy calls per inradius.
+        """
+        if all(isinstance(s, LineSegment) for s in self.segments):
+            return (np.array([s.p0 for s in self.segments]),
+                    np.array([s.p1 for s in self.segments]))
+        return None
+
     def dist(self, pt):
+        ends = self._line_endpoints
+        if ends is not None:
+            return chord_dist_matrix(*ends, pt).min(axis=1).reshape(np.shape(np.asarray(pt)))
         return np.min([s.dist(pt) for s in self.segments], axis=0)
+
+    def _dist_matrix(self, pts):
+        """(n_points, n_segments) distances -- needed unreduced, to mask adjacency."""
+        ends = self._line_endpoints
+        if ends is not None:
+            return chord_dist_matrix(*ends, pts)
+        return np.stack([np.atleast_1d(s.dist(pts)) for s in self.segments], axis=1)
 
     def crossings(self, z):
         return sum(s.crossings(z) for s in self.segments)
@@ -201,71 +224,106 @@ class Boundary(Frozen):
 
     @cached_property
     def corners(self):
+        """All singular junctions, built in a batch.
+
+        Every step is vectorized over corners. Done one corner at a time -- a distance
+        against every non-adjacent segment, then a blocked-arc scan over the whole polyline
+        -- this was O(n^2) with a Python call at each cell: 136 ms for a 200-gon and 534 ms
+        for a 400-gon, which is the size range a shape optimizer generates.
+        """
         n = len(self.segments)
-        first = 0 if self.is_closed else 1
-        out = []
-        for i in range(first, n):
-            prev = self.segments[(i - 1) % n]
-            cur = self.segments[i]
-            t_in, t_out = prev.T1, cur.T0
-            theta = float(np.angle(-t_in / t_out) % (2 * np.pi))
-            geometric = abs(theta - np.pi) > self.angle_atol
-            junction = prev.bc != cur.bc
-            if not (geometric or junction):
-                continue
-            z = cur.p0
-            out.append(
-                Corner(
-                    z=z,
-                    seg_out=i,
-                    seg_in=(i - 1) % n,
-                    theta=theta,
-                    t_in=t_in,
-                    t_out=t_out,
-                    bc_in=prev.bc,
-                    bc_out=cur.bc,
-                    clearance=self._clearance(z, i, (i - 1) % n),
-                    branch_angle=self._branch_angle(z, i, (i - 1) % n, t_out, theta),
-                    angle_atol=self.angle_atol,
-                )
-            )
-        return tuple(out)
+        idx = np.arange(0 if self.is_closed else 1, n)
+        if not len(idx):
+            return ()
+        prev = (idx - 1) % n
+        t_out = np.array([self.segments[i].T0 for i in idx])
+        t_in = np.array([self.segments[j].T1 for j in prev])
+        theta = np.angle(-t_in / t_out) % (2 * np.pi)
+        bc_out = np.array([self.segments[i].bc for i in idx])
+        bc_in = np.array([self.segments[j].bc for j in prev])
 
-    def _clearance(self, z, seg_out, seg_in):
-        others = [s for k, s in enumerate(self.segments) if k not in (seg_out, seg_in)]
-        if not others:
-            return float(np.inf)
-        return float(min(float(s.dist(z)) for s in others))
+        keep = (np.abs(theta - np.pi) > self.angle_atol) | (bc_in != bc_out)
+        if not keep.any():
+            return ()
+        idx, prev = idx[keep], prev[keep]
+        theta, t_in, t_out = theta[keep], t_in[keep], t_out[keep]
+        bc_in, bc_out = bc_in[keep], bc_out[keep]
+        zs = np.array([self.segments[i].p0 for i in idx])
 
-    def _branch_angle(self, z, seg_out, seg_in, t_out, theta):
-        """A direction from the corner into the exterior.
+        clear = self._clearances(zs, idx, prev)
+        branch = self._branch_angles(zs, idx, prev, t_out, theta)
+        return tuple(
+            Corner(z=zs[k], seg_out=int(idx[k]), seg_in=int(prev[k]), theta=float(theta[k]),
+                   t_in=t_in[k], t_out=t_out[k], bc_in=float(bc_in[k]), bc_out=float(bc_out[k]),
+                   clearance=float(clear[k]), branch_angle=float(branch[k]),
+                   angle_atol=self.angle_atol)
+            for k in range(len(idx))
+        )
+
+    def _clearances(self, zs, seg_out, seg_in):
+        """Distance from each corner to the nearest NON-adjacent segment."""
+        d = self._dist_matrix(zs)
+        rows = np.arange(len(zs))
+        d[rows, seg_out] = np.inf
+        d[rows, seg_in] = np.inf
+        return d.min(axis=1)
+
+    def _branch_angles(self, zs, seg_out, seg_in, t_out, theta):
+        """A direction from each corner into the exterior.
 
         The exterior sector runs from the end of the interior wedge round to its start, so
-        its bisector is angle(t_out) + theta/2 + pi. That is canonical and exact whenever it
-        is unobstructed, which is the common case; otherwise take the midpoint of the widest
-        unobstructed run of directions.
+        its bisector is angle(t_out) + theta/2 + pi -- canonical and exact whenever it is
+        unobstructed, which is the common case. Only a corner whose bisector is blocked
+        pays for the fallback scan.
         """
+        bisector = (np.angle(t_out) + theta / 2 + np.pi) % (2 * np.pi)
+        b0, b1, owner = self.polyline()
+        if len(b0) > _MAX_BLOCKING_CHORDS:
+            pick = np.linspace(0, len(b0) - 1, _MAX_BLOCKING_CHORDS).astype(int)
+            b0, b1, owner = b0[pick], b1[pick], owner[pick]
+
+        free = np.ones(len(zs), dtype=bool)
+        step = max(1, (1 << 22) // max(len(b0), 1))
+        for lo in range(0, len(zs), step):
+            hi = min(lo + step, len(zs))
+            v0 = b0[None, :] - zs[lo:hi, None]
+            v1 = b1[None, :] - zs[lo:hi, None]
+            # A corner IS an endpoint of its own two chords, so v0 or v1 vanishes there and
+            # the direction is undefined. Those columns are masked out below anyway, but
+            # dividing first and masking after leaks a nan through a comparison; guard it.
+            touching = (v0 == 0) | (v1 == 0)
+            v0s = np.where(touching, 1.0, v0)
+            d = np.angle(np.where(touching, 1.0, v1) / v0s)
+            a = np.angle(v0s)
+            start = np.where(d >= 0, a, a + d) % (2 * np.pi)
+            hit = ((bisector[lo:hi, None] - start) % (2 * np.pi)) <= np.abs(d)
+            hit &= ~touching
+            hit &= (owner[None, :] != seg_out[lo:hi, None]) & (owner[None, :] != seg_in[lo:hi, None])
+            free[lo:hi] = ~hit.any(axis=1)
+
+        out = bisector.copy()
+        for k in np.flatnonzero(~free):
+            out[k] = self._branch_fallback(zs[k], int(seg_out[k]), int(seg_in[k]))
+        return out
+
+    def _branch_fallback(self, z, seg_out, seg_in):
+        """Midpoint of the widest unobstructed run of directions, when the bisector is not."""
         b0, b1, owner = self.polyline()
         keep = (owner != seg_out) & (owner != seg_in)
         if not keep.any():
-            return float((np.angle(t_out) + theta / 2 + np.pi) % (2 * np.pi))
+            return float("nan")
         b0, b1 = b0[keep], b1[keep]
         if len(b0) > _MAX_BLOCKING_CHORDS:
-            idx = np.linspace(0, len(b0) - 1, _MAX_BLOCKING_CHORDS).astype(int)
-            b0, b1 = b0[idx], b1[idx]
+            pick = np.linspace(0, len(b0) - 1, _MAX_BLOCKING_CHORDS).astype(int)
+            b0, b1 = b0[pick], b1[pick]
         start, width = _blocked_arcs(z, b0, b1)
-        bisector = float((np.angle(t_out) + theta / 2 + np.pi) % (2 * np.pi))
-        if not _is_blocked(bisector, start, width):
-            return bisector
         grid = np.linspace(0.0, 2 * np.pi, 2048, endpoint=False)
-        free = ~_is_blocked(grid, start, width)
-        if not free.any():
+        ok = ~_is_blocked(grid, start, width)
+        if not ok.any():
             return float("nan")
-        # widest circular run of free directions
-        idx = np.flatnonzero(free)
-        splits = np.flatnonzero(np.diff(idx) > 1)
-        runs = np.split(idx, splits + 1)
-        if len(runs) > 1 and free[0] and free[-1]:
+        run = np.flatnonzero(ok)
+        runs = np.split(run, np.flatnonzero(np.diff(run) > 1) + 1)
+        if len(runs) > 1 and ok[0] and ok[-1]:
             runs = [np.concatenate([runs[-1], runs[0]])] + runs[1:-1]
         best = max(runs, key=len)
         return float(grid[best[len(best) // 2]])

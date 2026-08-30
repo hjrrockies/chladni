@@ -35,17 +35,19 @@ def _cross(a, b):
     return a.real * b.imag - a.imag * b.real
 
 
+def chord_dist_matrix(b0, b1, pts):
+    """(n_points, n_chords) distances to the chords b0[k] -> b1[k], in one vectorized pass."""
+    flat = np.atleast_1d(np.asarray(pts, dtype=complex)).ravel()
+    d = b1 - b0
+    denom = np.where(np.abs(d) ** 2 == 0.0, 1.0, np.abs(d) ** 2)
+    t = np.clip(((flat[:, None] - b0[None, :]) * d.conjugate()[None, :]).real / denom[None, :], 0.0, 1.0)
+    return np.abs(flat[:, None] - (b0[None, :] + t * d[None, :]))
+
+
 def _polyline_dist(b0, b1, pt):
     """Distance from each point to the nearest of the chords b0[k] -> b1[k]."""
     pt = np.asarray(pt, dtype=complex)
-    flat = np.atleast_1d(pt).ravel()
-    d = b1 - b0
-    denom = np.abs(d) ** 2
-    denom = np.where(denom == 0.0, 1.0, denom)
-    t = np.clip(((flat[:, None] - b0[None, :]) * d.conjugate()[None, :]).real / denom[None, :], 0.0, 1.0)
-    foot = b0[None, :] + t * d[None, :]
-    out = np.abs(flat[:, None] - foot).min(axis=1)
-    return out.reshape(np.shape(pt))
+    return chord_dist_matrix(b0, b1, pt).min(axis=1).reshape(np.shape(pt))
 
 
 def _chord_crossings(b0, b1, z):
