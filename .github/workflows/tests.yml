@@ -34,6 +34,13 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
+          # Without a per-leg suffix all three matrix jobs compute the SAME cache key --
+          # it is built from the uv version, the runner image and the runner's own system
+          # Python, none of which vary here. That is wrong twice over: the jobs race to
+          # save it (one wins, the others log "Unable to reserve cache"), and the uv cache
+          # holds interpreter-specific wheels, so the two losing legs would restore a cache
+          # built for a different Python.
+          cache-suffix: ${{ matrix.python-version }}
 
       - name: Install
         run: |
