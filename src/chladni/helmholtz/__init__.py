@@ -12,3 +12,15 @@ downstream unit-norm rescale compose without double-counting -- the log scales s
 and it is what lets a Fourier-Bessel column at a sharp corner exist at all rather than
 underflowing to zeros.
 """
+
+from .._core import PREC, PrecisionWarning
+from ._core import HelmholtzFamily, Sampling, SingularStructure, check_k
+from .corners import CornerModes
+from .fourier_bessel import FourierBessel
+
+__all__ = [
+    "PREC", "PrecisionWarning", "check_k",
+    "HelmholtzFamily", "Sampling", "SingularStructure",
+    "CornerModes",
+    "FourierBessel",
+]
