@@ -174,3 +174,66 @@ def ellipse_arclength(a, b, t0, t1):
     with mp.workdps(30):
         speed = lambda t: mp.sqrt((a * mp.sin(t)) ** 2 + (b * mp.cos(t)) ** 2)
         return float(mp.quad(speed, [t0, t1]))
+
+
+# --- mpmath references for the helmholtz layer ------------------------------------------
+#
+# 50 decimal digits, which is ~37 digits of headroom over float64. These are slow (a few ms
+# per call, one Python call per point), so callers keep the grids small and mark the sweeps
+# `slow`. Never vectorized -- mpmath has no array path, and pretending otherwise here would
+# hide the cost from the test that pays it.
+
+MP_DPS = 50
+
+
+def mp_besselj(nu, x):
+    """J_nu(x) as a float64, computed at 50 dps. Reference, not a fallback."""
+    import mpmath as mp
+
+    with mp.workdps(MP_DPS):
+        return float(mp.besselj(mp.mpf(float(nu)), mp.mpf(float(x))))
+
+
+def mp_besselj_prime(nu, x):
+    """J_nu'(x) at 50 dps, via mpmath's own derivative form."""
+    import mpmath as mp
+
+    with mp.workdps(MP_DPS):
+        nu, x = mp.mpf(float(nu)), mp.mpf(float(x))
+        return float(0.5 * (mp.besselj(nu - 1, x) - mp.besselj(nu + 1, x)))
+
+
+def mp_bessely(m, x):
+    """Y_m(x) at 50 dps."""
+    import mpmath as mp
+
+    with mp.workdps(MP_DPS):
+        return float(mp.bessely(mp.mpf(float(m)), mp.mpf(float(x))))
+
+
+def mp_bessely_prime(m, x):
+    """Y_m'(x) at 50 dps."""
+    import mpmath as mp
+
+    with mp.workdps(MP_DPS):
+        m, x = mp.mpf(float(m)), mp.mpf(float(x))
+        return float(0.5 * (mp.bessely(m - 1, x) - mp.bessely(m + 1, x)))
+
+
+def mp_log_besselj(nu, x):
+    """(sign, log|J_nu(x)|) at 50 dps -- the reference in the regime where float64 cannot
+    hold the value at all, which is the whole point of the scaled kernel."""
+    import mpmath as mp
+
+    with mp.workdps(MP_DPS):
+        v = mp.besselj(mp.mpf(float(nu)), mp.mpf(float(x)))
+        return (1 if v > 0 else -1 if v < 0 else 0), float(mp.log(abs(v))) if v != 0 else -mp.inf
+
+
+def mp_log_bessely(m, x):
+    """(sign, log|Y_m(x)|) at 50 dps."""
+    import mpmath as mp
+
+    with mp.workdps(MP_DPS):
+        v = mp.bessely(mp.mpf(float(m)), mp.mpf(float(x)))
+        return (1 if v > 0 else -1 if v < 0 else 0), float(mp.log(abs(v))) if v != 0 else -mp.inf
