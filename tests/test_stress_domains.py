@@ -264,8 +264,12 @@ def test_shipped_domains_claim_no_precision_they_lack():
 @pytest.mark.parametrize("offset,scale", [(1e3, 1e-3), (1e6, 1e-4)])
 def test_achievable_prec_bounds_the_error_that_actually_occurs(offset, scale):
     """The estimate has to be an upper bound, or it is worse than no estimate at all."""
+    from chladni.geometry import PrecisionWarning
+
     base = L_shape()
-    d = base.scaled(scale).translated(offset)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", PrecisionWarning)
+        d = base.scaled(scale).translated(offset)
     err = abs(d.perimeter - base.perimeter * scale) / (base.perimeter * scale)
     assert err <= d.achievable_prec
 
