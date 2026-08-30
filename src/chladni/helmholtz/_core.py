@@ -26,6 +26,7 @@ instead of paying for two.
 """
 from __future__ import annotations
 
+import warnings
 from abc import ABC, abstractmethod
 from typing import NamedTuple
 
@@ -201,6 +202,32 @@ class Sampling(Frozen):
 
     def log_scale(self, k, cols=None):
         return self.family.log_scale(check_k(k), _as_cols(cols))
+
+    def _check_accuracy(self, rel_err):
+        """Warn when the entries cannot be delivered to the family's own `prec`.
+
+        The bound is free -- it falls out of the series loop in `_bessel` -- so this costs one
+        reduction over an array the caller already paid for. Same pattern as
+        `Domain.achievable_prec` two layers down, and the same rule: a reported precision is
+        never a claim contradicted elsewhere in the same object.
+
+        The message quotes the shortfall rounded to a power of ten rather than its exact
+        value. That is deliberate: Python's default warning filter keys on the message text,
+        so a message carrying a k-dependent float would fire on every one of the hundreds of
+        evaluations in a solve instead of once.
+        """
+        worst = float(np.max(rel_err))
+        if worst <= self.family.prec:
+            return
+        decade = int(np.ceil(np.log10(worst)))
+        warnings.warn(
+            f"{type(self.family).__name__} can deliver about 1e{decade} relative accuracy "
+            f"on these points, short of the requested prec={self.family.prec:.0e}. The "
+            f"limit is the Bessel kernel's own scale, not the point set: see "
+            f"Sampling.accuracy(k) for the per-column bound.",
+            PrecisionWarning,
+            stacklevel=4,
+        )
 
     def __repr__(self):
         return f"{type(self).__name__}({self.family!r}, n_pts={len(self)})"

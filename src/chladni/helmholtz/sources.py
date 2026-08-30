@@ -33,7 +33,9 @@ from functools import cached_property
 import numpy as np
 from scipy.special import gammaln
 
-from .._core import PREC, _set
+import warnings
+
+from .._core import PREC, PrecisionWarning, _set, check_prec
 from ._bessel import log_y
 from ._core import HelmholtzFamily, Sampling, SingularStructure, _take, check_k
 
@@ -113,6 +115,7 @@ class FundamentalSampling(Sampling):
 
     def _eval(self, k, cols, want_grad):
         s, scale = self._bessel(k, cols, want_grad)
+        self._check_accuracy(s.rel_err)
         ang, dang = _take(self._ang, cols), _take(self._dang, cols)
         rad = s.S * scale
         vals = rad * ang
@@ -136,7 +139,7 @@ class Fundamental(HelmholtzFamily):
     independence rule, and scalar or per-source.
     """
 
-    def __init__(self, origins, order=1, radius=None, prec=PREC):
+    def __init__(self, origins, order=1, radius=None, extent=None, prec=PREC):
         super().__init__(prec=prec)
         origins = np.atleast_1d(np.asarray(origins, dtype=complex))
         order = int(order)
@@ -153,7 +156,33 @@ class Fundamental(HelmholtzFamily):
         radius = np.broadcast_to(np.asarray(radius, dtype=float), origins.shape).copy()
         if not np.all(np.isfinite(radius)) or np.any(radius <= 0):
             raise ValueError("radius must be finite and positive")
-        _set(self, origins=origins, order=order, radius=radius)
+        _set(self, origins=origins, order=order, radius=radius,
+             extent=None if extent is None else float(extent))
+        if extent is not None and order > self.max_order(radius, extent, prec):
+            warnings.warn(
+                f"multipole order {order} at standoff {np.min(radius):.3g} over an extent "
+                f"of {float(extent):.3g}: Y_m has dynamic range "
+                f"(1 + extent/standoff)**m across Omega, so only order "
+                f"{self.max_order(radius, extent, prec)} is distinguishable at "
+                f"prec={prec:.0e}. The higher columns arrive at the noise floor -- they do "
+                f"not enrich the space, they lower the smallest singular value.",
+                PrecisionWarning,
+                stacklevel=3,
+            )
+
+    @staticmethod
+    def max_order(radius, extent, prec=PREC):
+        """The largest multipole order whose columns still carry information at `prec`.
+
+        `Y_m(k*r) ~ -(m-1)!/pi * (2/(k*r))**m` for small argument, so across Omega a
+        degree-m column spans `(r_max/r_min)**m = (1 + extent/standoff)**m`. Once that
+        exceeds `1/prec` the far end of the column is below the working precision, i.e.
+        `m <= ln(1/prec) / ln(1 + extent/standoff)`.
+
+        The worst (smallest) standoff governs: one badly placed source is enough.
+        """
+        ratio = 1.0 + float(extent) / float(np.min(np.asarray(radius, dtype=float)))
+        return max(1, 1 + int(np.log(1.0 / check_prec(prec)) / np.log(ratio)))
 
     # --- the column layout ---------------------------------------------------------------
 
@@ -221,7 +250,9 @@ class Fundamental(HelmholtzFamily):
             raise ValueError(f"offset distance must be positive, got {distance}")
         fam = cls(np.asarray(quad.pts, dtype=complex)
                   + distance * np.asarray(quad.normals, dtype=complex),
-                  order=order, radius=distance, prec=prec)
+                  order=order, radius=distance,
+                  extent=None if domain is None else domain.diameter + distance,
+                  prec=prec)
         return fam if domain is None else fam.check_exterior(domain)
 
     @classmethod
@@ -263,19 +294,22 @@ class Fundamental(HelmholtzFamily):
     # --- transforms ----------------------------------------------------------------------------
 
     def translated(self, dz):
-        return Fundamental(self.origins + dz, self.order, self.radius, prec=self.prec)
+        return Fundamental(self.origins + dz, self.order, self.radius, self.extent,
+                           prec=self.prec)
 
     def rotated(self, theta, about=0j):
         s = np.exp(1j * theta)
         return Fundamental(about + (self.origins - about) * s, self.order, self.radius,
-                           prec=self.prec)
+                           self.extent, prec=self.prec)
 
     def scaled(self, s, about=0j):
         return Fundamental(about + (self.origins - about) * s, self.order,
-                           self.radius * abs(s), prec=self.prec)
+                           self.radius * abs(s),
+                           None if self.extent is None else self.extent * abs(s),
+                           prec=self.prec)
 
     def with_prec(self, prec):
-        return Fundamental(self.origins, self.order, self.radius, prec=prec)
+        return Fundamental(self.origins, self.order, self.radius, self.extent, prec=prec)
 
     def __repr__(self):
         return (f"Fundamental(n_sources={len(self.origins)}, order={self.order}, "

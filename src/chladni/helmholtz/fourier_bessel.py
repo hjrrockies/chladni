@@ -225,6 +225,7 @@ class FourierBesselSampling(Sampling):
 
     def _eval(self, k, cols, want_grad):
         s, scale = self._bessel(k, cols, want_grad)
+        self._check_accuracy(s.rel_err)
         ang, dang = _take(self._ang, cols), _take(self._dang, cols)
         rad = s.S * scale
         vals = rad * ang

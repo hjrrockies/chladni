@@ -94,24 +94,56 @@ def test_directions_are_normalized():
 
 # --- conditioning -----------------------------------------------------------------------------
 
-@pytest.mark.slow
-def test_the_useful_direction_count_matches_the_measured_numerical_rank():
-    """The numerical rank saturates at the Jacobi-Anger cutoff. Measured on the unit disk
-    with pre-normalized columns and a 1e-13 relative cut: ranks 33/45/65/95/149 at
-    k*R = 2/5/10/20/40, which the bound `k*R + 11*(k*R)**(1/3)` tracks."""
-    z = np.exp(1j * np.linspace(0, 2 * np.pi, 2000, endpoint=False))
-    for kR, want in ((5.0, 45), (10.0, 65), (20.0, 95)):
-        fam = PlaneWave.uniform(120)
-        A = fam.values(kR, z)
-        A = A / np.linalg.norm(A, axis=0)
-        rank = int((np.linalg.svd(A, compute_uv=False) > 1e-13 * np.linalg.norm(A, 2)).sum())
-        assert abs(rank - want) <= 6, f"k*R={kR}: rank {rank}, expected about {want}"
-        assert rank <= 2 * PlaneWave.n_useful(kR) + 8
-
-
 def test_n_useful_is_the_jacobi_anger_cutoff():
+    """The constant is derived, not fitted: `(ln(1/eps_mach))**(2/3) = 10.912` is the "about
+    11" the original measurement reported."""
+    eps = np.finfo(float).eps
+    assert np.log(1 / eps) ** (2 / 3) == pytest.approx(10.912, abs=5e-4)
     for kR in (2.0, 5.0, 10.0, 20.0, 40.0):
-        assert PlaneWave.n_useful(kR) == pytest.approx(kR + 11 * kR ** (1 / 3), rel=1e-12)
+        assert PlaneWave.n_useful(kR, eps) == pytest.approx(
+            kR + 10.912 * kR ** (1 / 3), rel=1e-3)
+
+
+def test_n_useful_loosens_as_prec_loosens():
+    """The one place in this layer where a looser precision genuinely buys a smaller basis:
+    fewer directions are independent when you are willing to accept less."""
+    counts = [PlaneWave.n_useful(20.0, p) for p in (1e-13, 1e-8, 1e-4)]
+    assert counts == sorted(counts, reverse=True)
+    assert counts[0] / counts[2] > 1.4
+
+
+@pytest.mark.slow
+def test_n_useful_tracks_the_measured_numerical_rank_at_every_prec():
+    """The bound is only worth having if it predicts the rank it claims to. Measured on the
+    unit disk against relative singular-value cuts from 1e-13 to 1e-4."""
+    z = np.exp(1j * np.linspace(0, 2 * np.pi, 3000, endpoint=False))
+    for kR in (5.0, 10.0, 20.0, 40.0):
+        A = PlaneWave.uniform(140).values(kR, z)
+        A = A / np.linalg.norm(A, axis=0)
+        sv = np.linalg.svd(A, compute_uv=False)
+        for tol in (1e-13, 1e-8, 1e-4):
+            rank = int((sv > tol * sv[0]).sum())
+            predicted = 2 * PlaneWave.n_useful(kR, tol) + 1
+            assert abs(rank - predicted) / rank < 0.06, f"k*R={kR} tol={tol:g}"
+
+
+def test_the_warning_respects_prec():
+    """The same 40 directions at the same k*R: fine at 1e-13, wasteful at 1e-4.
+
+    Note the direction of that, which is easy to get backwards. A TIGHTER prec resolves MORE
+    independent columns, because it is willing to keep smaller singular values -- so the
+    bound rises as prec falls, and a fixed direction count becomes wasteful as prec LOOSENS.
+    """
+    import warnings as w
+
+    assert PlaneWave.n_useful(20.0, 1e-13) > 40 > PlaneWave.n_useful(20.0, 1e-4)
+
+    with w.catch_warnings():
+        w.simplefilter("error", PrecisionWarning)
+        PlaneWave.uniform(40, radius=1.0, prec=1e-13).log_scale(20.0)
+
+    with pytest.warns(PrecisionWarning, match="prec=1e-04"):
+        PlaneWave.uniform(40, radius=1.0, prec=1e-4).log_scale(20.0)
 
 
 def test_asking_for_more_directions_than_are_useful_warns():

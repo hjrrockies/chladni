@@ -725,6 +725,48 @@ measured here.
 * `PlaneWave.translated` returns `self`, since a translation is a phase and a phase mixes
   the cosine and sine of the same direction -- a rotation within the span.
 
+## `prec` governs the claim, not the cost -- and now actually does
+
+The spec says (under the free precision diagnostic) to "expose it as `Sampling.accuracy(k)`,
+and warn when it exceeds `prec`". `accuracy(k)` shipped; the warning did not, and an audit of
+the test suite found the wider gap behind it: `prec` in this layer was validated, stored,
+composed by `min` and threaded through every transform, and **read by nothing**. An AST walk
+for `self.prec` loads found only pass-throughs into constructors.
+
+That is half a design position and half an omission, so both halves are now explicit.
+
+**The position.** This layer has no adaptive loop. Its cost is `n_points x n_cols`, chosen by
+the caller, and the kernel already delivers the best float64 can do -- there is no
+looser-but-cheaper path to take. So `prec` here governs what the layer will CLAIM, never what
+it computes, and `test_prec_does_not_change_the_numbers_in_this_layer` asserts exactly that so
+the position is recorded rather than assumed.
+
+**The omission, in three parts.**
+
+* `Sampling._check_accuracy` warns when the entries cannot be delivered to the family's own
+  `prec`. The bound is free -- it falls out of `_bessel` -- so this costs one reduction. The
+  message quotes the shortfall rounded to a power of ten, because Python's default warning
+  filter keys on message text and a k-dependent float would fire hundreds of times in a solve.
+* `Fundamental.max_order(radius, extent, prec)` implements the cap the plan described and the
+  code never had: `m <= ln(1/prec)/ln(1 + extent/standoff)`. `extent` is a new optional field,
+  the far radius, supplied automatically by `offset(..., domain=...)`. Without it the check
+  cannot run and does not guess, on the same rule as `PlaneWave.n_useful`.
+* `PlaneWave.n_useful` takes `prec`. Its constant was reported as "about 11", fitted to
+  measured ranks; it is not fitted at all -- `(ln(1/eps_mach))**(2/3) = 10.912`. Writing it
+  that way makes the bound precision-aware for free, and the derived law tracks the measured
+  numerical rank to within 2% over `k*R` in [5, 40] against relative cuts from 1e-13 to 1e-4.
+  This is the one place in the layer where a looser precision genuinely buys a smaller basis.
+
+Note the direction of that last one, which is easy to invert: a TIGHTER `prec` resolves MORE
+independent columns, so the bound RISES as `prec` falls, and a fixed direction count becomes
+wasteful as `prec` loosens.
+
+The geometry side was audited in the same pass. `prec` there is load-bearing for accuracy and
+was tested by exactly one assertion, `tight <= loose`, on a mild ellipse where both sides sit
+at machine zero and the test passes vacuously. It was never tested for work at all, though the
+effect is a factor of 760 between 1e-2 and 1e-8 on an eccentric ellipse. `tests/test_precision.py`
+covers both halves for both layers.
+
 ## Still deferred
 
 Basis planning, unchanged from the spec: how many degrees at which corner, how sources are
