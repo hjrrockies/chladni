@@ -26,9 +26,11 @@ jobs:
       MPLBACKEND: Agg
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v5
+      # Pinned to a patch version deliberately: setup-uv publishes no floating major tag
+      # (there is no `v10`, only `v10.0.1`), so `@v10` would not resolve.
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
