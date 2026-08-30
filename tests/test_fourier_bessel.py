@@ -29,10 +29,10 @@ from chladni.helmholtz.corners import CornerModes
 K = 7.3
 
 
-def wedge(theta=1.4 * np.pi, bc_out=0.0, bc_in=0.0, n=5, clearance=1.0):
+def wedge(theta=1.4 * np.pi, bc_out=0.0, bc_in=0.0, n=5, radius=1.0):
     """A bare corner at the origin opening along the positive real axis."""
     return FourierBessel(
-        origin=0j, t_out=1 + 0j, clearance=clearance,
+        origin=0j, t_out=1 + 0j, radius=radius,
         modes=CornerModes.from_wedge(theta, bc_out, bc_in),
         degrees=CornerModes.from_wedge(theta, bc_out, bc_in).degrees(n),
     )
@@ -229,7 +229,7 @@ def test_at_corner_derives_everything_from_a_corner():
     assert len(reentrant) == 1
     fam = FourierBessel.at_corner(reentrant[0], n=6)
     assert fam.modes.nu == pytest.approx(2 / 3, abs=EXACT)
-    assert fam.clearance == pytest.approx(reentrant[0].clearance, abs=EXACT)
+    assert fam.radius == pytest.approx(reentrant[0].clearance, abs=EXACT)
     assert len(fam) == 6
 
 

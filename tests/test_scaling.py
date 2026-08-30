@@ -23,9 +23,9 @@ from chladni.helmholtz.corners import CornerModes
 from chladni.helmholtz.fourier_bessel import _log_envelope
 
 
-def fam(theta, n=40, clearance=1.0):
+def fam(theta, n=40, radius=1.0):
     m = CornerModes.from_wedge(theta, 0.0, 0.0)
-    return FourierBessel(0j, 1 + 0j, m, m.degrees(n), clearance)
+    return FourierBessel(0j, 1 + 0j, m, m.degrees(n), radius)
 
 
 #: A wedge fraction that is not a zero of any column's angular factor. `phi = theta/2` is
@@ -45,7 +45,7 @@ def column_maxima(f, k, n_r=2000):
     """
     from chladni.helmholtz._bessel import log_j
 
-    r = np.linspace(1e-8, f.clearance, n_r)
+    r = np.linspace(1e-8, f.radius, n_r)
     s = log_j(f.orders[None, :], k * r[:, None])
     return np.abs(s.S * np.exp(s.sigma - f.log_scale(k)[None, :])).max(axis=0)
 

@@ -72,12 +72,31 @@ _BLEND = 4.0
 _MU_FLOOR = 1e-12
 
 
+def evaluation_radius(domain, origin):
+    """The largest `|z - origin|` over Omega: the radius that sets a corner family's scale.
+
+    NOT the corner's clearance, which is a different quantity answering a different question.
+    `clearance` bounds where the local expansion stays VALID; this bounds where the column is
+    EVALUATED. Scaling by the wrong one is a `(r_max/R)**mu` error, and on the L-shape at
+    k = 7.3 with 14 degrees per corner that is `2.83**28`: measured column maxima of
+    **5.7e+10** against the O(1) the whole scaling design is for.
+
+    Both are fixed geometric constants, so both satisfy point-set independence; only one of
+    them makes the columns O(1) over the set the solver actually evaluates on.
+    """
+    # `Boundary.polyline()` returns (b0, b1, owner); b0 alone covers every vertex, since the
+    # loop is closed. The maximum over Omega is attained on the boundary, so this is it.
+    zs = np.concatenate([b.polyline()[0] for b in domain.boundaries])
+    return float(np.abs(zs - origin).max())
+
+
 def _log_envelope(mu, x):
     """The per-column log scale `sigma`: the Debye envelope at radius R, smoothly capped.
 
-    `x` is `k*R` with R the corner's clearance -- a fixed geometric constant, so `sigma`
-    depends on `(column, k)` and on nothing about the evaluation points. That is the property
-    that lets a downstream unit-norm rescale compose with this one without double-counting.
+    `x` is `k*R` with R the family's evaluation radius -- a fixed geometric constant, so
+    `sigma` depends on `(column, k)` and on nothing about the evaluation points. That is the
+    property that lets a downstream unit-norm rescale compose with this one without
+    double-counting.
 
     Three pieces, and each one is there because a simpler version was measured and failed.
 
@@ -196,16 +215,16 @@ class FourierBesselSampling(Sampling):
     def family(self):
         return self._family
 
-    def _bessel(self, k, cols):
+    def _bessel(self, k, cols, derivative=True):
         mu = _take(self._family.orders, cols)
-        s = log_j(mu[None, :], k * self.r[:, None])
+        s = log_j(mu[None, :], k * self.r[:, None], derivative)
         # exp(sigma_pointwise - sigma_column): the only place the two scales meet, and the
         # reason both are canonical analytic numbers rather than logs of computed values.
         scale = np.exp(s.sigma - self._family.log_scale(k, cols)[None, :])
         return s, scale
 
     def _eval(self, k, cols, want_grad):
-        s, scale = self._bessel(k, cols)
+        s, scale = self._bessel(k, cols, want_grad)
         ang, dang = _take(self._ang, cols), _take(self._dang, cols)
         rad = s.S * scale
         vals = rad * ang
@@ -218,7 +237,7 @@ class FourierBesselSampling(Sampling):
     def accuracy(self, k, cols=None):
         """Per-column relative-error bound, reduced over the points. Free: it comes out of
         the series loop, which already knows its own largest term."""
-        s, _ = self._bessel(check_k(k), cols)
+        s, _ = self._bessel(check_k(k), cols, derivative=False)
         return s.rel_err.max(axis=0)
 
 
@@ -226,38 +245,47 @@ class FourierBessel(HelmholtzFamily):
     """The corner-adapted family at one corner.
 
     `origin` is the vertex, `t_out` the unit tangent of the outgoing edge (the `phi = 0`
-    ray), `clearance` the radius that sets the column scale, and `degrees` the integer
-    degrees `l` whose orders are `modes.orders(degrees)`.
+    ray), `degrees` the integer degrees `l` whose orders are `modes.orders(degrees)`, and
+    `radius` the LARGEST radius at which this family will be evaluated -- see
+    `evaluation_radius`, and note that it is not the corner's clearance.
     """
 
-    def __init__(self, origin, t_out, modes, degrees, clearance,
+    def __init__(self, origin, t_out, modes, degrees, radius,
                  branch_vertices=(), prec=PREC):
         super().__init__(prec=prec)
         degrees = np.asarray(degrees, dtype=int)
         if degrees.ndim != 1 or len(degrees) == 0:
             raise ValueError(f"degrees must be a non-empty 1-D integer array, got {degrees!r}")
-        if not np.isfinite(clearance) or clearance <= 0:
-            raise ValueError(f"clearance must be finite and positive, got {clearance!r}")
+        if not np.isfinite(radius) or radius <= 0:
+            raise ValueError(f"radius must be finite and positive, got {radius!r}")
         t = complex(t_out)
         _set(self, origin=complex(origin), t_out=t / abs(t), modes=modes,
-             degrees=degrees, clearance=float(clearance),
+             degrees=degrees, radius=float(radius),
              branch_vertices=tuple(complex(v) for v in branch_vertices))
 
     @classmethod
-    def at_corner(cls, corner, n=None, degrees=None, prec=PREC):
+    def at_corner(cls, corner, n=None, degrees=None, radius=None, domain=None, prec=PREC):
         """From a `geometry.Corner`, deriving `nu`, the angular kind and the cut.
 
-        Raises on a hole corner whose family is multivalued -- see `CornerModes`, where the
-        topological reason lives.
+        **Pass `domain` when the family will be evaluated over the whole boundary**, which is
+        the normal case: the scaling radius is then `evaluation_radius(domain, corner.z)`.
+        Without it the fallback is `corner.clearance`, which is correct only for an
+        evaluation confined to the corner's own neighbourhood -- on the L-shape the two
+        differ by 2.83x in radius and by 5.7e+10 in the resulting column maximum.
+
+        Raises on a hole corner whose family is multivalued; `CornerModes` carries the
+        topological reason.
         """
         modes = CornerModes.from_corner(corner)
         if degrees is None:
             if n is None:
                 raise ValueError("give either n (how many degrees) or degrees (which ones)")
             degrees = modes.degrees(n)
+        if radius is None:
+            radius = (corner.clearance if domain is None
+                      else evaluation_radius(domain, corner.z))
         return cls(origin=corner.z, t_out=corner.t_out, modes=modes, degrees=degrees,
-                   clearance=corner.clearance, branch_vertices=corner.branch_vertices,
-                   prec=prec)
+                   radius=radius, branch_vertices=corner.branch_vertices, prec=prec)
 
     # --- the columns ------------------------------------------------------------------
 
@@ -271,7 +299,7 @@ class FourierBessel(HelmholtzFamily):
         return self.modes.orders(self.degrees)
 
     def log_scale(self, k, cols=None):
-        return _log_envelope(_take(self.orders, cols), check_k(k) * self.clearance)
+        return _log_envelope(_take(self.orders, cols), check_k(k) * self.radius)
 
     def singular_exponents(self):
         return SingularStructure(np.full(self.n_cols, self.origin), self.orders.copy())
@@ -301,29 +329,29 @@ class FourierBessel(HelmholtzFamily):
 
     # --- transforms ------------------------------------------------------------------------
 
-    def _rebuilt(self, origin, t_out, clearance, branch_vertices):
-        return FourierBessel(origin, t_out, self.modes, self.degrees, clearance,
+    def _rebuilt(self, origin, t_out, radius, branch_vertices):
+        return FourierBessel(origin, t_out, self.modes, self.degrees, radius,
                              branch_vertices, prec=self.prec)
 
     def translated(self, dz):
-        return self._rebuilt(self.origin + dz, self.t_out, self.clearance,
+        return self._rebuilt(self.origin + dz, self.t_out, self.radius,
                              tuple(v + dz for v in self.branch_vertices))
 
     def rotated(self, theta, about=0j):
         s = np.exp(1j * theta)
-        return self._rebuilt(about + (self.origin - about) * s, self.t_out * s, self.clearance,
+        return self._rebuilt(about + (self.origin - about) * s, self.t_out * s, self.radius,
                              tuple(about + (v - about) * s for v in self.branch_vertices))
 
     def scaled(self, s, about=0j):
         """The family on the scaled geometry. Eigenvalues follow `k -> k/s`, matching
         `Domain.scaled`; the family itself carries no k, so only lengths change here."""
         return self._rebuilt(about + (self.origin - about) * s, self.t_out * (s / abs(s)),
-                             self.clearance * abs(s),
+                             self.radius * abs(s),
                              tuple(about + (v - about) * s for v in self.branch_vertices))
 
     def with_prec(self, prec):
         return FourierBessel(self.origin, self.t_out, self.modes, self.degrees,
-                             self.clearance, self.branch_vertices, prec=prec)
+                             self.radius, self.branch_vertices, prec=prec)
 
     def __add__(self, other):
         if isinstance(other, (int, float, complex)) and not isinstance(other, bool):

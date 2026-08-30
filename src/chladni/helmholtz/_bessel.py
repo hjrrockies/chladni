@@ -54,7 +54,7 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import numpy as np
-from scipy.special import gammaln, jv, jvp, y0, y1, yv, yvp
+from scipy.special import gammaln, jv, y0, y1, yv
 
 #: Largest series term we will accept, as a log. The series' relative error is about
 #: eps * (largest term), and the fitted largest term is exp(x**2/(4*nu)) -- measured to
@@ -79,6 +79,12 @@ class Scaled(NamedTuple):
     `value = S * exp(sigma)` and `derivative = Sp * exp(sigma)`. `rel_err` bounds the
     relative error of `S` and `Sp` -- it falls out of the series loop for free (it is
     `eps * largest_term / |S|`) and is what `Sampling.accuracy` reports upward.
+
+    `Sp` is None when the caller passed `derivative=False`. That is not a micro-optimization:
+    the scipy branch gets the derivative from `J_{nu-1} - J_{nu+1}`, so asking for it triples
+    the number of `jv` calls, and a Dirichlet boundary -- the common case -- never wants it.
+    Measured on a 600 x 144 L-shape block, skipping it takes the per-k evaluation from 26 ms
+    to 15 ms.
     """
 
     S: np.ndarray
@@ -130,7 +136,7 @@ def _sigma_y(m, x):
 
 # --- branch A: the ascending series ----------------------------------------------------------
 
-def _j_series(nu, x):
+def _j_series(nu, x, derivative=True):
     """`J_nu` and `J_nu'` from the convergent ascending series, in one loop.
 
     `S = sum_j t_j` with `t_0 = 1` and `t_j = t_{j-1} * q / (j*(nu+j))`, `q = -x**2/4`;
@@ -146,7 +152,7 @@ def _j_series(nu, x):
     q = -0.25 * x * x
     t = np.ones_like(x)
     S = np.ones_like(x)
-    Sx = np.array(nu, dtype=float)          # accumulates x*J'/exp(sigma)
+    Sx = np.array(nu, dtype=float) if derivative else None
     biggest = np.ones_like(x)
     # A direct call outside the dispatcher's mask can overflow -- that is a caller asking for
     # a branch the dispatcher would not have chosen, and the honest answer is inf, not a
@@ -155,13 +161,15 @@ def _j_series(nu, x):
         for j in range(1, _MAX_TERMS):
             t = t * q / (j * (nu + j))
             S = S + t
-            Sx = Sx + (nu + 2 * j) * t
+            if derivative:
+                Sx = Sx + (nu + 2 * j) * t
             at = np.abs(t)
             biggest = np.maximum(biggest, at)
             if np.all(at <= _EPS * np.abs(S)):
                 break
     with np.errstate(divide="ignore", invalid="ignore"):
-        Sp = np.where(x > 0, Sx / np.where(x > 0, x, 1.0), _dj_at_zero(nu))
+        Sp = (None if not derivative else
+              np.where(x > 0, Sx / np.where(x > 0, x, 1.0), _dj_at_zero(nu)))
         rel = _EPS * biggest / np.abs(S) + _scale_err(nu * np.log(x / 2), gammaln(nu + 1))
     return Scaled(_at_zero_value(nu, x, S), Sp, _sigma_j(nu, x), rel)
 
@@ -179,7 +187,7 @@ def _dj_at_zero(nu):
     return np.where((nu == 0) | (nu > 1), 0.0, np.where(nu == 1, 0.5, np.inf))
 
 
-def _y_series(m, x):
+def _y_series(m, x, derivative=True):
     """`Y_m` and `Y_m'` from the leading finite sum, for m >= 1.
 
     `Y_m` overflows rather than underflowing -- bisected against scipy, the last finite
@@ -196,7 +204,7 @@ def _y_series(m, x):
     quarter = 0.25 * x * x
     a = np.ones_like(x)
     S = np.ones_like(x)
-    Sx = -np.array(m, dtype=float)          # accumulates x*Y'/(-exp(sigma))
+    Sx = -np.array(m, dtype=float) if derivative else None
     live = m >= 2                            # a_1 exists only when m >= 2
     for j in range(0, int(np.max(m, initial=1.0))):
         if not np.any(live):
@@ -206,10 +214,12 @@ def _y_series(m, x):
             step = np.where(live, quarter / np.where(live, denom, 1.0), 0.0)
         a = a * step
         S = S + np.where(live, a, 0.0)
-        Sx = Sx + np.where(live, (2 * (j + 1) - m) * a, 0.0)
+        if derivative:
+            Sx = Sx + np.where(live, (2 * (j + 1) - m) * a, 0.0)
         live = live & (m >= j + 3)
     with np.errstate(divide="ignore", invalid="ignore"):
-        Sp = np.where(x > 0, -Sx / np.where(x > 0, x, 1.0), np.inf)
+        Sp = (None if not derivative else
+              np.where(x > 0, -Sx / np.where(x > 0, x, 1.0), np.inf))
         rel = 4 * _EPS + _scale_err(m * np.log(x / 2), gammaln(np.maximum(m, 1.0)))
     return Scaled(-S, Sp, _sigma_y(m, x), rel)
 
@@ -225,31 +235,41 @@ def _rescale(value, sigma):
         return np.sign(value) * np.exp(np.log(np.abs(value)) - sigma)
 
 
-def _j_scipy(nu, x):
+def _j_scipy(nu, x, derivative=True):
     nu, x = np.broadcast_arrays(np.asarray(nu, float), np.asarray(x, float))
     sigma = _sigma_j(nu, x)
+    # `2*J\'_nu = J_{nu-1} - J_{nu+1}`, evaluated with two direct `jv` calls rather than
+    # through `scipy.special.jvp`. `jvp` routes every call through `_bessel_diff_formula`,
+    # a generic n-th-derivative sum with a Python loop and a `comb` per term, and it
+    # measured at 39% of the whole per-k evaluation on a realistic 600 x 144 block -- more
+    # than the Bessel functions it was calling. The symmetric form is used rather than
+    # `J_{nu-1} - (nu/x)*J_nu` because the latter cancels where the two terms are close.
     # scipy's own relative error grows with the order: measured 3e-17 at nu = 10 and
     # 1.9e-13 at nu = 250. Report that rather than a flat eps nobody measured.
     with np.errstate(divide="ignore", invalid="ignore"):
         rel = np.maximum(_EPS, 4e-16 * (1.0 + nu)) + _scale_err(nu * np.log(x / 2),
                                                                 gammaln(nu + 1))
-    return Scaled(_rescale(jv(nu, x), sigma), _rescale(jvp(nu, x), sigma), sigma, rel)
+    der = None if not derivative else _rescale(0.5 * (jv(nu - 1, x) - jv(nu + 1, x)), sigma)
+    return Scaled(_rescale(jv(nu, x), sigma), der, sigma, rel)
 
 
-def _y_scipy(m, x):
+def _y_scipy(m, x, derivative=True):
     m, x = np.broadcast_arrays(np.asarray(m, float), np.asarray(x, float))
     sigma = _sigma_y(m, x)
     # lappy measured `y0` at 42x `yv(0, .)` and `y1` at 85x `yvp(0, .)` -- 1.98 s of a
     # 5.88 s L-shape solve, for 36 of 159 columns. The guard is on the ORDER VALUES rather
     # than on a stored `order` attribute, so a hand-assembled family still takes the path.
     if np.all(m == 0):
-        val, der = y0(x), -y1(x)             # Y_0' = -Y_1, exactly
+        val = y0(x)
+        der = -y1(x) if derivative else None         # Y_0' = -Y_1, exactly
     else:
-        val, der = yv(m, x), yvp(m, x)
+        val = yv(m, x)
+        der = 0.5 * (yv(m - 1, x) - yv(m + 1, x)) if derivative else None
     with np.errstate(divide="ignore", invalid="ignore"):
         rel = np.maximum(_EPS, 4e-16 * (1.0 + m)) + _scale_err(m * np.log(x / 2),
                                                                gammaln(np.maximum(m, 1.0)))
-    return Scaled(_rescale(val, sigma), _rescale(der, sigma), sigma, rel)
+    return Scaled(_rescale(val, sigma),
+                  None if der is None else _rescale(der, sigma), sigma, rel)
 
 
 # --- branch C: the Olver/Debye uniform asymptotic -----------------------------------------------
@@ -317,10 +337,14 @@ def _pick(shape, parts):
     the whole block and masked afterwards. Running the series everywhere and discarding
     would overflow on the very cells it was not selected for -- and would do the work twice.
     """
-    out = tuple(np.full(shape, np.nan) for _ in range(4))
+    want_deriv = parts[0][1].Sp is not None
+    out = [np.full(shape, np.nan) for _ in range(4)]
+    if not want_deriv:
+        out[1] = None
     for mask, part in parts:
-        for dest, src in zip(out, part):
-            dest[mask] = src
+        for i, src in enumerate(part):
+            if src is not None:
+                out[i][mask] = src
     return Scaled(*out)
 
 
@@ -334,8 +358,8 @@ def _flatten(a, b):
 
 def _unflatten(scaled, shape):
     if shape == ():
-        return Scaled(*(a.reshape(())[()] for a in scaled))
-    return Scaled(*(a.reshape(shape) for a in scaled))
+        return Scaled(*(None if a is None else a.reshape(())[()] for a in scaled))
+    return Scaled(*(None if a is None else a.reshape(shape) for a in scaled))
 
 
 def _refine(outer, inner):
@@ -345,7 +369,7 @@ def _refine(outer, inner):
     return out
 
 
-def log_j(nu, x):
+def log_j(nu, x, derivative=True):
     """`J_nu(x)` and `J_nu'(x)` in factored form. See the module docstring.
 
     `nu` and `x` broadcast against each other; the branch mask is taken over the resulting
@@ -362,17 +386,20 @@ def log_j(nu, x):
 
     parts = []
     if np.any(use_series):
-        parts.append((use_series, _j_series(nu[use_series], x[use_series])))
+        parts.append((use_series, _j_series(nu[use_series], x[use_series], derivative)))
     rest = ~use_series
     if np.any(rest):
-        b = _j_scipy(nu[rest], x[rest])
+        b = _j_scipy(nu[rest], x[rest], derivative)
         # Self-selecting rather than threshold-driven: branch C is exactly the cells where
         # scipy gave up. That is one fewer tuned constant, and it cannot drift out of date.
         gave_up = (~np.isfinite(b.S)) | ((b.S == 0.0) & (x[rest] > 0))
-        parts.append((_refine(rest, ~gave_up), Scaled(*(a[~gave_up] for a in b))))
+        parts.append((_refine(rest, ~gave_up),
+                      Scaled(*(None if a is None else a[~gave_up] for a in b))))
         if np.any(gave_up):
             fell = _refine(rest, gave_up)
             parts.append((fell, _j_debye(nu[fell], x[fell])))
+            if not derivative:
+                parts[-1] = (fell, parts[-1][1]._replace(Sp=None))
     return _unflatten(_pick(nu.shape, parts), shape)
 
 
@@ -383,7 +410,7 @@ def _log_y_drop(m, x):
                 + np.log(np.pi))
 
 
-def log_y(m, x):
+def log_y(m, x, derivative=True):
     """`Y_m(x)` and `Y_m'(x)` in factored form. Integer order only."""
     shape, m, x = _flatten(m, x)
 
@@ -393,8 +420,8 @@ def log_y(m, x):
 
     parts = []
     if np.any(use_series):
-        parts.append((use_series, _y_series(m[use_series], x[use_series])))
+        parts.append((use_series, _y_series(m[use_series], x[use_series], derivative)))
     rest = ~use_series
     if np.any(rest):
-        parts.append((rest, _y_scipy(m[rest], x[rest])))
+        parts.append((rest, _y_scipy(m[rest], x[rest], derivative)))
     return _unflatten(_pick(m.shape, parts), shape)

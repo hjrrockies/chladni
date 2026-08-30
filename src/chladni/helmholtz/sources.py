@@ -103,16 +103,16 @@ class FundamentalSampling(Sampling):
     def family(self):
         return self._family
 
-    def _bessel(self, k, cols):
+    def _bessel(self, k, cols, derivative=True):
         f = self._family
         m = _take(f._m, cols)
         r = self.r[:, _take(f._src_idx, cols)]
-        s = log_y(m[None, :], k * r)
+        s = log_y(m[None, :], k * r, derivative)
         scale = np.exp(s.sigma - f.log_scale(k, cols)[None, :])
         return s, scale
 
     def _eval(self, k, cols, want_grad):
-        s, scale = self._bessel(k, cols)
+        s, scale = self._bessel(k, cols, want_grad)
         ang, dang = _take(self._ang, cols), _take(self._dang, cols)
         rad = s.S * scale
         vals = rad * ang
@@ -124,7 +124,7 @@ class FundamentalSampling(Sampling):
         return vals, grad
 
     def accuracy(self, k, cols=None):
-        return self._bessel(check_k(k), cols)[0].rel_err.max(axis=0)
+        return self._bessel(check_k(k), cols, derivative=False)[0].rel_err.max(axis=0)
 
 
 class Fundamental(HelmholtzFamily):

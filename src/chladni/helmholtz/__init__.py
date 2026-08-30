@@ -15,6 +15,7 @@ underflowing to zeros.
 
 from .._core import PREC, PrecisionWarning
 from ._core import HelmholtzFamily, Sampling, SingularStructure, check_k
+from .basis import Basis
 from .corners import CornerModes
 from .fourier_bessel import FourierBessel
 from .sources import Fundamental, SourcesInsideDomain
@@ -23,6 +24,6 @@ from .waves import PlaneWave
 __all__ = [
     "PREC", "PrecisionWarning", "check_k",
     "HelmholtzFamily", "Sampling", "SingularStructure",
-    "CornerModes",
+    "CornerModes", "Basis",
     "FourierBessel", "Fundamental", "PlaneWave", "SourcesInsideDomain",
 ]
