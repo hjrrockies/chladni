@@ -37,8 +37,10 @@ conditions, branch cuts, domains with holes, boundary quadrature and its converg
 **[`examples/helmholtz_tour.ipynb`](examples/helmholtz_tour.ipynb)** tours the layer above it —
 where `scipy.special.jv` gives up and what is done about it, the corner exponent table
 including mixed boundary conditions, branch cuts drawn over the field they act on, source
-placement, and assembling a boundary matrix. Both notebooks assert their own numbers, so the
-test suite runs them end to end.
+placement, and assembling a boundary matrix.
+
+Both are committed with outputs, so they read without being run, and both assert their own
+numbers, so the test suite runs them end to end.
 
 ## Goals
 
