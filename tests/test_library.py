@@ -31,7 +31,7 @@ def test_rect(L, H):
     assert r.diameter == pytest.approx(np.hypot(L, H), abs=PREC)
     assert r.inradius == pytest.approx(min(L, H) / 2, abs=PREC)
     assert len(r.corners) == 4
-    assert np.allclose([c.theta for c in r.corners], np.pi / 2, atol=EXACT)
+    assert np.allclose([c.omega for c in r.corners], np.pi / 2, atol=EXACT)
 
 
 def test_l_shape():
@@ -41,7 +41,7 @@ def test_l_shape():
     assert d.perimeter == pytest.approx(8.0, abs=EXACT)
     reentrant = [c for c in d.corners if c.is_reentrant]
     assert len(reentrant) == 1
-    assert reentrant[0].theta == pytest.approx(3 * np.pi / 2, abs=EXACT)
+    assert reentrant[0].omega == pytest.approx(3 * np.pi / 2, abs=EXACT)
 
 
 def test_eq_tri():
@@ -49,7 +49,7 @@ def test_eq_tri():
         t = eq_tri(l)
         assert t.area == pytest.approx(np.sqrt(3) / 4 * l**2, abs=PREC)
         assert t.perimeter == pytest.approx(3 * l, abs=PREC)
-        assert np.allclose([c.theta for c in t.corners], np.pi / 3, atol=PREC)
+        assert np.allclose([c.omega for c in t.corners], np.pi / 3, atol=PREC)
 
 
 @pytest.mark.parametrize("n", [3, 4, 5, 7, 12])
@@ -94,8 +94,8 @@ def test_gww_pair_shares_its_weyl_invariants():
 def test_gww_pair_shares_its_corner_angles():
     """The two shapes are built from the same seven triangles, so the angle multiset
     matches even though the shapes differ."""
-    a = sorted(np.round(c.theta / np.pi, 10) for c in GWW1().corners)
-    b = sorted(np.round(c.theta / np.pi, 10) for c in GWW2().corners)
+    a = sorted(np.round(c.omega / np.pi, 10) for c in GWW1().corners)
+    b = sorted(np.round(c.omega / np.pi, 10) for c in GWW2().corners)
     assert a == b == [0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.5, 1.5]
 
 

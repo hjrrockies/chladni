@@ -38,11 +38,11 @@ def stadium(L=2.0, H=1.0):
     ]))
 
 
-def disk_sector(r=1.0, theta=np.pi / 2):
+def disk_sector(r=1.0, omega=np.pi / 2):
     return Domain(Boundary([
         LineSegment(0j, r + 0j),
-        ArcSegment(0j, r, 0.0, theta),
-        LineSegment(r * np.exp(1j * theta), 0j),
+        ArcSegment(0j, r, 0.0, omega),
+        LineSegment(r * np.exp(1j * omega), 0j),
     ]))
 
 
@@ -66,11 +66,11 @@ def test_disk_sector_corners():
     assert s.area == pytest.approx(np.pi / 4, abs=PREC)
     assert s.perimeter == pytest.approx(2 + np.pi / 2, abs=PREC)
     assert len(s.corners) == 3
-    assert np.allclose([c.theta for c in s.corners], np.pi / 2, atol=PREC)
+    assert np.allclose([c.omega for c in s.corners], np.pi / 2, atol=PREC)
 
 
 def test_half_disk_sector_has_a_smooth_pi_junction():
-    """theta = pi puts the two radii in line: three segments, two corners. This is the
+    """omega = pi puts the two radii in line: three segments, two corners. This is the
     shape whose corner arrays desynced in lappy."""
     s = disk_sector(1.0, np.pi)
     assert len(s.outer.segments) == 3
@@ -83,25 +83,25 @@ def test_half_disk_sector_has_a_smooth_pi_junction():
 def wedge(frac):
     """Four points on the unit circle spanning 2*pi*(1-frac): a reentrant corner at the
     origin of angle 2*pi*(1-frac), approaching the slit limit as frac -> 0. Area is
-    exactly sin(theta/2)."""
-    theta = 2 * np.pi * (1 - frac)
-    return Polygon(np.array([0, 1, np.exp(1j * theta / 2), np.exp(1j * theta)]))
+    exactly sin(omega/2)."""
+    omega = 2 * np.pi * (1 - frac)
+    return Polygon(np.array([0, 1, np.exp(1j * omega / 2), np.exp(1j * omega)]))
 
 
 @pytest.mark.parametrize("frac", [0.25, 0.10, 0.02])
 def test_near_slit_corner(frac):
-    theta = 2 * np.pi * (1 - frac)
+    omega = 2 * np.pi * (1 - frac)
     d = wedge(frac)
-    assert d.area == pytest.approx(np.sin(theta / 2), abs=PREC)
+    assert d.area == pytest.approx(np.sin(omega / 2), abs=PREC)
     reentrant = [c for c in d.corners if c.is_reentrant]
     assert len(reentrant) == 1
-    assert reentrant[0].theta == pytest.approx(theta, abs=PREC)
+    assert reentrant[0].omega == pytest.approx(omega, abs=PREC)
     assert reentrant[0].clearance > 0
     assert np.isfinite(reentrant[0].branch_angle)
 
 
 def test_near_slit_branch_ray_still_escapes():
-    """nu = pi/theta is 0.51 at frac=0.02, right at lappy's admissibility threshold. The
+    """nu = pi/omega is 0.51 at frac=0.02, right at lappy's admissibility threshold. The
     exterior wedge is only 0.04*pi wide, so the branch ray has very little room."""
     d = wedge(0.02)
     for c in d.corners:
@@ -114,8 +114,8 @@ def test_sliver_triangle(eps):
     """The opposite extreme: an interior angle near zero, where nu = pi/eps is enormous."""
     d = Polygon(np.array([0, 1, np.exp(1j * eps)]))
     assert d.area == pytest.approx(0.5 * np.sin(eps), abs=PREC)
-    assert min(c.theta for c in d.corners) == pytest.approx(eps, abs=PREC)
-    assert sum(c.theta for c in d.corners) == pytest.approx(np.pi, abs=PREC)
+    assert min(c.omega for c in d.corners) == pytest.approx(eps, abs=PREC)
+    assert sum(c.omega for c in d.corners) == pytest.approx(np.pi, abs=PREC)
 
 
 # --- high aspect ratio ------------------------------------------------------------------
@@ -183,8 +183,8 @@ def test_metrics_are_invariant_under_translation(offset):
     assert d.perimeter == pytest.approx(base.perimeter, rel=1e-10)
     assert d.diameter == pytest.approx(base.diameter, rel=1e-10)
     assert d.inradius == pytest.approx(base.inradius, rel=1e-8)
-    assert np.allclose(sorted(c.theta for c in d.corners),
-                       sorted(c.theta for c in base.corners), atol=1e-9)
+    assert np.allclose(sorted(c.omega for c in d.corners),
+                       sorted(c.omega for c in base.corners), atol=1e-9)
 
 
 @pytest.mark.parametrize("scale", [1e-6, 1e-4, 1.0, 1e4, 1e6])
@@ -384,7 +384,7 @@ def test_branch_path_shape():
 def test_branch_path_refuses_when_there_is_no_cut():
     from chladni.geometry import Corner
 
-    c = Corner(z=0j, seg_out=0, seg_in=1, theta=1.0, t_in=1 + 0j, t_out=1j,
+    c = Corner(z=0j, seg_out=0, seg_in=1, omega=1.0, t_in=1 + 0j, t_out=1j,
                bc_in=0.0, bc_out=0.0, clearance=1.0, branch_angle=float("nan"))
     with pytest.raises(ValueError, match="no branch cut"):
         c.branch_path(1.0)

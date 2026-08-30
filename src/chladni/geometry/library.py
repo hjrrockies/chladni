@@ -122,8 +122,8 @@ def spiral(turns=1.5, pitch=1.0, width=0.35, n=12, r0=0.6, bc="dir", prec=PREC):
     every one of them would carry no branch cut at all -- quietly barring a fractional-order
     expansion there. See `Corner.branch_vertices`.
     """
-    phi = np.linspace(0, 2 * np.pi * turns, int(n))
-    centre = (r0 + pitch * phi / (2 * np.pi)) * np.exp(1j * phi)
+    theta = np.linspace(0, 2 * np.pi * turns, int(n))
+    centre = (r0 + pitch * theta / (2 * np.pi)) * np.exp(1j * theta)
     tangent = np.gradient(centre)
     tangent /= np.abs(tangent)
     normal = 1j * tangent

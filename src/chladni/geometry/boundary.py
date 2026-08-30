@@ -40,14 +40,14 @@ class Corner:
     `corner_branch_cut_rays` in geometry -- hand-rolling the same polyline/owner-mask
     pattern. Both are purely geometric, so both are computed once, here.
 
-    Geometry stops at the angle and the BC pair. It never computes nu = pi/theta; that is
+    Geometry stops at the angle and the BC pair. It never computes nu = pi/omega; that is
     what keeps lappy's `pts_per_seg(domain, fb_basis)` from having anywhere to reappear.
     """
 
     z: complex
     seg_out: int
     seg_in: int
-    theta: float
+    omega: float
     t_in: complex
     t_out: complex
     bc_in: float
@@ -84,11 +84,11 @@ class Corner:
 
     @property
     def is_geometric(self):
-        return abs(self.theta - np.pi) > self.angle_atol
+        return abs(self.omega - np.pi) > self.angle_atol
 
     @property
     def is_reentrant(self):
-        return self.theta > np.pi + self.angle_atol
+        return self.omega > np.pi + self.angle_atol
 
     @property
     def is_bc_junction(self):
@@ -102,20 +102,20 @@ class Corner:
     def admits_exterior_branch_cut(self):
         """Whether a fractional-order expansion can be branch-cut without cutting Omega.
 
-        A corner-adapted Fourier-Bessel function carries r^(k*nu) with nu = pi/theta, which
+        A corner-adapted Fourier-Bessel function carries r^(k*nu) with nu = pi/omega, which
         for fractional k*nu needs a branch cut from the corner. The cut must kill every loop
         in Omega that winds around the corner point.
 
         On the outer boundary the adjacent exterior component reaches infinity, so the ray
         at `branch_angle` does it. On a HOLE it cannot: a loop in Omega encircling the hole
-        winds around every point of that hole's boundary, this corner included, so theta
+        winds around every point of that hole's boundary, this corner included, so omega
         gains 2*pi on it. Killing that loop needs a cut joining the hole to the outer
         boundary, which necessarily crosses Omega, and a cut confined to the bounded hole
         blocks nothing at all. The obstruction is topological, not a matter of searching
         harder for a direction.
 
         A hole corner is therefore usable only by expansions that are single-valued without
-        a cut -- nu integral, i.e. theta = pi/m -- which is the caller's test to make, since
+        a cut -- nu integral, i.e. omega = pi/m -- which is the caller's test to make, since
         geometry does not compute nu.
 
         `branch_angle` stays finite at a hole corner: it is still a genuine direction into
@@ -134,8 +134,8 @@ def _blocked_arcs(z, b0, b1):
     return start % (2 * np.pi), np.abs(d)
 
 
-def _is_blocked(phi, start, width):
-    return np.any(((np.asarray(phi)[..., None] - start) % (2 * np.pi)) <= width, axis=-1)
+def _is_blocked(theta, start, width):
+    return np.any(((np.asarray(theta)[..., None] - start) % (2 * np.pi)) <= width, axis=-1)
 
 
 def _path_crosses(path, b0, b1, origin, atol=1e-9):
@@ -316,22 +316,22 @@ class Boundary(Frozen):
         prev = (idx - 1) % n
         t_out = np.array([self.segments[i].T0 for i in idx])
         t_in = np.array([self.segments[j].T1 for j in prev])
-        theta = np.angle(-t_in / t_out) % (2 * np.pi)
+        omega = np.angle(-t_in / t_out) % (2 * np.pi)
         bc_out = np.array([self.segments[i].bc for i in idx])
         bc_in = np.array([self.segments[j].bc for j in prev])
 
-        keep = (np.abs(theta - np.pi) > self.angle_atol) | (bc_in != bc_out)
+        keep = (np.abs(omega - np.pi) > self.angle_atol) | (bc_in != bc_out)
         if not keep.any():
             return ()
         idx, prev = idx[keep], prev[keep]
-        theta, t_in, t_out = theta[keep], t_in[keep], t_out[keep]
+        omega, t_in, t_out = omega[keep], t_in[keep], t_out[keep]
         bc_in, bc_out = bc_in[keep], bc_out[keep]
         zs = np.array([self.segments[i].p0 for i in idx])
 
         clear = self._clearances(zs, idx, prev)
-        branch, branch_polys = self._branch_angles(zs, idx, prev, t_out, theta)
+        branch, branch_polys = self._branch_angles(zs, idx, prev, t_out, omega)
         return tuple(
-            Corner(z=zs[k], seg_out=int(idx[k]), seg_in=int(prev[k]), theta=float(theta[k]),
+            Corner(z=zs[k], seg_out=int(idx[k]), seg_in=int(prev[k]), omega=float(omega[k]),
                    t_in=t_in[k], t_out=t_out[k], bc_in=float(bc_in[k]), bc_out=float(bc_out[k]),
                    clearance=float(clear[k]), branch_angle=float(branch[k]),
                    angle_atol=self.angle_atol,
@@ -354,15 +354,15 @@ class Boundary(Frozen):
         d[rows, seg_in] = np.inf
         return d.min(axis=1)
 
-    def _branch_angles(self, zs, seg_out, seg_in, t_out, theta):
+    def _branch_angles(self, zs, seg_out, seg_in, t_out, omega):
         """A direction from each corner into the exterior.
 
         The exterior sector runs from the end of the interior wedge round to its start, so
-        its bisector is angle(t_out) + theta/2 + pi -- canonical and exact whenever it is
+        its bisector is angle(t_out) + omega/2 + pi -- canonical and exact whenever it is
         unobstructed, which is the common case. Only a corner whose bisector is blocked
         pays for the fallback scan.
         """
-        bisector = (np.angle(t_out) + theta / 2 + np.pi) % (2 * np.pi)
+        bisector = (np.angle(t_out) + omega / 2 + np.pi) % (2 * np.pi)
         if self.orientation < 0:  # noqa: SIM108
             # A clockwise loop is a hole: the exterior component next to these corners is
             # the hole's own bounded interior. "Does the ray escape without re-entering

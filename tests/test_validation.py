@@ -93,8 +93,8 @@ def test_reorientation_preserves_the_shape():
     cw = Polygon(L_SHAPE[::-1])
     ccw = Polygon(L_SHAPE)
     assert cw.area == pytest.approx(ccw.area, abs=EXACT)
-    assert sorted(np.round(c.theta, 10) for c in cw.corners) == sorted(
-        np.round(c.theta, 10) for c in ccw.corners
+    assert sorted(np.round(c.omega, 10) for c in cw.corners) == sorted(
+        np.round(c.omega, 10) for c in ccw.corners
     )
 
 

@@ -185,7 +185,7 @@ def test_boundary_local_clearance_is_an_upper_bound(holed):
 
 def test_only_outer_corners_admit_an_exterior_branch_cut(holed):
     """A loop in Omega encircling the hole winds around every point of that hole's
-    boundary, so theta measured from a hole corner gains 2*pi on it. Killing that loop
+    boundary, so omega measured from a hole corner gains 2*pi on it. Killing that loop
     needs a cut joining the hole to the outer boundary, which crosses Omega."""
     assert [c.on_hole for c in holed.corners] == [False] * 4 + [True] * 4
     assert all(c.admits_exterior_branch_cut for c in holed.corners if not c.on_hole)
@@ -215,9 +215,9 @@ def test_hole_branch_angle_still_points_into_the_hole(holed):
 
 
 def test_hole_corner_angles_are_measured_inside_the_domain(holed):
-    """theta is the wedge of Omega, not of the hole: a convex hole corner is reentrant
+    """omega is the wedge of Omega, not of the hole: a convex hole corner is reentrant
     from the domain's side."""
     for c in holed.corners:
         if c.on_hole:
-            assert c.theta == pytest.approx(3 * np.pi / 2, abs=PREC)
+            assert c.omega == pytest.approx(3 * np.pi / 2, abs=PREC)
             assert c.is_reentrant

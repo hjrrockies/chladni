@@ -23,24 +23,24 @@ from chladni.helmholtz.corners import CornerModes
 from chladni.helmholtz.fourier_bessel import _log_envelope
 
 
-def fam(theta, n=40, radius=1.0):
-    m = CornerModes.from_wedge(theta, 0.0, 0.0)
+def fam(omega, n=40, radius=1.0):
+    m = CornerModes.from_wedge(omega, 0.0, 0.0)
     return FourierBessel(0j, 1 + 0j, m, m.degrees(n), radius)
 
 
-#: A wedge fraction that is not a zero of any column's angular factor. `phi = theta/2` is
-#: the obvious choice and is wrong: `sin(mu*theta/2) = sin(l*pi/2)`, which vanishes for every
+#: A wedge fraction that is not a zero of any column's angular factor. `theta = omega/2` is
+#: the obvious choice and is wrong: `sin(mu*omega/2) = sin(l*pi/2)`, which vanishes for every
 #: even degree, so half the columns evaluate to roundoff there and any relative comparison
 #: against them is meaningless. 0.37 is not a rational multiple of a half.
-PHI_FRAC = 0.37
+THETA_FRAC = 0.37
 
 
 def column_maxima(f, k, n_r=2000):
     """max |column| over the wedge.
 
-    Computed as `max_r |radial|` times `max_phi |angular|`, and the second factor is exactly
-    1 for every column here (`|sin(mu*phi)|` reaches 1 somewhere in `(0, theta)` whenever
-    `mu*theta >= pi/2`, which holds for every degree `l >= 1`). So a dense radial sweep is
+    Computed as `max_r |radial|` times `max_theta |angular|`, and the second factor is exactly
+    1 for every column here (`|sin(mu*theta)|` reaches 1 somewhere in `(0, omega)` whenever
+    `mu*omega >= pi/2`, which holds for every degree `l >= 1`). So a dense radial sweep is
     the whole measurement, and the full 2-D grid would be 80x the cost for the same number.
     """
     from chladni.helmholtz._bessel import log_j
@@ -63,8 +63,8 @@ def test_the_raw_columns_span_hundreds_of_orders_of_magnitude():
 
 def _scale_band(thetas, kRs, n=40):
     lo, hi = 9.0, 0.0
-    for theta in thetas:
-        f = fam(theta, n=n)
+    for omega in thetas:
+        f = fam(omega, n=n)
         for kR in kRs:
             # >= 80 radial samples per wavelength, or the sweep misses the maximum and
             # reports a spuriously small column -- which is how a 0.35 lower bound appeared
@@ -100,9 +100,9 @@ def test_a_column_scipy_cannot_represent_at_all_comes_back_accurate():
     r = np.array([0.3, 0.6, 0.9])
     k = 10.0
     assert np.all(jv(mu, k * r) == 0.0), "this column is supposed to be past scipy's cliff"
-    phi = PHI_FRAC * f.modes.theta
-    got = f.values(k, r * np.exp(1j * phi), cols=[len(f) - 1])[:, 0]
-    ang = np.sin(mu * phi)
+    theta = THETA_FRAC * f.modes.omega
+    got = f.values(k, r * np.exp(1j * theta), cols=[len(f) - 1])[:, 0]
+    ang = np.sin(mu * theta)
     sigma = f.log_scale(k, cols=[len(f) - 1])[0]
     for i, ri in enumerate(r):
         _, ref_log = mp_log_besselj(mu, k * ri)
@@ -218,12 +218,12 @@ def test_accuracy_bounds_the_error_it_reports_on():
     f = fam(np.pi / 8, n=20)
     k = 12.0
     r = np.array([0.2, 0.5, 0.85])
-    phi = PHI_FRAC * f.modes.theta
-    pts = r * np.exp(1j * phi)
+    theta = THETA_FRAC * f.modes.omega
+    pts = r * np.exp(1j * theta)
     s = f.at(pts)
     bound = s.accuracy(k)
     sigma = f.log_scale(k)
-    ang = np.sin(f.orders * phi)
+    ang = np.sin(f.orders * theta)
     got = f.values(k, pts)
     for j, mu in enumerate(f.orders):
         for i, ri in enumerate(r):

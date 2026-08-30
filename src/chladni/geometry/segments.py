@@ -546,10 +546,10 @@ class ArcSegment(Segment):
         s, about = complex(s), complex(about)
         if s == 0:
             raise ValueError("scale factor must be nonzero")
-        phi = np.angle(s)
+        theta = np.angle(s)
         return ArcSegment(
             about + s * (self.center - about), abs(s) * self.radius,
-            self.theta0 + phi, self.theta1 + phi, self.bc, self.prec,
+            self.theta0 + theta, self.theta1 + theta, self.bc, self.prec,
         )
 
     def reversed(self):

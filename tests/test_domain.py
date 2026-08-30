@@ -149,7 +149,7 @@ def test_normalized_preserves_shape(l_shape):
     assert d.area == pytest.approx(l_shape.area / s**2, rel=PREC)
     assert d.perimeter == pytest.approx(l_shape.perimeter / s, rel=PREC)
     assert np.allclose(
-        sorted(c.theta for c in d.corners), sorted(c.theta for c in l_shape.corners), atol=PREC
+        sorted(c.omega for c in d.corners), sorted(c.omega for c in l_shape.corners), atol=PREC
     )
 
 

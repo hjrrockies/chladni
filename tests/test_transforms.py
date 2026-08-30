@@ -73,7 +73,7 @@ def test_rotation_preserves_metrics_and_rotates_angles(l_shape):
     assert rot.area == pytest.approx(l_shape.area, rel=PREC)
     assert rot.perimeter == pytest.approx(l_shape.perimeter, rel=PREC)
     assert np.allclose(
-        sorted(c.theta for c in rot.corners), sorted(c.theta for c in l_shape.corners), atol=PREC
+        sorted(c.omega for c in rot.corners), sorted(c.omega for c in l_shape.corners), atol=PREC
     )
     assert rot.centroid == pytest.approx(l_shape.centroid * np.exp(1j * theta), abs=PREC)
 

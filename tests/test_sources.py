@@ -205,7 +205,7 @@ def test_lightning_sources_carry_their_own_standoff():
     c = [c for c in poly.corners if c.is_reentrant][0]
     fam = Fundamental.lightning(c, 8, L=0.4)
     d = np.abs(fam.origins - c.z)
-    assert np.allclose(fam.radius, d * np.sin((2 * np.pi - c.theta) / 2), rtol=1e-13)
+    assert np.allclose(fam.radius, d * np.sin((2 * np.pi - c.omega) / 2), rtol=1e-13)
 
 
 # --- shapes and columns -----------------------------------------------------------------------

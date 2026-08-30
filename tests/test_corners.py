@@ -24,24 +24,24 @@ from conftest import COLLINEAR, EQ_TRI, EXACT, L_SHAPE, L_SHAPE_ANGLES, PREC, SQ
 def test_square_corners(square):
     corners = square.corners
     assert len(corners) == 4
-    assert np.allclose([c.theta for c in corners], np.pi / 2, atol=EXACT)
+    assert np.allclose([c.omega for c in corners], np.pi / 2, atol=EXACT)
 
 
 def test_eq_tri_corners(eq_tri):
-    assert np.allclose([c.theta for c in eq_tri.corners], np.pi / 3, atol=EXACT)
+    assert np.allclose([c.omega for c in eq_tri.corners], np.pi / 3, atol=EXACT)
 
 
 def test_l_shape_corners(l_shape):
     corners = l_shape.corners
     assert len(corners) == 6
-    assert np.allclose([c.theta for c in corners], L_SHAPE_ANGLES, atol=EXACT)
+    assert np.allclose([c.omega for c in corners], L_SHAPE_ANGLES, atol=EXACT)
 
 
 def test_exactly_one_reentrant_corner_on_the_l_shape(l_shape):
     reentrant = [c for c in l_shape.corners if c.is_reentrant]
     assert len(reentrant) == 1
     assert reentrant[0].z == pytest.approx(1 + 1j, abs=EXACT)
-    assert reentrant[0].theta == pytest.approx(3 * np.pi / 2, abs=EXACT)
+    assert reentrant[0].omega == pytest.approx(3 * np.pi / 2, abs=EXACT)
 
 
 @pytest.mark.parametrize("n", [3, 4, 5, 6, 8, 12])
@@ -49,14 +49,14 @@ def test_regular_ngon_angles(n):
     from conftest import ngon_vertices
 
     poly = Polygon(ngon_vertices(n))
-    assert np.allclose([c.theta for c in poly.corners], (n - 2) * np.pi / n, atol=EXACT)
+    assert np.allclose([c.omega for c in poly.corners], (n - 2) * np.pi / n, atol=EXACT)
 
 
 @pytest.mark.parametrize("verts", [SQUARE, L_SHAPE, EQ_TRI, COLLINEAR])
 def test_interior_angles_sum_to_n_minus_two_pi(verts):
     """Every junction, corner or not, contributes; the sum is a hard identity."""
     poly = Polygon(verts, validate=False)
-    total = sum(c.theta for c in poly.corners)
+    total = sum(c.omega for c in poly.corners)
     smooth = len(verts) - len(poly.corners)
     assert total + smooth * np.pi == pytest.approx((len(verts) - 2) * np.pi, abs=EXACT)
 
@@ -65,7 +65,7 @@ def test_interior_angles_sum_to_n_minus_two_pi(verts):
 
 
 def test_collinear_vertex_is_not_a_corner(collinear_poly):
-    """Five vertices, four corners: the collinear one has theta == pi."""
+    """Five vertices, four corners: the collinear one has omega == pi."""
     assert len(collinear_poly.corners) == 4
     assert not any(c.z == pytest.approx(1 + 0j, abs=EXACT) for c in collinear_poly.corners)
 
@@ -75,7 +75,7 @@ def test_half_disk_has_three_segments_and_two_corners(half_disk):
     assert len(half_disk.outer.segments) == 3
     corners = half_disk.corners
     assert len(corners) == 2
-    assert np.allclose([c.theta for c in corners], np.pi / 2, atol=PREC)
+    assert np.allclose([c.omega for c in corners], np.pi / 2, atol=PREC)
     assert np.allclose(sorted(c.z.real for c in corners), [-1.0, 1.0], atol=PREC)
 
 
@@ -98,7 +98,7 @@ def test_corners_follow_traversal_order(l_shape):
 
 
 def test_bc_change_across_a_straight_edge_is_a_singular_corner(split_edge_bc_junction):
-    """theta is exactly pi, so it is not geometric -- but it IS singular."""
+    """omega is exactly pi, so it is not geometric -- but it IS singular."""
     corners = split_edge_bc_junction.corners
     # dir->neu at 0.5 and neu->dir at 1: two changes, but only one is on a straight edge
     assert len([c for c in corners if c.is_bc_junction]) == 2
@@ -106,7 +106,7 @@ def test_bc_change_across_a_straight_edge_is_a_singular_corner(split_edge_bc_jun
     assert len(straight) == 1
     c = straight[0]
     assert c.z == pytest.approx(0.5 + 0j, abs=EXACT)
-    assert c.theta == pytest.approx(np.pi, abs=EXACT)
+    assert c.omega == pytest.approx(np.pi, abs=EXACT)
     assert not c.is_geometric
     assert c.is_singular
     assert (c.bc_in, c.bc_out) == (0.0, 1.0)
@@ -186,7 +186,7 @@ def test_corner_is_frozen(square):
     c = square.corners[0]
     assert dataclasses.is_dataclass(c)
     with pytest.raises(dataclasses.FrozenInstanceError):
-        c.theta = 1.0
+        c.omega = 1.0
 
 
 def test_angle_tolerance_is_exposed_not_buried(square):

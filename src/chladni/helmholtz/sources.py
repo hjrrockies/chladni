@@ -256,7 +256,7 @@ class Fundamental(HelmholtzFamily):
         keep = n - int(round(taper * n))
         j = np.arange(1, keep + 1)
         s = L * np.exp(-float(sigma) * (np.sqrt(n) - np.sqrt(j)))
-        half_exterior = 0.5 * (2 * np.pi - corner.theta)
+        half_exterior = 0.5 * (2 * np.pi - corner.omega)
         return cls(corner.z + s * np.exp(1j * corner.branch_angle), order=order,
                    radius=s * np.sin(half_exterior), prec=prec)
 

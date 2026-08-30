@@ -2,9 +2,9 @@
 
 What this file defends, in order of how much it costs to get wrong:
 
-1. The angle lift is anchored to the branch cut, so a point on the phi = 0 ray gives
+1. The angle lift is anchored to the branch cut, so a point on the theta = 0 ray gives
    STRUCTURALLY exact 0.0 for the Dirichlet family. The obvious
-   `np.angle((z - c.z)/c.t_out) % (2*np.pi)` is wrong -- a point that should sit at phi = 0
+   `np.angle((z - c.z)/c.t_out) % (2*np.pi)` is wrong -- a point that should sit at theta = 0
    comes out of np.angle as -1e-17 and wraps to 6.283 -- and the symptom is a Dirichlet
    basis function evaluating to 0.11 on the ray where it must vanish.
 2. Every column solves the Helmholtz equation exactly. That is the entire premise of MPS;
@@ -29,12 +29,12 @@ from chladni.helmholtz.corners import CornerModes
 K = 7.3
 
 
-def wedge(theta=1.4 * np.pi, bc_out=0.0, bc_in=0.0, n=5, radius=1.0):
+def wedge(omega=1.4 * np.pi, bc_out=0.0, bc_in=0.0, n=5, radius=1.0):
     """A bare corner at the origin opening along the positive real axis."""
     return FourierBessel(
         origin=0j, t_out=1 + 0j, radius=radius,
-        modes=CornerModes.from_wedge(theta, bc_out, bc_in),
-        degrees=CornerModes.from_wedge(theta, bc_out, bc_in).degrees(n),
+        modes=CornerModes.from_wedge(omega, bc_out, bc_in),
+        degrees=CornerModes.from_wedge(omega, bc_out, bc_in).degrees(n),
     )
 
 
@@ -54,24 +54,24 @@ def test_the_dirichlet_family_is_exactly_zero_on_the_outgoing_ray():
 
 
 def test_the_dirichlet_family_vanishes_on_the_incoming_ray_to_roundoff():
-    """Only to roundoff, and that asymmetry is real: `sin(mu*theta)` carries theta's own
+    """Only to roundoff, and that asymmetry is real: `sin(mu*omega)` carries omega's own
     error, while `sin(mu*0)` cannot. A test demanding exact zero must target bc_out's ray."""
-    theta = 1.4 * np.pi
-    fam = wedge(theta, 0.0, 0.0)
+    omega = 1.4 * np.pi
+    fam = wedge(omega, 0.0, 0.0)
     r = np.linspace(0.01, 0.9, 40)
-    pts = r * np.exp(1j * theta)
+    pts = r * np.exp(1j * omega)
     got = np.abs(fam.values(K, pts))
-    scale = np.abs(fam.values(K, r * np.exp(1j * theta / 2))).max()
+    scale = np.abs(fam.values(K, r * np.exp(1j * omega / 2))).max()
     assert got.max() < 1e-15 * scale
     assert got.max() > 0.0
 
 
 def test_the_neumann_family_has_zero_normal_derivative_on_both_rays():
-    theta = 1.4 * np.pi
-    fam = wedge(theta, 1.0, 1.0)
+    omega = 1.4 * np.pi
+    fam = wedge(omega, 1.0, 1.0)
     r = np.linspace(0.05, 0.9, 40)
-    for phi, nvec in ((0.0, -1j), (theta, 1j * np.exp(1j * theta))):
-        pts = r * np.exp(1j * phi)
+    for theta, nvec in ((0.0, -1j), (omega, 1j * np.exp(1j * omega))):
+        pts = r * np.exp(1j * theta)
         dn = fam.deriv(K, pts, np.full(len(r), nvec))
         assert np.abs(dn).max() < 1e-13 * max(1.0, np.abs(fam.values(K, pts)).max())
 
@@ -80,14 +80,14 @@ def test_the_neumann_family_has_zero_normal_derivative_on_both_rays():
 def test_every_zaremba_combination_satisfies_its_own_rays(bc_out, bc_in):
     """The four-row table, exercised through the real evaluator rather than through the
     angular factor alone -- so the lift, the exponents and the derivative all have to agree."""
-    theta = 1.4 * np.pi
-    fam = wedge(theta, bc_out, bc_in)
+    omega = 1.4 * np.pi
+    fam = wedge(omega, bc_out, bc_in)
     r = np.linspace(0.05, 0.9, 30)
-    ref = np.abs(fam.values(K, r * np.exp(1j * theta / 2))).max()
-    for phi, bc, nvec in ((0.0, bc_out, -1j), (theta, bc_in, 1j * np.exp(1j * theta))):
-        pts = r * np.exp(1j * phi)
+    ref = np.abs(fam.values(K, r * np.exp(1j * omega / 2))).max()
+    for theta, bc, nvec in ((0.0, bc_out, -1j), (omega, bc_in, 1j * np.exp(1j * omega))):
+        pts = r * np.exp(1j * theta)
         got = fam.values(K, pts) if bc == 0.0 else fam.deriv(K, pts, np.full(len(r), nvec))
-        assert np.abs(got).max() < 1e-13 * ref, f"phi={phi} bc={bc}"
+        assert np.abs(got).max() < 1e-13 * ref, f"theta={theta} bc={bc}"
 
 
 # --- Helmholtz exactness ------------------------------------------------------------------------
@@ -116,11 +116,11 @@ def _helmholtz_residual(fam, k, pts, h):
     return np.abs(lap + k**2 * u(pts)).max() / (k**2 * np.abs(u(pts)).max())
 
 
-@pytest.mark.parametrize("theta", [np.pi / 2, np.pi, 1.4 * np.pi, 1.9 * np.pi])
-def test_every_column_solves_the_helmholtz_equation(theta):
-    fam = wedge(theta, 0.0, 0.0, n=4)
-    phi = np.linspace(0.15 * theta, 0.85 * theta, 7)
-    pts = np.concatenate([r * np.exp(1j * phi) for r in (0.3, 0.6, 0.9)])
+@pytest.mark.parametrize("omega", [np.pi / 2, np.pi, 1.4 * np.pi, 1.9 * np.pi])
+def test_every_column_solves_the_helmholtz_equation(omega):
+    fam = wedge(omega, 0.0, 0.0, n=4)
+    theta = np.linspace(0.15 * omega, 0.85 * omega, 7)
+    pts = np.concatenate([r * np.exp(1j * theta) for r in (0.3, 0.6, 0.9)])
     assert _helmholtz_residual(fam, K, pts, 1e-3) < 5e-9
 
 
@@ -175,26 +175,26 @@ def test_values_and_grad_agrees_with_the_two_taken_separately():
 
 def test_the_angle_is_continuous_everywhere_except_on_the_cut():
     """Sampled on a circle about the corner: exactly one jump, and it sits at beta."""
-    theta = 1.4 * np.pi
-    fam = wedge(theta, 0.0, 0.0, n=1)
+    omega = 1.4 * np.pi
+    fam = wedge(omega, 0.0, 0.0, n=1)
     a = np.linspace(0, 2 * np.pi, 4001, endpoint=False)
-    phi = fam.at(0.5 * np.exp(1j * a)).phi
-    jumps = np.nonzero(np.abs(np.diff(phi)) > np.pi)[0]
+    theta = fam.at(0.5 * np.exp(1j * a)).theta
+    jumps = np.nonzero(np.abs(np.diff(theta)) > np.pi)[0]
     assert len(jumps) == 1
     assert a[jumps[0]] == pytest.approx(fam.modes.beta, abs=2e-3)
 
 
 def test_the_interior_wedge_maps_to_zero_through_theta():
-    theta = 1.4 * np.pi
-    fam = wedge(theta, 0.0, 0.0, n=1)
-    a = np.linspace(1e-6, theta - 1e-6, 500)
-    phi = fam.at(0.5 * np.exp(1j * a)).phi
-    assert np.allclose(phi, a, atol=1e-12)
+    omega = 1.4 * np.pi
+    fam = wedge(omega, 0.0, 0.0, n=1)
+    a = np.linspace(1e-6, omega - 1e-6, 500)
+    theta = fam.at(0.5 * np.exp(1j * a)).theta
+    assert np.allclose(theta, a, atol=1e-12)
 
 
 def test_a_square_corner_needs_no_cut_at_all():
     """nu = 2 is integral, so every order is an integer and the family is single-valued.
-    The lift still runs and phi still jumps by 2*pi somewhere; the point is that the VALUES
+    The lift still runs and theta still jumps by 2*pi somewhere; the point is that the VALUES
     do not notice, because sin of an integer multiple of 2*pi is periodic.
 
     Tested as a wrap-around: the step from the last sample back to the first has to be the
@@ -212,11 +212,11 @@ def test_a_square_corner_needs_no_cut_at_all():
 
 
 def test_the_lift_is_not_a_modulo():
-    """The bug this file exists for. `angle(z/t_out) % (2*pi)` sends a point at phi = 0 to
+    """The bug this file exists for. `angle(z/t_out) % (2*pi)` sends a point at theta = 0 to
     6.283 whenever np.angle returns -1e-17, and the Dirichlet family then evaluates to
     something of order 0.1 on the ray where it must vanish."""
-    theta = 1.4 * np.pi
-    fam = wedge(theta, 0.0, 0.0, n=3)
+    omega = 1.4 * np.pi
+    fam = wedge(omega, 0.0, 0.0, n=3)
     z = np.array([0.5 * np.exp(-1e-17j), 0.5 + 0j])
     assert np.all(fam.values(K, z) == 0.0)
 
@@ -272,7 +272,7 @@ def test_a_wall_following_cut_puts_the_branch_on_the_cut_geometry_supplied():
     """The spiral's surrounded corners have no straight ray to infinity, so geometry hands
     back a polyline. The family must put its branch there and not on the bisector.
 
-    Stated as: every 2*pi jump of phi, on a circle about the corner, lies ON
+    Stated as: every 2*pi jump of theta, on a circle about the corner, lies ON
     `Corner.branch_path`. That is the property that matters and it is directly checkable.
     Continuity in Euclidean distance is NOT the right statement and was tried first: in a
     spiral, two points a hundredth apart can be on opposite sides of a wall, with the cut
@@ -293,8 +293,8 @@ def test_a_wall_following_cut_puts_the_branch_on_the_cut_geometry_supplied():
         for rho in (0.05, 0.2, 0.5, 1.0):
             a = np.linspace(0, 2 * np.pi, n, endpoint=False)
             z = c.z + rho * np.exp(1j * a)
-            phi = fam.at(z).phi
-            j = np.nonzero(np.abs(np.diff(phi)) > np.pi)[0]
+            theta = fam.at(z).theta
+            j = np.nonzero(np.abs(np.diff(theta)) > np.pi)[0]
             assert len(j) > 0
             mid = 0.5 * (z[j] + z[j + 1])
             # within one angular sample of the cut; 2*pi/n * rho is the spacing.

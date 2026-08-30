@@ -1,4 +1,4 @@
-"""Corner-adapted Fourier-Bessel functions: `J_mu(k*r) * sin(mu*phi)` and its cosine twin.
+"""Corner-adapted Fourier-Bessel functions: `J_mu(k*r) * sin(mu*theta)` and its cosine twin.
 
 One object is ONE corner -- one origin, one wedge, one branch cut, an array of degrees.
 Batching across corners happens in `Basis`.
@@ -18,21 +18,21 @@ parameters.
 
 This is the load-bearing line of the module.
 
-    beta = (branch_angle - angle(t_out)) % (2*pi)                     # in (theta, 2*pi)
-    phi  = ((angle((z - origin)/t_out) - beta) % (2*pi)) + beta - 2*pi
+    beta = (branch_angle - angle(t_out)) % (2*pi)                     # in (omega, 2*pi)
+    theta  = ((angle((z - origin)/t_out) - beta) % (2*pi)) + beta - 2*pi
 
-`phi = 0` is the outgoing ray, `phi` increases counter-clockwise to `theta` on the incoming
+`theta = 0` is the outgoing ray, `theta` increases counter-clockwise to `omega` on the incoming
 ray, and the 2*pi discontinuity sits exactly on the cut in the exterior wedge.
 
 The obvious `np.angle((z - origin)/t_out) % (2*np.pi)` is wrong, and quietly. A boundary
-point that should sit at `phi = 0` comes out of `np.angle` as -1e-17 and wraps to 6.283;
+point that should sit at `theta = 0` comes out of `np.angle` as -1e-17 and wraps to 6.283;
 the Dirichlet family then evaluates to 0.11, 0.17, 0.22 on the ray where it must be
 identically zero. Anchoring the lift to `beta` is what makes that ray give STRUCTURALLY
 exact 0.0 -- `sin(mu*0)` and nothing else.
 
 One asymmetry follows and is worth knowing before writing an assertion against it: the
-condition on the `phi = 0` ray holds exactly, the one on `phi = theta` only to about 1e-16
-relative, from roundoff in `theta` itself.
+condition on the `theta = 0` ray holds exactly, the one on `theta = omega` only to about 1e-16
+relative, from roundoff in `omega` itself.
 
 Holes need no sign flip. `Domain` reverses them to clockwise, which puts Omega on the left
 of travel on every boundary, so `-1j*T` is outward everywhere and one convention covers both.
@@ -177,7 +177,7 @@ def _winding(poly, z):
 class FourierBesselSampling(Sampling):
     """A `FourierBessel` bound to points. Everything here is independent of k.
 
-    Note what that includes: the angular factors `A = sin(mu*phi)` and their derivatives.
+    Note what that includes: the angular factors `A = sin(mu*theta)` and their derivatives.
     `mu` depends only on the corner, so the whole `(n_pts, n_cols)` trig block is computed
     once and reused for every k. Only the Bessel call is per-k, which is the shape lappy's
     own measurement pointed at ("per-lambda work in the underlying bases is purely
@@ -187,28 +187,28 @@ class FourierBesselSampling(Sampling):
     def __init__(self, fam, pts, normals, bc):
         z = pts - fam.origin
         r = np.abs(z)
-        # The corner-local frame: phi = 0 on t_out, increasing counter-clockwise. `beta`,
+        # The corner-local frame: theta = 0 on t_out, increasing counter-clockwise. `beta`,
         # the branch vertices and the winding polygon all live here, so the points have to
         # as well -- winding a local-frame polygon against un-rotated points is a bug that
         # hides completely on any corner whose t_out happens to be 1.
         z_local = z / fam.t_out
         beta = fam.modes.beta
-        phi = ((np.angle(z_local) - beta) % (2 * np.pi)) + beta - 2 * np.pi
+        theta = ((np.angle(z_local) - beta) % (2 * np.pi)) + beta - 2 * np.pi
         wind = None
         if fam.branch_vertices:
             wind = _winding(fam._cut_polygon(z_local), z_local)
-            phi = phi - 2 * np.pi * wind
+            theta = theta - 2 * np.pi * wind
         mu = fam.orders[None, :]
-        arg = mu * phi[:, None]
+        arg = mu * theta[:, None]
         if fam.modes.kind == "sin":
             ang, dang = np.sin(arg), mu * np.cos(arg)
         else:
             ang, dang = np.cos(arg), -mu * np.sin(arg)
         with np.errstate(divide="ignore", invalid="ignore"):
-            # grad(r) and grad(phi) in complex form: d/dx + 1j*d/dy.
+            # grad(r) and grad(theta) in complex form: d/dx + 1j*d/dy.
             grad_r = np.where(r > 0, z / np.where(r > 0, r, 1.0), 0.0)
             grad_phi = np.where(r > 0, 1j * z / np.where(r > 0, r * r, 1.0), 0.0)
-        _set(self, _family=fam, pts=pts, normals=normals, bc=bc, r=r, phi=phi,
+        _set(self, _family=fam, pts=pts, normals=normals, bc=bc, r=r, theta=theta,
              winding=wind, _ang=ang, _dang=dang, _grad_r=grad_r, _grad_phi=grad_phi)
 
     @property
@@ -244,7 +244,7 @@ class FourierBesselSampling(Sampling):
 class FourierBessel(HelmholtzFamily):
     """The corner-adapted family at one corner.
 
-    `origin` is the vertex, `t_out` the unit tangent of the outgoing edge (the `phi = 0`
+    `origin` is the vertex, `t_out` the unit tangent of the outgoing edge (the `theta = 0`
     ray), `degrees` the integer degrees `l` whose orders are `modes.orders(degrees)`, and
     `radius` the LARGEST radius at which this family will be evaluated -- see
     `evaluation_radius`, and note that it is not the corner's clearance.

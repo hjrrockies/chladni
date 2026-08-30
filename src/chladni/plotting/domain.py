@@ -223,10 +223,10 @@ def plot_diagnostic(domain, *, ax=None, segments=True, corners=True, normals=Fal
             )
             # along the interior bisector: always points into Omega, so labels sit inside
             # the shape instead of wherever the branch cut happened to go
-            inward = np.exp(1j * (np.angle(c.t_out) + c.theta / 2))
+            inward = np.exp(1j * (np.angle(c.t_out) + c.omega / 2))
             tip = c.z + 0.05 * scale * inward
             art.texts.append(ax.text(tip.real, tip.imag,
-                                     f"{ci}\n{c.theta / np.pi:.2f}π" if labels else str(ci),
+                                     f"{ci}\n{c.omega / np.pi:.2f}π" if labels else str(ci),
                                      color="crimson", ha="center", va="center",
                                      fontsize=fontsize))
 

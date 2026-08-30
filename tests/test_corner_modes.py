@@ -1,12 +1,12 @@
 """Deriving the local expansion at a corner -- this layer's first job.
 
-`geometry` stops at `theta` and the boundary-condition pair and never computes `nu = pi/theta`
+`geometry` stops at `omega` and the boundary-condition pair and never computes `nu = pi/omega`
 (boundary.py:43). That line is load-bearing: lappy crossed it with
 `geometry.pts_per_seg(domain, fb_basis)`, and the whole `Corner` design exists so that
 function has nowhere to come back. This file defends the crossing happening here and only
 here, and defends the exponent table being right.
 
-The angular conditions are checked against the mathematics directly -- `sin(mu*phi)` on a ray
+The angular conditions are checked against the mathematics directly -- `sin(mu*theta)` on a ray
 is a two-line assertion, not something that needs the rest of the module -- so a wrong table
 fails here rather than three files later as a mysteriously poor eigenvalue.
 """
@@ -18,18 +18,18 @@ from chladni.geometry import Polygon
 from chladni.helmholtz.corners import CornerModes
 
 
-def _modes(theta, bc_out, bc_in):
+def _modes(omega, bc_out, bc_in):
     """A CornerModes for a bare wedge, no geometry object involved. The design principle is
     that a family is constructible from its own parameters and does not need ghost geometry;
     this is the same rule one level down."""
-    return CornerModes.from_wedge(theta, bc_out=bc_out, bc_in=bc_in)
+    return CornerModes.from_wedge(omega, bc_out=bc_out, bc_in=bc_in)
 
 
 # --- nu ------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("theta", [np.pi / 2, np.pi, 2 * np.pi / 3, 3 * np.pi / 2, 1.9 * np.pi])
-def test_nu_is_pi_over_theta(theta):
-    assert _modes(theta, 0.0, 0.0).nu == pytest.approx(np.pi / theta, abs=EXACT)
+@pytest.mark.parametrize("omega", [np.pi / 2, np.pi, 2 * np.pi / 3, 3 * np.pi / 2, 1.9 * np.pi])
+def test_nu_is_pi_over_theta(omega):
+    assert _modes(omega, 0.0, 0.0).nu == pytest.approx(np.pi / omega, abs=EXACT)
 
 
 def test_a_right_angle_has_integer_nu():
@@ -39,7 +39,7 @@ def test_a_right_angle_has_integer_nu():
 
 
 def test_the_l_shape_reentrant_corner_has_nu_two_thirds():
-    """theta = 3*pi/2, nu = 2/3 -- the exponent that costs the L-shape about seven digits
+    """omega = 3*pi/2, nu = 2/3 -- the exponent that costs the L-shape about seven digits
     when it is missing from the basis."""
     assert _modes(3 * np.pi / 2, 0.0, 0.0).nu == pytest.approx(2 / 3, abs=EXACT)
 
@@ -47,7 +47,7 @@ def test_the_l_shape_reentrant_corner_has_nu_two_thirds():
 # --- the four-row table --------------------------------------------------------------------
 
 TABLE = [
-    # bc_out (the phi = 0 ray), bc_in (the phi = theta ray), kind, offset, first degree
+    # bc_out (the theta = 0 ray), bc_in (the theta = omega ray), kind, offset, first degree
     (0.0, 0.0, "sin", 0.0, 1),
     (1.0, 1.0, "cos", 0.0, 0),
     (0.0, 1.0, "sin", 0.5, 0),
@@ -57,7 +57,7 @@ TABLE = [
 
 @pytest.mark.parametrize("bc_out,bc_in,kind,offset,first", TABLE)
 def test_the_exponent_family_decouples(bc_out, bc_in, kind, offset, first):
-    """The BC on the phi = 0 ray picks sin against cos; the BC on the phi = theta ray picks
+    """The BC on the theta = 0 ray picks sin against cos; the BC on the theta = omega ray picks
     the half-integer offset. Two independent booleans, one code path -- which is why the
     mixed case costs nothing over the unmixed one."""
     m = _modes(1.3 * np.pi, bc_out, bc_in)
@@ -87,35 +87,35 @@ def test_the_modes_satisfy_their_own_boundary_conditions(bc_out, bc_in, kind, of
     """Checked against the angular factor directly, with no part of this module involved
     beyond the exponents themselves.
 
-    On either ray the outward normal is +-(1/r)*d_dphi, so a Neumann condition is
-    `d_dphi(angular) = 0` and a Dirichlet condition is `angular = 0`.
+    On either ray the outward normal is +-(1/r)*d_dtheta, so a Neumann condition is
+    `d_dtheta(angular) = 0` and a Dirichlet condition is `angular = 0`.
     """
-    theta = 1.9 * np.pi
-    m = _modes(theta, bc_out, bc_in)
+    omega = 1.9 * np.pi
+    m = _modes(omega, bc_out, bc_in)
     ang = np.sin if m.kind == "sin" else np.cos
     dang = (lambda t: np.cos(t)) if m.kind == "sin" else (lambda t: -np.sin(t))
     for mu in m.orders(m.degrees(4)):
-        for phi, bc in ((0.0, bc_out), (theta, bc_in)):
-            got = ang(mu * phi) if bc == 0.0 else dang(mu * phi)
-            assert abs(got) < 1e-14, f"mu={mu} phi={phi} bc={bc}"
+        for theta, bc in ((0.0, bc_out), (omega, bc_in)):
+            got = ang(mu * theta) if bc == 0.0 else dang(mu * theta)
+            assert abs(got) < 1e-14, f"mu={mu} theta={theta} bc={bc}"
 
 
 def test_the_first_ray_is_satisfied_structurally_and_the_second_only_numerically():
     """An asymmetry worth knowing before writing an assertion against it: `sin(mu*0)` is
-    exactly 0.0 by construction, while `sin(mu*theta)` is 0 only up to roundoff in theta.
-    A test demanding exact zero must target the phi = 0 ray."""
-    theta = 1.9 * np.pi
-    m = _modes(theta, 0.0, 0.0)
+    exactly 0.0 by construction, while `sin(mu*omega)` is 0 only up to roundoff in omega.
+    A test demanding exact zero must target the theta = 0 ray."""
+    omega = 1.9 * np.pi
+    m = _modes(omega, 0.0, 0.0)
     mus = m.orders(m.degrees(4))
     assert np.all(np.sin(mus * 0.0) == 0.0)
-    assert np.max(np.abs(np.sin(mus * theta))) < 1e-14
-    assert np.max(np.abs(np.sin(mus * theta))) > 0.0
+    assert np.max(np.abs(np.sin(mus * omega))) < 1e-14
+    assert np.max(np.abs(np.sin(mus * omega))) > 0.0
 
 
 # --- Zaremba -------------------------------------------------------------------------------
 
 def test_a_flat_bc_junction_is_the_classic_square_root_singularity():
-    """theta = pi, so nu = 1 and the leading mixed exponent is 1/2. This is a STRONGER
+    """omega = pi, so nu = 1 and the leading mixed exponent is 1/2. This is a STRONGER
     singularity than any convex Dirichlet corner, at a junction `Corner.is_geometric` does
     not see at all -- lappy detected it three layers up, as a reason to bail out."""
     m = _modes(np.pi, 0.0, 1.0)
@@ -124,9 +124,9 @@ def test_a_flat_bc_junction_is_the_classic_square_root_singularity():
 
 
 def test_the_mixed_leading_exponent_is_half_the_unmixed_one():
-    for theta in (np.pi / 2, np.pi, 3 * np.pi / 2):
-        plain = _modes(theta, 0.0, 0.0)
-        mixed = _modes(theta, 0.0, 1.0)
+    for omega in (np.pi / 2, np.pi, 3 * np.pi / 2):
+        plain = _modes(omega, 0.0, 0.0)
+        mixed = _modes(omega, 0.0, 1.0)
         assert mixed.orders(mixed.degrees(1))[0] == pytest.approx(
             0.5 * plain.orders(plain.degrees(1))[0], abs=EXACT)
 
@@ -168,18 +168,18 @@ def test_from_corner_reads_theta_and_the_bc_pair_off_the_geometry_object():
     sq = Polygon(np.array([0, 1, 1 + 1j, 1j], dtype=complex))
     for c in sq.corners:
         m = CornerModes.from_corner(c)
-        assert m.nu == pytest.approx(np.pi / c.theta, abs=EXACT)
+        assert m.nu == pytest.approx(np.pi / c.omega, abs=EXACT)
         assert m.kind == "sin"
 
 
 def test_beta_lands_in_the_exterior_wedge():
     """The branch cut has to leave through the exterior, or it cuts Omega. Measured in the
-    corner-local frame that means theta < beta < 2*pi."""
+    corner-local frame that means omega < beta < 2*pi."""
     from conftest import L_SHAPE
 
     for c in Polygon(L_SHAPE).corners:
         m = CornerModes.from_corner(c)
-        assert c.theta < m.beta < 2 * np.pi
+        assert c.omega < m.beta < 2 * np.pi
 
 
 def test_beta_is_the_exterior_bisector_for_a_polygon():
@@ -190,7 +190,7 @@ def test_beta_is_the_exterior_bisector_for_a_polygon():
 
     for c in Polygon(L_SHAPE).corners:
         m = CornerModes.from_corner(c)
-        assert m.beta == pytest.approx(c.theta + (2 * np.pi - c.theta) / 2, abs=1e-12)
+        assert m.beta == pytest.approx(c.omega + (2 * np.pi - c.omega) / 2, abs=1e-12)
 
 
 # --- the hole obstruction ----------------------------------------------------------------------
@@ -207,7 +207,7 @@ def _square_with_hole():
 
 
 def test_a_hole_corner_with_integer_nu_is_accepted():
-    """A square hole corner has theta = 3*pi/2 measured inside Omega, so nu = 2/3 -- NOT
+    """A square hole corner has omega = 3*pi/2 measured inside Omega, so nu = 2/3 -- NOT
     integral, and rejected. This test pins the acceptance path instead, on a hole corner
     whose interior angle is pi/2 so that nu = 2."""
     m = CornerModes.from_wedge(np.pi / 2, 0.0, 0.0, admits_branch_cut=False)
@@ -229,7 +229,7 @@ def test_the_square_hole_corners_of_a_real_domain_are_refused():
     holes = [c for c in dom.corners if c.on_hole]
     assert len(holes) == 4
     for c in holes:
-        assert c.theta == pytest.approx(3 * np.pi / 2, abs=1e-12)
+        assert c.omega == pytest.approx(3 * np.pi / 2, abs=1e-12)
         assert not c.admits_exterior_branch_cut
         with pytest.raises(ValueError, match="hole"):
             CornerModes.from_corner(c)
@@ -256,7 +256,7 @@ def test_an_exponent_a_hair_below_an_integer_still_counts_as_one():
     and pi/(pi/2) is exactly the kind of expression that lands there."""
     from chladni.helmholtz.corners import CornerModes as CM
 
-    m = CM(nu=1.9999999999999998, kind="sin", offset=0.0, theta=np.pi / 2)
+    m = CM(nu=1.9999999999999998, kind="sin", offset=0.0, omega=np.pi / 2)
     assert m.is_single_valued
-    m = CM(nu=2.0000000000000004, kind="sin", offset=0.5, theta=np.pi / 2)
+    m = CM(nu=2.0000000000000004, kind="sin", offset=0.5, omega=np.pi / 2)
     assert m.is_single_valued
