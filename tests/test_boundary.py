@@ -71,8 +71,10 @@ def test_reversed_preserves_geometry_and_bcs():
     r = b.reversed()
     assert r.length == pytest.approx(b.length, abs=EXACT)
     assert sorted(s.bc for s in r.segments) == sorted(s.bc for s in b.segments)
-    # traversal reverses: the first reversed segment ends where the original one began
-    assert r.segments[0].p1 == pytest.approx(b.segments[0].p0, abs=EXACT)
+    # the loop keeps its base point and runs the other way round, so the first reversed
+    # segment starts where the original loop started and retraces the last original segment
+    assert r.segments[0].p0 == pytest.approx(b.segments[0].p0, abs=EXACT)
+    assert r.segments[0].p1 == pytest.approx(b.segments[-1].p0, abs=EXACT)
     assert r.reversed().segments[0].p0 == pytest.approx(b.segments[0].p0, abs=EXACT)
 
 

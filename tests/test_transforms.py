@@ -82,7 +82,11 @@ def test_rotation_composes_back_to_identity(square):
     out = square
     for _ in range(6):
         out = out.rotated(np.pi / 3)
-    assert np.allclose(np.sort_complex(out.outer.sample(64)), np.sort_complex(square.outer.sample(64)), atol=PREC)
+    # compare against the original CURVE, not against sorted samples: sort_complex orders
+    # by real part first, so a 1e-18 residue on an axis-aligned edge reshuffles the array
+    assert np.max(square.outer.dist(out.outer.sample(64))) < PREC
+    assert out.area == pytest.approx(square.area, rel=PREC)
+    assert out.centroid == pytest.approx(square.centroid, abs=PREC)
 
 
 def test_reversed_is_an_involution():

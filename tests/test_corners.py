@@ -99,9 +99,12 @@ def test_corners_follow_traversal_order(l_shape):
 
 def test_bc_change_across_a_straight_edge_is_a_singular_corner(split_edge_bc_junction):
     """theta is exactly pi, so it is not geometric -- but it IS singular."""
-    junctions = [c for c in split_edge_bc_junction.corners if c.is_bc_junction]
-    assert len(junctions) == 1
-    c = junctions[0]
+    corners = split_edge_bc_junction.corners
+    # dir->neu at 0.5 and neu->dir at 1: two changes, but only one is on a straight edge
+    assert len([c for c in corners if c.is_bc_junction]) == 2
+    straight = [c for c in corners if c.is_bc_junction and not c.is_geometric]
+    assert len(straight) == 1
+    c = straight[0]
     assert c.z == pytest.approx(0.5 + 0j, abs=EXACT)
     assert c.theta == pytest.approx(np.pi, abs=EXACT)
     assert not c.is_geometric

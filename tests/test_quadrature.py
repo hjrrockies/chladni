@@ -130,10 +130,12 @@ def test_smooth_integrand_converges_spectrally(unit_disk):
     exact = 2 * np.pi * float(np.i0(1.0))  # oint exp(x) ds on the unit circle
     errs = [
         abs(unit_disk.bdry_quad(n).integrate(lambda z: np.exp(z.real)) - exact)
-        for n in (16, 32, 64)
+        for n in (8, 16, 32)
     ]
     assert errs[-1] < 1e-12
     assert errs[-1] < errs[0] / 1e6
+    # measured: 1.7e-04, 1.7e-11, 2.1e-14. The rule is at machine precision by n=32, so a
+    # range starting at 16 could only be asking for sub-machine accuracy.
 
 
 def test_panels_break_at_corners_so_a_polygon_is_exact(square):
