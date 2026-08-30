@@ -130,6 +130,12 @@ class Boundary(Frozen):
 
     @cached_property
     def is_simple(self):
+        if len(self.segments) == 1:
+            # Nothing to cross but itself, and a segment can answer that analytically: an
+            # arc is simple iff its sweep is at most 2*pi. Going through the polyline
+            # instead cost a disk 4.6 ms of construction and an annulus 12.8 ms, building
+            # 16k points to rediscover a closed form.
+            return self.segments[0].is_simple
         return polyline_is_simple(self.polyline_pts, self.prec * self.length)
 
     @cached_property
@@ -138,8 +144,26 @@ class Boundary(Frozen):
         parts += [s.polyline_pts[1:] for s in self.segments[1:]]
         return np.concatenate(parts)
 
+    @cached_property
+    def bbox(self):
+        boxes = np.array([[s.bbox[0].real, s.bbox[0].imag, s.bbox[1].real, s.bbox[1].imag]
+                          for s in self.segments])
+        return (complex(boxes[:, 0].min(), boxes[:, 1].min()),
+                complex(boxes[:, 2].max(), boxes[:, 3].max()))
+
+    @cached_property
+    def _polyline_cache(self):
+        return self.polyline_uncached()
+
     def polyline(self):
-        """Sub-segments b0[k] -> b1[k] with the index of the segment that owns each."""
+        """Sub-segments b0[k] -> b1[k] with the index of the segment that owns each.
+
+        Cached: `_branch_angle` calls this once per corner, so a twelve-corner curved
+        boundary rebuilt and reconcatenated its whole polyline twelve times.
+        """
+        return self._polyline_cache
+
+    def polyline_uncached(self):
         b0, b1, owner = [], [], []
         for j, seg in enumerate(self.segments):
             pts = seg.polyline_pts

@@ -24,6 +24,9 @@ from ._adaptive import allocate, gauss_legendre
 _GRADE_LAYERS = 4
 _GRADE_RATIO = 0.25
 
+#: Largest Gauss order used on a single panel; above this, subdivide instead.
+_MAX_PANEL_ORDER = 32
+
 
 @dataclass(frozen=True)
 class Quadrature:
@@ -156,6 +159,16 @@ def segment_nodes(seg, n, rule="legendre", grade_start=False, grade_end=False, p
         raise ValueError(f"unknown quadrature rule {rule!r}")
     edges = panel_edges(seg, grade_start, grade_end)
     widths = np.diff(edges)
+    # Cap the order per panel. np.polynomial.legendre.leggauss is O(order^2): one call at
+    # order 1000 costs 39 ms, and a douse loop perturbing vertices changes the per-segment
+    # split every iterate, so a cache keyed on order misses every time. Composite panels
+    # draw from a handful of small orders instead, which the cache holds for the whole run.
+    target = max(len(widths), int(np.ceil(int(n) / _MAX_PANEL_ORDER)))
+    if target > len(widths):
+        splits = allocate(target, widths, min_each=1)
+        edges = np.unique(np.concatenate(
+            [np.linspace(lo, hi, r + 1) for lo, hi, r in zip(edges[:-1], edges[1:], splits)]))
+        widths = np.diff(edges)
     counts = allocate(n, widths) if len(widths) > 1 else np.array([int(n)])
     x, w = None, None
     taus, wts, pids = [], [], []

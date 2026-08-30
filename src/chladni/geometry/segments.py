@@ -215,6 +215,12 @@ class Segment(Frozen, ABC):
         """Points whose chords track the segment to within prec * length."""
         raise NotImplementedError
 
+    @cached_property
+    def bbox(self):
+        """(lower-left, upper-right) as complex. Exact for lines and arcs."""
+        pts = self.polyline_pts
+        return (complex(pts.real.min(), pts.imag.min()), complex(pts.real.max(), pts.imag.max()))
+
     def _chords(self):
         pts = self.polyline_pts
         return pts[:-1], pts[1:]
@@ -384,6 +390,11 @@ class LineSegment(Segment):
     def is_simple(self):
         return True
 
+    @cached_property
+    def bbox(self):
+        return (complex(min(self._a.real, self._b.real), min(self._a.imag, self._b.imag)),
+                complex(max(self._a.real, self._b.real), max(self._a.imag, self._b.imag)))
+
     def dist(self, pt):
         pt = np.asarray(pt, dtype=complex)
         d = self._b - self._a
@@ -445,6 +456,16 @@ class ArcSegment(Segment):
     @cached_property
     def is_simple(self):
         return abs(self.sweep) <= 2 * np.pi + 1e-12
+
+    @cached_property
+    def bbox(self):
+        """Endpoints plus whichever axis extremes the sweep actually reaches -- exact, and
+        it does not force the 16k-point polyline into existence just to find a box."""
+        lo, hi = min(self.theta0, self.theta1), max(self.theta0, self.theta1)
+        k0, k1 = int(np.ceil(lo / (np.pi / 2))), int(np.floor(hi / (np.pi / 2)))
+        angles = np.concatenate([[lo, hi], (np.pi / 2) * np.arange(k0, k1 + 1)])
+        pts = self.center + self.radius * np.exp(1j * angles)
+        return (complex(pts.real.min(), pts.imag.min()), complex(pts.real.max(), pts.imag.max()))
 
     def dist(self, pt):
         pt = np.asarray(pt, dtype=complex)

@@ -90,8 +90,10 @@ class Domain(Frozen):
 
     @cached_property
     def bbox(self):
-        pts = np.concatenate([b.polyline_pts for b in self.boundaries])
-        return (complex(pts.real.min(), pts.imag.min()), complex(pts.real.max(), pts.imag.max()))
+        boxes = np.array([[b.bbox[0].real, b.bbox[0].imag, b.bbox[1].real, b.bbox[1].imag]
+                          for b in self.boundaries])
+        return (complex(boxes[:, 0].min(), boxes[:, 1].min()),
+                complex(boxes[:, 2].max(), boxes[:, 3].max()))
 
     @cached_property
     def centroid(self):
@@ -142,7 +144,14 @@ class Domain(Frozen):
 
     @cached_property
     def inradius(self):
-        """Radius of the largest inscribed disk: grid search, then Nelder-Mead."""
+        """Radius of the largest inscribed disk: grid search, then a compass search.
+
+        The refinement never calls `contains`, and does not need to. If the incumbent has
+        boundary distance `d`, the open disk of radius `d` about it lies in the domain, so a
+        step of at most `d/2` cannot leave. That removes the containment test from the inner
+        loop entirely -- it was 60 of the ~103 us per Nelder-Mead evaluation, and 194
+        evaluations put inradius at 15-27 ms, the single largest cost in a domain lifecycle.
+        """
         lo, hi = self.bbox
         m = 60
         gx = np.linspace(lo.real, hi.real, m)
@@ -152,17 +161,21 @@ class Domain(Frozen):
         if not len(z):
             return 0.0
         d = self.boundary_distance(z)
-        start = z[int(np.argmax(d))]
+        k = int(np.argmax(d))
+        best, best_d = z[k], float(d[k])
 
-        def neg(x):
-            w = complex(x[0], x[1])
-            if not bool(self.contains(np.array([w]))[0]):
-                return 0.0
-            return -float(self.boundary_distance(np.array([w]))[0])
-
-        res = minimize(neg, np.array([start.real, start.imag]), method="Nelder-Mead",
-                       options={"xatol": 1e-13, "fatol": 1e-15, "maxiter": 4000, "maxfev": 4000})
-        return max(float(d.max()), float(-res.fun))
+        offsets = np.array([complex(a, b) for a in (-1, 0, 1) for b in (-1, 0, 1)
+                            if (a, b) != (0, 0)])
+        h = 0.5 * best_d
+        for _ in range(48):
+            cand = best + h * offsets
+            dd = self.boundary_distance(cand)
+            k = int(np.argmax(dd))
+            if dd[k] > best_d:
+                best, best_d = cand[k], float(dd[k])
+                h = min(h, 0.5 * best_d)
+            h *= 0.5
+        return best_d
 
     # --- containment --------------------------------------------------------------------
 

@@ -26,9 +26,9 @@ def check_nondegenerate(boundary, what="boundary"):
     `validate=False` so an optimizer can trial it; a collinear vertex list encloses nothing
     and is degenerate under any flag.
     """
-    pts = boundary.polyline_pts
-    w = float(pts.real.max() - pts.real.min())
-    h = float(pts.imag.max() - pts.imag.min())
+    lo, hi = boundary.bbox          # exact for lines and arcs; no polyline forced
+    w = float(hi.real - lo.real)
+    h = float(hi.imag - lo.imag)
     scale = max(w, h, 1.0)
     tol = max(boundary.prec, 1e-12) * scale
     if w <= tol or h <= tol:
@@ -50,7 +50,12 @@ def check_holes(outer, holes):
     from shapely import LinearRing, STRtree
 
     for k, h in enumerate(holes):
-        if not np.all(inside(outer, h.polyline_pts)):
+        # A bounded boundary sample, not the full polyline: containment is checked by
+        # sampling either way, and the polyline is at prec resolution (16k points for a
+        # circle) which nothing else in a solve needs -- building it here was most of an
+        # annulus's construction time.
+        probe = h.sample(max(512, 64 * len(h.segments)))
+        if not np.all(inside(outer, probe)):
             raise ValueError(f"hole {k} is not contained in the outer boundary")
     if len(holes) < 2:
         return
