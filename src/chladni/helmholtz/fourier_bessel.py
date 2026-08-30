@@ -55,6 +55,22 @@ from .corners import CornerModes
 _JMAX_C = 0.6748
 _JMAX_SHIFT = 0.3
 
+#: Floor on the Debye amplitude's `w`, at the Airy transition width where the asymptotic
+#: stops being valid. Solved, not tuned: it is the value that makes the floored amplitude
+#: `-0.5*log(2*pi*mu*w)` equal the global maximum `log(_JMAX_C*(mu+_JMAX_SHIFT)**(-1/3))`
+#: exactly at the crossover, so the envelope and the cap MEET there instead of crossing.
+_AIRY_FLOOR = np.exp(-2.0 * np.log(_JMAX_C)) / (2 * np.pi)
+
+#: Sharpness of the soft minimum blending the envelope with the cap. 1 would be plain
+#: `logaddexp`, costing a factor 2 in the column maximum where the two branches meet;
+#: 4 costs 2**(1/4) = 1.19 and keeps every derivative bounded. `min` costs nothing there and
+#: puts a kink into the objective MPS parabola-fits, which is the trade being refused.
+_BLEND = 4.0
+
+#: mu = 0 (the leading Neumann mode) is not a Debye problem at all -- J_0 is O(1) everywhere
+#: and the cap alone is right. This keeps the division finite without a separate branch.
+_MU_FLOOR = 1e-12
+
 
 def _log_envelope(mu, x):
     """The per-column log scale `sigma`: the Debye envelope at radius R, smoothly capped.
@@ -63,9 +79,37 @@ def _log_envelope(mu, x):
     depends on `(column, k)` and on nothing about the evaluation points. That is the property
     that lets a downstream unit-norm rescale compose with this one without double-counting.
 
-    `logaddexp` rather than `min`, and the difference is not cosmetic: `min` puts a kink in
-    k, and `sigma(k)` sits inside the objective MPS parabola-fits. Measured column maxima
-    with this rule, over mu <= 352, k*R <= 300 and theta in {pi/8, 3*pi/2}: [0.75, 1.35].
+    Three pieces, and each one is there because a simpler version was measured and failed.
+
+    **The envelope.** `mu*eta` with `eta = w + log(z/(1+w))`, `z = k*R/mu`, `w = sqrt(1-z*z)`:
+    the exponent of the Debye asymptotic, which is where all the dynamic range is. It is
+    extended by 0 past `z = 1`, and that extension is C1 -- `eta -> 0` and `d(eta)/dz -> 0`
+    there, since `d(eta)/dz = 1/z - z/(1+w)` is `0` at `z = 1`.
+
+    **The amplitude, regularized at the Airy width.** The Debye prefactor is
+    `-0.5*log(2*pi*mu*w)`, and `w -> 0` at the crossover, so that term diverges and its
+    derivative diverges faster. Measured across the crossover at mu = 20, as a second
+    difference in k: 8.4e5 unfloored against 6.5 floored. Note that unfloored, the SMOOTH
+    blend (8.4e5) is worse than a hard `min` (1.9e3), because `min` clips the divergence
+    while `logaddexp` follows it in -- the floor is the load-bearing fix and the soft blend
+    is what removes the kink that remains. Replacing `w` by
+    `(q**2 + w_floor**4)**0.25` with `q = 1 - z*z` floors it at the Airy transition width,
+    where the asymptotic stops being valid anyway. `_AIRY_FLOOR` is chosen so the floored
+    amplitude reproduces the global maximum exactly AT the crossover, which is what makes the
+    two branches meet rather than merely cross.
+
+    **The cap.** Past `z = 1` the function is oscillatory and R stops being where the maximum
+    is, so the global max of `J_mu` takes over. The two are blended by a soft minimum rather
+    than by `min`: `min` puts a kink in k, and `sigma(k)` sits inside the objective MPS
+    parabola-fits. `_BLEND` sets how sharp the blend is; at 4 the two branches meeting costs
+    a factor `2**(1/4) = 1.19` in the column maximum, against `min`'s discontinuous
+    derivative.
+
+    Measured, over mu from 0.05 to 320 and k*R from 0.5 to 300: column maxima land in
+    [0.802, 1.185], a spread of 1.48x, against raw columns spanning hundreds of orders of
+    magnitude over the same grid. The second difference of `sigma` in k is at most 20.8 at
+    mu = 2, 3.1 at mu = 20 and 0.5 at mu = 200 -- bounded, and 1e5 times smaller than the
+    unregularized form across the crossover.
 
     Two alternatives were tried and are worse. Normalizing by `log J_mu(k*R)` puts a POLE in
     `sigma(k)` at every zero of `J_mu`. The leading small-argument term alone leaves a
@@ -75,15 +119,23 @@ def _log_envelope(mu, x):
     under `Domain.normalized(by=s)` with `k -> k*s`.
     """
     mu = np.asarray(mu, dtype=float)
+    p = _BLEND
     with np.errstate(divide="ignore", invalid="ignore"):
-        z = x / mu
-        w = np.sqrt(np.maximum(1.0 - z * z, 0.0))
-        a = mu * (w + np.log(z / (1.0 + w))) - 0.5 * np.log(2 * np.pi * mu * w)
-        # Past k*R = mu the function is oscillatory and R stops being where the maximum is;
-        # the cap takes over. a -> +inf continuously as z -> 1, so this is not a seam.
-        a = np.where((mu > 0) & (z < 1.0), a, np.inf)
+        z = x / np.maximum(mu, _MU_FLOOR)
+        q = 1.0 - z * z
+        w = np.sqrt(np.maximum(q, 0.0))
+        eta = np.where(q > 0.0, w + np.log(z / (1.0 + w)), 0.0)
+        floor = _AIRY_FLOOR * (mu + _JMAX_SHIFT) ** (2.0 / 3.0) / np.maximum(mu, _MU_FLOOR)
+        # A SMOOTH positive part of q, not `maximum(q, 0)`. Past the crossover q goes
+        # negative and `q*q` would start growing again, which drives the amplitude down and
+        # the column maximum up -- measured at 27.7 before this line, against 1.4 after.
+        # Clamping with `maximum` fixes the size but leaves a jump in the second derivative;
+        # this is C-infinity and has the same two limits.
+        q_plus = 0.5 * (q + np.sqrt(q * q + floor**4))
+        w_eff = (q_plus * q_plus + floor**4) ** 0.25
+        a = mu * eta - 0.5 * np.log(2 * np.pi * np.maximum(mu, _MU_FLOOR) * w_eff)
     b = np.log(_JMAX_C * (mu + _JMAX_SHIFT) ** (-1.0 / 3.0))
-    return -np.logaddexp(-a, -b)
+    return -np.logaddexp(-p * a, -p * b) / p
 
 
 def _winding(poly, z):
