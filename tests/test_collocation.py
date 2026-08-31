@@ -101,14 +101,32 @@ def test_the_two_samplings_must_share_a_column_space():
                   other.at(poly.interior_pts(40, rng=np.random.default_rng(RNG))), k_ref=K)
 
 
-def test_a_rank_must_be_choosable():
-    """`rank=None` with no reference parameter cannot be resolved, and guessing one is a
-    silent conditioning error of the same kind as guessing `Fundamental.radius`. Say so."""
+def test_the_default_rank_rule_is_threshold():
+    """No `rank`, no `k_ref`: the rank is re-derived at every `k` from `rtol`.
+
+    This is the default because it is the only rule that cannot pick an UNSAFE rank. The
+    pencil's numerical rank grows with `k` -- 31 to 47 across a disk scan -- so any fixed
+    integer is too large somewhere, and a rank sitting at machine epsilon turns the tension
+    rough: 85 spurious local minima in a window holding one eigenvalue. Threshold
+    re-derives from the spectrum actually in front of it and cannot make that mistake.
+    """
     poly = Polygon(L_SHAPE)
     b = basis_for(poly)
-    with pytest.raises(ValueError, match="k_ref"):
-        MPSPencil(b.at(poly.bdry_quad(100)),
-                  b.at(poly.interior_pts(40, rng=np.random.default_rng(RNG))))
+    p = MPSPencil(b.at(poly.bdry_quad(200)),
+                  b.at(poly.interior_pts(80, rng=np.random.default_rng(RNG))))
+    assert p.rank is None and not p.is_frozen
+    assert p.rank_at(K) == len(p.tensions(K))
+    assert "threshold" in repr(p)
+
+
+def test_a_frozen_rank_still_needs_a_reference_or_a_value():
+    """Freezing is still available and still refuses to guess where to freeze."""
+    poly = Polygon(L_SHAPE)
+    b = basis_for(poly)
+    q, pts = poly.bdry_quad(200), poly.interior_pts(80, rng=np.random.default_rng(RNG))
+    frozen = MPSPencil(b.at(q), b.at(pts), k_ref=(3.0, 4.0))
+    assert frozen.is_frozen and isinstance(frozen.rank, int)
+    assert MPSPencil(b.at(q), b.at(pts), rank=12).rank == 12
 
 
 # --- equilibration ----------------------------------------------------------------------

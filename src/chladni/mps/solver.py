@@ -56,15 +56,8 @@ class MPSEigensolver(Eigensolver, Frozen):
                 raise ValueError("pass either int_pts or n_int")
             int_pts = domain.interior_pts(n_int, rng=np.random.default_rng(rng))
 
-        if lam_ref is None and rank is None:
-            # The pencil refuses to guess a reference, and is right to: it has no geometry
-            # to guess from. A solver does, so it may -- and it must guess a RANGE, not a
-            # point. The numerical rank grows with k, so a rank chosen at the MIDPOINT of a
-            # scan window is too large at the low end: on a disk, freezing at k = 3.95 gave
-            # rank 39 whose relative singular value at k = 2.35 is 2.4e-16, and that pencil
-            # showed 85 spurious local minima in a window holding one eigenvalue. Choosing
-            # over the window gives 31, and one.
-            lam_ref = weyl_window(domain, _REF_MODES)
+        # No lam_ref by default: the rank is re-derived per lam (threshold), which is the
+        # only rule that cannot pick an unsafe rank. Pass lam_ref=(lo, hi) to freeze it.
 
         _set(self, _pencil=MPSPencil.from_basis(
             basis, bdry_quad, int_pts, reg=reg, rank=rank, rtol=rtol,
@@ -82,6 +75,7 @@ class MPSEigensolver(Eigensolver, Frozen):
     n_bdry = property(lambda self: self._pencil.n_bdry)
     n_int = property(lambda self: self._pencil.n_int)
     rank = property(lambda self: self._pencil.rank)
+    is_frozen = property(lambda self: self._pencil.is_frozen)
     rtol = property(lambda self: self._pencil.rtol)
     reg = property(lambda self: self._pencil.reg)
 
@@ -90,13 +84,23 @@ class MPSEigensolver(Eigensolver, Frozen):
 
         Arrays are evaluated on a thread pool: the work is LAPACK, which releases the GIL,
         and `douse` runs whole solves across threads on top of this.
+
+        Under the threshold rank the vector's LENGTH varies with `lam`, since the pencil's
+        numerical rank grows with `k`. Rows are padded to a common width with `+inf`, which
+        is the honest value: a direction the pencil does not resolve has no finite tension,
+        and `+inf` sorts to the end exactly as the zero-denominator case already does.
         """
         arr = np.asarray(lam, dtype=float)
         if arr.ndim == 0:
             return self._pencil.tensions(lam_to_k(float(arr)))
         ks = lam_to_k(arr)
         with cf.ThreadPoolExecutor() as ex:
-            return np.array(list(ex.map(self._pencil.tensions, ks)))
+            rows = list(ex.map(self._pencil.tensions, ks))
+        w = max(len(r) for r in rows)
+        out = np.full((len(rows), w), np.inf)
+        for i, r in enumerate(rows):
+            out[i, :len(r)] = r
+        return out
 
     def tension(self, lam):
         """The smallest generalized singular value at `lam`: the quantity to be minimized."""
@@ -130,4 +134,4 @@ class MPSEigensolver(Eigensolver, Frozen):
     def __repr__(self):
         return (f"MPSEigensolver({self.domain!r}, n_cols={self.n_cols}, "
                 f"n_bdry={self.n_bdry}, n_int={self.n_int}, "
-                f"rank={self.rank})")
+                f"rank={self.rank if self.rank is not None else 'threshold'})")

@@ -150,22 +150,14 @@ class MPSPencil(Frozen):
         rtol = float(np.sqrt(prec * np.finfo(float).eps)) if rtol is None else float(rtol)
 
         k_ref = _as_k_ref(k_ref)
-        if rank is None:
-            if k_ref is None:
-                raise ValueError(
-                    "pass either an explicit rank or a k_ref to choose one over. The rank "
-                    "is frozen for the life of the pencil, so it has to be chosen "
-                    "SOMEWHERE, and guessing the reference is a silent conditioning error "
-                    "of the same kind as guessing Fundamental.radius. Prefer the (lo, hi) "
-                    "range the pencil will be used over: the numerical rank GROWS with k, "
-                    "so a rank chosen at a single k is too large at the low end."
-                )
-            # the minimum over the range, because the rank grows with k
+        if rank is None and k_ref is not None:
+            # frozen, chosen over the range: the minimum, because the rank grows with k
             rank = min(choose_rank(*equilibrate(*assemble(bdry, interior, k))[:2], rtol)
                        for k in _rank_probe_ks(k_ref))
-        rank = int(rank)
-        if not 0 < rank <= len(bdry.family):
-            raise ValueError(f"rank must lie in [1, {len(bdry.family)}], got {rank}")
+        if rank is not None:
+            rank = int(rank)
+            if not 0 < rank <= len(bdry.family):
+                raise ValueError(f"rank must lie in [1, {len(bdry.family)}], got {rank}")
 
         _set(self, bdry=bdry, interior=interior, reg=reg, rank=rank, rtol=rtol,
              k_ref=k_ref, prec=prec,
@@ -232,13 +224,29 @@ class MPSPencil(Frozen):
         k = check_k(k)
         return self.basis.log_scale(k) + self._equilibrated(k)[2]
 
+    @property
+    def is_frozen(self):
+        """True when the rank is fixed for the life of the pencil, False for threshold."""
+        return self.rank is not None
+
+    def rank_at(self, k):
+        """The rank actually used at `k`.
+
+        In threshold mode this is re-derived from the spectrum, so it varies with `k` --
+        which is the point: the pencil's numerical rank GROWS with `k`, and a rank fixed at
+        one end of a scan is wrong at the other.
+        """
+        if self.rank is not None:
+            return self.rank
+        return choose_rank(*self.pencil(k), self.rtol)
+
     def regularized(self, k):
-        """The `RegularizedPencil` at `k`, truncated to this pencil's frozen rank."""
+        """The `RegularizedPencil` at `k`, truncated to `rank_at(k)`."""
         key = ("reg", float(check_k(k)))
         hit = self._cache.get(key)
         if hit is None:
             B, I = self.pencil(k)
-            hit = regularize(B, I, reg=self.reg, rank=self.rank)
+            hit = regularize(B, I, reg=self.reg, rank=self.rank_at(k))
             self._store(key, hit)
         return hit
 
@@ -251,8 +259,9 @@ class MPSPencil(Frozen):
         """
         B, I = self.pencil(k)
         s = la.svdvals(np.vstack([B, I]))
-        self._warn_if_unsafe(s, k)
-        return RankDiagnostics(self.rank, s)
+        if self.rank is not None:
+            self._warn_if_unsafe(s, k)
+        return RankDiagnostics(self.rank_at(k), s)
 
     def _warn_if_unsafe(self, s, k):
         """Warn when the frozen rank has reached the noise floor at this `k`.
@@ -308,5 +317,6 @@ class MPSPencil(Frozen):
         cache[key] = value
 
     def __repr__(self):
+        rank = self.rank if self.rank is not None else "threshold"
         return (f"MPSPencil(n_cols={self.n_cols}, n_bdry={self.n_bdry}, "
-                f"n_int={self.n_int}, reg={self.reg!r}, rank={self.rank})")
+                f"n_int={self.n_int}, reg={self.reg!r}, rank={rank})")

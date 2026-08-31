@@ -390,3 +390,20 @@ Choosing the rank over the range instead gives 31, and one minimum.
 `k_ref` therefore accepts `(lo, hi)` and takes the minimum over it; `MPSEigensolver` passes
 its whole Weyl window; and `rank_diagnostics` warns when the frozen rank has reached the noise
 floor at an evaluated `k`.
+
+**The default rank rule is now threshold**, re-derived at every `k`. It cannot make the above
+mistake, because it reads the spectrum actually in front of it. The comparison, on the recall
+metric that matters:
+
+    domain    frozen chosen at   frozen r   thr r   minima frozen   minima thr
+    disk      point k=3.95             39   31-33              85            1
+    disk      range (2.2, 5.7)         31   31-33               1            1
+    L-shape   either                   61      61               1            1
+
+Threshold is correct in every case, including the one that breaks the frozen rank, and the
+margin on the frozen side is thin: rank 37 still behaves at `k = 2.35`, rank 39 does not. It
+costs 1.2 to 1.6x, and under "recall above all" that is the right trade -- what the frozen
+rank needs in exchange, a correctly declared `k` range, is exactly what a black-box solver
+iterating over generated domains cannot be trusted to supply. Freezing remains available, is
+now safe when given a range, and keeps its reproducibility and cost advantages for callers who
+know their range.
