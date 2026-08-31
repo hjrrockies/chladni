@@ -62,7 +62,7 @@ numbers, so the test suite runs them end to end.
 | `geometry` | **implemented** | Segments with arclength parameterization; boundaries, orientation and frames; domains with holes; corners carrying angle, boundary conditions, clearance and branch cuts; boundary quadrature with weights and provenance. |
 | `helmholtz` | **implemented** | Corner-adapted Fourier-Bessel families with branch cuts and Zaremba (mixed-BC) corners; `Y_m` multipoles at exterior sources, offset layers and lightning clusters; plane waves; a composite `Basis`. A scaled Bessel kernel that keeps full relative accuracy past the point where `scipy.special.jv` underflows to zero, and an analytic per-column scale that leaves the columns O(1). |
 | `plotting` | **implemented** | Domains, boundary conditions, normals and tangents, and a colour-coded diagnostic view. Kept in its own layer so `geometry` never imports matplotlib. |
-| `mps` | planned | The GSVD-regularized MPS eigensolver, plus orthonormal eigenfunctions via Rellich-identity boundary integrals evaluated by quadrature. |
+| `mps` | **partial** | Collocation matrix assembly, column equilibration, index-truncated SVD and column-pivoted-QR regularization, the `gsvd4py` call, the tension and eigenfunction coefficients. `MPSPencil` is domain-free and speaks `k`; `MPSEigensolver` owns the domain and speaks `lam`. The L-shape reaches 1.7e-12 at its first eigenvalue. The eigenvalue search and multiplicity estimation, basis planning, and Rellich-identity orthonormalization are not written yet. |
 
 ## Installation
 

@@ -81,8 +81,21 @@ validation is one rule instead of a `sqrt` of a possibly-negative line-search it
 Bessel accuracy regimes that layer has to reason about are stated in `(nu, k*r)`.
 
 **`lam = k**2` is the parameter of the `mps` layer and of everything a user talks about.** Weyl's
-law, `Domain.normalized`, and the word "eigenvalue" are all in `lam`. The conversion happens at
-exactly one seam, `Eigenproblem`, and is written down there.
+law, `Domain.normalized`, and the word "eigenvalue" are all in `lam`.
+
+**A parameter's NAME states its variable, and there is no single conversion seam.** An earlier
+version of this entry said the conversion "happens at exactly one seam, `Eigenproblem`". That was
+too strong, and it was written before there was any evidence about which variable suits which
+step: Weyl's law and the user's vocabulary are in `lam`, every particular solution is literally a
+function of `k*r`, and whether the tension curve is better conditioned for minimization in one or
+the other is an open measurement. Fixing a single seam would settle that by class layout instead
+of by measurement.
+
+So the rule is a naming discipline rather than a location. Any function may work in whichever
+variable suits it, provided its argument is *named* for that variable -- `k` or `lam`, never an
+argument whose meaning has to be inferred. In the `mps` layer that lands as `MPSEigensolver`
+speaking `lam` and `MPSPencil` speaking `k`, with the conversion at the boundary between them,
+but that is a consequence of the discipline and not a new rule.
 
 Under `Domain.normalized(by=s)`: `lam -> lam * s**2`, equivalently `k -> k * s`.
 
