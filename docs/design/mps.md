@@ -371,7 +371,7 @@ Unchanged: the eigenvalue search and multiplicity estimation, Rellich orthonorma
 basis planning and the point budget, and whether `k` or `lam` is the better variable for the
 minimization.
 
-## The rank must be chosen over a RANGE, not at a point
+## The rank must be chosen over a RANGE, and the default is now threshold
 
 Two corrections to the section above, both found by measuring the objective before designing
 a search for it (`notes/`, not tracked).
@@ -407,3 +407,80 @@ rank needs in exchange, a correctly declared `k` range, is exactly what a black-
 iterating over generated domains cannot be trusted to supply. Freezing remains available, is
 now safe when given a range, and keeps its reproducibility and cost advantages for callers who
 know their range.
+
+## `reg="implicit"` was given a fair trial and is not the default
+
+The idea: hand `tola`/`tolb` to `gsvd4py` and skip our QR and SVD entirely. It works, and it
+is supported. It is not the default, for two measured reasons.
+
+**It applies a different criterion, not a different scale.** LAPACK's `?ggsvp3` thresholds `A`
+and `B` separately in 1-norms; `choose_rank` thresholds the stacked pencil in 2-norms. At
+equal `rtol` implicit truncates two to four columns harder, and on the disk **no single
+`rtol` reproduces the svd rank at every `k`** -- 1e-15 gives [31, 34, 39, 43, 45] against
+[31, 35, 39, 43, 47]. Calibrated on the L-shape (`rtol = 1e-15`, rank 61 throughout) the two
+agree exactly on the eigenvalue: relative error 1.41e-10 and floor 4.14e-09, both identical.
+
+**At matched rank the saving is small.** 1.10x on the L-shape. The profile says why: the
+QR and SVD really are a large share of the route, but implicit does not remove that work, it
+moves it inside LAPACK, whose `?ggsvp3` preprocesses all `n` columns rather than the reduced
+`r`. Uncalibrated it looked like 1.6 to 2.0x, which was implicit doing LESS work, not the
+same work faster.
+
+One tempting shortcut is closed off, and worth recording because it is not obvious: `tola` is
+purely a rank threshold in `gsvd4py`, never a convergence knob. `gsvd4py/_gsvd.py` pins
+`?tgsja`'s Jacobi tolerances to the LAPACK defaults on purpose, "so that convergence quality
+is independent of the user's rank choice", so loosening `tola` cannot buy speed by converging
+less hard.
+
+One behavioural difference for consumers: implicit can return `+inf` tensions, where the
+`"svd"` route structurally cannot. The reduced stack `Q Z_1` has orthonormal columns, so
+`s > 0` is guaranteed there; implicit hands LAPACK the raw pencil, and a direction the
+interior block annihilates comes back as an infinite generalized singular value. It is the
+honest answer and it sorts to the end, but nothing downstream may assume finiteness.
+
+## The rank is derived inside each mode's own factorization
+
+Found while giving `"qrp"` a fair trial, and it turned out to matter more than the trial did.
+
+Threshold mode called `choose_rank` -- an `svdvals` of the stacked pencil -- and then handed
+the resulting integer to `regularize`, whose `"svd"` branch computes the SVD of `R`. Since
+`Q` has orthonormal columns those two decompositions have the SAME singular values, verified
+to 4e-15. **The default path was computing the same SVD twice.** On a 134-column L-shape
+pencil the redundant `svdvals` was 2.13 ms of an 8.19 ms evaluation.
+
+Each mode now derives its own rank from its own factorization: `"svd"` from the singular
+values it already has, `"qrp"` from `|diag R|`, `"implicit"` from LAPACK. `choose_rank`
+remains a free function, for diagnostics and for picking a rank to FREEZE, where the number
+is genuinely wanted before the reduction.
+
+Measured gain on the default path, regularization and GSVD only:
+
+    domain    cols    before    after    gain
+    disk        54    2.61 ms   1.99     1.31x
+    eq_tri     106    6.19      4.56     1.36x
+    rect       126    7.04      4.83     1.46x
+    L-shape    134    8.07      5.97     1.35x
+
+## `"qrp"` is not faster, and that finding is entirely an artifact of the above
+
+QRP was measured at 1.28 to 1.48x against the double-SVD baseline. Against the corrected one
+it is **1.01 to 1.04x** -- no gain, and slower than `"svd"` on the largest pencil in one run.
+Pivoted QR costs about what an unpivoted QR plus an SVD of `R` costs at these shapes: pivoting
+inhibits blocking, and it loses on the QR what it saves on the SVD.
+
+So the trial answers itself. What `"qrp"` costs in robustness is small but real -- it
+overestimated the rank by up to ten columns on the rectangle, and its floor `eps` is one to
+two digits worse (1.4e-13 against 1.6e-15 there) -- and what it buys is nothing. Its rank rule
+is also only a WEAK rank revealer: on a Kahan matrix at n = 90 it overestimates the smallest
+singular value by 3.4e4. Across 240 evaluations on four domains that never bit, the cut never
+falling below 2.2e-13, three decades clear of where the tension goes rough. Real failure mode,
+not observed here, no compensating benefit.
+
+`"qrp"` stays available and stays honest about all three facts. **QR -> SVD -> GSVD is the
+default because it is now also the fastest robust option**, which is a more comfortable place
+to be than defending it on robustness alone.
+
+A note on method, since this is the third time in this file: every speed comparison in the two
+sections above was first measured against a baseline that was itself doing redundant work, and
+every one of those numbers was wrong in the same direction -- flattering the alternative. The
+fix was found by profiling the baseline rather than the alternatives.

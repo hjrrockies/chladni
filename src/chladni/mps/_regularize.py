@@ -99,6 +99,24 @@ def choose_rank(A_B, A_I, rtol):
     return int((s >= rtol * s[0]).sum())
 
 
+def _rank_from(diag, rank, rtol):
+    """The rank to truncate at: the caller's, or derived from this factorization's own
+    diagonal at the relative cutoff `rtol`.
+
+    For `"svd"` the diagonal is the singular values of the stacked pencil; for `"qrp"` it is
+    `|diag R|`, which is only a WEAK rank revealer -- on a Kahan matrix at n = 90 it
+    overestimates the smallest singular value by 3.4e4. Measured on MPS pencils it is far
+    tamer: across 240 evaluations on four domains it retained at most ten extra columns and
+    never put the cut below 2.2e-13, three decades clear of where the tension goes rough.
+    The failure mode is real and has not been observed here, which is the honest summary.
+    """
+    if rank is not None:
+        return int(rank)
+    if diag.size == 0 or diag[0] <= 0.0:
+        return 0
+    return int((diag >= rtol * diag[0]).sum())
+
+
 def _warn_if_degenerate(s, rank):
     if s is None or rank <= 0 or rank >= len(s):
         return
@@ -114,7 +132,8 @@ def _warn_if_degenerate(s, rank):
         )
 
 
-def regularize(A_B, A_I, reg="svd", rank=None, tola=None, tolb=None):
+def regularize(A_B, A_I, reg="svd", rank=None, tola=None, tolb=None,
+               rtol=np.finfo(float).eps):
     """Reduce the pencil `(A_B, A_I)` to `rank` columns, returning the map back.
 
     `reg` selects the mode:
@@ -123,12 +142,27 @@ def regularize(A_B, A_I, reg="svd", rank=None, tola=None, tolb=None):
       `rank` left singular directions. The default, and the best conditioned.
     * `"qrp"` -- column-pivoted QR, keep the leading `rank` pivoted columns. Cheaper, and it
       names actual basis columns, which makes it the readable one when debugging.
-    * `"implicit"` -- no pre-truncation; `tola`/`tolb` are handed to the GSVD so LAPACK makes
-      the rank decision. **Diagnostic only.** LAPACK's decision is threshold-based, which
-      reintroduces exactly the discontinuity in `k` that the fixed rank removes.
+    * `"implicit"` -- no pre-truncation here; `tola`/`tolb` are handed to the GSVD so
+      LAPACK's `?ggsvp3` makes the rank decision. Supported, and measurably close to the
+      `"svd"` route, but not the default -- see `docs/design/mps.md` for the numbers. Two
+      things to know. It applies a DIFFERENT criterion, thresholding `A` and `B` separately
+      in 1-norms rather than the stacked pencil in 2-norms, so at equal `rtol` it truncates
+      two to four columns harder and cannot be calibrated to agree at every `k`. And it is
+      only modestly cheaper at matched rank -- 1.16x on the L-shape -- because it does not
+      remove the preprocessing, it moves it inside LAPACK, which runs on all `n` columns
+      instead of the reduced `r`.
     * `None` -- no regularization at all.
 
-    `rank=None` means no truncation: the full numerical rank is kept.
+    `rank=None` means **derive the rank here**, from this mode's own factorization at the
+    relative cutoff `rtol`. That is not a convenience: the `"svd"` mode's SVD of `R` has the
+    same singular values as the stacked pencil (`Q` has orthonormal columns), so asking
+    `choose_rank` first computed the identical decomposition twice. Measured on a 134-column
+    L-shape pencil, that redundant `svdvals` was 2.13 ms of an 8.19 ms evaluation -- 26% --
+    and deriving the rank in place deletes it. `"qrp"` likewise reads its rank off `|diag R|`
+    from the factorization it already performed, which is the whole point of pivoting.
+
+    `choose_rank` remains available as a free function, for diagnostics and for choosing a
+    rank to FREEZE, where the caller genuinely wants the number before the reduction.
     """
     A_B, A_I = np.asarray(A_B, dtype=float), np.asarray(A_I, dtype=float)
     m, n = A_B.shape[0], A_B.shape[1]
@@ -138,8 +172,14 @@ def regularize(A_B, A_I, reg="svd", rank=None, tola=None, tolb=None):
         return RegularizedPencil(A_B[:, :r], A_I[:, :r], lambda y: np.asarray(y), r)
 
     if reg == "implicit":
-        r = n if rank is None else int(rank)
-        return RegularizedPencil(A_B[:, :r], A_I[:, :r], lambda y: np.asarray(y), r,
+        # No pre-truncation: hand LAPACK the thresholds and let ?ggsvp3 pick the rank. The
+        # scaling mirrors LAPACK's own default, which is
+        # `max(m, n) * norm(a, 1) * eps`, with `eps` replaced by the caller's `rtol`.
+        if tola is None:
+            tola = max(A_B.shape) * max(np.linalg.norm(A_B, 1), np.finfo(float).tiny) * rtol
+        if tolb is None:
+            tolb = max(A_I.shape) * max(np.linalg.norm(A_I, 1), np.finfo(float).tiny) * rtol
+        return RegularizedPencil(A_B, A_I, lambda y: np.asarray(y), n,
                                  tola=tola, tolb=tolb)
 
     stack = np.vstack([A_B, A_I])
@@ -147,7 +187,7 @@ def regularize(A_B, A_I, reg="svd", rank=None, tola=None, tolb=None):
     if reg == "svd":
         Q, R = la.qr(stack, mode="economic")
         Z, s, Yt = _svd_gesdd_then_gesvd(R)
-        r = len(s) if rank is None else int(rank)
+        r = _rank_from(s, rank, rtol)
         _warn_if_degenerate(s, r)
         Z1, s1 = Z[:, :r], s[:r]
         Y1 = Yt[:r].T                                 # (n, r)
@@ -164,7 +204,7 @@ def regularize(A_B, A_I, reg="svd", rank=None, tola=None, tolb=None):
     if reg == "qrp":
         Q, R, P = la.qr(stack, mode="economic", pivoting=True)
         d = np.abs(np.diag(R))
-        r = len(d) if rank is None else int(rank)
+        r = _rank_from(d, rank, rtol)
         _warn_if_degenerate(d, r)
         reduced, R11 = Q[:, :r], R[:r, :r]
 

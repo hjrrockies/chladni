@@ -280,10 +280,49 @@ def test_the_gesdd_fallback_fires_and_warns(monkeypatch):
     assert r.rank == 12
 
 
-def test_implicit_mode_is_documented_as_diagnostic_only():
-    """It hands the rank decision to LAPACK's own threshold, which reintroduces exactly the
-    discontinuity this module exists to remove. It stays available and stays labelled."""
-    assert "diagnostic" in regularize.__doc__.lower()
+def test_implicit_mode_agrees_with_the_svd_route():
+    """`reg="implicit"` hands the rank decision to LAPACK's `?ggsvp3` via tola/tolb,
+    skipping our QR and SVD. It is supported and it works; it is not the default.
+
+    Two measured reasons, both recorded in `docs/design/mps.md`. It applies a DIFFERENT
+    criterion -- `A` and `B` thresholded separately in 1-norms, against the stacked pencil
+    in 2-norms -- so at equal `rtol` it truncates two to four columns harder, and on the
+    disk no single `rtol` reproduces the svd rank at every `k`. And at MATCHED rank it is
+    only 1.16x faster on the L-shape, because it does not remove the preprocessing so much
+    as move it inside LAPACK, which runs on all `n` columns rather than the reduced `r`.
+
+    Note for anyone tempted to reach for `tola` as a speed knob: in `gsvd4py` it is purely
+    a rank threshold. `_gsvd.py` pins `tgsja`'s Jacobi convergence tolerances to the LAPACK
+    defaults on purpose, "so that convergence quality is independent of the user's rank
+    choice", so loosening `tola` does not buy speed by converging less hard.
+    """
+    A_B, A_I = well_conditioned(n=12)
+    ref = tensions_fn(A_B, A_I, reg="svd", rank=12)
+    got = tensions_fn(A_B, A_I, reg="implicit", rank=None)
+    assert len(got) == len(ref)
+    assert np.allclose(got, ref, rtol=1e-8, atol=1e-12)
+
+
+def test_implicit_mode_is_usable_from_a_pencil(pencil):
+    """It must be reachable through the object, not only through the free function, and it
+    must not secretly pay for the factorization it exists to avoid."""
+    p = MPSPencil(pencil.bdry, pencil.interior, reg="implicit")
+    t = p.tensions(K)
+    assert p.rank is None
+    assert p.rank_at(K) == len(t)
+
+    # Ascending, but note the trailing +inf: unlike the svd route, whose reduced stack has
+    # orthonormal columns and therefore no zero denominators, implicit hands the raw pencil
+    # to LAPACK and a direction the interior block annihilates comes back as an infinite
+    # generalized singular value. That is the honest answer and it sorts to the end, but it
+    # means a consumer must not assume the vector is finite.
+    assert t.ndim == 1
+    finite = np.isfinite(t)
+    assert np.all(np.diff(t[finite]) >= 0)
+    assert np.all(finite[: finite.sum()]), "the infinities must be a trailing block"
+    # within a few percent of the svd route's tension at the same k
+    ref = MPSPencil(pencil.bdry, pencil.interior).tension(K)
+    assert abs(p.tension(K) - ref) / ref < 0.05
 
 
 # --- the rank must be safe across the whole range it will be used over --------------------
@@ -382,3 +421,26 @@ def test_a_range_chosen_rank_leaves_one_minimum_per_eigenvalue():
     v = np.array([p.tension(k) for k in ks])
     n_min = len(np.nonzero((v[1:-1] < v[:-2]) & (v[1:-1] < v[2:]))[0])
     assert n_min == 1, f"{n_min} local minima where there is one eigenvalue"
+
+
+def test_the_rank_is_derived_inside_the_factorization_not_before_it():
+    """`regularize(rank=None)` must truncate, using the decomposition it already computed.
+
+    This is not a micro-optimization. `choose_rank` does an `svdvals` of the stacked pencil
+    and the `"svd"` mode does an SVD of `R`, and because `Q` has orthonormal columns those
+    have the SAME singular values -- so asking the first before calling the second computed
+    one decomposition twice. It was 2.13 ms of an 8.19 ms evaluation on a 134-column
+    L-shape pencil, and removing it made the default path 1.31 to 1.46x faster.
+    """
+    A_B, A_I = well_conditioned(n=12)
+    A_B[:, 9:] *= 1e-14
+    A_I[:, 9:] *= 1e-14
+    r = regularize(A_B, A_I, reg="svd", rtol=1e-10)
+    assert r.rank == 9, "rank=None did not truncate: the derivation is not happening"
+    assert r.rank == choose_rank(A_B, A_I, rtol=1e-10), "the two rules must still agree"
+    assert regularize(A_B, A_I, reg="qrp", rtol=1e-10).rank == 9
+
+
+def test_an_explicit_rank_still_overrides_the_derivation():
+    A_B, A_I = well_conditioned(n=12)
+    assert regularize(A_B, A_I, reg="svd", rank=5, rtol=1e-10).rank == 5

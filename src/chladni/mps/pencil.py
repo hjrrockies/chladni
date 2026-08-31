@@ -238,7 +238,15 @@ class MPSPencil(Frozen):
         """
         if self.rank is not None:
             return self.rank
-        return choose_rank(*self.pencil(k), self.rtol)
+        if self.reg == "implicit":
+            # LAPACK decides inside ?ggsvp3 and does not report it until the GSVD returns,
+            # so the length of the tension vector IS the rank. Cached, so this is not a
+            # second factorization.
+            return len(self.tensions(k))
+        # Every other mode derives its rank from its own factorization, so read it back off
+        # the (cached) reduction rather than recomputing one here. Calling `choose_rank`
+        # would repeat the decomposition `regularize` has already performed.
+        return self.regularized(k).rank
 
     def regularized(self, k):
         """The `RegularizedPencil` at `k`, truncated to `rank_at(k)`."""
@@ -246,7 +254,7 @@ class MPSPencil(Frozen):
         hit = self._cache.get(key)
         if hit is None:
             B, I = self.pencil(k)
-            hit = regularize(B, I, reg=self.reg, rank=self.rank_at(k))
+            hit = regularize(B, I, reg=self.reg, rank=self.rank, rtol=self.rtol)
             self._store(key, hit)
         return hit
 
