@@ -370,3 +370,23 @@ makes the tension look better while meaning less.
 Unchanged: the eigenvalue search and multiplicity estimation, Rellich orthonormalization,
 basis planning and the point budget, and whether `k` or `lam` is the better variable for the
 minimization.
+
+## The rank must be chosen over a RANGE, not at a point
+
+Two corrections to the section above, both found by measuring the objective before designing
+a search for it (`notes/`, not tracked).
+
+**The pencil's numerical rank grows with `k`.** Measured on a 54-column disk at the default
+`rtol`: 31 at `k = 2.3` rising to 47 at `k = 5.7`. Obvious in hindsight -- more oscillation
+supports more independent columns -- and nothing in the first implementation knew it.
+
+**So a rank frozen at one `k` is unsafe at the low end of a scan.** `MPSEigensolver` defaulted
+`lam_ref` to the MIDPOINT of the Weyl window, which on that disk gives rank 39, whose relative
+singular value at `k = 2.35` is 2.4e-16 -- machine epsilon. The retained directions are then
+undetermined and the tension goes rough: **85 spurious local minima in a window containing
+exactly one eigenvalue**, with 39% of the steps on the descending wall going the wrong way.
+Choosing the rank over the range instead gives 31, and one minimum.
+
+`k_ref` therefore accepts `(lo, hi)` and takes the minimum over it; `MPSEigensolver` passes
+its whole Weyl window; and `rank_diagnostics` warns when the frozen rank has reached the noise
+floor at an evaluated `k`.

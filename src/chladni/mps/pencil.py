@@ -20,7 +20,9 @@ from __future__ import annotations
 import numpy as np
 import scipy.linalg as la
 
-from .._core import PREC, Frozen, _set, check_prec
+import warnings
+
+from .._core import PREC, Frozen, PrecisionWarning, _set, check_prec
 from ..helmholtz import check_k
 from . import _gsvd
 from ._regularize import choose_rank, regularize
@@ -33,6 +35,21 @@ __all__ = ["MPSPencil", "assemble", "equilibrate", "RankDiagnostics"]
 #: object is immutable and nothing cached can go stale.
 _CACHE_MAX = 64
 
+#: How many wavenumbers to probe when the rank is chosen over a RANGE rather than at a
+#: point. The pencil's numerical rank grows with k -- measured on a 54-column disk at the
+#: default rtol: 31 at k = 2.3 rising to 47 at k = 5.7 -- so a rank frozen at one k is too
+#: large at the low end of a scan. Nine points is enough to find the minimum without
+#: assuming the growth is monotone, which is observed but not proved.
+_RANK_SAMPLES = 9
+
+#: Below this relative singular value at the cut, the retained direction is within a couple
+#: of decades of machine epsilon and is no longer determined. Measured on the disk: at
+#: s_r/s_0 = 1e-13 the tension has exactly one local minimum in a one-eigenvalue window and
+#: no wrong-way steps; at 1e-16 it has ninety, with 39% of the steps on the descending wall
+#: going the wrong way. The transition is sharp and sits at eps, so this leaves three
+#: decades of margin.
+_UNSAFE_RATIO = 1e-13
+
 
 class RankDiagnostics(tuple):
     """What the frozen rank was chosen from: `rank` and the descending singular values `s`."""
@@ -44,6 +61,28 @@ class RankDiagnostics(tuple):
 
     rank = property(lambda self: self[0])
     s = property(lambda self: self[1])
+
+
+def _as_k_ref(k_ref):
+    """Normalize `k_ref` to None, a single k, or a validated `(lo, hi)` pair."""
+    if k_ref is None:
+        return None
+    arr = np.atleast_1d(np.asarray(k_ref, dtype=float))
+    if arr.size == 1:
+        return check_k(arr[0])
+    if arr.size != 2:
+        raise ValueError(f"k_ref must be a wavenumber or a (lo, hi) pair, got {k_ref!r}")
+    lo, hi = check_k(arr[0]), check_k(arr[1])
+    if not lo < hi:
+        raise ValueError(f"k_ref range must satisfy lo < hi, got ({lo}, {hi})")
+    return (lo, hi)
+
+
+def _rank_probe_ks(k_ref):
+    """The wavenumbers the rank is chosen over: one, or `_RANK_SAMPLES` across the range."""
+    if isinstance(k_ref, tuple):
+        return np.linspace(k_ref[0], k_ref[1], _RANK_SAMPLES)
+    return (k_ref,)
 
 
 def assemble(bdry, interior, k):
@@ -110,23 +149,26 @@ class MPSPencil(Frozen):
         prec = check_prec(prec)
         rtol = float(np.sqrt(prec * np.finfo(float).eps)) if rtol is None else float(rtol)
 
+        k_ref = _as_k_ref(k_ref)
         if rank is None:
             if k_ref is None:
                 raise ValueError(
-                    "pass either an explicit rank or a k_ref to choose one at. The rank is "
-                    "frozen for the life of the pencil so the tension stays continuous in "
-                    "k, so it has to be chosen SOMEWHERE, and guessing the reference is a "
-                    "silent conditioning error of the same kind as guessing "
-                    "Fundamental.radius"
+                    "pass either an explicit rank or a k_ref to choose one over. The rank "
+                    "is frozen for the life of the pencil, so it has to be chosen "
+                    "SOMEWHERE, and guessing the reference is a silent conditioning error "
+                    "of the same kind as guessing Fundamental.radius. Prefer the (lo, hi) "
+                    "range the pencil will be used over: the numerical rank GROWS with k, "
+                    "so a rank chosen at a single k is too large at the low end."
                 )
-            B, I, _ = equilibrate(*assemble(bdry, interior, k_ref))
-            rank = choose_rank(B, I, rtol)
+            # the minimum over the range, because the rank grows with k
+            rank = min(choose_rank(*equilibrate(*assemble(bdry, interior, k))[:2], rtol)
+                       for k in _rank_probe_ks(k_ref))
         rank = int(rank)
         if not 0 < rank <= len(bdry.family):
             raise ValueError(f"rank must lie in [1, {len(bdry.family)}], got {rank}")
 
         _set(self, bdry=bdry, interior=interior, reg=reg, rank=rank, rtol=rtol,
-             k_ref=None if k_ref is None else check_k(k_ref), prec=prec,
+             k_ref=k_ref, prec=prec,
              _cache={})
 
     @classmethod
@@ -204,10 +246,41 @@ class MPSPencil(Frozen):
         """The frozen rank and the singular values at `k`, so the choice can be audited.
 
         The frozen rank is right almost everywhere and this is how you check the exception:
-        a rank that once sat in a comfortable gap can drift into a near-tie as `k` moves.
+        the numerical rank grows with k, so a rank chosen too high sits at the noise floor
+        at the LOW end of a scan, which is where the tension goes rough.
         """
         B, I = self.pencil(k)
-        return RankDiagnostics(self.rank, la.svdvals(np.vstack([B, I])))
+        s = la.svdvals(np.vstack([B, I]))
+        self._warn_if_unsafe(s, k)
+        return RankDiagnostics(self.rank, s)
+
+    def _warn_if_unsafe(self, s, k):
+        """Warn when the frozen rank has reached the noise floor at this `k`.
+
+        A reported precision is never a claim contradicted elsewhere in the same object
+        (`conventions.md`), and this is the contradiction that matters here: a pencil whose
+        cut sits at machine epsilon returns a tension with dozens of spurious local minima
+        per true one, which reads as an eigenvalue and is not.
+
+        The message quotes the ratio rounded to a power of ten, on the same reasoning as
+        `Sampling._check_accuracy`: Python's default warning filter keys on message text,
+        and a k-dependent float would fire on every evaluation of a scan.
+        """
+        if s.size == 0 or s[0] <= 0.0:
+            return
+        ratio = s[self.rank - 1] / s[0]
+        if ratio >= _UNSAFE_RATIO:
+            return
+        decade = int(np.floor(np.log10(ratio))) if ratio > 0 else -np.inf
+        warnings.warn(
+            f"the frozen rank {self.rank} sits at a relative singular value of about "
+            f"1e{decade} at this k, below the safe level {_UNSAFE_RATIO:.0e}. The retained "
+            f"directions are no longer determined and the tension acquires spurious local "
+            f"minima. The numerical rank grows with k, so this usually means the rank was "
+            f"chosen at a single k above the range in use: pass k_ref=(lo, hi) instead.",
+            PrecisionWarning,
+            stacklevel=3,
+        )
 
     def tensions(self, k):
         """Every generalized singular value of the reduced pencil, ascending."""

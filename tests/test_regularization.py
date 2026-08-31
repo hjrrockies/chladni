@@ -284,3 +284,101 @@ def test_implicit_mode_is_documented_as_diagnostic_only():
     """It hands the rank decision to LAPACK's own threshold, which reintroduces exactly the
     discontinuity this module exists to remove. It stays available and stays labelled."""
     assert "diagnostic" in regularize.__doc__.lower()
+
+
+# --- the rank must be safe across the whole range it will be used over --------------------
+
+
+def test_the_numerical_rank_grows_with_k():
+    """The fact everything below turns on, and nothing in the code knew until it bit.
+
+    More oscillation supports more independent columns, so the pencil's numerical rank is
+    a function of k. Measured on a 54-column disk at the default rtol: 31 at k = 2.3
+    rising to 47 at k = 5.7.
+    """
+    from chladni.geometry import disk
+    from chladni.helmholtz import PlaneWave
+
+    dom = disk(1.0)
+    b = PlaneWave.uniform(27, radius=dom.diameter)
+    p = MPSPencil.from_basis(b, dom.bdry_quad(600),
+                             dom.interior_pts(200, rng=np.random.default_rng(0)),
+                             k_ref=(2.2, 5.7))
+    lo = choose_rank(*p.pencil(2.3), p.rtol)
+    hi = choose_rank(*p.pencil(5.7), p.rtol)
+    assert lo < hi, f"rank did not grow with k: {lo} at k=2.3, {hi} at k=5.7"
+
+
+def test_a_rank_chosen_at_one_k_is_unsafe_at_the_low_end():
+    """The defect this pair of tests exists to prevent.
+
+    A rank frozen at the midpoint of a scan is too large at the bottom of it, where the
+    spectrum has not yet grown to support it -- so the cut lands at machine epsilon, the
+    retained directions are undetermined, and the tension sprouts spurious local minima.
+    Measured: rank 39 frozen at k = 3.95 has s_r/s_0 = 2.4e-16 at k = 2.35, and 85 local
+    minima in a window holding exactly one eigenvalue. Choosing over the range gives 31,
+    and one.
+    """
+    from chladni.geometry import disk
+    from chladni.helmholtz import PlaneWave
+
+    dom = disk(1.0)
+    b = PlaneWave.uniform(27, radius=dom.diameter)
+    q, pts = dom.bdry_quad(600), dom.interior_pts(200, rng=np.random.default_rng(0))
+
+    point = MPSPencil.from_basis(b, q, pts, k_ref=3.95)
+    spread = MPSPencil.from_basis(b, q, pts, k_ref=(2.2, 5.7))
+    assert spread.rank < point.rank
+
+    B, I = spread.pencil(2.35)
+    s = np.linalg.svd(np.vstack([B, I]), compute_uv=False)
+    assert s[spread.rank - 1] / s[0] > 1e-13, "the range-chosen rank is not safe at the low end"
+
+    Bp, Ip = point.pencil(2.35)
+    sp = np.linalg.svd(np.vstack([Bp, Ip]), compute_uv=False)
+    assert sp[point.rank - 1] / sp[0] < 1e-15, "this k no longer exercises the defect"
+
+
+def test_an_unsafe_frozen_rank_says_so():
+    """A reported precision is never a claim contradicted elsewhere in the same object.
+    Silent roughness reads as extra eigenvalues, which is the worst way to be wrong."""
+    from chladni.geometry import disk
+    from chladni.helmholtz import PlaneWave
+    from chladni.mps import PrecisionWarning
+
+    dom = disk(1.0)
+    b = PlaneWave.uniform(27, radius=dom.diameter)
+    q, pts = dom.bdry_quad(600), dom.interior_pts(200, rng=np.random.default_rng(0))
+    point = MPSPencil.from_basis(b, q, pts, k_ref=3.95)
+    with pytest.warns(PrecisionWarning, match="frozen rank"):
+        point.rank_diagnostics(2.35)
+
+
+def test_a_k_ref_range_is_validated():
+    from chladni.geometry import disk
+    from chladni.helmholtz import PlaneWave
+
+    dom = disk(1.0)
+    b = PlaneWave.uniform(20, radius=dom.diameter)
+    q, pts = dom.bdry_quad(400), dom.interior_pts(100, rng=np.random.default_rng(0))
+    with pytest.raises(ValueError, match="lo < hi"):
+        MPSPencil.from_basis(b, q, pts, k_ref=(5.0, 2.0))
+    with pytest.raises(ValueError, match="pair"):
+        MPSPencil.from_basis(b, q, pts, k_ref=(1.0, 2.0, 3.0))
+
+
+@pytest.mark.slow
+def test_a_range_chosen_rank_leaves_one_minimum_per_eigenvalue():
+    """The end-to-end statement of the fix, in the units that matter for recall."""
+    from chladni.geometry import disk
+    from chladni.helmholtz import PlaneWave
+
+    dom = disk(1.0)
+    b = PlaneWave.uniform(27, radius=dom.diameter)
+    q, pts = dom.bdry_quad(600), dom.interior_pts(200, rng=np.random.default_rng(0))
+    p = MPSPencil.from_basis(b, q, pts, k_ref=(2.2, 5.7))
+
+    ks = np.linspace(2.25, 2.45, 400)          # holds exactly one eigenvalue, k_1 = 2.4048
+    v = np.array([p.tension(k) for k in ks])
+    n_min = len(np.nonzero((v[1:-1] < v[:-2]) & (v[1:-1] < v[2:]))[0])
+    assert n_min == 1, f"{n_min} local minima where there is one eigenvalue"

@@ -57,10 +57,14 @@ class MPSEigensolver(Eigensolver, Frozen):
             int_pts = domain.interior_pts(n_int, rng=np.random.default_rng(rng))
 
         if lam_ref is None and rank is None:
-            # The pencil refuses to guess a reference, and is right to: it has no geometry to
-            # guess from. A solver does, so it may -- the midpoint of a typical scan window.
-            a, b = weyl_window(domain, _REF_MODES)
-            lam_ref = float(np.sqrt(a * b))
+            # The pencil refuses to guess a reference, and is right to: it has no geometry
+            # to guess from. A solver does, so it may -- and it must guess a RANGE, not a
+            # point. The numerical rank grows with k, so a rank chosen at the MIDPOINT of a
+            # scan window is too large at the low end: on a disk, freezing at k = 3.95 gave
+            # rank 39 whose relative singular value at k = 2.35 is 2.4e-16, and that pencil
+            # showed 85 spurious local minima in a window holding one eigenvalue. Choosing
+            # over the window gives 31, and one.
+            lam_ref = weyl_window(domain, _REF_MODES)
 
         _set(self, _pencil=MPSPencil.from_basis(
             basis, bdry_quad, int_pts, reg=reg, rank=rank, rtol=rtol,
@@ -125,4 +129,5 @@ class MPSEigensolver(Eigensolver, Frozen):
 
     def __repr__(self):
         return (f"MPSEigensolver({self.domain!r}, n_cols={self.n_cols}, "
-                f"n_bdry={self.n_bdry}, n_int={self.n_int}, rank={self.rank})")
+                f"n_bdry={self.n_bdry}, n_int={self.n_int}, "
+                f"rank={self.rank})")
