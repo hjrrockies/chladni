@@ -17,7 +17,9 @@ dependencies = [
     "scipy >= 1.14",
     "matplotlib >= 3.9",
     "shapely >= 2.0",
-    "gsvd4py >= 0.2.2",
+    # 0.3.0 removed tola/tolb (breaking). chladni's `reg="implicit"` was the only consumer
+    # and went with them; nothing here passes a tolerance to the GSVD any more.
+    "gsvd4py >= 0.3.0",
     # gsvd4py finds LAPACK's ?ggsvd3 by probing, and off macOS every probe misses. On macOS
     # it loads Accelerate and is done; elsewhere it looks for a scipy_openblas32/64 PACKAGE,
     # for a global `dggsvd3_`, or for a system lapack/openblas/flexiblas. A pip-installed

@@ -21,7 +21,7 @@ __all__ = ["tensions", "coef", "tensions_of", "coef_of"]
 
 def tensions_of(r):
     """The ascending tension vector of an already-regularized pencil."""
-    c, s = _gsvdvals(r.B, r.I, tola=r.tola, tolb=r.tolb)
+    c, s = _gsvdvals(r.B, r.I)
     # s == 0 is an infinite generalized singular value: a direction the interior block
     # annihilates. +inf is the honest answer and it sorts to the far end, where it belongs.
     sigma = np.divide(c, s, out=np.full(c.shape, np.inf), where=(s != 0))
@@ -36,8 +36,7 @@ def coef_of(r, mult=1):
     UNSORTED -- `gsvd4py` sorts only in its full and econ modes -- which is why the index
     search below is explicit. lappy's path, and it is the right one.
     """
-    D1, D2, R, Q = _gsvd(r.B, r.I, mode="separate", compute_u=False, compute_v=False,
-                         tola=r.tola, tolb=r.tolb)[:-2]
+    D1, D2, R, Q = _gsvd(r.B, r.I, mode="separate", compute_u=False, compute_v=False)[:-2]
     c, s = np.max(D1, axis=0), np.max(D2, axis=0)
     if mult > len(c):
         raise ValueError(f"asked for {mult} coefficient vectors but the pencil has {len(c)}")
@@ -48,11 +47,11 @@ def coef_of(r, mult=1):
     return r.back(Xr)
 
 
-def tensions(A_B, A_I, reg="svd", rank=None, tola=None, tolb=None):
+def tensions(A_B, A_I, reg="svd", rank=None):
     """Regularize and return the ascending tension vector. Raw arrays in, array out."""
-    return tensions_of(regularize(A_B, A_I, reg=reg, rank=rank, tola=tola, tolb=tolb))
+    return tensions_of(regularize(A_B, A_I, reg=reg, rank=rank))
 
 
-def coef(A_B, A_I, mult=1, reg="svd", rank=None, tola=None, tolb=None):
+def coef(A_B, A_I, mult=1, reg="svd", rank=None):
     """Regularize and return the `mult` minimizing coefficient vectors, `(n_cols, mult)`."""
-    return coef_of(regularize(A_B, A_I, reg=reg, rank=rank, tola=tola, tolb=tolb), mult)
+    return coef_of(regularize(A_B, A_I, reg=reg, rank=rank), mult)

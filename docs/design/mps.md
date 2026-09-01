@@ -63,14 +63,16 @@ estimator will consume.
 
 ## 1. Can `gsvd4py`'s tolerances regularize the pencil for us?
 
-**Yes -- and so can a threshold. The rank rule turns out not to be a correctness question at
-all.** This answer was written the other way round and the measurement overturned it; the "As
-built" section below carries the numbers, and this text is the correction rather than the
-original claim softened.
+**They could, and the answer stopped mattering: `gsvd4py` 0.3.0 removed `tola`/`tolb`, so the
+path no longer exists.** What the investigation established outlives it -- **the rank rule is
+not a correctness question at all.** This answer was written the other way round and the
+measurement overturned it; the "As built" section below carries the numbers, and this text is
+the correction rather than the original claim softened.
 
-`gsvd4py` exposes `tola`/`tolb`, which feed LAPACK's `?ggsvp3` and set a numerical rank by
-thresholding. lappy's SVD regularization does the same thing one level up, cutting at
-`(s >= rtol).sum()` and re-deriving the rank at every parameter.
+`gsvd4py` 0.2.x exposed `tola`/`tolb`, which fed LAPACK's `?ggsvp3` and set a numerical rank
+by thresholding. lappy's SVD regularization does the same thing one level up, cutting at
+`(s >= rtol).sum()` and re-deriving the rank at every parameter. The comparison below was run
+against that path while it existed; only the conclusion is load-bearing now.
 
 The expected failure was that a re-derived rank makes the retained rank a step function of
 `k`, so a singular value crossing the cutoff jumps the tension -- possibly deleting the
@@ -101,8 +103,8 @@ when `s[r]/s[r-1]` approaches 1, where a frozen index straddles a near-degenerat
 retained subspace is genuinely ill-defined.
 
 SVD-based and column-pivoted-QR regularization are both implemented, both index-truncated. The
-`gsvd4py` tolerance path is `reg="implicit"`, labelled diagnostic-only for reproducibility
-rather than for accuracy.
+`gsvd4py` tolerance path was `reg="implicit"`, labelled diagnostic-only for reproducibility
+rather than for accuracy; it was removed when `gsvd4py` 0.3.0 dropped `tola`/`tolb`.
 
 ## 2. How do we expose a bare-bones domain-free API?
 
@@ -213,14 +215,13 @@ of that norm adds to `family.log_scale(k)` to give the pencil's total per-column
 Columns that underflow to exact zeros keep scale 1 and are left for the regularization to
 drop, rather than dividing by zero -- `lappy` pruned them by hand.
 
-**Regularize.** One function, four modes, and `back` is the map from reduced coordinates to
+**Regularize.** One function, three modes, and `back` is the map from reduced coordinates to
 basis coordinates, produced by whichever mode ran. That is the fix for `lappy`'s
 `nullspace_coef`, which branches on `reg_type` *again* at the recovery site: two places that
 must agree about a transformation only one of them computed.
 
 - `"svd"` (default) -- economic QR of the stack, SVD of `R`, truncate to `r`.
 - `"qrp"` -- column-pivoted QR, truncate to `r`.
-- `"implicit"` -- no pre-truncation; hand `tola`/`tolb` to `gsvd4py`. Diagnostic only.
 - `None` -- raw pencil.
 
 `lappy`'s `gesdd -> gesvd` fallback is kept, with its warning. Its docstring records one shape
@@ -408,10 +409,15 @@ iterating over generated domains cannot be trusted to supply. Freezing remains a
 now safe when given a range, and keeps its reproducibility and cost advantages for callers who
 know their range.
 
-## `reg="implicit"` was given a fair trial and is not the default
+## `reg="implicit"` was given a fair trial, was not the default, and is now gone
 
-The idea: hand `tola`/`tolb` to `gsvd4py` and skip our QR and SVD entirely. It works, and it
-is supported. It is not the default, for two measured reasons.
+`gsvd4py` 0.3.0 removed `tola`/`tolb` outright, and `reg="implicit"` was chladni's only
+consumer of them, so the mode went too. The measurements are kept because they are the reason
+its removal costs nothing -- it had already lost on the merits, and this section is what stops
+the idea being re-proposed as an obvious win.
+
+The idea: hand `tola`/`tolb` to `gsvd4py` and skip our QR and SVD entirely. It worked, and it
+was supported. It was not the default, for two measured reasons.
 
 **It applies a different criterion, not a different scale.** LAPACK's `?ggsvp3` thresholds `A`
 and `B` separately in 1-norms; `choose_rank` thresholds the stacked pencil in 2-norms. At
@@ -426,17 +432,24 @@ moves it inside LAPACK, whose `?ggsvp3` preprocesses all `n` columns rather than
 `r`. Uncalibrated it looked like 1.6 to 2.0x, which was implicit doing LESS work, not the
 same work faster.
 
-One tempting shortcut is closed off, and worth recording because it is not obvious: `tola` is
-purely a rank threshold in `gsvd4py`, never a convergence knob. `gsvd4py/_gsvd.py` pins
-`?tgsja`'s Jacobi tolerances to the LAPACK defaults on purpose, "so that convergence quality
-is independent of the user's rank choice", so loosening `tola` cannot buy speed by converging
-less hard.
+One tempting shortcut was closed off, and it is worth recording because it is not obvious and
+because it is the sort of thing that gets re-proposed: `tola` was purely a rank threshold in
+`gsvd4py`, never a convergence knob. `?tgsja`'s Jacobi tolerances were pinned to the LAPACK
+defaults on purpose, "so that convergence quality is independent of the user's rank choice",
+so loosening `tola` could not buy speed by converging less hard.
 
-One behavioural difference for consumers: implicit can return `+inf` tensions, where the
-`"svd"` route structurally cannot. The reduced stack `Q Z_1` has orthonormal columns, so
-`s > 0` is guaranteed there; implicit hands LAPACK the raw pencil, and a direction the
-interior block annihilates comes back as an infinite generalized singular value. It is the
-honest answer and it sorts to the end, but nothing downstream may assume finiteness.
+One behavioural note outlived the mode, and now attaches to `None`. A non-pre-truncating mode
+can return `+inf` tensions, where the `"svd"` route structurally cannot: the reduced stack
+`Q Z_1` has orthonormal columns, so `s > 0` is guaranteed there, while the raw pencil lets a
+direction the interior block annihilates come back as an infinite generalized singular value.
+It is the honest answer and it sorts to the end, but nothing downstream may assume finiteness.
+`test_an_annihilated_direction_comes_back_as_an_infinite_tension` pins it.
+
+A second one, specific to `None`: `rank_at` reports the columns the mode kept, which for
+`None` is all of them, while `len(tensions(lam))` is LAPACK's own `k + l` for the pair and is
+generally smaller -- 44 against 50 on the L-shape fixture. `"implicit"` used to special-case
+`rank_at` to return the tension length; with the mode gone there is nothing to special-case,
+and the two numbers are simply different quantities for a mode that does not pre-truncate.
 
 ## The rank is derived inside each mode's own factorization
 
@@ -449,7 +462,7 @@ to 4e-15. **The default path was computing the same SVD twice.** On a 134-column
 pencil the redundant `svdvals` was 2.13 ms of an 8.19 ms evaluation.
 
 Each mode now derives its own rank from its own factorization: `"svd"` from the singular
-values it already has, `"qrp"` from `|diag R|`, `"implicit"` from LAPACK. `choose_rank`
+values it already has, `"qrp"` from `|diag R|`. `choose_rank`
 remains a free function, for diagnostics and for picking a rank to FREEZE, where the number
 is genuinely wanted before the reduction.
 

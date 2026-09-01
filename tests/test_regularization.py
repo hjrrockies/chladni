@@ -287,49 +287,53 @@ def test_the_gesdd_fallback_fires_and_warns(monkeypatch):
     assert r.rank == 12
 
 
-def test_implicit_mode_agrees_with_the_svd_route():
-    """`reg="implicit"` hands the rank decision to LAPACK's `?ggsvp3` via tola/tolb,
-    skipping our QR and SVD. It is supported and it works; it is not the default.
+def test_the_unregularized_route_is_usable_from_a_pencil(pencil):
+    """`reg=None` must be reachable through the object, not only the free function, and it
+    must agree with the svd route on the quantity that matters.
 
-    Two measured reasons, both recorded in `docs/design/mps.md`. It applies a DIFFERENT
-    criterion -- `A` and `B` thresholded separately in 1-norms, against the stacked pencil
-    in 2-norms -- so at equal `rtol` it truncates two to four columns harder, and on the
-    disk no single `rtol` reproduces the svd rank at every `k`. And at MATCHED rank it is
-    only 1.16x faster on the L-shape, because it does not remove the preprocessing so much
-    as move it inside LAPACK, which runs on all `n` columns rather than the reduced `r`.
-
-    Note for anyone tempted to reach for `tola` as a speed knob: in `gsvd4py` it is purely
-    a rank threshold. `_gsvd.py` pins `tgsja`'s Jacobi convergence tolerances to the LAPACK
-    defaults on purpose, "so that convergence quality is independent of the user's rank
-    choice", so loosening `tola` does not buy speed by converging less hard.
+    This is what is left of the old `test_implicit_mode_*` pair. `reg="implicit"` handed the
+    rank decision to LAPACK's `?ggsvp3` through `tola`/`tolb`; `gsvd4py` 0.3.0 removed those
+    parameters, so the mode is gone. `None` is now the only route that puts the raw,
+    un-pre-truncated pencil in front of the GSVD, which makes it the one that inherits the
+    behaviour the implicit tests were pinning.
     """
-    A_B, A_I = well_conditioned(n=12)
-    ref = tensions_fn(A_B, A_I, reg="svd", rank=12)
-    got = tensions_fn(A_B, A_I, reg="implicit", rank=None)
-    assert len(got) == len(ref)
-    assert np.allclose(got, ref, rtol=1e-8, atol=1e-12)
-
-
-def test_implicit_mode_is_usable_from_a_pencil(pencil):
-    """It must be reachable through the object, not only through the free function, and it
-    must not secretly pay for the factorization it exists to avoid."""
-    p = MPSPencil(pencil.bdry, pencil.interior, reg="implicit")
+    p = MPSPencil(pencil.bdry, pencil.interior, reg=None)
     t = p.tensions(LAM)
     assert p.rank is None
-    assert p.rank_at(LAM) == len(t)
+    assert p.rank_at(LAM) == p.n_cols, "a non-truncating mode retains every column"
 
-    # Ascending, but note the trailing +inf: unlike the svd route, whose reduced stack has
-    # orthonormal columns and therefore no zero denominators, implicit hands the raw pencil
-    # to LAPACK and a direction the interior block annihilates comes back as an infinite
-    # generalized singular value. That is the honest answer and it sorts to the end, but it
-    # means a consumer must not assume the vector is finite.
-    assert t.ndim == 1
+    # `len(t)` is SHORTER than the rank -- 44 against 50 here -- and the two are not the
+    # same quantity. `rank_at` reports how many columns this mode kept, which for `None` is
+    # all of them; the length of the tension vector is LAPACK's `k + l` for the pair, its
+    # own internal rank of the stack. A pre-truncating mode makes them coincide by handing
+    # the GSVD a full-rank reduced stack. This one does not, and that is not a defect.
+    assert len(t) <= p.n_cols
     finite = np.isfinite(t)
+    assert t.ndim == 1 and np.all(np.diff(t[finite]) >= 0)
+    assert np.all(finite[: finite.sum()]), "the infinities must be a trailing block"
+
+    ref = MPSPencil(pencil.bdry, pencil.interior).tension(LAM)
+    assert abs(p.tension(LAM) - ref) / ref < 0.05
+
+
+def test_an_annihilated_direction_comes_back_as_an_infinite_tension():
+    """The `s == 0` branch in `tensions_of`, which the implicit tests used to cover.
+
+    A pre-truncating mode reduces to a stack with orthonormal columns, so the denominator
+    never vanishes and this cannot arise. `reg=None` hands LAPACK the raw pencil, so an
+    interior block with a null space yields directions of infinite generalized singular
+    value. `+inf` is the honest answer -- the boundary residual is nonzero where the
+    interior norm is zero -- and it sorts to the far end, but it means a consumer must not
+    assume the vector is finite.
+    """
+    rng = np.random.default_rng(0)
+    # five rows, twelve columns: a seven-dimensional null space in the interior block
+    A_B, A_I = rng.standard_normal((20, 12)), rng.standard_normal((5, 12))
+    t = tensions_fn(A_B, A_I, reg=None)
+    finite = np.isfinite(t)
+    assert (~finite).sum() == 7, f"expected seven infinite tensions, got {(~finite).sum()}"
     assert np.all(np.diff(t[finite]) >= 0)
     assert np.all(finite[: finite.sum()]), "the infinities must be a trailing block"
-    # within a few percent of the svd route's tension at the same k
-    ref = MPSPencil(pencil.bdry, pencil.interior).tension(K)
-    assert abs(p.tension(K) - ref) / ref < 0.05
 
 
 # --- the rank must be safe across the whole range it will be used over --------------------

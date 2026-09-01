@@ -263,12 +263,7 @@ class MPSPencil(Frozen):
         """
         if self.rank is not None:
             return self.rank
-        if self.reg == "implicit":
-            # LAPACK decides inside ?ggsvp3 and does not report it until the GSVD returns,
-            # so the length of the tension vector IS the rank. Cached, so this is not a
-            # second factorization.
-            return len(self.tensions(lam))
-        # Every other mode derives its rank from its own factorization, so read it back off
+        # Every mode derives its rank from its own factorization, so read it back off
         # the (cached) reduction rather than recomputing one here. Calling `choose_rank`
         # would repeat the decomposition `regularize` has already performed.
         return self.regularized(lam).rank

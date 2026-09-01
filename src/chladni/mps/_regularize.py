@@ -49,8 +49,7 @@ class RegularizedPencil(NamedTuple):
 
     `B` and `I` are the reduced blocks; `back(y)` maps reduced coordinates to basis
     coordinates; `rank` is what was retained; `s` are the singular values the choice was made
-    from, or None for a mode that computes none. `tola`/`tolb` are passed through to the GSVD
-    by the `"implicit"` mode and are None otherwise.
+    from, or None for a mode that computes none.
     """
 
     B: np.ndarray
@@ -58,8 +57,6 @@ class RegularizedPencil(NamedTuple):
     back: Callable[[np.ndarray], np.ndarray]
     rank: int
     s: Optional[np.ndarray] = None
-    tola: Optional[float] = None
-    tolb: Optional[float] = None
 
 
 def _svd_gesdd_then_gesvd(a):
@@ -132,8 +129,7 @@ def _warn_if_degenerate(s, rank):
         )
 
 
-def regularize(A_B, A_I, reg="svd", rank=None, tola=None, tolb=None,
-               rtol=np.finfo(float).eps):
+def regularize(A_B, A_I, reg="svd", rank=None, rtol=np.finfo(float).eps):
     """Reduce the pencil `(A_B, A_I)` to `rank` columns, returning the map back.
 
     `reg` selects the mode:
@@ -142,16 +138,13 @@ def regularize(A_B, A_I, reg="svd", rank=None, tola=None, tolb=None,
       `rank` left singular directions. The default, and the best conditioned.
     * `"qrp"` -- column-pivoted QR, keep the leading `rank` pivoted columns. Cheaper, and it
       names actual basis columns, which makes it the readable one when debugging.
-    * `"implicit"` -- no pre-truncation here; `tola`/`tolb` are handed to the GSVD so
-      LAPACK's `?ggsvp3` makes the rank decision. Supported, and measurably close to the
-      `"svd"` route, but not the default -- see `docs/design/mps.md` for the numbers. Two
-      things to know. It applies a DIFFERENT criterion, thresholding `A` and `B` separately
-      in 1-norms rather than the stacked pencil in 2-norms, so at equal `rtol` it truncates
-      two to four columns harder and cannot be calibrated to agree at every `k`. And it is
-      only modestly cheaper at matched rank -- 1.16x on the L-shape -- because it does not
-      remove the preprocessing, it moves it inside LAPACK, which runs on all `n` columns
-      instead of the reduced `r`.
     * `None` -- no regularization at all.
+
+    There was a fourth, `"implicit"`, which passed `tola`/`tolb` to `gsvd4py` and let
+    LAPACK's `?ggsvp3` pick the rank. `gsvd4py` 0.3.0 removed those parameters, so the mode
+    went with them. It was never the default and the measurements are kept in
+    `docs/design/mps.md` -- it truncated two to four columns harder on a different criterion
+    and was only 1.16x cheaper at matched rank, so nothing here is lost.
 
     `rank=None` means **derive the rank here**, from this mode's own factorization at the
     relative cutoff `rtol`. That is not a convenience: the `"svd"` mode's SVD of `R` has the
@@ -170,17 +163,6 @@ def regularize(A_B, A_I, reg="svd", rank=None, tola=None, tolb=None,
     if reg is None:
         r = n if rank is None else int(rank)
         return RegularizedPencil(A_B[:, :r], A_I[:, :r], lambda y: np.asarray(y), r)
-
-    if reg == "implicit":
-        # No pre-truncation: hand LAPACK the thresholds and let ?ggsvp3 pick the rank. The
-        # scaling mirrors LAPACK's own default, which is
-        # `max(m, n) * norm(a, 1) * eps`, with `eps` replaced by the caller's `rtol`.
-        if tola is None:
-            tola = max(A_B.shape) * max(np.linalg.norm(A_B, 1), np.finfo(float).tiny) * rtol
-        if tolb is None:
-            tolb = max(A_I.shape) * max(np.linalg.norm(A_I, 1), np.finfo(float).tiny) * rtol
-        return RegularizedPencil(A_B, A_I, lambda y: np.asarray(y), n,
-                                 tola=tola, tolb=tolb)
 
     stack = np.vstack([A_B, A_I])
 
@@ -220,6 +202,4 @@ def regularize(A_B, A_I, reg="svd", rank=None, tola=None, tolb=None,
 
         return RegularizedPencil(reduced[:m], reduced[m:], back, r, d)
 
-    raise ValueError(
-        f"unknown regularization {reg!r}; expected 'svd', 'qrp', 'implicit' or None"
-    )
+    raise ValueError(f"unknown regularization {reg!r}; expected 'svd', 'qrp' or None")
