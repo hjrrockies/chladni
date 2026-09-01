@@ -300,20 +300,57 @@ def test_the_unregularized_route_is_usable_from_a_pencil(pencil):
     p = MPSPencil(pencil.bdry, pencil.interior, reg=None)
     t = p.tensions(LAM)
     assert p.rank is None
-    assert p.rank_at(LAM) == p.n_cols, "a non-truncating mode retains every column"
+    assert p.rank_at(LAM) == len(t) < p.n_cols, "44 of 50 here: LAPACK's k + l, not n_cols"
 
-    # `len(t)` is SHORTER than the rank -- 44 against 50 here -- and the two are not the
-    # same quantity. `rank_at` reports how many columns this mode kept, which for `None` is
-    # all of them; the length of the tension vector is LAPACK's `k + l` for the pair, its
-    # own internal rank of the stack. A pre-truncating mode makes them coincide by handing
-    # the GSVD a full-rank reduced stack. This one does not, and that is not a defect.
-    assert len(t) <= p.n_cols
     finite = np.isfinite(t)
     assert t.ndim == 1 and np.all(np.diff(t[finite]) >= 0)
     assert np.all(finite[: finite.sum()]), "the infinities must be a trailing block"
 
     ref = MPSPencil(pencil.bdry, pencil.interior).tension(LAM)
     assert abs(p.tension(LAM) - ref) / ref < 0.05
+
+
+@pytest.mark.parametrize("reg", REGS)
+@pytest.mark.parametrize("frozen", [None, 30])
+def test_rank_at_is_what_the_pencil_actually_yields(pencil, reg, frozen):
+    """One contract for every mode: `len(tensions(lam)) == rank_at(lam)`, and asking `coef`
+    for that many vectors is always a valid call.
+
+    A pre-truncating mode gets this for free -- it hands the GSVD a reduced stack of full
+    column rank, so LAPACK's `k + l` is the truncation index it already chose. `reg=None`
+    does not, and used to report `n_cols` instead: 50 against a real 44 on this fixture, so
+    `p.coef(lam, mult=p.rank_at(lam))` raised for `None` and worked for the others. That is
+    the trap this pins shut.
+
+    It has to hold for a FROZEN rank too. `None` truncates to the first `rank` columns with
+    no regard to conditioning, so LAPACK can still find that stack deficient.
+    """
+    p = MPSPencil(pencil.bdry, pencil.interior, reg=reg, rank=frozen)
+    r = p.rank_at(LAM)
+    assert r == len(p.tensions(LAM))
+    assert p.coef(LAM, mult=r).shape[1] == r
+
+
+# lam = 60 is far above the fixture's lam_ref of 10.89, where FourierBessel reports a digit
+# less than the requested 1e-8. The claim here is about counting directions, not about
+# accuracy at that lam.
+@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
+def test_rank_at_tracks_lam_for_a_non_truncating_mode(pencil):
+    """`k + l` is LAPACK's own number and moves with `lam`, so `rank_at` must not be fixed
+    at construction. Measured on the L-shape fixture in THRESHOLD mode, where `reg=None`
+    keeps all 50 columns: 44, 48, 50 at lam = 10.89, 25, 60, against `n_cols` of 50
+    throughout and `choose_rank` of 42, 45, 48 at this rtol (and 50, 50, 50 at eps). It
+    agrees with neither, which is why nothing short of the GSVD can predict it.
+
+    Threshold mode on purpose. Freezing a rank truncates to the first `rank` columns before
+    LAPACK sees the stack, which caps `k + l` at that rank and hides the growth.
+    """
+    p = MPSPencil(pencil.bdry, pencil.interior, reg=None)
+    assert p.rank is None and p.n_cols == 50
+    got = [p.rank_at(lam) for lam in (10.89, 25.0, 60.0)]
+    assert got == [44, 48, 50], got
+    assert all(g <= p.n_cols for g in got)
+    assert got == sorted(got), "the numerical rank grows with lam"
 
 
 def test_an_annihilated_direction_comes_back_as_an_infinite_tension():

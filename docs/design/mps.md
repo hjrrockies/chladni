@@ -445,11 +445,32 @@ direction the interior block annihilates come back as an infinite generalized si
 It is the honest answer and it sorts to the end, but nothing downstream may assume finiteness.
 `test_an_annihilated_direction_comes_back_as_an_infinite_tension` pins it.
 
-A second one, specific to `None`: `rank_at` reports the columns the mode kept, which for
-`None` is all of them, while `len(tensions(lam))` is LAPACK's own `k + l` for the pair and is
-generally smaller -- 44 against 50 on the L-shape fixture. `"implicit"` used to special-case
-`rank_at` to return the tension length; with the mode gone there is nothing to special-case,
-and the two numbers are simply different quantities for a mode that does not pre-truncate.
+A second one turned out to be a defect rather than a note, and is fixed. `rank_at` used to
+report the columns the mode kept -- all of them, for `None` -- while `len(tensions(lam))` is
+LAPACK's own `k + l` for the pair and is generally smaller. So
+
+    p.coef(lam, mult=p.rank_at(lam))
+
+worked for `"svd"` and `"qrp"` and raised `ValueError` for `None`. `"implicit"` had special-
+cased `rank_at` to return the tension length, which is why the trap was invisible: the two
+non-truncating modes were the two that disagreed, and only one of them was patched.
+
+`rank_at` now means **how many directions the pencil actually yields at this lam**, uniformly,
+so `len(tensions(lam)) == rank_at(lam)` and the call above is always valid. Pre-truncating
+modes are unaffected -- they hand the GSVD a full-column-rank stack, so `k + l` is already the
+truncation index they chose, and the number is still read off the cached reduction rather than
+from a GSVD.
+
+`k + l` is worth understanding before reaching for a cheaper substitute, because there is not
+one. On the L-shape fixture in threshold mode it runs 44, 48, 50 at lam = 10.89, 25, 60, while
+`n_cols` is 50 throughout and `choose_rank` gives 42, 45, 48 at that pencil's rtol and 50, 50,
+50 at eps. LAPACK applies its own criterion on its own scaling and reports the result only
+when the GSVD returns; nothing here reproduces it. Hence reading it off the tension vector,
+whose length IS that number -- cached, so it costs no second factorization.
+
+The branch is keyed on the mode not pre-truncating, not on a mode name, and it applies whether
+or not a rank was frozen: `None` truncates to the FIRST `rank` columns with no regard to
+conditioning, so LAPACK can still find that stack deficient and return fewer.
 
 ## The rank is derived inside each mode's own factorization
 

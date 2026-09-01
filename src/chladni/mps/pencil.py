@@ -255,16 +255,34 @@ class MPSPencil(Frozen):
         return self.rank is not None
 
     def rank_at(self, lam):
-        """The rank actually used at `lam`.
+        """How many directions the pencil actually yields at `lam`.
 
         In threshold mode this is re-derived from the spectrum, so it varies with `lam` --
         which is the point: the pencil's numerical rank GROWS with `lam`, and a rank fixed
         at one end of a scan is wrong at the other.
+
+        The contract is the same for every mode: `len(tensions(lam)) == rank_at(lam)`, and
+        `coef(lam, mult=rank_at(lam))` is always a valid call. A pre-truncating mode gets
+        that for free, because it hands the GSVD a reduced stack of full column rank; the
+        `None` mode does not, and the branch below is what makes it hold there too.
         """
+        if self.reg is None:
+            # No pre-truncation, so LAPACK sees a pencil that may be rank deficient and
+            # applies its OWN criterion, reporting `k + l`. That number is not recoverable
+            # here: on the L-shape fixture it runs 44, 48, 50 at lam = 10.89, 25, 60, while
+            # `n_cols` is 50 throughout and `choose_rank` gives 42, 45, 48 at this rtol and
+            # 50, 50, 50 at eps. It agrees with neither, and nothing short of the GSVD
+            # predicts it -- so read it off the tension vector, whose length IS `k + l`.
+            # Cached, so this is not a second factorization.
+            #
+            # This holds whether or not a rank was frozen: `None` truncates to the FIRST
+            # `rank` columns without regard to conditioning, so LAPACK can still find that
+            # stack deficient. The frozen shortcut below would report the wrong number.
+            return len(self.tensions(lam))
         if self.rank is not None:
             return self.rank
-        # Every mode derives its rank from its own factorization, so read it back off
-        # the (cached) reduction rather than recomputing one here. Calling `choose_rank`
+        # A pre-truncating mode derives its rank from its own factorization, so read it back
+        # off the (cached) reduction rather than recomputing one here. Calling `choose_rank`
         # would repeat the decomposition `regularize` has already performed.
         return self.regularized(lam).rank
 
