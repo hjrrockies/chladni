@@ -188,6 +188,18 @@ that way and several real bugs were found by writing the test before the code.
 high precision. Once the solver is trustworthy that becomes an option for features with no closed
 form, but not before.
 
+**Values from an INDEPENDENT solver are admissible, with their accuracy recorded as data.**
+The rule above was written against self-reference and does not cover this case. `chladni.reference`
+ships nine tabulated spectra computed by `lappy`, for domains with no closed form; they are not
+`chladni` output, so they can be checked against. What makes them usable is that each carries
+`digits`, `source` and per-entry `notes` rather than a prose caveat, because a docstring cannot be
+read by the test that has to choose a tolerance. They range from 14 digits to under 3, and one
+entry is known to be wrong and shipped flagged rather than silently corrected -- see
+`docs/design/reference.md`.
+
+This is the same rule as `Domain.achievable_prec` and `Sampling.accuracy`, applied to values
+instead of to computations: a reported precision is never a claim contradicted elsewhere.
+
 Tests are named `tests/test_<concept>.py`, one file per contract rather than one per module, each
 with a module docstring saying what it defends. `EXACT = 1e-13` is for closed-form quantities that
 must land at machine level; `PREC = 1e-8` is the library default for converged approximations.

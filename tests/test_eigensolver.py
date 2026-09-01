@@ -65,10 +65,10 @@ def test_lam_to_k_rejects_a_nonpositive_iterate():
 
 
 @pytest.mark.parametrize("domain,truth", [
-    (rect(2.0, 1.0), rect_eigs(2.0, 1.0, 12)),
-    (rect(1.0, 1.0), rect_eigs(1.0, 1.0, 12)),
-    (disk(1.0), disk_eigs(1.0, 12)),
-    (eq_tri(1.0), eq_tri_eigs(1.0, 12)),
+    (rect(2.0, 1.0), rect_eigs(12, 2.0, 1.0)),
+    (rect(1.0, 1.0), rect_eigs(12, 1.0, 1.0)),
+    (disk(1.0), disk_eigs(12, 1.0)),
+    (eq_tri(1.0), eq_tri_eigs(12, 1.0)),
 ])
 def test_the_window_brackets_the_first_n_eigenvalues(domain, truth):
     a, b = weyl_window(domain, 10)
@@ -81,7 +81,7 @@ def test_the_window_starts_below_lam_1_even_when_faber_krahn_is_sharp():
     on lam_1 -- and a grid search that ignores endpoints then misses it. This is lappy's
     `_WINDOW_PAD` bug, pinned so the padding cannot be removed as redundant."""
     a, _ = weyl_window(disk(1.0), 5)
-    assert a < disk_eigs(1.0, 1)[0]
+    assert a < disk_eigs(1, 1.0)[0]
 
 
 def test_the_window_is_monotone_in_n():
@@ -94,9 +94,9 @@ def test_the_window_is_monotone_in_n():
 
 
 @pytest.mark.parametrize("domain,truth", [
-    (rect(2.0, 1.0), rect_eigs(2.0, 1.0, 20)),
-    (disk(1.0), disk_eigs(1.0, 20)),
-    (eq_tri(1.0), eq_tri_eigs(1.0, 20)),
+    (rect(2.0, 1.0), rect_eigs(20, 2.0, 1.0)),
+    (disk(1.0), disk_eigs(20, 1.0)),
+    (eq_tri(1.0), eq_tri_eigs(20, 1.0)),
 ])
 def test_solve_returns_the_first_n(domain, truth):
     s = ClosedForm(domain, truth)
@@ -108,7 +108,7 @@ def test_solve_widens_the_window_when_it_came_up_short(n):
     """Weyl's law is asymptotic, so the window under-reaches at small n. Sweeping n is how
     that gets exercised: wherever the first window falls short the base class must widen,
     rather than silently returning fewer than asked for."""
-    truth = rect_eigs(2.0, 1.0, 40)
+    truth = rect_eigs(40, 2.0, 1.0)
     s = ClosedForm(rect(2.0, 1.0), truth)
     got = s.solve(n)
     assert len(got) == n
@@ -119,7 +119,7 @@ def test_solve_widens_the_window_when_it_came_up_short(n):
 def test_solve_reports_rather_than_under_delivering():
     """If widening cannot reach n, say so. Returning 6 eigenvalues from `solve(8)` with no
     signal is the failure mode this rules out."""
-    s = ClosedForm(rect(2.0, 1.0), rect_eigs(2.0, 1.0, 3))   # only 3 exist to be found
+    s = ClosedForm(rect(2.0, 1.0), rect_eigs(3, 2.0, 1.0))   # only 3 exist to be found
     with pytest.raises(RuntimeError, match="8"):
         s.solve(8)
 
@@ -134,7 +134,7 @@ def test_solve_interval_is_abstract():
 
 def test_the_base_class_carries_domain_prec_and_bc_type():
     d = rect(2.0, 1.0, bc="neu")
-    s = ClosedForm(d, rect_eigs(2.0, 1.0, 5))
+    s = ClosedForm(d, rect_eigs(5, 2.0, 1.0))
     assert s.domain is d
     assert s.prec == d.prec
     assert s.bc_type == "neu"
@@ -142,7 +142,7 @@ def test_the_base_class_carries_domain_prec_and_bc_type():
 
 def test_prec_defaults_to_the_domains_own():
     d = rect(2.0, 1.0, prec=1e-12)
-    assert ClosedForm(d, rect_eigs(2.0, 1.0, 5)).prec == 1e-12
+    assert ClosedForm(d, rect_eigs(5, 2.0, 1.0)).prec == 1e-12
 
 
 def test_the_base_class_knows_nothing_about_tension_or_bases():

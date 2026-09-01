@@ -241,79 +241,25 @@ def mp_log_bessely(m, x):
 
 # --- eigenvalue ground truth ------------------------------------------------------------
 #
-# Closed forms only, as the rest of this file. These are the references the `mps` layer is
-# tested against, and `docs/design/particular_solutions.md` lists them as "the mps layer's
-# first tests". lappy's tabulated tables are deliberately NOT ported: its own docs/todo.md
-# records `ellipse_eigs(a=2)[0]` being wrong in the 9th digit, and a table nobody can
-# rederive is not ground truth.
+# These used to be defined here, where no user could reach them. They now live in
+# `chladni.reference` as public API and are imported, which is the point of that module:
+# a reference value the test suite needs is a reference value a user needs.
+#
+# `chladni.reference` also carries the accuracy of every value as data -- `fn.digits`,
+# `fn.source`, `fn.notes` -- so a test can derive its tolerance instead of hard-coding one.
 
-
-def rect_eigs(L=1.0, H=1.0, n=10):
-    """The n smallest Dirichlet eigenvalues of the L x H rectangle, ascending.
-
-    `lam_{pq} = pi**2 * (p**2/L**2 + q**2/H**2)`, p, q >= 1.
-    """
-    p = np.arange(1, n + 1)[:, None]
-    q = np.arange(1, n + 1)[None, :]
-    lam = np.pi**2 * (p**2 / L**2 + q**2 / H**2)
-    return np.sort(lam.ravel())[:n]
-
-
-def disk_eigs(r=1.0, n=10):
-    """The n smallest Dirichlet eigenvalues of the disk of radius r, ascending.
-
-    `lam_{mj} = (j_{m,j} / r)**2` with `j_{m,j}` the j-th positive zero of `J_m`. Every
-    `m >= 1` is doubly degenerate (the sine and cosine modes), which is why they are
-    repeated here -- a multiplicity the deferred estimator will have to see.
-    """
-    from scipy.special import jn_zeros
-
-    lam = []
-    for m in range(n + 1):
-        for z in jn_zeros(m, n):
-            lam.append((z / r) ** 2)
-            if m > 0:
-                lam.append((z / r) ** 2)  # doubly degenerate
-    return np.sort(np.array(lam))[:n]
-
-
-def sector_eigs(omega, r=1.0, n=10):
-    """The n smallest Dirichlet eigenvalues of the circular sector of opening `omega`.
-
-    `lam_{lj} = (j_{l*nu, j} / r)**2` with `nu = pi/omega` and `l >= 1`. Simple for
-    `omega <= pi`, and the sharpest reference in the suite: the eigenfunction is
-    `J_{l*nu}(k r) sin(l*nu*theta)`, which is EXACTLY one Fourier-Bessel column of the
-    corner family at the apex. A single-column basis reproduces it to machine precision.
-    """
-    import mpmath as mp
-
-    nu = np.pi / omega
-    with mp.workdps(MP_DPS):
-        # mpmath, not scipy: `jn_zeros` takes integer orders only, and `l*nu` is fractional
-        # for every sector that is not a half-disk.
-        lam = [float(mp.besseljzero(mp.mpf(l * nu), j)) ** 2 / r**2
-               for l in range(1, n + 1) for j in range(1, n + 1)]
-    return np.sort(np.array(lam))[:n]
-
-
-def eq_tri_eigs(l=1.0, n=10):
-    """The n smallest Dirichlet eigenvalues of the equilateral triangle of side `l`.
-
-    Lame's closed form: `lam_{mn} = (16*pi**2 / (9*l**2)) * (m**2 + m*n + n**2)` for
-    integers `m, n >= 1`. The multiplicity structure is arithmetic, not geometric --
-    `m**2 + m*n + n**2` takes some values more than once (e.g. 49 = 7**2 at (3,5) and
-    (5,3)), on top of the (m,n)/(n,m) pairing.
-    """
-    m = np.arange(1, 2 * n + 1)[:, None]
-    q = np.arange(1, 2 * n + 1)[None, :]
-    lam = (16 * np.pi**2 / (9 * l**2)) * (m**2 + m * q + q**2)
-    return np.sort(lam.ravel())[:n]
-
+from chladni.reference import (  # noqa: E402
+    disk_eigs,
+    eq_tri_eigs,
+    iso_right_tri_eigs,
+    rect_eigs,
+    sector_eigs,
+)
+from chladni.reference import L_shape_eigs  # noqa: E402
 
 #: The L-shape's first Dirichlet eigenvalue, the standard corner-singularity benchmark.
-#: Quoted from the literature to 20 digits; the domain is `L_SHAPE`, a 2x2 square with a
-#: 1x1 bite, whose reentrant corner has `omega = 3*pi/2` and `nu = 2/3`.
-L_SHAPE_LAM1 = 9.6397238440219410527
+#: Tabulated at 14 digits; see `chladni.reference.L_shape_eigs`.
+L_SHAPE_LAM1 = float(L_shape_eigs(1)[0])
 
 
 @pytest.fixture

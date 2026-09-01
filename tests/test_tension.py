@@ -50,14 +50,14 @@ def test_the_sector_eigenfunction_is_one_basis_column(omega):
     middle of a straight diameter, and `Boundary.corners` correctly does not report a corner
     where the tangent does not turn and the boundary condition does not change. There is
     nothing for `at_corner` to attach to, which is the geometry layer being right rather
-    than a gap here -- the half-disk's spectrum is checked through `sector_eigs(pi)` in
+    than a gap here -- the half-disk's spectrum is checked through `sector_eigs(k, omega=pi)` in
     conftest instead.
     """
     dom = _sector(omega)
     apex = next(c for c in dom.corners if abs(c.z) < 1e-12)
     fam = FourierBessel.at_corner(apex, n=1, domain=dom)
 
-    lam = sector_eigs(omega, n=1)[0]
+    lam = sector_eigs(1, omega=omega)[0]
     p = MPSPencil.from_basis(fam, dom.bdry_quad(400),
                              dom.interior_pts(60, rng=_rng()), k_ref=np.sqrt(lam))
     assert p.n_cols == 1
@@ -71,7 +71,7 @@ def test_the_sector_tension_has_a_minimum_at_each_eigenvalue(omega):
     dom = _sector(omega)
     apex = next(c for c in dom.corners if abs(c.z) < 1e-12)
     fam = FourierBessel.at_corner(apex, n=3, domain=dom)
-    lams = sector_eigs(omega, n=3)
+    lams = sector_eigs(3, omega=omega)
     p = MPSPencil.from_basis(fam, dom.bdry_quad(500),
                              dom.interior_pts(80, rng=_rng()), k_ref=np.sqrt(lams[0]))
     for lam in lams:
@@ -89,7 +89,7 @@ def test_the_sector_coefficient_reproduces_the_exact_eigenfunction():
     dom = _sector(omega)
     apex = next(c for c in dom.corners if abs(c.z) < 1e-12)
     fam = FourierBessel.at_corner(apex, n=1, domain=dom)
-    lam = sector_eigs(omega, n=1)[0]
+    lam = sector_eigs(1, omega=omega)[0]
     k = np.sqrt(lam)
 
     p = MPSPencil.from_basis(fam, dom.bdry_quad(400),
@@ -123,7 +123,7 @@ def test_the_rectangle():
     """Plane waves alone: a rectangle has no singular corner, `omega = pi/2` gives
     `nu = 2`, and the eigenfunctions are analytic across every vertex."""
     dom = rect(2.0, 1.0)
-    lam = rect_eigs(2.0, 1.0, 1)[0]
+    lam = rect_eigs(1, 2.0, 1.0)[0]
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
                              dom.interior_pts(120, rng=_rng()), k_ref=np.sqrt(lam))
@@ -132,7 +132,7 @@ def test_the_rectangle():
 
 def test_the_disk():
     dom = disk(1.0)
-    lam = disk_eigs(1.0, 1)[0]
+    lam = disk_eigs(1, 1.0)[0]
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
                              dom.interior_pts(120, rng=_rng()), k_ref=np.sqrt(lam))
@@ -141,7 +141,7 @@ def test_the_disk():
 
 def test_the_equilateral_triangle():
     dom = eq_tri(1.0)
-    lam = eq_tri_eigs(1.0, 1)[0]
+    lam = eq_tri_eigs(1, 1.0)[0]
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
                              dom.interior_pts(120, rng=_rng()), k_ref=np.sqrt(lam))
