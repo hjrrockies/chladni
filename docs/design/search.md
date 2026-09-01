@@ -24,6 +24,18 @@ design rests on these rather than on the local model being assumed.
 median relative residual of 1-3% on rect, disk, eq_tri and L-shape, failing only where the
 floor is close to the plateau, i.e. where the basis cannot represent the eigenfunction.
 
+The two parameters are independent and it matters which is which. **`eps` is the FLOOR** --
+`sigma_1` at the eigenvalue, dimensionless, the residual of the best eigenfunction the finite
+basis can represent, and therefore a property of THE BASIS. **`c` is the WALL SLOPE** --
+`d(sigma_1)/dk` away from the eigenvalue, units of length, a property of THE DOMAIN. Measured
+on the L-shape at 20, 40 and 60 Fourier-Bessel terms, `eps` falls 4.0e-05 -> 1.6e-08 ->
+1.1e-12 while `c` moves only 1.602 -> 1.595.
+
+**`eps/c` is the resolution limit**: the scale in `k` where the cone flattens into its
+quadratic bottom, so two eigenvalues closer than that have overlapping bottoms and cannot be
+separated. Since `c` is fixed by the geometry, `eps` alone sets it -- which is the concrete
+form of "the search is bounded by the basis". See `notes/cone_model.py` for the figure.
+
 **`c` is stable within a domain, not across domains.** 0.98-1.17 on rect over k in [3.3, 7.3];
 1.56-1.70 on the disk; 0.45-0.49 on eq_tri. Per-solve calibration is necessary and sufficient.
 
