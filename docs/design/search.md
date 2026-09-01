@@ -381,6 +381,26 @@ the WEYL AUDIT that surfaced it -- reading 0.79 and flagging, independently of t
 truth that showed the same miss. That is the argument for the audit in one example: on a
 domain with no closed form it is the only completeness signal there is.
 
+## Refine in `lam`, not `k`
+
+Section 4 says Phase B minimises `sigma_1**2`, following the proposal's section 2.2 in working
+in `k`. That is measured to be the wrong variable for the REFINEMENT, though 2.2's reasons --
+Weyl spacing, and `c` being flatter -- are about the SCAN and are untouched.
+
+Fitting a quadratic to `sigma_1**2` over identical physical sample points, the residual
+relative to the data range is smaller in `lam` in **17 of 17 cases** across rect 1x1, 2x1 and
+5x1, the disk, eq_tri and the L-shape: median 5.1x, range 2.5x to 15.4x, with rectangles among
+the strongest. The located vertex is correspondingly 5.1x more accurate on median.
+
+So the local model of the proposal's section 2 is stated in the wrong variable. Writing
+`sigma_1 ~ sqrt(eps**2 + c**2 (k-k*)**2)` makes `sigma_1**2` exactly quadratic in `k`; the data
+say it is closer to quadratic in `lam`, and fitting the model form directly leaves a residual
+of 1.5e-02 against 8.7e-04 for a plain quadratic in `lam` on the same points.
+
+Phase A and Phase B are separate choices and this changes only the second. `notes/k_vs_lam.py`
+regenerates the figure. Not yet checked: whether the advantage survives at `delta_res`-scale
+brackets, and whether it grows at large `lam` where `dlam/dk = 2k`.
+
 ## What the scoring apparatus learned
 
 **Ground truth must not pre-judge multiplicity.** `chladni.reference`'s `*_spectrum` returns an
