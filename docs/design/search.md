@@ -39,6 +39,10 @@ form of "the search is bounded by the basis". See `notes/cone_model.py` for the 
 **`c` is stable within a domain, not across domains.** 0.98-1.17 on rect over k in [3.3, 7.3];
 1.56-1.70 on the disk; 0.45-0.49 on eq_tri. Per-solve calibration is necessary and sufficient.
 
+**The spacing is uniform in `lam`, not `k`.** `N(lam)` is linear in `lam`, so `lam_n` is linear
+in `n` and `k_n ~ sqrt(n)`: the gap is `4*pi/area` in `lam` and shrinks like `1/k` in `k`. The
+proposal's section 2.2 says the opposite; see the As-built section.
+
 **The floor varies by FIVE ORDERS within a single scan, structurally.** On the L-shape with a
 corner-enriched basis, `eps` is 3.1e-13 at k = 4.443 and 5.5e-08 at k = 5.649. That is not
 noise: `4.443**2 = 19.739 = 2*pi**2`, a mode whose eigenfunction VANISHES at the reentrant
@@ -400,6 +404,19 @@ of 1.5e-02 against 8.7e-04 for a plain quadratic in `lam` on the same points.
 Phase A and Phase B are separate choices and this changes only the second. `notes/k_vs_lam.py`
 regenerates the figure. Not yet checked: whether the advantage survives at `delta_res`-scale
 brackets, and whether it grows at large `lam` where `dlam/dk = 2k`.
+
+**And one of 2.2's two reasons for `k` is backwards.** It says Weyl's law makes eigen-wavenumbers
+"asymptotically equispaced with density |Omega|k/2pi" -- but a density that depends on `k` is
+not equispacing. `N(lam)` is LINEAR in `lam`, so `lam_n ~ 4*pi*n/|Omega|` and `k_n ~ sqrt(n)`:
+the spacing is uniform in `lam` and shrinks like `1/k` in `k`. Measured on rect 2x1 over
+n = 20 to 390, `d(lam)` runs 7.09, 6.83, 6.83, 6.33 against the predicted `4*pi/area = 6.28`,
+while `d(k)` falls 0.208 to 0.064 and only `d(k)*k` is flat.
+
+That leaves "`c` is flatter in `k`" as the only surviving reason, and it is about the scan
+alone. The width/gap invariant of section 1 was measured at low `k` and does survive --
+0.515, 0.495, 0.587 over `k` bands [3.5,5], [7,8.5], [12,13.5] on rect 2x1 -- because the
+PLATEAU falls with `k` (0.285 to 0.089) while `c` barely moves, so the dip width shrinks in
+step with the gap. The mild upward drift should be re-measured above `k ~ 15`.
 
 ## What the scoring apparatus learned
 
