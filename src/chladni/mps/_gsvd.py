@@ -53,5 +53,10 @@ def tensions(A_B, A_I, reg="svd", rank=None):
 
 
 def coef(A_B, A_I, mult=1, reg="svd", rank=None):
-    """Regularize and return the `mult` minimizing coefficient vectors, `(n_cols, mult)`."""
+    """Regularize and return the `mult` minimizing coefficient vectors, `(n_cols, mult)`.
+
+    `reg=None` with a frozen `rank` returns `(rank, mult)` instead: it keeps the first `rank`
+    columns and maps back with the identity, so the vector is in the columns retained rather
+    than in the full basis. See `MPSPencil.coef`.
+    """
     return coef_of(regularize(A_B, A_I, reg=reg, rank=rank), mult)

@@ -350,6 +350,19 @@ class MPSPencil(Frozen):
 
         The function they name is `sum_j c_j * exp(-log_scale(lam)[j]) * psi_j`. Recovering the
         unscaled vector is not offered because it does not exist in float64.
+
+        ONE EXCEPTION to the shape, and it is `reg=None` with a frozen `rank`: the rows are
+        `rank`, not `n_cols`. That mode keeps the first `rank` basis columns and its `back` is
+        the identity on them, so the vector is expressed in the columns retained rather than
+        in the full basis. Padding it with zeros to `n_cols` names the identical function --
+        checked, the tension agrees with the reported one -- but it is NOT the prefix of the
+        vector the untruncated solve would give, which is a different problem over a larger
+        space and points elsewhere entirely.
+
+        `"svd"` and `"qrp"` both scatter back to `n_cols`, and `None` in threshold mode
+        retains every column, so the other five mode/rank combinations return `n_cols` rows.
+        Padding here too would be a one-line change to `regularize`; it is not made because
+        nothing needs it and a silent shape change is worse than a documented one.
         """
         c = _gsvd.coef_of(self.regularized(lam), mult)
         return c if c.ndim == 2 else c[:, None]

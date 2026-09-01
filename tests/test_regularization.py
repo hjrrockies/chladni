@@ -331,6 +331,38 @@ def test_rank_at_is_what_the_pencil_actually_yields(pencil, reg, frozen):
     assert p.coef(LAM, mult=r).shape[1] == r
 
 
+@pytest.mark.parametrize("reg", REGS)
+@pytest.mark.parametrize("frozen", [None, 30])
+def test_coef_returns_basis_coordinates_except_where_it_says_otherwise(pencil, reg, frozen):
+    """`coef` claims `(n_cols, mult)`, and that claim was untested and false in one cell of
+    the mode/rank cross product. Five of six return `n_cols` rows; `reg=None` with a frozen
+    rank returns `rank` rows, because it keeps the first `rank` columns and maps back with
+    the identity instead of scattering into the full basis.
+
+    Documented rather than changed, so this is the guard on the documentation.
+    """
+    p = MPSPencil(pencil.bdry, pencil.interior, reg=reg, rank=frozen)
+    rows = p.coef(LAM, mult=2).shape[0]
+    want = frozen if (reg is None and frozen is not None) else p.n_cols
+    assert rows == want
+
+
+def test_the_short_coef_vector_names_the_same_function_when_padded(pencil):
+    """The exception above is a shape, not a different answer: zero-padding to `n_cols` gives
+    a vector over the full basis with the same tension, so nothing is lost by the narrower
+    return. It is emphatically NOT the prefix of the untruncated solve, which minimises over
+    a larger space -- measured cosine 0.14 against it here.
+    """
+    p = MPSPencil(pencil.bdry, pencil.interior, reg=None, rank=30)
+    c = p.coef(LAM)[:, 0]
+    assert c.shape == (30,)
+    B, I = p.pencil(LAM)
+    padded = np.zeros(p.n_cols)
+    padded[:30] = c
+    got = np.linalg.norm(B @ padded) / np.linalg.norm(I @ padded)
+    assert np.isclose(got, p.tension(LAM), rtol=1e-10)
+
+
 # lam = 60 is far above the fixture's lam_ref of 10.89, where FourierBessel reports a digit
 # less than the requested 1e-8. The claim here is about counting directions, not about
 # accuracy at that lam.
