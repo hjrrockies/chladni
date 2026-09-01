@@ -8,8 +8,9 @@ from ._core import PREC, PrecisionWarning, as_xy, from_xy
 from .boundary import Boundary, Corner
 from .domain import Domain, Polygon
 from .library import (
-    GWW1, GWW2, L_shape, annulus, disk, eq_tri, iso_right_tri, plus_shape, polyomino,
-    rect, reg_ngon, spiral,
+    GWW1, GWW2, H_shape, L_shape, annulus, chevron, cut_square, disk, disk_sector,
+    ellipse, eq_tri, iso_right_tri, iso_tri, mushroom, parallelogram, plus_shape,
+    polyomino, rect, reg_ngon, right_trapezoid, spiral, stadium,
 )
 from .quadrature import Panel, Quadrature, legendre_nodes
 from .segments import ArcSegment, LineSegment, ParametricSegment, Segment, SplineSegment
@@ -20,4 +21,6 @@ __all__ = [
     "Boundary", "Corner", "Domain", "Polygon", "Quadrature", "Panel", "legendre_nodes",
     "rect", "L_shape", "eq_tri", "iso_right_tri", "reg_ngon", "disk", "annulus",
     "GWW1", "GWW2", "polyomino", "plus_shape", "spiral",
+    "iso_tri", "right_trapezoid", "parallelogram", "chevron", "H_shape",
+    "ellipse", "disk_sector", "cut_square", "mushroom", "stadium",
 ]

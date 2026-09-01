@@ -172,3 +172,125 @@ def test_every_library_domain_is_well_formed(factory):
 def test_library_accepts_a_boundary_condition(bc):
     d = L_shape(bc=bc)
     assert all(s.bc == (0.0 if bc == "dir" else 1.0 if bc == "neu" else bc) for s in d.outer.segments)
+
+
+# =========================================================================================
+# Factories ported from lappy. Placement is load-bearing: `chladni.reference`'s closed-form
+# eigenfunctions each assume the placement of the factory they name, and their exact L2 norms
+# are wrong if the two disagree. So the placement assertions below are not decoration -- they
+# are the other half of `tests/test_eigenfunctions.py`.
+# =========================================================================================
+
+import numpy as _np  # noqa: E402  (the imports below extend the module header above)
+
+from chladni.geometry import (  # noqa: E402
+    H_shape, chevron, cut_square, disk_sector, ellipse, iso_right_tri, iso_tri, mushroom,
+    parallelogram, right_trapezoid, stadium,
+)
+
+PORTED = [
+    ("iso_tri", lambda: iso_tri(2.0)),
+    ("right_trapezoid", lambda: right_trapezoid(1.0, 2.0)),
+    ("parallelogram", lambda: parallelogram(1.0, 1.0, _np.pi / 3)),
+    ("chevron", lambda: chevron(1.0, 2.0)),
+    ("H_shape", H_shape),
+    ("ellipse", lambda: ellipse(2.0, 1.0)),
+    ("disk_sector", lambda: disk_sector(1.0, _np.pi / 3)),
+    ("cut_square", lambda: cut_square(0.5)),
+    ("mushroom", lambda: mushroom(1.0, 1.0, 1.5)),
+    ("stadium", lambda: stadium(1.0, 1.0)),
+]
+
+
+@pytest.mark.parametrize("name,make", PORTED, ids=[n for n, _ in PORTED])
+def test_every_ported_factory_builds_and_validates(name, make):
+    d = make()
+    assert d.is_valid and d.area > 0 and d.perimeter > 0
+
+
+# --- areas against closed forms ------------------------------------------------------------
+
+
+def test_the_new_polygons_have_the_areas_the_formulas_say():
+    assert iso_tri(2.0).area == pytest.approx(2.0, rel=1e-12)          # base 2, height h
+    assert right_trapezoid(1.0, 2.0).area == pytest.approx(1.5, rel=1e-12)   # (h1+h2)/2
+    assert parallelogram(1.0, 1.0, np.pi / 3).area == pytest.approx(1.0, rel=1e-12)  # b*h
+    assert chevron(1.0, 2.0).area == pytest.approx(1.0, rel=1e-12)     # h2 - h1
+    assert H_shape().area == pytest.approx(7.0, rel=1e-12)
+
+
+def test_the_curved_domains_have_the_areas_the_formulas_say():
+    assert ellipse(2.0, 1.0).area == pytest.approx(2 * np.pi, rel=1e-8)          # pi*a*b
+    assert disk_sector(1.0, np.pi / 3).area == pytest.approx(np.pi / 6, rel=1e-8)  # r^2*th/2
+    # the cut removes the QUARTER DISK of radius r about (1,1), not the corner sliver
+    assert cut_square(0.5).area == pytest.approx(1 - np.pi * 0.25 / 4, rel=1e-8)
+    assert mushroom(1.0, 1.0, 1.5).area == pytest.approx(
+        np.pi * 1.5**2 / 2 + 1.0, rel=1e-8)                             # half disk + stem
+    assert stadium(1.0, 1.0).area == pytest.approx(1.0 + np.pi / 4, rel=1e-8)  # L*H + pi R^2
+
+
+def test_the_stadium_perimeter_is_two_sides_and_a_circle():
+    """Two straight sides of length L, and two semicircular caps that together make one full
+    circle of radius H/2 -- so `2L + 2*pi*(H/2)`, not `2L + pi*(H/2)`."""
+    assert stadium(2.0, 1.0).perimeter == pytest.approx(2 * 2.0 + 2 * np.pi * 0.5, rel=1e-8)
+
+
+# --- placement, which the reference eigenfunctions depend on ------------------------------
+
+
+def test_rect_has_its_corner_at_the_origin():
+    v = rect(2.0, 1.0).vertices
+    assert np.min(np.abs(v)) == 0.0
+    assert np.allclose(sorted(v.real), [0, 0, 2, 2])
+
+
+def test_iso_right_tri_has_its_right_angle_at_the_origin():
+    d = iso_right_tri(1.0)
+    apex = [c for c in d.corners if abs(c.z) < 1e-14]
+    assert len(apex) == 1
+    assert apex[0].omega == pytest.approx(np.pi / 2, abs=1e-12)
+
+
+def test_disk_sector_has_its_apex_at_the_origin_and_opens_from_the_real_axis():
+    omega = np.pi / 3
+    d = disk_sector(1.0, omega)
+    apex = [c for c in d.corners if abs(c.z) < 1e-12]
+    assert len(apex) == 1
+    assert apex[0].omega == pytest.approx(omega, abs=1e-10)
+    assert d.contains(np.array([0.5 * np.exp(1j * omega / 2)]))[0]
+
+
+def test_a_reentrant_sector_apex_is_reentrant():
+    d = disk_sector(1.0, 3 * np.pi / 2)
+    apex = [c for c in d.corners if abs(c.z) < 1e-12][0]
+    assert apex.is_reentrant
+
+
+def test_the_plus_shape_sits_on_the_integer_grid():
+    """The polyomino eigenfunction `sin(m pi x) sin(n pi y)` is exact only there."""
+    v = plus_shape().vertices
+    assert np.allclose(v.real, np.round(v.real))
+    assert np.allclose(v.imag, np.round(v.imag))
+
+
+def test_the_stadium_top_edge_honours_the_boundary_condition():
+    """lappy builds the stadium's third segment without passing `bc`, so its top straight
+    edge silently ignores the requested condition and stays Dirichlet on a Neumann domain.
+    Fixed here, and pinned so it cannot come back."""
+    d = stadium(1.0, 1.0, bc="neu")
+    assert d.bc_type == "neu"
+    q = d.bdry_quad(400)
+    assert np.all(q.bc == 1.0)
+
+
+def test_factories_reject_impossible_parameters():
+    with pytest.raises(ValueError, match="h1 must be less"):
+        chevron(2.0, 1.0)
+    with pytest.raises(ValueError, match="theta"):
+        disk_sector(1.0, 3 * np.pi)
+    with pytest.raises(ValueError, match="r must lie"):
+        cut_square(1.5)
+    with pytest.raises(ValueError, match="cap radius"):
+        mushroom(1.0, 3.0, 1.0)
+    with pytest.raises(ValueError, match="semi-axes"):
+        ellipse(-1.0, 1.0)
