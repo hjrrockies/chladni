@@ -77,20 +77,47 @@ class Well(tuple):
     coupling = property(lambda s: s[4])
 
 
+def _auto_cap(wells):
+    """A cap comfortably above where the widest pair of cones meets.
+
+    `sigma_1` between adjacent wells rises to about `c*d/2`; the cap has to sit above the
+    largest such value or it flattens the curve. 1.5x the largest crossing, with a floor for
+    the single-well case where there is no crossing to exceed.
+    """
+    ks = sorted(w.k for w in wells)
+    if len(ks) < 2:
+        return 1.0
+    c = max(w.c for w in wells)
+    return max(1.5 * c * 0.5 * max(b - a for a, b in zip(ks, ks[1:])), 1.0)
+
+
 class Surrogate:
     """`tensions(k)` from a Hermitian family with eigenvalue curves chosen by fiat.
 
-    `plateau` is where the non-well directions sit, `n` the total number of curves (padding
-    the wells out to a realistic vector length), and `roughness` the relative amplitude of a
-    deterministic high-frequency perturbation -- measured at 1e-10 on a disk pencil whose
-    rank is safe, and 1e-2 on one whose cut sits at machine epsilon.
+    `plateau` is a FAR-FIELD CAP, not a level. Between two eigenvalues the real `sigma_1` is
+    not flat: it is where the two neighbouring cones meet, at `c*d/2`. Measured on a real
+    rect(2,1) pencil, `sigma_1` peaks at 0.645 exactly midway between eigenvalues at k =
+    4.443 and 5.664, and `1.18 * 0.55 = 0.65` accounts for it. Setting `plateau` to the
+    MEDIAN of a real curve -- which is what this class first did -- caps the cones and
+    flattens precisely the structure a search navigates: median relative error against the
+    real curve was 2.0e-01 off the dips, against 2.3e-02 once the cones were allowed to set
+    the level. So `plateau` must sit ABOVE `c*d/2` for the widest gap being modelled, and
+    `plateau=None` (the default) computes such a value.
 
-    `calls` counts evaluations, which is the metric a search is scored on.
+    `roughness` is the relative amplitude of a deterministic high-frequency perturbation --
+    measured at 1e-10 on a disk pencil whose rank is safe, and 1e-2 on one whose cut sits at
+    machine epsilon. `calls` counts evaluations, the metric a search is scored on.
+
+    **Known limit: the higher branches are not modelled.** Every curve that is not a well
+    sits at the cap, so `sigma_3` and above have no structure. Fitted against a real
+    rectangle the median relative error is 1.7e-02 for `sigma_1`, 9.2e-02 for `sigma_2` and
+    1.7e-01 for `sigma_3`. Anything that reads the spectrum above the multiplet -- the (C1)
+    gap test does, at `sigma_{kappa+1}` -- must be confirmed on a real pencil.
     """
 
-    def __init__(self, wells, plateau=0.3, n=24, roughness=0.0, seed=0, rotate=True):
+    def __init__(self, wells, plateau=None, n=24, roughness=0.0, seed=0, rotate=True):
         self.wells = [w if isinstance(w, Well) else Well(*np.atleast_1d(w)) for w in wells]
-        self.plateau = float(plateau)
+        self.plateau = float(plateau) if plateau is not None else _auto_cap(self.wells)
         self.n = int(n)
         self.roughness = float(roughness)
         self.calls = 0
