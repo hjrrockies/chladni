@@ -83,19 +83,27 @@ Bessel accuracy regimes that layer has to reason about are stated in `(nu, k*r)`
 **`lam = k**2` is the parameter of the `mps` layer and of everything a user talks about.** Weyl's
 law, `Domain.normalized`, and the word "eigenvalue" are all in `lam`.
 
-**A parameter's NAME states its variable, and there is no single conversion seam.** An earlier
-version of this entry said the conversion "happens at exactly one seam, `Eigenproblem`". That was
-too strong, and it was written before there was any evidence about which variable suits which
-step: Weyl's law and the user's vocabulary are in `lam`, every particular solution is literally a
-function of `k*r`, and whether the tension curve is better conditioned for minimization in one or
-the other is an open measurement. Fixing a single seam would settle that by class layout instead
-of by measurement.
+**A parameter's NAME states its variable, and the conversion seam is `mps`/`helmholtz`.** An
+earlier version of this entry said the conversion "happens at exactly one seam, `Eigenproblem`",
+which was too strong; a later one said there was no seam at all, only a naming discipline, which
+was too weak. The naming discipline is the rule and still holds: any function may work in
+whichever variable suits it, provided its argument is *named* for that variable -- `k` or `lam`,
+never an argument whose meaning has to be inferred.
 
-So the rule is a naming discipline rather than a location. Any function may work in whichever
-variable suits it, provided its argument is *named* for that variable -- `k` or `lam`, never an
-argument whose meaning has to be inferred. In the `mps` layer that lands as `MPSEigensolver`
-speaking `lam` and `MPSPencil` speaking `k`, with the conversion at the boundary between them,
-but that is a consequence of the discipline and not a new rule.
+What the discipline alone did not settle is where the conversion should FALL, and the measurement
+that settles it is this: **`mps` and above is `lam`, `helmholtz` and below is `k`.** The seam is
+where the meaning changes rather than where a class boundary happens to be. Below it, `k` is not
+a parametrisation choice -- a Fourier-Bessel column IS a function of `k*r`, and its accuracy
+bound `Sampling.accuracy(k)` is a statement about the Bessel kernel's own scale. Above it, `k`
+buys nothing: a tension is not a function of `k*r`, Weyl's law and the user's vocabulary are in
+`lam`, and eigenvalue SPACING is asymptotically uniform in `lam` and not in `k`, which is the
+variable a minimizer's step control should see.
+
+The arrangement this replaced had `MPSPencil` in `k` and `MPSEigensolver` in `lam`. That put the
+conversion inside a single layer, between two classes a user walks between -- `MPSEigensolver`
+HOLDS an `MPSPencil` and exposes it as the `pencil` property -- so the variable changed across a
+hop that changed nothing about the numbers. Both now speak `lam`; `MPSPencil.matrices(lam)` calls
+`assemble(bdry, interior, k)`, and that call is the seam.
 
 Under `Domain.normalized(by=s)`: `lam -> lam * s**2`, equivalently `k -> k * s`.
 

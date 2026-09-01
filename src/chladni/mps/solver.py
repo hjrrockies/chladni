@@ -1,11 +1,15 @@
 """`MPSEigensolver`: the domain-dependent half, speaking `lam`.
 
-The split from `MPSPencil` is not decoration. The pencil is a basis and two point sets, which
-is `helmholtz`'s world, where the parameter is `k`; the solver is a domain and a user, where
-the parameter is `lam`. So the `lam = k**2` conversion sits at the boundary between them
-because that is where it falls, not because a class was built to hold it -- `conventions.md`
-asks only that a parameter's NAME state its variable, and deliberately no longer names a
-single seam, so that whether `k` or `lam` suits a given step stays a measurement.
+This is a facade over `MPSPencil`, by composition rather than inheritance: it HOLDS one as
+`_pencil` and delegates. What it adds is the domain -- and therefore Weyl windows, boundary
+conditions, and a place for the eventual basis planner to live.
+
+**Both speak `lam`, and so does everything else in `mps`.** An earlier version had the pencil
+take `k` while this took `lam`, which put the conversion seam INSIDE one layer: two classes a
+user descends between -- `solver.pencil` is a documented property -- with the variable
+changing across the hop and nothing about the numbers changing to justify it. The seam now
+sits at `mps`/`helmholtz`, which is where the meaning actually changes: a Fourier-Bessel
+column IS a function of `k*r`, and a tension is not such a thing.
 
 Basis planning is deferred (`docs/design/particular_solutions.md`, "Still deferred"), so
 `basis` is required. A default here would become load-bearing the way lappy's did, and lappy's
@@ -18,7 +22,7 @@ import concurrent.futures as cf
 import numpy as np
 
 from .._core import Frozen, _set
-from ..eigensolver import Eigensolver, lam_to_k, weyl_window
+from ..eigensolver import Eigensolver, weyl_window
 from .pencil import MPSPencil
 
 __all__ = ["MPSEigensolver"]
@@ -61,7 +65,7 @@ class MPSEigensolver(Eigensolver, Frozen):
 
         _set(self, _pencil=MPSPencil.from_basis(
             basis, bdry_quad, int_pts, reg=reg, rank=rank, rtol=rtol,
-            k_ref=None if lam_ref is None else lam_to_k(lam_ref), prec=self.prec))
+            lam_ref=lam_ref, prec=self.prec))
         _set(self, lam_ref=lam_ref)
 
     # --- delegation, and the one conversion ------------------------------------------------
@@ -86,16 +90,15 @@ class MPSEigensolver(Eigensolver, Frozen):
         and `douse` runs whole solves across threads on top of this.
 
         Under the threshold rank the vector's LENGTH varies with `lam`, since the pencil's
-        numerical rank grows with `k`. Rows are padded to a common width with `+inf`, which
+        numerical rank grows with `lam`. Rows are padded to a common width with `+inf`, which
         is the honest value: a direction the pencil does not resolve has no finite tension,
         and `+inf` sorts to the end exactly as the zero-denominator case already does.
         """
         arr = np.asarray(lam, dtype=float)
         if arr.ndim == 0:
-            return self._pencil.tensions(lam_to_k(float(arr)))
-        ks = lam_to_k(arr)
+            return self._pencil.tensions(float(arr))
         with cf.ThreadPoolExecutor() as ex:
-            rows = list(ex.map(self._pencil.tensions, ks))
+            rows = list(ex.map(self._pencil.tensions, arr))
         w = max(len(r) for r in rows)
         out = np.full((len(rows), w), np.inf)
         for i, r in enumerate(rows):
@@ -106,19 +109,19 @@ class MPSEigensolver(Eigensolver, Frozen):
         """The smallest generalized singular value at `lam`: the quantity to be minimized."""
         arr = np.asarray(lam, dtype=float)
         if arr.ndim == 0:
-            return self._pencil.tension(lam_to_k(float(arr)))
+            return self._pencil.tension(float(arr))
         return self.tensions(arr)[:, 0]
 
     def coef(self, lam, mult=1):
         """The `mult` minimizing coefficient vectors at `lam`, in the scaled column space."""
-        return self._pencil.coef(lam_to_k(lam), mult)
+        return self._pencil.coef(lam, mult)
 
     def log_scale(self, lam):
         """Total per-column log scale at `lam`; the recovery factor for `coef`."""
-        return self._pencil.log_scale(lam_to_k(lam))
+        return self._pencil.log_scale(lam)
 
     def rank_diagnostics(self, lam):
-        return self._pencil.rank_diagnostics(lam_to_k(lam))
+        return self._pencil.rank_diagnostics(lam)
 
     # --- the deferred layer ------------------------------------------------------------------
 

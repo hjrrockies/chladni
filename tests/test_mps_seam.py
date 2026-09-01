@@ -16,9 +16,12 @@ nature, so being able to inspect one stage without standing up a solver is not a
 -- it is how the layer gets debugged. The free function holds the algorithm and the method
 holds the defaults, and this file checks the two cannot drift apart.
 
-The two classes divide by their spectral parameter. `MPSPencil` speaks `k` and is domain-free;
-`MPSEigensolver` speaks `lam` and owns the domain. `conventions.md` asks only that a
-parameter's name state its variable, so the split is checked here rather than assumed.
+Everything in `mps` speaks `lam`, and the `lam = k**2` seam sits at the `mps`/`helmholtz`
+boundary. `MPSPencil` is domain-free and `MPSEigensolver` owns the domain, but they no longer
+differ in their spectral parameter -- and since the solver HOLDS a pencil and exposes it as a
+property, a user descending from one to the other must not have to change variables to do it.
+The one function here that still takes `k` is `assemble`, because it calls into `helmholtz`,
+where `k` is what a basis function is made of rather than a parametrisation choice.
 """
 import concurrent.futures as cf
 
@@ -52,7 +55,7 @@ def basis(poly):
 def pencil(poly, basis):
     return MPSPencil.from_basis(basis, poly.bdry_quad(300),
                                 poly.interior_pts(120, rng=np.random.default_rng(0)),
-                                k_ref=K)
+                                lam_ref=LAM)
 
 
 @pytest.fixture
@@ -65,17 +68,17 @@ def solver(poly, basis):
 
 
 def test_tensions_ascend(pencil):
-    t = pencil.tensions(K)
+    t = pencil.tensions(LAM)
     assert t.ndim == 1 and len(t) == pencil.rank
     assert np.all(np.diff(t) >= 0)
-    assert t[0] == pencil.tension(K)
+    assert t[0] == pencil.tension(LAM)
 
 
 def test_tensions_are_deterministic(pencil):
     """Not merely close: identical. A minimizer comparing a value against one it computed
     three iterations ago must not see the difference between two runs of the same LAPACK
     call."""
-    assert np.array_equal(pencil.tensions(K), pencil.tensions(K))
+    assert np.array_equal(pencil.tensions(LAM), pencil.tensions(LAM))
 
 
 def test_tensions_take_an_array(solver):
@@ -101,14 +104,14 @@ def test_a_solver_is_safe_to_share_across_threads(solver):
 def test_the_free_functions_and_the_methods_agree(pencil):
     """The rule: the free function holds the algorithm, the method holds the defaults. If
     these ever disagree, logic has leaked into a class where it cannot be inspected."""
-    A_B, A_I = assemble(pencil.bdry, pencil.interior, K)
-    assert np.array_equal((A_B, A_I)[0], pencil.matrices(K)[0])
+    A_B, A_I = assemble(pencil.bdry, pencil.interior, np.sqrt(LAM))
+    assert np.array_equal((A_B, A_I)[0], pencil.matrices(LAM)[0])
 
-    B, I = pencil.pencil(K)
+    B, I = pencil.pencil(LAM)
     assert np.array_equal(tensions(B, I, reg=pencil.reg, rank=pencil.rank),
-                          pencil.tensions(K))
+                          pencil.tensions(LAM))
     assert np.allclose(coef(B, I, mult=1, reg=pencil.reg, rank=pencil.rank),
-                       pencil.coef(K), rtol=0, atol=EXACT)
+                       pencil.coef(LAM), rtol=0, atol=EXACT)
 
 
 def test_the_stages_compose_by_hand(pencil):
@@ -116,12 +119,12 @@ def test_the_stages_compose_by_hand(pencil):
     with no solver involved past the first line. This is the debugging path."""
     from chladni.mps import equilibrate
 
-    A_B, A_I = pencil.matrices(K)
+    A_B, A_I = pencil.matrices(LAM)
     B, I, _ = equilibrate(A_B, A_I)
     r = regularize(B, I, reg="svd", rank=pencil.rank)
     assert r.B.shape[1] == pencil.rank
     assert np.allclose(tensions(B, I, reg="svd", rank=pencil.rank),
-                       pencil.tensions(K), rtol=0, atol=EXACT)
+                       pencil.tensions(LAM), rtol=0, atol=EXACT)
 
 
 def test_a_hand_built_pair_of_arrays_needs_no_geometry():
@@ -136,14 +139,34 @@ def test_a_hand_built_pair_of_arrays_needs_no_geometry():
 # --- the two classes, and their parameters -----------------------------------------------
 
 
-def test_the_pencil_speaks_k_and_the_solver_speaks_lam(pencil, solver):
-    """`conventions.md`: a parameter's NAME states its variable. The two objects agree at
-    corresponding parameters, which is the only thing that makes the split safe."""
+def test_everything_in_mps_speaks_lam(pencil, solver):
+    """`conventions.md`: a parameter's NAME states its variable. The seam is the
+    `mps`/`helmholtz` boundary and nothing finer, so both classes take `lam` and agree at
+    the SAME argument -- not at corresponding ones.
+
+    The earlier arrangement had the pencil take `k` and the solver `lam`, which put the
+    conversion inside one layer that a user walks through: `solver.pencil` is a public
+    property, and the variable changed across the hop for no reason visible in the numbers.
+    """
     import inspect
 
-    assert "k" in inspect.signature(MPSPencil.tension).parameters
-    assert "lam" in inspect.signature(MPSEigensolver.tension).parameters
-    assert solver.tension(LAM) == pytest.approx(solver.pencil.tension(K), rel=1e-12)
+    for meth in (MPSPencil.tension, MPSPencil.tensions, MPSPencil.coef, MPSPencil.rank_at,
+                 MPSEigensolver.tension, MPSEigensolver.tensions, MPSEigensolver.coef):
+        params = inspect.signature(meth).parameters
+        assert "lam" in params and "k" not in params, meth.__qualname__
+
+    assert solver.tension(LAM) == pytest.approx(solver.pencil.tension(LAM), rel=1e-12)
+
+
+def test_assemble_is_where_lam_becomes_k(pencil):
+    """The seam itself, as an assertion. `assemble` is the call into `helmholtz`, so it is
+    the last function that takes `k`; `matrices` is its `lam`-facing wrapper and the two must
+    name the same matrices."""
+    import inspect
+
+    assert "k" in inspect.signature(assemble).parameters
+    assert np.array_equal(assemble(pencil.bdry, pencil.interior, np.sqrt(LAM))[0],
+                          pencil.matrices(LAM)[0])
 
 
 def test_the_pencil_never_sees_a_domain(pencil):

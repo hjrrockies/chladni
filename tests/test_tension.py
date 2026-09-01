@@ -59,9 +59,9 @@ def test_the_sector_eigenfunction_is_one_basis_column(omega):
 
     lam = sector_eigs(1, omega=omega)[0]
     p = MPSPencil.from_basis(fam, dom.bdry_quad(400),
-                             dom.interior_pts(60, rng=_rng()), k_ref=np.sqrt(lam))
+                             dom.interior_pts(60, rng=_rng()), lam_ref=lam)
     assert p.n_cols == 1
-    assert p.tension(np.sqrt(lam)) < 1e-10
+    assert p.tension(lam) < 1e-10
 
 
 @pytest.mark.parametrize("omega", [2 * np.pi / 3, 3 * np.pi / 2])
@@ -73,10 +73,10 @@ def test_the_sector_tension_has_a_minimum_at_each_eigenvalue(omega):
     fam = FourierBessel.at_corner(apex, n=3, domain=dom)
     lams = sector_eigs(3, omega=omega)
     p = MPSPencil.from_basis(fam, dom.bdry_quad(500),
-                             dom.interior_pts(80, rng=_rng()), k_ref=np.sqrt(lams[0]))
+                             dom.interior_pts(80, rng=_rng()), lam_ref=lams[0])
     for lam in lams:
-        at = p.tension(np.sqrt(lam))
-        off = min(p.tension(np.sqrt(lam * f)) for f in (0.93, 1.07))
+        at = p.tension(lam)
+        off = min(p.tension(lam * f) for f in (0.93, 1.07))
         assert at < 1e-8, f"tension {at:.2e} at the exact eigenvalue {lam}"
         assert off > 1e3 * at, f"no dip at {lam}: {at:.2e} against {off:.2e} nearby"
 
@@ -93,12 +93,14 @@ def test_the_sector_coefficient_reproduces_the_exact_eigenfunction():
     k = np.sqrt(lam)
 
     p = MPSPencil.from_basis(fam, dom.bdry_quad(400),
-                             dom.interior_pts(60, rng=_rng()), k_ref=k)
-    c = p.coef(k)
+                             dom.interior_pts(60, rng=_rng()), lam_ref=lam)
+    c = p.coef(lam)
     assert c.shape == (1, 1)
 
+    # `k` survives here only because `fam.values` is a call into `helmholtz`, which is the
+    # far side of the seam; everything asked of the pencil is in `lam`.
     off = dom.interior_pts(50, rng=np.random.default_rng(77))
-    got = fam.values(k, off) @ (c[:, 0] * np.exp(-p.log_scale(k)))
+    got = fam.values(k, off) @ (c[:, 0] * np.exp(-p.log_scale(lam)))
     want = fam.values(k, off)[:, 0]
     ratio = got / want
     assert np.allclose(ratio, ratio[0], rtol=1e-10, atol=0), "not a multiple of the column"
@@ -126,8 +128,8 @@ def test_the_rectangle():
     lam = rect_eigs(1, 2.0, 1.0)[0]
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
-                             dom.interior_pts(120, rng=_rng()), k_ref=np.sqrt(lam))
-    assert p.tension(np.sqrt(lam)) < 1e-6
+                             dom.interior_pts(120, rng=_rng()), lam_ref=lam)
+    assert p.tension(lam) < 1e-6
 
 
 def test_the_disk():
@@ -135,8 +137,8 @@ def test_the_disk():
     lam = disk_eigs(1, 1.0)[0]
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
-                             dom.interior_pts(120, rng=_rng()), k_ref=np.sqrt(lam))
-    assert p.tension(np.sqrt(lam)) < 1e-6
+                             dom.interior_pts(120, rng=_rng()), lam_ref=lam)
+    assert p.tension(lam) < 1e-6
 
 
 def test_the_equilateral_triangle():
@@ -144,8 +146,8 @@ def test_the_equilateral_triangle():
     lam = eq_tri_eigs(1, 1.0)[0]
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
-                             dom.interior_pts(120, rng=_rng()), k_ref=np.sqrt(lam))
-    assert p.tension(np.sqrt(lam)) < 1e-6
+                             dom.interior_pts(120, rng=_rng()), lam_ref=lam)
+    assert p.tension(lam) < 1e-6
 
 
 # --- the corner-singularity benchmark ----------------------------------------------------
@@ -170,15 +172,15 @@ def test_the_l_shape_reaches_twelve_digits_with_corner_enrichment():
     half that catches a regression where enrichment silently stops contributing.
     """
     dom = Polygon(L_SHAPE, bc="dir")
-    k = np.sqrt(L_SHAPE_LAM1)
     q, pts = dom.bdry_quad(800), dom.interior_pts(300, rng=_rng())
 
     plain = _waves(dom, L_SHAPE_LAM1)
     enriched = sum((FourierBessel.at_corner(c, n=22, domain=dom) for c in dom.corners[1:]),
                    FourierBessel.at_corner(dom.corners[0], n=22, domain=dom))
 
-    t_plain = MPSPencil.from_basis(plain, q, pts, k_ref=k).tension(k)
-    t_rich = MPSPencil.from_basis(enriched, q, pts, k_ref=k).tension(k)
+    t_plain = MPSPencil.from_basis(plain, q, pts, lam_ref=L_SHAPE_LAM1).tension(L_SHAPE_LAM1)
+    t_rich = MPSPencil.from_basis(enriched, q, pts,
+                                  lam_ref=L_SHAPE_LAM1).tension(L_SHAPE_LAM1)
 
     assert t_rich < 1e-11, f"expected ~1.7e-12 at the exact eigenvalue, got {t_rich:.3e}"
     assert t_rich < 1e-8 * t_plain, f"enrichment bought nothing: {t_rich:.2e} vs {t_plain:.2e}"
@@ -189,14 +191,14 @@ def test_the_l_shape_tension_converges_in_the_corner_degrees():
     """The convergence itself, which is the statement that this is a method and not a fit.
     Each step up in degrees must buy at least an order of magnitude."""
     dom = Polygon(L_SHAPE, bc="dir")
-    k = np.sqrt(L_SHAPE_LAM1)
     q, pts = dom.bdry_quad(800), dom.interior_pts(300, rng=_rng())
 
     got = []
     for n in (14, 18, 22):
         b = sum((FourierBessel.at_corner(c, n=n, domain=dom) for c in dom.corners[1:]),
                 FourierBessel.at_corner(dom.corners[0], n=n, domain=dom))
-        got.append(MPSPencil.from_basis(b, q, pts, k_ref=k).tension(k))
+        got.append(MPSPencil.from_basis(b, q, pts,
+                                       lam_ref=L_SHAPE_LAM1).tension(L_SHAPE_LAM1))
     assert got[1] < 0.1 * got[0], f"14 -> 18 degrees bought nothing: {got}"
     assert got[2] < 0.1 * got[1], f"18 -> 22 degrees bought nothing: {got}"
 
@@ -231,16 +233,16 @@ def test_the_coefficients_attain_the_reported_tension(reg):
     perfectly plausible vector attaining the wrong ratio.
     """
     dom = Polygon(L_SHAPE, bc="dir")
-    k = np.sqrt(L_SHAPE_LAM1)
     b = sum((FourierBessel.at_corner(c, n=14, domain=dom) for c in dom.corners[1:]),
             FourierBessel.at_corner(dom.corners[0], n=14, domain=dom))
     p = MPSPencil.from_basis(b, dom.bdry_quad(800),
-                             dom.interior_pts(300, rng=_rng()), k_ref=k, reg=reg)
+                             dom.interior_pts(300, rng=_rng()), lam_ref=L_SHAPE_LAM1,
+                             reg=reg)
 
-    B, I = p.pencil(k)
-    c = p.coef(k)[:, 0]
+    B, I = p.pencil(L_SHAPE_LAM1)
+    c = p.coef(L_SHAPE_LAM1)[:, 0]
     ratio = np.linalg.norm(B @ c) / np.linalg.norm(I @ c)
-    assert ratio == pytest.approx(p.tension(k), rel=1e-6)
+    assert ratio == pytest.approx(p.tension(L_SHAPE_LAM1), rel=1e-6)
 
 
 @pytest.mark.parametrize("reg", ["svd", "qrp"])
@@ -249,14 +251,14 @@ def test_mult_returns_the_smallest_few_in_order(reg):
     m drives m tensions to zero together, and `coef(lam, mult=m)` must hand back that whole
     subspace, in the same order `tensions` reports it."""
     dom = Polygon(L_SHAPE, bc="dir")
-    k = np.sqrt(L_SHAPE_LAM1)
     b = sum((FourierBessel.at_corner(c, n=14, domain=dom) for c in dom.corners[1:]),
             FourierBessel.at_corner(dom.corners[0], n=14, domain=dom))
     p = MPSPencil.from_basis(b, dom.bdry_quad(800),
-                             dom.interior_pts(300, rng=_rng()), k_ref=k, reg=reg)
+                             dom.interior_pts(300, rng=_rng()), lam_ref=L_SHAPE_LAM1,
+                             reg=reg)
 
-    B, I = p.pencil(k)
-    C = p.coef(k, mult=3)
+    B, I = p.pencil(L_SHAPE_LAM1)
+    C = p.coef(L_SHAPE_LAM1, mult=3)
     assert C.shape == (p.n_cols, 3)
     got = [np.linalg.norm(B @ C[:, j]) / np.linalg.norm(I @ C[:, j]) for j in range(3)]
-    assert np.allclose(got, p.tensions(k)[:3], rtol=1e-6)
+    assert np.allclose(got, p.tensions(L_SHAPE_LAM1)[:3], rtol=1e-6)

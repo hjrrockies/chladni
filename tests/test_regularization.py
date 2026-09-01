@@ -35,6 +35,7 @@ from chladni.mps import tensions as tensions_fn
 from conftest import L_SHAPE
 
 K = 3.3
+LAM = K**2
 REGS = ["svd", "qrp", None]
 
 
@@ -54,7 +55,7 @@ def pencil(poly):
     b = basis_for(poly)
     return MPSPencil.from_basis(b, poly.bdry_quad(400),
                                 poly.interior_pts(150, rng=np.random.default_rng(0)),
-                                k_ref=K)
+                                lam_ref=LAM)
 
 
 def well_conditioned(seed=0, m_b=40, m_i=25, n=12):
@@ -118,8 +119,8 @@ def test_a_frozen_rank_gives_a_continuous_tension_curve(pencil):
     and measure the largest jump between neighbours against the typical one. A rank change
     shows up as an isolated spike orders of magnitude above the smooth variation.
     """
-    ks = np.linspace(3.0, 4.0, 400)
-    t = np.array([pencil.tension(k) for k in ks])
+    lams = np.linspace(9.0, 16.0, 400)
+    t = np.array([pencil.tension(lam) for lam in lams])
     d = np.abs(np.diff(t))
     assert d.max() < 25 * np.median(d), (
         f"largest step {d.max():.3e} against median {np.median(d):.3e}: the curve jumps"
@@ -154,13 +155,13 @@ def test_the_minimizer_never_comes_near_the_truncation_cutoff():
     from conftest import L_SHAPE_LAM1
 
     dom = _P(L_SHAPE, bc="dir")
-    k1 = np.sqrt(L_SHAPE_LAM1)
     b = sum((FourierBessel.at_corner(c, n=22, domain=dom) for c in dom.corners[1:]),
             FourierBessel.at_corner(dom.corners[0], n=22, domain=dom))
     p = MPSPencil.from_basis(b, dom.bdry_quad(800),
-                             dom.interior_pts(300, rng=np.random.default_rng(0)), k_ref=k1)
-    A, I = p.pencil(k1)
-    c = p.coef(k1)[:, 0]
+                             dom.interior_pts(300, rng=np.random.default_rng(0)),
+                             lam_ref=L_SHAPE_LAM1)
+    A, I = p.pencil(L_SHAPE_LAM1)
+    c = p.coef(L_SHAPE_LAM1)[:, 0]
     c = c / np.linalg.norm(c)
 
     assert np.linalg.norm(A @ c) < 1e-10, "this is meant to be sitting on an eigenvalue"
@@ -182,38 +183,38 @@ def test_the_two_rules_agree_on_a_real_scan_through_an_eigenvalue():
     argument for the frozen rank on this problem.
 
     What survives is narrower and is what the design now rests on: the rank is a property of
-    the solver rather than of `k`, so a scan is reproducible and a re-solve at a visited
+    the solver rather than of `lam`, so a scan is reproducible and a re-solve at a visited
     parameter returns the same number; and it skips one `svdvals` of the stack per
-    evaluation, measured at 11.3 ms against 13.4 ms per k, about 19%.
+    evaluation, measured at 11.3 ms against 13.4 ms per point, about 19%.
     """
     from chladni.geometry import Polygon as _P
     from conftest import L_SHAPE_LAM1
 
     dom = _P(L_SHAPE, bc="dir")
-    k1 = np.sqrt(L_SHAPE_LAM1)
     b = sum((FourierBessel.at_corner(c, n=22, domain=dom) for c in dom.corners[1:]),
             FourierBessel.at_corner(dom.corners[0], n=22, domain=dom))
     p = MPSPencil.from_basis(b, dom.bdry_quad(800),
-                             dom.interior_pts(300, rng=np.random.default_rng(0)), k_ref=k1)
+                             dom.interior_pts(300, rng=np.random.default_rng(0)),
+                             lam_ref=L_SHAPE_LAM1)
 
-    ks = k1 * (1 + np.linspace(-2e-3, 2e-3, 41))
-    for k in ks:
-        A, I = p.pencil(k)
+    lams = L_SHAPE_LAM1 * (1 + np.linspace(-4e-3, 4e-3, 41))
+    for lam in lams:
+        A, I = p.pencil(lam)
         r = choose_rank(A, I, p.rtol)
-        assert r == p.rank, f"the threshold rank moved to {r} at k={k}"
+        assert r == p.rank, f"the threshold rank moved to {r} at lam={lam}"
         assert (tensions_fn(A, I, reg="svd", rank=r)[0]
                 == tensions_fn(A, I, reg="svd", rank=p.rank)[0])
 
 
 def test_the_frozen_rank_does_not_depend_on_where_it_is_evaluated(pencil):
-    """`rank` is fixed at construction and every later call uses it, whatever k arrives."""
+    """`rank` is fixed at construction and every later call uses it, whatever lam arrives."""
     r = pencil.rank
-    for k in (2.0, 3.3, 7.5, 12.0):
-        assert pencil.regularized(k).rank == r
+    for lam in (4.0, 10.89, 56.25, 144.0):
+        assert pencil.regularized(lam).rank == r
 
 
 def test_rank_diagnostics_expose_the_choice(pencil):
-    d = pencil.rank_diagnostics(K)
+    d = pencil.rank_diagnostics(LAM)
     assert d.rank == pencil.rank
     assert d.s.ndim == 1 and np.all(np.diff(d.s) <= 0), "singular values descend"
     assert d.s[0] > 0
@@ -250,8 +251,8 @@ def test_a_tighter_prec_retains_more_columns(poly):
     direction `PlaneWave.n_useful` documents one layer down."""
     b = basis_for(poly)
     q, pts = poly.bdry_quad(400), poly.interior_pts(150, rng=np.random.default_rng(0))
-    loose = MPSPencil.from_basis(b, q, pts, k_ref=K, prec=1e-4)
-    tight = MPSPencil.from_basis(b, q, pts, k_ref=K, prec=1e-14)
+    loose = MPSPencil.from_basis(b, q, pts, lam_ref=LAM, prec=1e-4)
+    tight = MPSPencil.from_basis(b, q, pts, lam_ref=LAM, prec=1e-14)
     assert tight.rtol < loose.rtol
     assert tight.rank >= loose.rank
 
@@ -307,9 +308,9 @@ def test_implicit_mode_is_usable_from_a_pencil(pencil):
     """It must be reachable through the object, not only through the free function, and it
     must not secretly pay for the factorization it exists to avoid."""
     p = MPSPencil(pencil.bdry, pencil.interior, reg="implicit")
-    t = p.tensions(K)
+    t = p.tensions(LAM)
     assert p.rank is None
-    assert p.rank_at(K) == len(t)
+    assert p.rank_at(LAM) == len(t)
 
     # Ascending, but note the trailing +inf: unlike the svd route, whose reduced stack has
     # orthonormal columns and therefore no zero denominators, implicit hands the raw pencil
@@ -342,21 +343,21 @@ def test_the_numerical_rank_grows_with_k():
     b = PlaneWave.uniform(27, radius=dom.diameter)
     p = MPSPencil.from_basis(b, dom.bdry_quad(600),
                              dom.interior_pts(200, rng=np.random.default_rng(0)),
-                             k_ref=(2.2, 5.7))
-    lo = choose_rank(*p.pencil(2.3), p.rtol)
-    hi = choose_rank(*p.pencil(5.7), p.rtol)
-    assert lo < hi, f"rank did not grow with k: {lo} at k=2.3, {hi} at k=5.7"
+                             lam_ref=(4.84, 32.49))
+    lo = choose_rank(*p.pencil(5.29), p.rtol)
+    hi = choose_rank(*p.pencil(32.49), p.rtol)
+    assert lo < hi, f"rank did not grow with lam: {lo} at lam=5.29, {hi} at lam=32.49"
 
 
-def test_a_rank_chosen_at_one_k_is_unsafe_at_the_low_end():
+def test_a_rank_chosen_at_one_lam_is_unsafe_at_the_low_end():
     """The defect this pair of tests exists to prevent.
 
     A rank frozen at the midpoint of a scan is too large at the bottom of it, where the
     spectrum has not yet grown to support it -- so the cut lands at machine epsilon, the
     retained directions are undetermined, and the tension sprouts spurious local minima.
-    Measured: rank 39 frozen at k = 3.95 has s_r/s_0 = 2.4e-16 at k = 2.35, and 85 local
-    minima in a window holding exactly one eigenvalue. Choosing over the range gives 31,
-    and one.
+    Measured: rank 39 frozen at lam = 15.6 has s_r/s_0 = 2.4e-16 at lam = 5.52, and 85
+    local minima in a window holding exactly one eigenvalue. Choosing over the range gives
+    31, and one.
     """
     from chladni.geometry import disk
     from chladni.helmholtz import PlaneWave
@@ -365,17 +366,17 @@ def test_a_rank_chosen_at_one_k_is_unsafe_at_the_low_end():
     b = PlaneWave.uniform(27, radius=dom.diameter)
     q, pts = dom.bdry_quad(600), dom.interior_pts(200, rng=np.random.default_rng(0))
 
-    point = MPSPencil.from_basis(b, q, pts, k_ref=3.95)
-    spread = MPSPencil.from_basis(b, q, pts, k_ref=(2.2, 5.7))
+    point = MPSPencil.from_basis(b, q, pts, lam_ref=15.6025)
+    spread = MPSPencil.from_basis(b, q, pts, lam_ref=(4.84, 32.49))
     assert spread.rank < point.rank
 
-    B, I = spread.pencil(2.35)
+    B, I = spread.pencil(5.5225)
     s = np.linalg.svd(np.vstack([B, I]), compute_uv=False)
     assert s[spread.rank - 1] / s[0] > 1e-13, "the range-chosen rank is not safe at the low end"
 
-    Bp, Ip = point.pencil(2.35)
+    Bp, Ip = point.pencil(5.5225)
     sp = np.linalg.svd(np.vstack([Bp, Ip]), compute_uv=False)
-    assert sp[point.rank - 1] / sp[0] < 1e-15, "this k no longer exercises the defect"
+    assert sp[point.rank - 1] / sp[0] < 1e-15, "this lam no longer exercises the defect"
 
 
 def test_an_unsafe_frozen_rank_says_so():
@@ -388,12 +389,12 @@ def test_an_unsafe_frozen_rank_says_so():
     dom = disk(1.0)
     b = PlaneWave.uniform(27, radius=dom.diameter)
     q, pts = dom.bdry_quad(600), dom.interior_pts(200, rng=np.random.default_rng(0))
-    point = MPSPencil.from_basis(b, q, pts, k_ref=3.95)
+    point = MPSPencil.from_basis(b, q, pts, lam_ref=15.6025)
     with pytest.warns(PrecisionWarning, match="frozen rank"):
-        point.rank_diagnostics(2.35)
+        point.rank_diagnostics(5.5225)
 
 
-def test_a_k_ref_range_is_validated():
+def test_a_lam_ref_range_is_validated():
     from chladni.geometry import disk
     from chladni.helmholtz import PlaneWave
 
@@ -401,9 +402,9 @@ def test_a_k_ref_range_is_validated():
     b = PlaneWave.uniform(20, radius=dom.diameter)
     q, pts = dom.bdry_quad(400), dom.interior_pts(100, rng=np.random.default_rng(0))
     with pytest.raises(ValueError, match="lo < hi"):
-        MPSPencil.from_basis(b, q, pts, k_ref=(5.0, 2.0))
+        MPSPencil.from_basis(b, q, pts, lam_ref=(25.0, 4.0))
     with pytest.raises(ValueError, match="pair"):
-        MPSPencil.from_basis(b, q, pts, k_ref=(1.0, 2.0, 3.0))
+        MPSPencil.from_basis(b, q, pts, lam_ref=(1.0, 4.0, 9.0))
 
 
 @pytest.mark.slow
@@ -415,10 +416,10 @@ def test_a_range_chosen_rank_leaves_one_minimum_per_eigenvalue():
     dom = disk(1.0)
     b = PlaneWave.uniform(27, radius=dom.diameter)
     q, pts = dom.bdry_quad(600), dom.interior_pts(200, rng=np.random.default_rng(0))
-    p = MPSPencil.from_basis(b, q, pts, k_ref=(2.2, 5.7))
+    p = MPSPencil.from_basis(b, q, pts, lam_ref=(4.84, 32.49))
 
-    ks = np.linspace(2.25, 2.45, 400)          # holds exactly one eigenvalue, k_1 = 2.4048
-    v = np.array([p.tension(k) for k in ks])
+    lams = np.linspace(5.0625, 6.0025, 400)    # holds exactly one eigenvalue, lam_1 = 5.7832
+    v = np.array([p.tension(lam) for lam in lams])
     n_min = len(np.nonzero((v[1:-1] < v[:-2]) & (v[1:-1] < v[2:]))[0])
     assert n_min == 1, f"{n_min} local minima where there is one eigenvalue"
 

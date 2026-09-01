@@ -193,8 +193,8 @@ own inputs without standing up a solver. The free function holds the algorithm; 
 holds the defaults, and nothing else.
 
 The names collide deliberately: `mps.tensions(A_B, A_I, ...)` is the free function,
-`MPSPencil.tensions(k)` assembles and calls it, `MPSEigensolver.tensions(lam)` converts and
-calls that. Below the class level everything is arrays.
+`MPSPencil.tensions(lam)` assembles and calls it, and `MPSEigensolver.tensions(lam)` delegates
+to that -- both in `lam`, since the seam is `mps`/`helmholtz` and nothing finer. Below the class level everything is arrays.
 
 ---
 
@@ -325,7 +325,7 @@ The function is the name callers want, so the module yielded.
 
 ## The solver may guess a reference parameter; the pencil may not
 
-`MPSPencil` raises when asked for `rank=None` with no `k_ref`, on the rule
+`MPSPencil` raises when asked for `rank=None` with no `lam_ref`, on the rule
 `Fundamental.radius` already set one layer down: a hand-built object has to state its
 standoff, because guessing is a silent scale error. `MPSEigensolver` has a domain, so it can
 do better than guess -- it takes the geometric midpoint of `weyl_window(domain, 10)` -- and
@@ -387,11 +387,11 @@ undetermined and the tension goes rough: **85 spurious local minima in a window 
 exactly one eigenvalue**, with 39% of the steps on the descending wall going the wrong way.
 Choosing the rank over the range instead gives 31, and one minimum.
 
-`k_ref` therefore accepts `(lo, hi)` and takes the minimum over it; `MPSEigensolver` passes
+`lam_ref` therefore accepts `(lo, hi)` and takes the minimum over it; `MPSEigensolver` passes
 its whole Weyl window; and `rank_diagnostics` warns when the frozen rank has reached the noise
-floor at an evaluated `k`.
+floor at an evaluated `lam`.
 
-**The default rank rule is now threshold**, re-derived at every `k`. It cannot make the above
+**The default rank rule is now threshold**, re-derived at every `lam`. It cannot make the above
 mistake, because it reads the spectrum actually in front of it. The comparison, on the recall
 metric that matters:
 

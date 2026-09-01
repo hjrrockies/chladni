@@ -24,6 +24,7 @@ from chladni.mps import MPSPencil, assemble, equilibrate
 from conftest import EXACT, L_SHAPE
 
 K = 3.3
+LAM = K**2
 RNG = 0
 
 
@@ -39,7 +40,7 @@ def pencil():
     b = basis_for(poly)
     return MPSPencil.from_basis(b, poly.bdry_quad(300),
                                 poly.interior_pts(120, rng=np.random.default_rng(RNG)),
-                                k_ref=K)
+                                lam_ref=LAM)
 
 
 # --- assembly is the trace and the values -----------------------------------------------
@@ -73,7 +74,7 @@ def test_a_mixed_boundary_needs_no_special_case():
 
 
 def test_shapes(pencil):
-    A_B, A_I = pencil.matrices(K)
+    A_B, A_I = pencil.matrices(LAM)
     assert A_B.shape == (pencil.n_bdry, pencil.n_cols)
     assert A_I.shape == (pencil.n_int, pencil.n_cols)
     assert A_B.dtype == np.float64 and A_I.dtype == np.float64
@@ -89,7 +90,7 @@ def test_the_boundary_sampling_must_come_from_a_quadrature():
     b = basis_for(poly)
     bare = b.at(poly.bdry_quad(100).pts)
     with pytest.raises(ValueError, match="Quadrature"):
-        MPSPencil(bare, b.at(poly.interior_pts(40, rng=np.random.default_rng(RNG))), k_ref=K)
+        MPSPencil(bare, b.at(poly.interior_pts(40, rng=np.random.default_rng(RNG))), lam_ref=LAM)
 
 
 def test_the_two_samplings_must_share_a_column_space():
@@ -98,14 +99,14 @@ def test_the_two_samplings_must_share_a_column_space():
     other = PlaneWave.uniform(8, radius=2.0)
     with pytest.raises(ValueError, match="same"):
         MPSPencil(a.at(poly.bdry_quad(100)),
-                  other.at(poly.interior_pts(40, rng=np.random.default_rng(RNG))), k_ref=K)
+                  other.at(poly.interior_pts(40, rng=np.random.default_rng(RNG))), lam_ref=LAM)
 
 
 def test_the_default_rank_rule_is_threshold():
-    """No `rank`, no `k_ref`: the rank is re-derived at every `k` from `rtol`.
+    """No `rank`, no `lam_ref`: the rank is re-derived at every `lam` from `rtol`.
 
     This is the default because it is the only rule that cannot pick an UNSAFE rank. The
-    pencil's numerical rank grows with `k` -- 31 to 47 across a disk scan -- so any fixed
+    pencil's numerical rank grows with `lam` -- 31 to 47 across a disk scan -- so any fixed
     integer is too large somewhere, and a rank sitting at machine epsilon turns the tension
     rough: 85 spurious local minima in a window holding one eigenvalue. Threshold
     re-derives from the spectrum actually in front of it and cannot make that mistake.
@@ -115,7 +116,7 @@ def test_the_default_rank_rule_is_threshold():
     p = MPSPencil(b.at(poly.bdry_quad(200)),
                   b.at(poly.interior_pts(80, rng=np.random.default_rng(RNG))))
     assert p.rank is None and not p.is_frozen
-    assert p.rank_at(K) == len(p.tensions(K))
+    assert p.rank_at(LAM) == len(p.tensions(LAM))
     assert "threshold" in repr(p)
 
 
@@ -124,7 +125,7 @@ def test_a_frozen_rank_still_needs_a_reference_or_a_value():
     poly = Polygon(L_SHAPE)
     b = basis_for(poly)
     q, pts = poly.bdry_quad(200), poly.interior_pts(80, rng=np.random.default_rng(RNG))
-    frozen = MPSPencil(b.at(q), b.at(pts), k_ref=(3.0, 4.0))
+    frozen = MPSPencil(b.at(q), b.at(pts), lam_ref=(9.0, 16.0))
     assert frozen.is_frozen and isinstance(frozen.rank, int)
     assert MPSPencil(b.at(q), b.at(pts), rank=12).rank == 12
 
@@ -135,7 +136,7 @@ def test_a_frozen_rank_still_needs_a_reference_or_a_value():
 def test_equilibrated_columns_have_unit_norm_over_the_STACK(pencil):
     """Not over either block separately: the GSVD sees the pair, and normalizing the blocks
     independently would change the ratio the tension measures."""
-    B, I = pencil.pencil(K)
+    B, I = pencil.pencil(LAM)
     norms = np.linalg.norm(np.vstack([B, I]), axis=0)
     assert np.allclose(norms, 1.0, rtol=0, atol=1e-14)
 
@@ -143,7 +144,7 @@ def test_equilibrated_columns_have_unit_norm_over_the_STACK(pencil):
 def test_equilibration_does_not_change_the_column_SPAN(pencil):
     """A diagonal rescale, and nothing else. If it were anything else the tension would not
     be the tension of the problem that was posed."""
-    A_B, A_I = pencil.matrices(K)
+    A_B, A_I = pencil.matrices(LAM)
     B, I, log_norms = equilibrate(A_B, A_I)
     assert np.allclose(B * np.exp(log_norms), A_B, rtol=1e-13, atol=0)
     assert np.allclose(I * np.exp(log_norms), A_I, rtol=1e-13, atol=0)
@@ -165,9 +166,9 @@ def test_a_column_that_underflowed_to_zeros_survives_equilibration():
 def test_the_log_scales_add(pencil):
     """`conventions.md`: "the log scales simply add, and a coefficient vector means the same
     function on every point set." The pencil's total scale is the family's plus its own."""
-    A_B, A_I = pencil.matrices(K)
+    A_B, A_I = pencil.matrices(LAM)
     _, _, own = equilibrate(A_B, A_I)
-    assert np.allclose(pencil.log_scale(K), pencil.basis.log_scale(K) + own,
+    assert np.allclose(pencil.log_scale(LAM), pencil.basis.log_scale(K) + own,
                        rtol=0, atol=EXACT)
 
 
@@ -186,10 +187,10 @@ def test_a_coefficient_vector_means_the_same_function_on_a_second_point_set(penc
     """
     poly = Polygon(L_SHAPE)
     c = np.random.default_rng(5).standard_normal(pencil.n_cols)
-    own = equilibrate(*pencil.matrices(K))[2]
+    own = equilibrate(*pencil.matrices(LAM))[2]
 
     # through the pencil, on its own interior points
-    _, I = pencil.pencil(K)
+    _, I = pencil.pencil(LAM)
     here = I @ c
 
     # from the basis, on the same points, undoing only the pencil's own scale
@@ -213,9 +214,9 @@ def test_scaling_the_domain_scales_the_spectrum(pencil):
     pts = poly.interior_pts(90, rng=np.random.default_rng(RNG))
     b = basis_for(poly)
 
-    small_p = MPSPencil.from_basis(b, poly.bdry_quad(240), pts, k_ref=K)
+    small_p = MPSPencil.from_basis(b, poly.bdry_quad(240), pts, lam_ref=LAM)
     # the SAME points and the SAME basis, both carried over by the transform protocol, so
     # the only difference between the two pencils is the scale
     big_p = MPSPencil.from_basis(b.scaled(s), poly.scaled(s).bdry_quad(240), pts * s,
-                                 k_ref=K / s)
-    assert small_p.tension(K) == pytest.approx(big_p.tension(K / s), rel=1e-8)
+                                 lam_ref=LAM / s**2)
+    assert small_p.tension(LAM) == pytest.approx(big_p.tension(LAM / s**2), rel=1e-8)

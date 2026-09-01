@@ -1,7 +1,23 @@
 """`MPSPencil`: a basis, two point sets, and everything up to the tension.
 
-Domain-free, and speaks `k`. This is the answer to `docs/design/mps.md`'s second design
-question -- how to expose a bare-bones solver for bespoke work -- and it is a second object
+Domain-free, and speaks `lam` -- like `MPSEigensolver`, and unlike everything below it.
+
+**The lam/k seam is the mps/helmholtz boundary, and nothing finer.** Every `mps` object takes
+`lam`; every `helmholtz` object takes `k`. That line is where the meaning genuinely changes:
+a Fourier-Bessel column IS a function of `k*r`, and the Bessel accuracy regimes are stated in
+`(nu, k*r)`, so `k` is not a parametrisation choice down there but what the functions are. A
+tension is not such a thing, so it does not inherit the variable.
+
+This class used to take `k`, which put a second seam INSIDE one layer: two sibling classes,
+same layer, different variables, and a user descending from solver to pencil crossed it
+without any change in what the numbers meant. `conventions.md` asks that a parameter's name
+state its variable; it does not ask a reader to remember which of two siblings is which.
+
+It is also the variable the refinement wants. Fitting a quadratic to `sigma_1**2` over
+identical sample points, the residual is smaller in `lam` in 17 of 17 cases across four
+domains -- median 5.1x -- so a search built on this object works in `lam` throughout.
+
+This is also the answer to `docs/design/mps.md`'s second design question -- how to expose a bare-bones solver for bespoke work -- and it is a second object
 rather than a better-severed first one.
 
 lappy tried to cut ONE `MPSEigensolver` free of the domain and failed twice: on boundary
@@ -23,6 +39,7 @@ import scipy.linalg as la
 import warnings
 
 from .._core import PREC, Frozen, PrecisionWarning, _set, check_prec
+from ..eigensolver import lam_to_k
 from ..helmholtz import check_k
 from . import _gsvd
 from ._regularize import choose_rank, regularize
@@ -63,30 +80,34 @@ class RankDiagnostics(tuple):
     s = property(lambda self: self[1])
 
 
-def _as_k_ref(k_ref):
-    """Normalize `k_ref` to None, a single k, or a validated `(lo, hi)` pair."""
-    if k_ref is None:
+def _as_lam_ref(lam_ref):
+    """Normalize `lam_ref` to None, a single lam, or a validated `(lo, hi)` pair."""
+    if lam_ref is None:
         return None
-    arr = np.atleast_1d(np.asarray(k_ref, dtype=float))
+    arr = np.atleast_1d(np.asarray(lam_ref, dtype=float))
     if arr.size == 1:
-        return check_k(arr[0])
+        return float(lam_to_k(arr[0])) ** 2
     if arr.size != 2:
-        raise ValueError(f"k_ref must be a wavenumber or a (lo, hi) pair, got {k_ref!r}")
-    lo, hi = check_k(arr[0]), check_k(arr[1])
+        raise ValueError(f"lam_ref must be an eigenvalue or a (lo, hi) pair, got {lam_ref!r}")
+    lo, hi = float(lam_to_k(arr[0])) ** 2, float(lam_to_k(arr[1])) ** 2
     if not lo < hi:
-        raise ValueError(f"k_ref range must satisfy lo < hi, got ({lo}, {hi})")
+        raise ValueError(f"lam_ref range must satisfy lo < hi, got ({lo}, {hi})")
     return (lo, hi)
 
 
-def _rank_probe_ks(k_ref):
-    """The wavenumbers the rank is chosen over: one, or `_RANK_SAMPLES` across the range."""
-    if isinstance(k_ref, tuple):
-        return np.linspace(k_ref[0], k_ref[1], _RANK_SAMPLES)
-    return (k_ref,)
+def _rank_probe_lams(lam_ref):
+    """The eigenvalues the rank is chosen over: one, or `_RANK_SAMPLES` across the range."""
+    if isinstance(lam_ref, tuple):
+        return np.linspace(lam_ref[0], lam_ref[1], _RANK_SAMPLES)
+    return (lam_ref,)
 
 
 def assemble(bdry, interior, k):
     """The collocation matrices `(A_B, A_I)` at wavenumber `k`.
+
+    Takes `k`, not `lam`: this is the call into `helmholtz`, and below the mps boundary the
+    wavenumber is what the basis functions are made of rather than a parametrisation choice.
+    `MPSPencil.matrices(lam)` is the `lam`-facing wrapper.
 
     The whole of it. `trace` is the boundary condition, applied per node one layer down, and
     that is why this function has no branches -- compare lappy's `make_bdry_vander`, whose
@@ -132,7 +153,7 @@ class MPSPencil(Frozen):
     TIGHTER `prec` resolves more independent columns, so the cutoff falls and the rank rises.
     """
 
-    def __init__(self, bdry, interior, *, reg="svd", rank=None, rtol=None, k_ref=None,
+    def __init__(self, bdry, interior, *, reg="svd", rank=None, rtol=None, lam_ref=None,
                  prec=PREC):
         if getattr(bdry, "normals", None) is None or getattr(bdry, "bc", None) is None:
             raise ValueError(
@@ -149,18 +170,19 @@ class MPSPencil(Frozen):
         prec = check_prec(prec)
         rtol = float(np.sqrt(prec * np.finfo(float).eps)) if rtol is None else float(rtol)
 
-        k_ref = _as_k_ref(k_ref)
-        if rank is None and k_ref is not None:
-            # frozen, chosen over the range: the minimum, because the rank grows with k
-            rank = min(choose_rank(*equilibrate(*assemble(bdry, interior, k))[:2], rtol)
-                       for k in _rank_probe_ks(k_ref))
+        lam_ref = _as_lam_ref(lam_ref)
+        if rank is None and lam_ref is not None:
+            # frozen, chosen over the range: the minimum, because the rank grows with lam
+            rank = min(choose_rank(*equilibrate(*assemble(bdry, interior,
+                                                          lam_to_k(lam)))[:2], rtol)
+                       for lam in _rank_probe_lams(lam_ref))
         if rank is not None:
             rank = int(rank)
             if not 0 < rank <= len(bdry.family):
                 raise ValueError(f"rank must lie in [1, {len(bdry.family)}], got {rank}")
 
         _set(self, bdry=bdry, interior=interior, reg=reg, rank=rank, rtol=rtol,
-             k_ref=k_ref, prec=prec,
+             lam_ref=lam_ref, prec=prec,
              _cache={})
 
     @classmethod
@@ -196,24 +218,28 @@ class MPSPencil(Frozen):
 
     # --- the pipeline ----------------------------------------------------------------------
 
-    def matrices(self, k):
-        """`(A_B, A_I)`: the raw collocation matrices, before equilibration."""
-        return assemble(self.bdry, self.interior, k)
+    def matrices(self, lam):
+        """`(A_B, A_I)`: the raw collocation matrices, before equilibration.
 
-    def _equilibrated(self, k):
-        key = ("eq", float(check_k(k)))
+        The one place `k` appears, because `assemble` calls into `helmholtz` and that is the
+        layer where the wavenumber is what the functions are made of.
+        """
+        return assemble(self.bdry, self.interior, lam_to_k(lam))
+
+    def _equilibrated(self, lam):
+        key = ("eq", float(lam))
         hit = self._cache.get(key)
         if hit is None:
-            hit = equilibrate(*self.matrices(k))
+            hit = equilibrate(*self.matrices(lam))
             self._store(key, hit)
         return hit
 
-    def pencil(self, k):
+    def pencil(self, lam):
         """`(B, I)`: the equilibrated pencil, which is what the GSVD actually sees."""
-        B, I, _ = self._equilibrated(k)
+        B, I, _ = self._equilibrated(lam)
         return B, I
 
-    def log_scale(self, k):
+    def log_scale(self, lam):
         """Total per-column log scale: the family's own, plus this pencil's equilibration.
 
         `conventions.md`: "the log scales simply add, and a coefficient vector means the same
@@ -221,20 +247,19 @@ class MPSPencil(Frozen):
         `psi_j * exp(-log_scale(k)[j])`, and unscaled coefficients are never materialized --
         at a `pi/8` corner the family's half of this spans about 1149 nats.
         """
-        k = check_k(k)
-        return self.basis.log_scale(k) + self._equilibrated(k)[2]
+        return self.basis.log_scale(lam_to_k(lam)) + self._equilibrated(lam)[2]
 
     @property
     def is_frozen(self):
         """True when the rank is fixed for the life of the pencil, False for threshold."""
         return self.rank is not None
 
-    def rank_at(self, k):
-        """The rank actually used at `k`.
+    def rank_at(self, lam):
+        """The rank actually used at `lam`.
 
-        In threshold mode this is re-derived from the spectrum, so it varies with `k` --
-        which is the point: the pencil's numerical rank GROWS with `k`, and a rank fixed at
-        one end of a scan is wrong at the other.
+        In threshold mode this is re-derived from the spectrum, so it varies with `lam` --
+        which is the point: the pencil's numerical rank GROWS with `lam`, and a rank fixed
+        at one end of a scan is wrong at the other.
         """
         if self.rank is not None:
             return self.rank
@@ -242,37 +267,37 @@ class MPSPencil(Frozen):
             # LAPACK decides inside ?ggsvp3 and does not report it until the GSVD returns,
             # so the length of the tension vector IS the rank. Cached, so this is not a
             # second factorization.
-            return len(self.tensions(k))
+            return len(self.tensions(lam))
         # Every other mode derives its rank from its own factorization, so read it back off
         # the (cached) reduction rather than recomputing one here. Calling `choose_rank`
         # would repeat the decomposition `regularize` has already performed.
-        return self.regularized(k).rank
+        return self.regularized(lam).rank
 
-    def regularized(self, k):
-        """The `RegularizedPencil` at `k`, truncated to `rank_at(k)`."""
-        key = ("reg", float(check_k(k)))
+    def regularized(self, lam):
+        """The `RegularizedPencil` at `lam`, truncated to `rank_at(lam)`."""
+        key = ("reg", float(lam))
         hit = self._cache.get(key)
         if hit is None:
-            B, I = self.pencil(k)
+            B, I = self.pencil(lam)
             hit = regularize(B, I, reg=self.reg, rank=self.rank, rtol=self.rtol)
             self._store(key, hit)
         return hit
 
-    def rank_diagnostics(self, k):
-        """The frozen rank and the singular values at `k`, so the choice can be audited.
+    def rank_diagnostics(self, lam):
+        """The frozen rank and the singular values at `lam`, so the choice can be audited.
 
         The frozen rank is right almost everywhere and this is how you check the exception:
-        the numerical rank grows with k, so a rank chosen too high sits at the noise floor
-        at the LOW end of a scan, which is where the tension goes rough.
+        the numerical rank grows with lam, so a rank chosen too high sits at the noise
+        floor at the LOW end of a scan, which is where the tension goes rough.
         """
-        B, I = self.pencil(k)
+        B, I = self.pencil(lam)
         s = la.svdvals(np.vstack([B, I]))
         if self.rank is not None:
-            self._warn_if_unsafe(s, k)
-        return RankDiagnostics(self.rank_at(k), s)
+            self._warn_if_unsafe(s, lam)
+        return RankDiagnostics(self.rank_at(lam), s)
 
-    def _warn_if_unsafe(self, s, k):
-        """Warn when the frozen rank has reached the noise floor at this `k`.
+    def _warn_if_unsafe(self, s, lam):
+        """Warn when the frozen rank has reached the noise floor at this `lam`.
 
         A reported precision is never a claim contradicted elsewhere in the same object
         (`conventions.md`), and this is the contradiction that matters here: a pencil whose
@@ -291,29 +316,29 @@ class MPSPencil(Frozen):
         decade = int(np.floor(np.log10(ratio))) if ratio > 0 else -np.inf
         warnings.warn(
             f"the frozen rank {self.rank} sits at a relative singular value of about "
-            f"1e{decade} at this k, below the safe level {_UNSAFE_RATIO:.0e}. The retained "
+            f"1e{decade} at this lam, below the safe level {_UNSAFE_RATIO:.0e}. The retained "
             f"directions are no longer determined and the tension acquires spurious local "
-            f"minima. The numerical rank grows with k, so this usually means the rank was "
-            f"chosen at a single k above the range in use: pass k_ref=(lo, hi) instead.",
+            f"minima. The numerical rank grows with lam, so this usually means the rank was "
+            f"chosen at a single k above the range in use: pass lam_ref=(lo, hi) instead.",
             PrecisionWarning,
             stacklevel=3,
         )
 
-    def tensions(self, k):
+    def tensions(self, lam):
         """Every generalized singular value of the reduced pencil, ascending."""
-        return _gsvd.tensions_of(self.regularized(k))
+        return _gsvd.tensions_of(self.regularized(lam))
 
-    def tension(self, k):
+    def tension(self, lam):
         """The smallest generalized singular value: the quantity the search minimizes."""
-        return float(self.tensions(k)[0])
+        return float(self.tensions(lam)[0])
 
-    def coef(self, k, mult=1):
+    def coef(self, lam, mult=1):
         """The `mult` minimizing coefficient vectors, `(n_cols, mult)`, in the SCALED space.
 
-        The function they name is `sum_j c_j * exp(-log_scale(k)[j]) * psi_j`. Recovering the
+        The function they name is `sum_j c_j * exp(-log_scale(lam)[j]) * psi_j`. Recovering the
         unscaled vector is not offered because it does not exist in float64.
         """
-        c = _gsvd.coef_of(self.regularized(k), mult)
+        c = _gsvd.coef_of(self.regularized(lam), mult)
         return c if c.ndim == 2 else c[:, None]
 
     # --- the cache -------------------------------------------------------------------------
