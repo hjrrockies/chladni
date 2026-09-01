@@ -314,3 +314,41 @@ def test_snap_does_not_reach_a_genuine_near_degeneracy():
     """1e-13 is 230x above the worst rounding noise and 120x below the tightest near-pair."""
     sp = ref.rect_spectrum(48.0, 51.0, 1 + 1e-11, 1.0)
     assert sp.size == 2 and sp[0] != sp[1]
+
+
+def test_every_table_records_how_it_was_produced():
+    """A digit count says how good a value is; the recipe says what it would take to check or
+    better it. Only tables need one -- a closed form has nothing to reproduce."""
+    for fn in (ref.L_shape_eigs, ref.gww_eigs, ref.ellipse_eigs, ref.reg_ngon_eigs,
+               ref.cut_square_eigs, ref.mushroom_eigs, ref.H_shape_eigs,
+               ref.chevron_eigs, ref.iso_tri_eigs):
+        r = ref.recipe(fn)
+        assert r and len(r) > 40, fn.__name__
+    assert ref.recipe(ref.rect_eigs) is None
+    assert "Fourier-Bessel" in ref.recipe(ref.L_shape_eigs)
+
+
+def test_a_closed_form_predicts_two_tabulated_entries():
+    """`L_shape` is three unit cells on the integer grid and `H_shape` is seven, so both are
+    polyominoes -- and `sin(pi x) sin(pi y)`, which vanishes on the WHOLE grid, is an exact
+    eigenfunction of each with `lam = 2 pi**2`.
+
+    So the exact half of this module predicts two entries of the tabulated half. That is a
+    cross-check the tables cannot do for themselves, and it is why those two entries resolve
+    so much better than their neighbours: the mode carries no singular amplitude at the
+    reentrant corner. Not because it vanishes there -- every Dirichlet eigenfunction does --
+    but because with `omega = 3 pi/2` the corner expansion runs in `r**(2l/3)` and this mode
+    has zero amplitude on every `l` that is not a multiple of three.
+    """
+    from chladni.geometry import H_shape, L_shape
+
+    for dom in (L_shape(), H_shape()):
+        v = dom.vertices
+        assert np.allclose(v.real, np.round(v.real)) and np.allclose(v.imag, np.round(v.imag))
+        assert dom.area == pytest.approx(round(dom.area), abs=EXACT)
+
+    # and the simplest statement of what 2*pi**2 is: the unit square's first eigenvalue,
+    # pi**2*(1+1), tiling across the cells
+    assert ref.L_shape_eigs(3)[2] == ref.polyomino_eig(1, 1)
+    assert ref.H_shape_eigs(7)[6] == ref.polyomino_eig(1, 1)
+    assert ref.polyomino_eig(1, 1) == ref.rect_eigs(1, 1.0, 1.0)[0]

@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["exact", "tabulated", "catalog", "collapse", "snap", "SNAP_RTOL",
-           "REGISTRY"]
+__all__ = ["exact", "tabulated", "catalog", "recipe", "collapse", "snap",
+           "SNAP_RTOL", "REGISTRY"]
 
 #: Decimal digits float64 carries. `exact` claims this rather than `inf`: a closed form is
 #: exact as mathematics and still evaluates in floating point.
@@ -25,9 +25,10 @@ FLOAT64_DIGITS = 15.6
 REGISTRY = []
 
 
-def _register(fn, digits, source, notes, digits_by=None):
+def _register(fn, digits, source, notes, digits_by=None, settings=None):
     fn.digits = float(digits)
     fn.source = source
+    fn.settings = settings
     fn.notes = dict(notes or {})
     fn.digits_by = dict(digits_by or {})
     fn.digits_for = lambda key=None, _f=fn: _f.digits_by.get(key, _f.digits)
@@ -42,7 +43,7 @@ def exact(source):
     return deco
 
 
-def tabulated(digits, source, notes=None, digits_by=None):
+def tabulated(digits, source, notes=None, digits_by=None, settings=None):
     """Mark a tabulated reference.
 
     `digits` is the honest MINIMUM over the whole table -- not the best case, and not the
@@ -56,9 +57,16 @@ def tabulated(digits, source, notes=None, digits_by=None):
     and 2.8 at N=8, and reporting 2.8 for all of them makes the good tables unusable at their
     real precision. `fn.digits` stays the worst case, so a caller who ignores the refinement
     is still safe; `fn.digits_for(key)` gives the sharp value.
+
+    `settings` records the BASIS AND COLLOCATION the values were solved with, so the
+    provenance says how to REPRODUCE a number rather than only how good it is. A digit count
+    alone cannot be acted on: it says a value is worth 14 digits without saying what it would
+    take to get 15, or to check it independently. These come from lappy's
+    `benchmarks/reference/*.py`, which escalate `n_basis` until every tension is at or below
+    1e-12. Read it with `recipe(fn)`.
     """
     def deco(fn):
-        return _register(fn, digits, source, notes, digits_by)
+        return _register(fn, digits, source, notes, digits_by, settings)
     return deco
 
 
@@ -70,6 +78,14 @@ def catalog():
     """
     return [(fn.__name__, fn.digits, sum(len(v) for v in fn.notes.values()), fn.source)
             for fn in REGISTRY]
+
+
+def recipe(fn):
+    """How a tabulated reference was produced: basis, collocation, and the digits reached.
+
+    `None` for a closed form, which needs no recipe.
+    """
+    return getattr(fn, "settings", None)
 
 
 def collapse(lam, rtol=0.0):

@@ -27,7 +27,8 @@ def _cut(name, k, table, limit):
     return np.asarray(table, dtype=float)[:k]
 
 
-@tabulated(12.0, _LAPPY + " (Driscoll's table; GWW1 and GWW2 solved separately at n_basis=320)")
+@tabulated(12.0, _LAPPY + " (Driscoll's table; GWW1 and GWW2 solved separately at n_basis=320)",
+    settings="mixed Fourier-Bessel + fundamental-solution basis, n_basis=320; only the 120- and 240-degree corners are singular")
 def gww_eigs(k):
     """The first 25 Dirichlet eigenvalues shared by the Gordon-Webb-Wolpert isospectral pair.
 
@@ -42,7 +43,20 @@ def gww_eigs(k):
         7.24807786256, 13.0536540557, 18.9810673877, 24.4792340693, 29.5697729132]), 25)
 
 
-@tabulated(14.0, _LAPPY + " (n_basis=240; agrees to ~1e-13 over the first 10)")
+@tabulated(14.0, _LAPPY + " (n_basis=240; agrees to ~1e-13 over the first 10)",
+    settings="PURE Fourier-Bessel at the single reentrant corner -- no fundamental "
+             "solutions, no mixed basis, against lappy's n_basis=240. Reproduced in "
+             "chladni with 1400 boundary and 500 interior collocation points; tension at "
+             "the first five tabulated eigenvalues: 1e-08 at 40 terms, 4e-13 to 2e-12 at "
+             "60, and 2e-15 to 1e-14 at 80. So 80 terms clears the table's 14 digits and "
+             "60 reaches about 12.5. Note lam_3 = 2*pi**2 hits 3e-15 by 40 terms alone, "
+             "because it has NO SINGULAR PART at the corner -- not because it vanishes "
+             "there, which every Dirichlet eigenfunction does. With omega = 3*pi/2 the "
+             "corner expansion runs in r**(2*l/3), singular unless l is a multiple of 3, "
+             "and this mode has zero amplitude on all the rest. It is simply the UNIT "
+             "SQUARE'S first eigenvalue, pi**2*(1+1), tiling: L_shape is three unit cells "
+             "on the integer grid, so sin(pi*x)*sin(pi*y) is an exact eigenfunction of it "
+             "and is analytic everywhere -- see polyomino_eig and rect_eigs(1, 1, 1)")
 def L_shape_eigs(k):
     """The first 25 Dirichlet eigenvalues of `L_shape()`, the standard corner benchmark.
 
@@ -79,7 +93,8 @@ def L_shape_eigs(k):
                         "the better of two that are already public."},
         (3.0, 1.0): {None: "not re-verified; about 6.7 digits"},
         (4.0, 1.0): {None: "not re-verified; at least 7 digits"},
-    })
+    },
+    settings="pure boundary fundamental-solution basis, n_basis=240; the ellipse has no corners at all. n_basis=480 was tried and did not improve it")
 def ellipse_eigs(k, a=2.0, b=1.0):
     """The first 10 Dirichlet eigenvalues of `ellipse(a, b)`, for `(a, b)` in
     `{(2,1), (3,1), (4,1)}`.
@@ -110,7 +125,8 @@ def ellipse_eigs(k, a=2.0, b=1.0):
     2.8, _LAPPY + " (n_basis=120; every corner is singular for these N)",
     digits_by={5: 10.2, 6: 10.2, 7: 10.2, 8: 2.8},
     notes={8: {3: "about 2.8 digits: a genuinely under-resolved mode at n_basis=120, a near "
-                  "neighbour of the doubled eigenvalue at 29.540564727244991"}})
+                  "neighbour of the doubled eigenvalue at 29.540564727244991"}},
+    settings="mixed Fourier-Bessel + fundamental-solution, fs_frac=0.5, n_basis=120 (N=5) to 240 (N=6); every corner is singular for these N")
 def reg_ngon_eigs(k, N):
     """The first 10 Dirichlet eigenvalues of `reg_ngon(N)` at UNIT CIRCUMRADIUS, `N = 5..8`.
 
@@ -142,7 +158,8 @@ def reg_ngon_eigs(k, N):
 
 @tabulated(6.4, _LAPPY + " (n_basis=320; pure Fourier-Bessel, the other corners are right angles)",
            digits_by={0.25: 6.4, 0.5: 9.1},
-           notes={0.25: {None: "about 6.4 digits"}, 0.5: {None: "about 9.1 digits"}})
+           notes={0.25: {None: "about 6.4 digits"}, 0.5: {None: "about 9.1 digits"}},
+    settings="pure Fourier-Bessel, n_basis=320; the arc leaves no singular corner, so the three right angles are all that is needed")
 def cut_square_eigs(k, r=0.25):
     """The first 10 Dirichlet eigenvalues of `cut_square(r)`, for `r` in `{0.25, 0.5}`."""
     tbl = {
@@ -160,7 +177,8 @@ def cut_square_eigs(k, r=0.25):
     return _cut("cut_square", k, tbl, 10)
 
 
-@tabulated(11.3, _LAPPY + " (mixed Fourier-Bessel and fundamental-solution basis)")
+@tabulated(11.3, _LAPPY + " (mixed Fourier-Bessel and fundamental-solution basis)",
+    settings="mixed Fourier-Bessel + fundamental-solution, n_basis=240; two singular corners at the cap-stem junction")
 def mushroom_eigs(k, a=1.0, b=1.0, r=1.5):
     """The first 10 Dirichlet eigenvalues of `mushroom(1, 1, 1.5)`, the only triple tabulated.
 
@@ -179,9 +197,12 @@ def mushroom_eigs(k, a=1.0, b=1.0, r=1.5):
     7.8, _LAPPY + " (n_basis=320; four reentrant 270-degree corners), except index 6",
     notes={(): {6: "EXACT, and replaced by the closed form. lappy noted its tabulated value "
                    "19.739208802178766 was 'suspiciously close to 2*pi**2, likely a mode "
-                   "that vanishes on the connecting web'. It is: the tabulated value agrees "
-                   "with 2*pi**2 to 2.5e-15, which is float rounding, so the guess is "
-                   "confirmed and the entry costs nothing to make exact."}})
+                   "that vanishes on the connecting web'. The value is right and the reason "
+                   "is sharper: H_shape is a polyomino of seven unit cells, so "
+                   "sin(pi*x)*sin(pi*y) vanishes on the WHOLE integer grid and is an exact "
+                   "eigenfunction with lam = 2*pi**2 -- see polyomino_eig, which predicts "
+                   "this entry and L_shape's third from a closed form."}},
+    settings="mixed Fourier-Bessel + fundamental-solution, n_basis=320; four reentrant corners, the hardest of the non-excluded set")
 def H_shape_eigs(k):
     """The first 10 Dirichlet eigenvalues of `H_shape()`. Keyed in `notes` by the empty tuple,
     since the shape takes no parameters."""
@@ -199,7 +220,8 @@ def H_shape_eigs(k):
            (1.0, 1.5): {None: "about 5-7 digits"},
            (2.0, 3.0): {None: "about 3-4 digits: the sharpest corner is near 11 degrees and "
                               "genuinely needs far more basis than is practical"},
-           (2.0, 4.0): {None: "about 3-4 digits, same cause"}})
+           (2.0, 4.0): {None: "about 3-4 digits, same cause"}},
+    settings="mixed Fourier-Bessel + fundamental-solution, n_basis=160 (120 for the FB-order study); the sharpest corner reaches ~11 degrees and dominates the basis at 75%")
 def chevron_eigs(k, h1=1.0, h2=2.0):
     """The first 10 Dirichlet eigenvalues of `chevron(h1, h2)`.
 
@@ -239,7 +261,8 @@ def chevron_eigs(k, h1=1.0, h2=2.0):
                        "legs sqrt(2) -- so its spectrum is pi**2 (m**2+n**2)/2 for m > n >= "
                        "1. lappy's table agrees to 3e-15 and is superseded here."},
            16.0: {None: "not re-verified; about 7.8 digits"},
-           20.0: {None: "not re-verified; about 12 digits"}})
+           20.0: {None: "not re-verified; about 12 digits"}},
+    settings="Fourier-Bessel with fundamental solutions mixed in (non-integer pi/angle ratio), n_basis=120; h=1 is superseded by a closed form here")
 def iso_tri_eigs(k, h=1.0):
     """The first 10 Dirichlet eigenvalues of `iso_tri(h)` -- base 2, height `h`.
 

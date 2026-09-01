@@ -94,6 +94,47 @@ need re-solves:
 All are approximately right -- usable to answer "is this the same eigenvalue" and not much
 more -- and all report their own accuracy through `digits_for`.
 
+## The recipe, not just the digit count
+
+A digit count cannot be acted on. It says a value is worth 14 digits without saying what it
+would take to get 15, or to check it independently. So every table also carries `settings` --
+the basis and collocation it was solved with -- readable as `recipe(fn)`. These come from
+lappy's `benchmarks/reference/*.py`, which escalate `n_basis` until every tension is at or
+below 1e-12.
+
+It is immediately useful. `L_shape_eigs` was solved by lappy at `n_basis=240`, but the recipe
+records what the domain actually needs: a PURE Fourier-Bessel basis at the single reentrant
+corner, nothing else. Reproduced here at 1400 boundary and 500 interior points, the tension at
+the first five tabulated eigenvalues runs
+
+    40 terms    1e-08
+    60 terms    4e-13 to 2e-12      about 12.5 digits
+    80 terms    2e-15 to 1e-14      clears the table's 14
+
+which corroborates the table from a second implementation and says exactly what to do to
+better it.
+
+`lam_3 = 2*pi**2` reaches 3e-15 by 40 terms on its own, and the reason is worth stating
+precisely: it is not that the eigenfunction vanishes at the reentrant corner -- every
+Dirichlet eigenfunction does, that is the boundary condition. It is that this one has NO
+SINGULAR PART there. With `omega = 3*pi/2` the corner expansion runs in `r**(l*nu)` with
+`nu = 2/3`, so the terms go `r**(2l/3)` and are non-smooth unless `l` is a multiple of three;
+this mode has zero amplitude on all the others.
+
+Which has a clean explanation, and the simplest statement of it is that `2*pi**2` is just the
+UNIT SQUARE'S FIRST EIGENVALUE, `pi**2 (1 + 1)`. `L_shape` is three unit cells on the integer
+grid and `H_shape` is seven, so `sin(pi*x) sin(pi*y)` -- which vanishes on the whole grid --
+is an exact eigenfunction of each, and it is analytic everywhere. The square's fundamental
+mode simply tiles.
+
+So `rect_eigs(1, 1, 1)` and `polyomino_eig(1, 1)` both predict two tabulated entries from a
+closed form: a cross-check inside this module between its exact half and its tabulated half,
+and one the tables cannot perform for themselves.
+
+It is also the mechanism behind the five-order spread in `eps` measured on the L-shape: on a
+domain with a singular corner, the modes that happen to carry no singular amplitude are
+resolved far better than their neighbours.
+
 ## Bessel zeros
 
 The disk and sector spectra ARE the Bessel zeros, so they have to be more accurate than

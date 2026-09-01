@@ -16,7 +16,8 @@ tolerance. See `docs/design/reference.md`.
     14.0
     >>> reference.ellipse_eigs.notes[(2.0, 1.0)][0]        # a value known to be wrong
 """
-from ._core import REGISTRY, SNAP_RTOL, catalog, collapse, exact, snap, tabulated
+from ._core import (REGISTRY, SNAP_RTOL, catalog, collapse, exact, recipe, snap,
+                    tabulated)
 from .closed_form import (
     bessel_zero,
     disk_eig, disk_eigs, disk_spectrum,
@@ -36,7 +37,8 @@ from .tables import (
 )
 
 __all__ = [
-    "catalog", "collapse", "snap", "SNAP_RTOL", "exact", "tabulated", "REGISTRY",
+    "catalog", "recipe", "collapse", "snap", "SNAP_RTOL", "exact", "tabulated",
+    "REGISTRY",
     "bessel_zero",
     "rect_eig", "rect_eigs", "rect_spectrum",
     "disk_eig", "disk_eigs", "disk_spectrum",
