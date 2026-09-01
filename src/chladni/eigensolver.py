@@ -22,10 +22,6 @@ from ._core import PREC, PrecisionWarning, _set, check_prec
 
 __all__ = ["Eigensolver", "lam_to_k", "k_to_lam", "weyl_window", "PREC", "PrecisionWarning"]
 
-#: The first zero of `J_0`, for the Faber-Krahn bound. Quoted rather than computed so this
-#: module does not import scipy for one constant.
-_J01 = 2.4048255576957727686
-
 #: Relative slack below the Faber-Krahn bound. Faber-Krahn is an EQUALITY for the disk, so an
 #: unpadded lower endpoint lands exactly ON lam_1 -- and a grid search that ignores its
 #: endpoints then misses the first mode entirely. lappy hit this: "The unit disk returned
@@ -70,26 +66,20 @@ def k_to_lam(k):
 def weyl_window(domain, n, pad=_WEYL_PAD):
     """A `lam` interval expected to contain the first `n` eigenvalues, as `(a, b)`.
 
-    The upper end inverts the two-term Weyl law for the counting function,
+    The upper end is `asymp.weyl_est`, the two-term Weyl law inverted; the lower end is
+    `bounds.faber_krahn`, padded by `_WINDOW_PAD` for the reason recorded there. Both used to
+    be inlined here, along with a hard-coded first zero of `J_0`.
 
-        N(lam) ~ area*lam/(4*pi) - perimeter*sqrt(lam)/(4*pi)
-
-    which is a quadratic in `u = sqrt(lam)`: `area*u**2 - perimeter*u - 4*pi*n = 0`. The
-    Dirichlet form is used for every boundary condition, because the Neumann count is larger
-    at the same `lam` and over-reaching is the safe direction.
-
-    The lower end is Faber-Krahn, `lam_1 >= pi*j01**2/area`, padded by `_WINDOW_PAD` for the
-    reason recorded there. For a boundary that is not purely Dirichlet the bound does not
-    apply at all -- the Neumann spectrum starts at `lam = 0`, whose constant eigenfunction no
-    MPS basis represents and whose `k = 0` the helmholtz layer rejects by construction -- so
-    the window starts just above zero and the zero mode is simply not found.
+    For a boundary that is not purely Dirichlet, Faber-Krahn does not apply -- the Neumann
+    spectrum starts at `lam = 0`, whose constant eigenfunction no MPS basis represents and
+    whose `k = 0` the helmholtz layer rejects by construction -- so the window starts just
+    above zero and the zero mode is simply not found.
     """
-    area, perim = float(domain.area), float(domain.perimeter)
-    u = (perim + np.sqrt(perim**2 + 16 * np.pi * n * area)) / (2 * area)
-    b = float(u**2) * (1.0 + pad)
+    from . import asymp, bounds
 
+    b = float(asymp.weyl_est(n, domain)) * (1.0 + pad)
     if domain.bc_type == "dir":
-        a = float(np.pi * _J01**2 / area) * (1.0 - _WINDOW_PAD)
+        a = float(bounds.faber_krahn(domain)) * (1.0 - _WINDOW_PAD)
     else:
         a = b * 1e-6
     return a, b
