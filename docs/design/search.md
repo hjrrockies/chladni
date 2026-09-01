@@ -296,3 +296,90 @@ The two-level rank of section 2, which needs the pencil. Automatic `gamma` escal
 small margin. Parallel evaluation, which changes the objective from evaluation count to
 wall-clock rounds and may favour a graded uniform grid instead -- the branch and bound's
 advantage is adaptivity, and adaptivity is worth less when points are nearly free.
+
+---
+
+# As built: deltas from this spec
+
+What exists at HEAD, what it scores, and what is still wrong. As in `geometry.md` and
+`particular_solutions.md`, the body above records what was intended and this section records
+what the implementation found; the gap between them is the useful part.
+
+## What is built
+
+| | |
+|---|---|
+| `tests/harness.py` | the scorer, the Weyl audit, `unfold`, `levels_agree`, and the uniform-grid control |
+| `tests/searches.py` | `lappy_search`, `lappy_repaired_search`, `lipschitz_search` |
+| `tests/surrogate.py` | a 2 us stand-in for the tension curve, fitted and validated against real pencils |
+
+Nothing is in `src/chladni/` yet. When a search wins it moves there, rewritten against a spec
+that this section will have corrected.
+
+## The repaired baseline is the thing to beat
+
+Two changes to `lappy_search`, and the win is larger than the branch and bound's:
+
+* recurse into EVERY discrete minimum of `sigma_1`, rather than gating on `sigma_2`'s value;
+* multiplicity by the gap plus local-minimum conditions, not a prefix against an absolute
+  `ttol`.
+
+Twelve surrogate cases: 10/12 perfect at 5573 evaluations against the original's 10/12 at
+54443. On real rectangle pencils with exact truth it also LOCATES better -- 1e-15 to 3e-13
+against 6e-09 -- because the deeper recursion hands Brent a much tighter bracket.
+
+So the `O(log(1/d))` advantage of section 3 is a property of adaptive subdivision, which
+lappy's architecture already had. Its trigger was the only thing broken.
+
+## `lipschitz_search` does not work
+
+Committed anyway, clearly labelled, because the spec above is worth more with a failed
+attempt beside it than without. It scores 7/12. Five attempts at the candidate-to-root path
+each fixed some cases and broke others:
+
+    interior-minimum check       fixed 20-roots, broke 3-simple and triple
+    union touching brackets      fixed those, broke every resolved pair
+    union only on same-point     fixed pairs, broke rough
+    refine from the samples      cleanest structure, still broke pairs
+    section 3.4 offset depth     no change: the signal never fired
+
+The last one is diagnosed and is section 4's `d_est` rule not being reached, not the rule
+being wrong. The isolation width `alpha*S/L` measured 3.75e-02 against pairs 4e-03 apart, so
+intervals were declared isolated before the pair could separate.
+
+**Do not resume by patching.** The oscillation above is what a missing spec looks like; section
+4 was written afterwards precisely so a rebuild has something to work against.
+
+## The open bug, and how it was found
+
+The repaired search **misses a different eigenvalue depending on its recursion floor.** On the
+L-shape over `k` in [3, 5] -- that is `lam` in [9, 25], holding `lam` = 9.640, 15.197,
+19.739:
+
+    floor_frac 1e-06    loses lam = 15.197
+    floor_frac 1e-09    loses lam = 9.640
+    floor_frac 1e-12    finds all three, in 53 seconds
+
+The basis is demonstrably adequate there: tension at all three is 1.5e-06 or better against
+`tau_accept = 1e-3`. So this is the search, not the basis, and `floor_frac` is load-bearing in
+a way nothing yet explains.
+
+Every surrogate benchmark used 1e-12, which is why the repaired search looked solid. It was
+the WEYL AUDIT that surfaced it -- reading 0.79 and flagging, independently of the prefix
+truth that showed the same miss. That is the argument for the audit in one example: on a
+domain with no closed form it is the only completeness signal there is.
+
+## What the scoring apparatus learned
+
+**Ground truth must not pre-judge multiplicity.** `chladni.reference`'s `*_spectrum` returns an
+unfolded multiset with true degeneracies made bit-identical, and merges nothing. An earlier
+version collapsed at `rtol = 1e-9`, which would have scored a search that correctly resolved a
+4e-09 pair as reporting a spurious root.
+
+**Unfolding separates failure modes.** Matching multisets tells "you missed an eigenvalue"
+apart from "you found the level and undercounted it" -- different bugs, previously one number.
+
+**The surrogate is for speed, not fidelity.** 1350x faster than a real pencil, matches
+`sigma_1` in the dips to 4e-03 relative, and does NOT model `sigma_3` and above at all. The
+(C1) gap test reads exactly that branch, so any multiplicity conclusion drawn on it is
+provisional until confirmed on a real pencil.
