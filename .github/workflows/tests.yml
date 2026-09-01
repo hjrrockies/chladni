@@ -60,8 +60,9 @@ jobs:
         # the local inner loop near 1.5 s. CI has no inner loop, and the two slow tests are
         # the notebook execution and the corner-construction scaling guard -- precisely the
         # things that rot silently. -W error::UserWarning makes an unexpected warning a
-        # failure; the suite is clean under it, and the one deliberate PrecisionWarning is
-        # raised inside catch_warnings.
+        # failure; the suite is clean under it. Warnings a test provokes on purpose are
+        # either asserted with pytest.warns or silenced with a per-test
+        # `filterwarnings` mark that says at the site why the warning is not the claim.
         run: .venv/bin/python -m pytest -m "" -W error::UserWarning
 
       - name: Confirm geometry still imports without matplotlib

@@ -18,6 +18,17 @@ dependencies = [
     "matplotlib >= 3.9",
     "shapely >= 2.0",
     "gsvd4py >= 0.2.2",
+    # gsvd4py finds LAPACK's ?ggsvd3 by probing, and off macOS every probe misses. On macOS
+    # it loads Accelerate and is done; elsewhere it looks for a scipy_openblas32/64 PACKAGE,
+    # for a global `dggsvd3_`, or for a system lapack/openblas/flexiblas. A pip-installed
+    # scipy satisfies none of those: its manylinux wheel bundles libscipy_openblas privately
+    # under scipy.libs, loaded RTLD_LOCAL with the symbols prefixed `scipy_`. So gsvd4py
+    # raises ImportError -- at CALL time, deep inside coef_of, not at import -- and its
+    # message ("Ensure scipy is installed") sends you the wrong way, because scipy is
+    # installed and does not help. Depending on the package directly is what makes its
+    # second probe hit. Not test-only: the GSVD is the eigensolver, so a Linux user of
+    # chladni needs this exactly as much as CI does.
+    "scipy-openblas32 >= 0.3.29; sys_platform != 'darwin'",
 ]
 
 [project.optional-dependencies]

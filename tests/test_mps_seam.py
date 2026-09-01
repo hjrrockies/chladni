@@ -81,6 +81,12 @@ def test_tensions_are_deterministic(pencil):
     assert np.array_equal(pencil.tensions(LAM), pencil.tensions(LAM))
 
 
+# The sweep runs to lam = 30 while the basis was scaled at lam_ref = 10.89, and at the top of
+# that range FourierBessel reports about 1e-7 against the requested 1e-8 -- a one-digit
+# shortfall in the kernel's own scale. These two tests assert shape, determinism and thread
+# safety, none of which that digit touches; the accuracy claim itself is tested in
+# test_precision.py, where it is the subject rather than the weather.
+@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 def test_tensions_take_an_array(solver):
     lams = np.linspace(8.0, 30.0, 17)
     got = solver.tensions(lams)
@@ -88,6 +94,7 @@ def test_tensions_take_an_array(solver):
     assert np.allclose(got[3], solver.tensions(lams[3]), rtol=0, atol=EXACT)
 
 
+@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 def test_a_solver_is_safe_to_share_across_threads(solver):
     """`douse` runs solves in a thread pool over generated domains, so the object has to be
     holdable. It is immutable, which is the whole argument -- this checks the argument."""

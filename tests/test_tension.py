@@ -40,6 +40,13 @@ def _rng():
 # --- the sector: one exact column --------------------------------------------------------
 
 
+# `Sampling.accuracy` bounds what a general combination of Fourier-Bessel columns can be
+# trusted to, and on these sectors it reports 1e1-1e2 -- no accuracy at all. That bound is
+# not wrong, it is simply not the situation: with a SINGLE column the common kernel scale
+# divides out of the tension entirely, which is the whole reason the sector is the sharp
+# reference. The `< 1e-10` assertions below are the evidence, so suppressing here costs
+# nothing that the test does not immediately re-check.
+@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 @pytest.mark.parametrize("omega", [np.pi / 3, np.pi / 2, 2 * np.pi / 3, 3 * np.pi / 2])
 def test_the_sector_eigenfunction_is_one_basis_column(omega):
     """`nu = pi/omega`, and the l-th Dirichlet mode is `J_{l*nu}(k r) sin(l*nu*theta)`. With
@@ -64,6 +71,7 @@ def test_the_sector_eigenfunction_is_one_basis_column(omega):
     assert p.tension(lam) < 1e-10
 
 
+@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 @pytest.mark.parametrize("omega", [2 * np.pi / 3, 3 * np.pi / 2])
 def test_the_sector_tension_has_a_minimum_at_each_eigenvalue(omega):
     """Away from an eigenvalue the same single column cannot satisfy the arc condition, so
@@ -81,6 +89,7 @@ def test_the_sector_tension_has_a_minimum_at_each_eigenvalue(omega):
         assert off > 1e3 * at, f"no dip at {lam}: {at:.2e} against {off:.2e} nearby"
 
 
+@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 def test_the_sector_coefficient_reproduces_the_exact_eigenfunction():
     """The coefficient half of the same reference. With one column the eigenfunction is that
     column, so `coef` must return a scalar multiple of it -- checked on interior points the
