@@ -707,6 +707,27 @@ measured here.
   than a call that is wrong on 43% of a sharp-corner block, and 2.5x faster than the `jv`
   plus `jvp` pair that is what a caller actually needs.
 
+## The handoff's `is_singular` line was wrong; this layer owns the word now
+
+The table at the top of this file records `is_singular` as `is_geometric or is_bc_junction`,
+which is what geometry shipped. That set is strictly too large -- every right angle of a
+rectangle is in it, and none of them needs a Fourier-Bessel family. The honest question is
+whether the orders `(l + offset)*nu` are all integers, which is `is_single_valued`, already
+here. It now also has the name a caller actually reaches for: **`CornerModes.is_singular`**,
+the documented negation of it, and the only place in the project that uses that word
+unqualified. `CornerModes.is_zaremba` (`offset == 0.5`) came here too.
+
+Geometry keeps the half of the question that is genuinely about the wedge --
+`Corner.is_reflection_closed`, `omega = pi/m` -- and none of the half that is about this
+equation. The offset depends on the BC pair through `_singularity_family`, whose Robin rule is
+Grisvard's asymptotics, so a `Corner.is_zaremba` would have been this layer's fact stored one
+level down. `docs/conventions.md` carries the reservation and the layer rule; `geometry.md`'s
+As-built section carries the argument.
+
+For a basis builder the practical consequence is one line: the corners needing a
+Fourier-Bessel family are `[c for c in dom.corners if CornerModes.from_corner(c).is_singular]`,
+and no geometric predicate is a substitute for it.
+
 ## Additions with no home in the spec
 
 * `chladni/_core.py`. `Frozen`, `_set`, `check_prec`, `PREC` and `PrecisionWarning` moved up

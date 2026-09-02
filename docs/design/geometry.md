@@ -399,6 +399,67 @@ The spec's `Corner` predates all of these, each added for a reason found by test
   and no ray escapes. Those get a wall-following polyline cut, ported from `lappy`'s
   `corner_branch_cut_polyline`. `branch_angle` is then the final ray's direction.
 
+## `geometry` names the angle, `helmholtz` names the singularity
+
+The spec defines `is_singular` as `is_geometric or is_bc_junction` (line 174), and the code
+shipped that. It is the wrong set, and strictly too large: it calls every right angle of a
+rectangle singular. The local orders at a corner are `mu = (l + offset)*nu` with
+`nu = pi/omega` and `offset = 1/2` when the two sides sit in different families, so the corner
+is regular exactly when all of them are integers. A right angle under one boundary condition
+gives `nu = 2` and orders 2, 4, 6 -- analytic, and needing neither a fractional expansion nor
+a graded panel. Two cases the old test got backwards:
+
+- a flat Dirichlet/Neumann junction, `omega = pi`, is **singular** -- orders 1/2, 3/2, the
+  strongest in the project, at a corner `is_geometric` cannot see. Delta 2 of the spec is
+  right about this corner mattering; it just named the wrong condition;
+- a **right-angled** Zaremba junction is **regular**: `nu = 2`, `offset*nu = 1`, orders
+  1, 3, 5.
+
+The first attempt was to redefine `is_singular` here, on `Corner`, with an `is_zaremba` to
+supply the offset. That is the right set and the wrong layer, for two reasons. `chladni` is an
+eigensolver, so "singular corner" reads as a claim about the eigenfunction, which is not a
+claim this layer is in a position to make; and `is_zaremba` folds Robin into the Neumann
+family, which is Grisvard's leading-asymptotics result, not a fact about the boundary.
+
+So the predicate splits along the layer line instead:
+
+- **`Corner.is_reflection_closed`** -- `near_integer(pi/omega)`, i.e. `omega = pi/m`. The
+  reflections in the two edges generate a finite group of order 2m whose images tile a
+  neighbourhood of the vertex exactly. Purely an angle fact: no BC, no equation, no solution.
+  Reentrant corners are never closed, since `omega > pi` puts `nu` in `(1/2, 1)`.
+- **`CornerModes.is_singular`** (`helmholtz`) -- the eigenfunction is non-smooth here. The
+  named negation of `is_single_valued`, and the only place in the project that says the word
+  unqualified. `docs/conventions.md` records the reservation, along with the two other live
+  senses -- "generalized singular value" and "singular weight" -- that must be spelled out.
+
+`Corner` keeps no `is_singular` and no `is_zaremba`.
+
+### What `grading="corner"` does now, and why it is provisional
+
+`_grade_flags` grades where `not is_reflection_closed or is_bc_junction`. That is a superset of
+the singular set, and provably: a nonzero offset requires the two sides in different families,
+which requires the bc values to differ. So geometry never under-grades. It over-grades exactly
+one shape of corner -- a right-angled Dirichlet/Neumann vertex -- and the honest statement of
+the rule is *geometry grades where the angle alone cannot rule out a singularity, plus every BC
+junction, because the offset that would settle those is not this layer's fact*. Measured
+against every constructor in `chladni.geometry.library`: zero difference from the exact set,
+because no library domain has a BC junction. The only corner in the repo where the containment
+is strict is `z = 1` of the `split_edge_bc_junction` fixture, and a test now pins it.
+
+This is a placeholder, not a design. Node placement wants the integrand: the Rellich and
+Hadamard boundary integrals are bilinear in Cauchy data against a weight, so choosing a rule
+needs geometric, spectral and functional information at once, and none of the three belongs to
+the other two. When a quadrature layer exists to hold all three it should own the choice and
+reach in through `panels=`, which `Panel`'s docstring already describes as the seam for exactly
+that. `geometry` keeps what it is actually good for -- the arclength map, the frames, the
+provenance, the BC tagging.
+
+Two stale claims the split turned up and fixed: `Domain.corners` said it returned "every
+singular corner" and returns all of them, and `admits_exterior_branch_cut` said `omega = pi/m`
+was "the caller's test to make, since geometry does not compute nu" -- that test now has a name
+here, and the hole rule reads `admits_exterior_branch_cut or is_reflection_closed`, with the
+mixed-corner parity condition staying in `helmholtz`.
+
 ## Clearance is a domain-level quantity
 
 `Boundary.corners` can only see its own boundary, so its `clearance` is an upper bound.

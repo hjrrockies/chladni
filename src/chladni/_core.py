@@ -13,6 +13,30 @@ import numpy as np
 #: Default working relative precision. Valid down to about 1e-15.
 PREC = 1e-8
 
+#: How close to an integer `pi/omega`, or a corner exponent, must be before it counts as one.
+#: The comparison is on the quantity itself rather than on a ratio, because `pi/omega`
+#: inherits omega's roundoff and an exact-equality test would refuse a legitimate right angle.
+#:
+#: Two layers share it, asking different questions: `Corner.is_reflection_closed` classifies
+#: the ANGLE, `CornerModes.is_single_valued` decides whether the EXPANSION is smooth. They
+#: share the constant because geometry's answer must never be the LOOSER of the two -- it
+#: grades quadrature on the strength of it, and a corner geometry waved through as regular
+#: while helmholtz calls it singular is under-resolved, which is the one failure this
+#: arrangement may not have. That rules out the tempting `abs(omega - pi/m) <= angle_atol`:
+#: `angle_atol` is `max(prec, 1e-12)`, which is 1e-8 at the default `prec`, so a corner at
+#: `omega = pi/2 + 1e-9` would read closed here and singular there.
+INTEGRAL_ATOL = 1e-12
+
+
+def near_integer(v):
+    """Within `INTEGRAL_ATOL` of an integer, from either side.
+
+    `v % 1.0 <= atol` alone is wrong: `pi/(pi/2)` can land at 1.9999999999999998, whose
+    residue is 0.9999999999999998 and which is an integer for every purpose here.
+    """
+    frac = float(v) % 1.0
+    return min(frac, 1.0 - frac) <= INTEGRAL_ATOL
+
 
 class PrecisionWarning(UserWarning):
     """The requested `prec` exceeds what this configuration can support in float64.

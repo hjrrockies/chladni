@@ -70,7 +70,7 @@ class Domain(Frozen):
 
     @cached_property
     def corners(self):
-        """Every singular corner of the domain, tagged with its boundary.
+        """Every corner of the domain, singular or not, tagged with its boundary.
 
         Two things happen here that a lone Boundary cannot do. Each corner is stamped with
         `bdry_idx`, without which the flattened tuple is ambiguous -- corner 0 of the outer

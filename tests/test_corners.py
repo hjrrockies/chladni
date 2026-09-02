@@ -14,7 +14,8 @@ import dataclasses
 import numpy as np
 import pytest
 
-from chladni.geometry import Boundary, LineSegment, Polygon
+from chladni.geometry import Boundary, Corner, LineSegment, Polygon
+from chladni.helmholtz import CornerModes
 
 from conftest import COLLINEAR, EQ_TRI, EXACT, L_SHAPE, L_SHAPE_ANGLES, PREC, SQUARE
 
@@ -98,7 +99,9 @@ def test_corners_follow_traversal_order(l_shape):
 
 
 def test_bc_change_across_a_straight_edge_is_a_singular_corner(split_edge_bc_junction):
-    """omega is exactly pi, so it is not geometric -- but it IS singular."""
+    """omega is exactly pi, so it is not geometric, and the wedge IS reflection-closed --
+    yet the eigenfunction is singular there. Geometry reports the junction; only
+    `CornerModes` calls it singular."""
     corners = split_edge_bc_junction.corners
     # dir->neu at 0.5 and neu->dir at 1: two changes, but only one is on a straight edge
     assert len([c for c in corners if c.is_bc_junction]) == 2
@@ -108,13 +111,71 @@ def test_bc_change_across_a_straight_edge_is_a_singular_corner(split_edge_bc_jun
     assert c.z == pytest.approx(0.5 + 0j, abs=EXACT)
     assert c.omega == pytest.approx(np.pi, abs=EXACT)
     assert not c.is_geometric
-    assert c.is_singular
+    assert c.is_reflection_closed
+    assert CornerModes.from_corner(c).is_singular
     assert (c.bc_in, c.bc_out) == (0.0, 1.0)
 
 
-def test_geometric_corners_are_singular_even_with_uniform_bc(square):
-    assert all(c.is_singular for c in square.corners)
-    assert not any(c.is_bc_junction for c in square.corners)
+# --- which corners the angle alone can vouch for ------------------------------------------
+
+
+def _wedge_corner(omega, bc_out=0.0, bc_in=0.0):
+    """A bare `Corner` with a prescribed angle and BC pair.
+
+    The predicates under test read `omega`, `bc_in` and `bc_out` and nothing else, so a wedge
+    that no closed polygon realises -- omega = 0.7, say -- can still be tested. The tangents
+    are kept consistent with `omega = angle(-t_in/t_out)` so the object is not a lie.
+    """
+    return Corner(z=0j, seg_out=0, seg_in=1, omega=omega, t_in=-np.exp(1j * omega),
+                  t_out=1 + 0j, bc_in=bc_in, bc_out=bc_out, clearance=1.0,
+                  branch_angle=float("nan"))
+
+
+def test_reflection_closed_is_exactly_pi_over_an_integer():
+    for omega, closed in [(np.pi, True), (np.pi / 2, True), (np.pi / 3, True),
+                          (np.pi / 4, True), (2 * np.pi / 3, False), (0.7, False),
+                          (3 * np.pi / 2, False)]:
+        assert _wedge_corner(omega).is_reflection_closed is closed, omega
+
+
+def test_reflection_closure_ignores_the_boundary_conditions():
+    """The angle is the whole test. A right-angled Dirichlet/Neumann junction is closed even
+    though its BC pair is what would decide the offset -- which is not geometry's to know."""
+    assert _wedge_corner(np.pi / 2, bc_out=1.0, bc_in=0.0).is_reflection_closed
+
+
+def test_a_reentrant_corner_is_never_reflection_closed(l_shape):
+    """omega > pi puts pi/omega in (1/2, 1), which is never an integer."""
+    assert not any(c.is_reflection_closed for c in l_shape.corners if c.is_reentrant)
+    assert all(c.is_reflection_closed for c in l_shape.corners if not c.is_reentrant)
+
+
+def test_right_angles_are_corners_and_the_eigenfunction_is_analytic_there(square):
+    """A square's corners are geometric, reflection-closed, and not singular. This is the
+    distinction `is_geometric` alone cannot make, and the reason it is not geometry's to
+    make either: the answer needs the BC pair as well as the angle."""
+    assert all(c.is_geometric and c.is_reflection_closed for c in square.corners)
+    assert not any(CornerModes.from_corner(c).is_singular for c in square.corners)
+
+
+def test_geometry_never_misses_a_singular_corner(l_shape, square, half_disk,
+                                                 split_edge_bc_junction, rect_4x1):
+    """The contract `grading="corner"` rests on. Geometry cannot name the singular set --
+    the offset is a Helmholtz fact -- but the set it grades must contain it, or the
+    quadrature is under-resolved exactly where resolution matters."""
+    for dom in (l_shape, square, half_disk, split_edge_bc_junction, rect_4x1):
+        for c in dom.corners:
+            if CornerModes.from_corner(c).is_singular:
+                assert not c.is_reflection_closed or c.is_bc_junction
+
+
+def test_the_containment_is_strict_at_a_right_angled_zaremba_corner(split_edge_bc_junction):
+    """The one shape of corner geometry grades and need not: orders 1, 3, 5 are integral,
+    so the eigenfunction is analytic, but only the offset says so."""
+    c = next(c for c in split_edge_bc_junction.corners
+             if c.z == pytest.approx(1 + 0j, abs=EXACT))
+    assert c.is_bc_junction and c.is_reflection_closed
+    assert not CornerModes.from_corner(c).is_singular
 
 
 def test_corner_carries_the_bc_pair_not_just_the_angle():

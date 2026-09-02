@@ -201,6 +201,27 @@ def test_grading_clusters_nodes_toward_corners(l_shape):
     assert np.abs(graded.pts - corner).min() < np.abs(plain.pts - corner).min()
 
 
+def test_grading_clusters_at_bc_junctions_including_the_one_it_need_not(
+        split_edge_bc_junction):
+    """Geometry grades where the ANGLE cannot rule out a singularity, plus every BC junction.
+    That reaches the flat dir/neu junction at 0.5, which is genuinely singular, and also the
+    right angle at 1, which is not -- geometry does not own the offset that would tell them
+    apart, and over-grading is the safe direction."""
+    plain = split_edge_bc_junction.bdry_quad(400)
+    graded = split_edge_bc_junction.bdry_quad(400, grading="corner")
+    for z in (0.5 + 0j, 1 + 0j):
+        assert np.abs(graded.pts - z).min() < np.abs(plain.pts - z).min()
+    assert graded.wts.sum() == pytest.approx(split_edge_bc_junction.perimeter, rel=PREC)
+
+
+def test_grading_leaves_a_square_alone(square):
+    """Every corner is reflection-closed and no boundary condition changes, so there is
+    nothing to resolve and grading must not move a node."""
+    plain = square.bdry_quad(200)
+    graded = square.bdry_quad(200, grading="corner")
+    assert np.allclose(graded.pts, plain.pts, atol=EXACT)
+
+
 def test_grading_relocates_nodes_without_changing_the_measure(l_shape):
     """Grading is a node-placement choice, not a change of weight function. It stays in the
     arclength family, so the perimeter identity must survive it."""

@@ -250,6 +250,10 @@ class Segment(Frozen, ABC):
         provenance and the BC tagging; only the choice of rule, which needs nu, sits above.
         Without it that layer would have to redo the affine panel map by hand, which is what
         lappy's PointSet docstring records a downstream package having to do.
+
+        `grading="corner"` grades BOTH ends here, unconditionally: a lone segment has no
+        neighbours and so no `Corner` to consult. The corner-aware rule is `Boundary`'s
+        (`_grade_flags`); this level offers `grade_start`/`grade_end` to say it exactly.
         """
         if panels is not None:
             d = nodes_from_plan(self, panels)

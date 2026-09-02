@@ -6,10 +6,14 @@ corner-indexed `corners`/`corner_idx`/`corner_angle0`/`corner_angle1` beside seg
 `corners` had 2 entries while the angle arrays had 3, "so no `orders` length could be masked
 consistently". Objects cannot desync.
 
-A corner is also not purely geometric. The singularity exponent depends on the boundary
-conditions either side, so a Dirichlet/Neumann change across a straight edge is singular at
-interior angle exactly pi -- invisible to lappy's `abs(turning_angle) > 1e-10`, which only
-notices three layers up, in `eigfun_integrals.corner_specs`, as a reason to bail out.
+A corner is also not always a turn. Where the boundary condition changes across a straight
+edge there is a junction at interior angle exactly pi, invisible to lappy's
+`abs(turning_angle) > 1e-10`, which only notices three layers up, in
+`eigfun_integrals.corner_specs`, as a reason to bail out. `is_bc_junction` finds it here.
+
+What that junction does to an eigenfunction is not this module's sentence to write. Geometry
+reports the angle and the BC pair, and classifies the angle (`is_reflection_closed`);
+`helmholtz.CornerModes.is_singular` is what says a corner is singular.
 """
 from __future__ import annotations
 
@@ -19,6 +23,7 @@ from functools import cached_property
 import numpy as np
 
 from ._adaptive import allocate, refine
+from .._core import near_integer
 from ._core import PREC, Frozen, _set
 from .quadrature import Panel, Quadrature, nodes_from_plan, segment_nodes
 from .segments import LineSegment, Segment, chord_dist_matrix, polyline_is_simple
@@ -30,7 +35,10 @@ _MAX_WALK_STEPS = 400
 
 @dataclass(frozen=True)
 class Corner:
-    """A junction the solver must treat as singular.
+    """A junction between two boundary segments, or between two boundary conditions.
+
+    Being a corner is not the same as mattering to the solution: a square's right angles are
+    corners, and an eigenfunction is analytic at every one of them.
 
     `clearance` is the distance to the nearest NON-adjacent piece of boundary, a proxy for
     the radius of the largest disk about the corner inside the domain, which bounds where a
@@ -40,8 +48,11 @@ class Corner:
     `corner_branch_cut_rays` in geometry -- hand-rolling the same polyline/owner-mask
     pattern. Both are purely geometric, so both are computed once, here.
 
-    Geometry stops at the angle and the BC pair. It never computes nu = pi/omega; that is
-    what keeps lappy's `pts_per_seg(domain, fb_basis)` from having anywhere to reappear.
+    Geometry stops at the angle and the BC pair. It may CLASSIFY the angle -- asking whether
+    omega is a submultiple of pi is a fact about the wedge -- but it never treats pi/omega as
+    an exponent, builds an expansion, or knows a basis exists. That is what keeps lappy's
+    `pts_per_seg(domain, fb_basis)`, a layer-1 signature taking a layer-2 object, from having
+    anywhere to reappear.
     """
 
     z: complex
@@ -84,6 +95,8 @@ class Corner:
 
     @property
     def is_geometric(self):
+        """Whether the boundary actually TURNS here. Contrast `is_bc_junction`, a junction
+        with no turn at all."""
         return abs(self.omega - np.pi) > self.angle_atol
 
     @property
@@ -95,8 +108,24 @@ class Corner:
         return self.bc_in != self.bc_out
 
     @property
-    def is_singular(self):
-        return self.is_geometric or self.is_bc_junction
+    def is_reflection_closed(self):
+        """Whether `omega = pi/m` for an integer m: the wedge closes under reflection.
+
+        Reflecting the wedge in one edge, then the other, and so on generates a finite group
+        of order 2m whose images tile a full neighbourhood of the vertex exactly, with the
+        last one landing back on the first. At any other angle the images overlap or leave a
+        gap, and the tiling never closes.
+
+        Purely a statement about the angle: no boundary condition, no equation, no solution.
+        It is what geometry can honestly say, and it is all geometry says. Whether the
+        EIGENFUNCTION is singular here is a different question -- it also depends on the BC
+        pair, through an offset that is a fact about the Helmholtz problem rather than about
+        this wedge -- and `helmholtz.CornerModes.is_singular` is where it gets answered. See
+        `docs/conventions.md` for the rule that reserves that word.
+
+        A reentrant corner is never reflection-closed: omega > pi puts pi/omega in (1/2, 1).
+        """
+        return near_integer(np.pi / self.omega)
 
     @property
     def admits_exterior_branch_cut(self):
@@ -115,8 +144,11 @@ class Corner:
         harder for a direction.
 
         A hole corner is therefore usable only by expansions that are single-valued without
-        a cut -- nu integral, i.e. omega = pi/m -- which is the caller's test to make, since
-        geometry does not compute nu.
+        a cut. Geometry names half of that condition -- `is_reflection_closed`, omega = pi/m
+        -- so the geometric part of the rule is `admits_exterior_branch_cut or
+        is_reflection_closed`. The other half is the parity a mixed-BC corner needs on top of
+        it, which depends on the offset and so belongs to `helmholtz` (`CornerModes.from_wedge`
+        raises there).
 
         `branch_angle` stays finite at a hole corner: it is still a genuine direction into
         the adjacent exterior component, which is what you want for placing a fundamental
@@ -302,7 +334,7 @@ class Boundary(Frozen):
 
     @cached_property
     def corners(self):
-        """All singular junctions, built in a batch.
+        """Every junction, singular or not, built in a batch.
 
         Every step is vectorized over corners. Done one corner at a time -- a distance
         against every non-adjacent segment, then a blocked-arc scan over the whole polyline
@@ -494,14 +526,35 @@ class Boundary(Frozen):
     # --- sampling and quadrature --------------------------------------------------------
 
     def _grade_flags(self, grading):
+        """Which segment endpoints `grading="corner"` clusters toward.
+
+        The eigenfunction is singular at a corner exactly when its local orders
+        `(l + offset)*pi/omega` are not all integers, and geometry does not own the offset --
+        it comes from the BC pair through a Helmholtz argument (helmholtz/corners.py:63).
+        What geometry can do is bound that set from above. Every singular corner is either
+        not reflection-closed or a BC junction, since a nonzero offset requires the two sides
+        to sit in different families and those differ only where the bc values do. So this
+        rule never misses a singularity; it grades where the ANGLE alone cannot rule one out,
+        plus every BC junction, because the fact that would settle those is not this layer's.
+
+        The containment is strict at exactly one shape of corner -- a right-angled
+        Dirichlet/Neumann vertex, whose orders 1, 3, 5 are integral -- which is graded anyway.
+
+        Provisional. Node placement wants the integrand, not just the shape: the Rellich and
+        Hadamard boundary integrals are bilinear in Cauchy data against a weight, and choosing
+        a rule for that needs geometric, spectral and functional information together. When a
+        quadrature layer exists to hold all three, it should own this choice and reach in
+        through `panels=`, which is already the seam for exactly that.
+        """
         n = len(self.segments)
         if grading is None:
             return [False] * n, [False] * n
         if grading != "corner":
             raise ValueError(f"unknown grading {grading!r}")
-        singular = {c.seg_out for c in self.corners if c.is_singular}
-        starts = [i in singular for i in range(n)]
-        ends = [((i + 1) % n) in singular for i in range(n)]
+        graded = {c.seg_out for c in self.corners
+                  if not c.is_reflection_closed or c.is_bc_junction}
+        starts = [i in graded for i in range(n)]
+        ends = [((i + 1) % n) in graded for i in range(n)]
         return starts, ends
 
     def quad(self, n=None, *, n_per_seg=None, rule="legendre", grading=None, bdry_idx=0,

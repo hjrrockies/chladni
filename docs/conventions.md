@@ -154,9 +154,31 @@ it disagreed with the thesis this work belongs to.
 | `beta` | the branch-cut direction in the same relative measure, in `(omega, 2*pi)`. |
 | `sigma` | per-column log scale. A returned column is `psi * exp(-sigma)`. |
 
-**`geometry` stops at `omega` and the BC pair. It never computes `nu`.** That line is load-bearing:
-`lappy` crossed it with `geometry.pts_per_seg(domain, fb_basis)`, a layer-1 signature taking a
-layer-2 object, and the whole `Corner` design exists so that function has nowhere to come back.
+**`geometry` stops at `omega` and the BC pair. It may classify the ANGLE; it never treats
+`pi/omega` as an exponent.** `Corner.is_reflection_closed` asks whether `omega = pi/m`, which is a
+fact about the wedge -- the reflections in its two edges generate a finite group that tiles a
+neighbourhood of the vertex -- and geometry needs it to place graded panels. It builds no
+expansion, reads no offset and imports no basis. That line is load-bearing: `lappy` crossed it with
+`geometry.pts_per_seg(domain, fb_basis)`, a layer-1 signature taking a layer-2 object, and the whole
+`Corner` design exists so that function has nowhere to come back.
+
+**"Singular", unqualified, means the eigenfunction is not smooth there. Only `helmholtz` may say
+it.** The word carries three technical senses in this project and they were already colliding inside
+single docstrings, so each of the other two is spelled out in full, every time:
+
+| phrase | meaning | where |
+|---|---|---|
+| singular (bare), singular corner, `singular_exponents()` | the eigenfunction is non-smooth there | `helmholtz`, `mps` |
+| **generalized** singular value / vector | the GSVD of the pencil `(A_B, A_I)` | `mps` |
+| singular **weight** | a weight function `w` folded into a quadrature rule's `wts` | `geometry.quadrature` |
+
+The corner sense is settled by `CornerModes.is_singular`: the orders `(l + offset)*nu` are not all
+integers. It needs the offset, which comes from the BC pair through Grisvard's Robin rule, so it is
+not available -- and not nameable -- one layer down. `Corner` therefore has no `is_singular` and no
+`is_zaremba`; it offers `is_geometric`, `is_bc_junction` and `is_reflection_closed`, and a caller who
+wants the singular set asks `CornerModes.from_corner(c)`. What geometry guarantees instead is a
+bound: every singular corner satisfies `not is_reflection_closed or is_bc_junction`, which is why
+`grading="corner"` can be built on geometry alone without ever under-resolving.
 
 **The angle lift is anchored to `beta`, never to `0` or `-pi`.** The obvious
 `np.angle((z - c.z)/c.t_out) % (2*np.pi)` is wrong: a point that should sit at `theta = 0` comes out

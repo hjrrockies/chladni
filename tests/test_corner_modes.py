@@ -1,7 +1,9 @@
 """Deriving the local expansion at a corner -- this layer's first job.
 
-`geometry` stops at `omega` and the boundary-condition pair and never computes `nu = pi/omega`
-(boundary.py:43). That line is load-bearing: lappy crossed it with
+`geometry` stops at `omega` and the boundary-condition pair. It classifies the ANGLE --
+`Corner.is_reflection_closed` asks whether omega is a submultiple of pi -- and stops there;
+`nu` as an exponent, the offset the BC pair implies, and therefore the word "singular" all
+live here (`docs/conventions.md`). That line is load-bearing: lappy crossed it with
 `geometry.pts_per_seg(domain, fb_basis)`, and the whole `Corner` design exists so that
 function has nowhere to come back. This file defends the crossing happening here and only
 here, and defends the exponent table being right.
@@ -241,6 +243,48 @@ def test_a_mixed_bc_hole_corner_needs_an_even_nu():
     CornerModes.from_wedge(np.pi / 2, 0.0, 1.0, admits_branch_cut=False)
     with pytest.raises(ValueError, match="hole"):
         CornerModes.from_wedge(np.pi, 0.0, 1.0, admits_branch_cut=False)
+
+
+# --- is_singular: the word, and what it costs to say it ---------------------------------------
+
+def test_a_pi_over_m_corner_is_regular_but_a_generic_one_is_not():
+    """Under one boundary condition the whole question is whether nu is an integer."""
+    for omega, singular in [(np.pi / 3, False), (np.pi / 4, False), (2 * np.pi / 3, True),
+                            (0.7, True), (3 * np.pi / 2, True)]:
+        assert _modes(omega, 0.0, 0.0).is_singular is singular, omega
+
+
+def test_a_flat_zaremba_junction_is_singular():
+    """omega = pi, so the wedge is reflection-closed and nothing about the ANGLE is wrong.
+    The offset is what makes it singular: orders 1/2, 3/2, the strongest in the module."""
+    m = _modes(np.pi, bc_out=0.0, bc_in=1.0)
+    assert m.is_zaremba
+    assert m.leading_exponent == pytest.approx(0.5, abs=EXACT)
+    assert m.is_singular
+
+
+def test_a_right_angled_zaremba_corner_is_regular():
+    """offset = 1/2 and nu = 2, so the orders are 1, 3, 5 -- integers. Mixed BC does not by
+    itself make a corner singular, which is why the question needs this layer."""
+    m = _modes(np.pi / 2, bc_out=1.0, bc_in=0.0)
+    assert m.is_zaremba
+    assert not m.is_singular
+
+
+def test_a_robin_neumann_junction_is_not_zaremba():
+    """Robin maps onto the Neumann family, so a straight neu -> robin junction carries no
+    half-integer offset even though the two bc values differ. That mapping is Grisvard, not
+    geometry, and it is the reason `Corner` has no `is_zaremba`."""
+    m = _modes(np.pi, bc_out=0.3, bc_in=1.0)
+    assert not m.is_zaremba
+    assert not m.is_singular
+
+
+def test_is_singular_is_the_negation_of_is_single_valued():
+    for omega, bc_out, bc_in in [(np.pi / 2, 0.0, 0.0), (2 * np.pi / 3, 0.0, 0.0),
+                                 (np.pi, 0.0, 1.0), (np.pi / 2, 1.0, 0.0), (0.7, 1.0, 1.0)]:
+        m = _modes(omega, bc_out, bc_in)
+        assert m.is_singular is not m.is_single_valued
 
 
 # --- immutability, as everywhere else in the project ------------------------------------------

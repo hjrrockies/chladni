@@ -30,11 +30,13 @@ integer or half-integer multiple of pi:
 Two booleans, one code path. Keeping theta = 0 on `t_out` in all four cases -- rather than
 rotating the frame onto "the Dirichlet ray" in the mixed case -- is what makes that true.
 
-The last two rows are Zaremba corners. At a FLAT junction, omega = pi, the leading exponent
-is mu = 1/2: the classic square-root singularity, stronger than any convex Dirichlet corner,
-at a junction `Corner.is_geometric` cannot see. `chladni` detects it one layer down through
+The last two rows are Zaremba corners (`is_zaremba`). At a FLAT junction, omega = pi, the
+leading exponent is mu = 1/2: the classic square-root singularity, stronger than any convex
+Dirichlet corner, at a junction `Corner.is_geometric` cannot see. Geometry does report it, as
 `is_bc_junction`, which lappy did not -- its `eigfun_integrals.corner_specs` meets the same
-corner three layers up and declares it unhandled.
+corner three layers up and declares it unhandled. Which junctions are singular is settled
+here, though: geometry stops one step short on purpose, because the Robin rule above and the
+offset it feeds are facts about this equation, not about the boundary.
 """
 from __future__ import annotations
 
@@ -42,21 +44,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-#: How close to an integer an exponent must be before a hole corner will accept it. The
-#: comparison is on `mu` itself rather than on a ratio, because `nu = pi/omega` inherits
-#: omega's own roundoff and an exact-equality test would refuse a legitimate right angle.
-_INTEGRAL_ATOL = 1e-12
-
-
-def _near_integer(v):
-    """Within `_INTEGRAL_ATOL` of an integer, from either side.
-
-    `v % 1.0 <= atol` alone is wrong: `pi/(pi/2)` can land at 1.9999999999999998, whose
-    residue is 0.9999999999999998 and which is an integer for every purpose here.
-    """
-    frac = float(v) % 1.0
-    return min(frac, 1.0 - frac) <= _INTEGRAL_ATOL
-
+from .._core import near_integer
 
 def _singularity_family(bc):
     """Which local family a boundary condition puts a corner in: 'dir' or 'neu'.
@@ -115,12 +103,35 @@ class CornerModes:
         return float(self.orders([self.first_degree])[0])
 
     @property
+    def is_zaremba(self):
+        """Whether the two sides sit in DIFFERENT local families, which is what puts the
+        half-integer offset in the orders. Not the same test as `Corner.is_bc_junction`:
+        Robin joins the Neumann family here (see `_singularity_family`), so a neu -> robin
+        junction changes the bc value without being a Zaremba corner."""
+        return self.offset == 0.5
+
+    @property
+    def is_singular(self):
+        """Whether the EIGENFUNCTION is non-smooth at this corner -- the sense the word
+        carries unqualified in this project (`docs/conventions.md`), and the question
+        `geometry` deliberately does not answer.
+
+        The negation of `is_single_valued`, and not a second copy of that arithmetic. The two
+        coincide because every order is a multiple of `nu` with `offset` in {0, 1/2}: all of
+        them integral makes the expansion both single-valued around the vertex and smooth
+        across it, and one non-integral order breaks both at once. They are still separate
+        names because they answer separate questions -- one about a branch cut, one about
+        regularity -- and only one of them is what a caller choosing a basis is asking.
+        """
+        return not self.is_single_valued
+
+    @property
     def is_single_valued(self):
         """Whether every order is an integer, so no branch cut is needed at all.
 
         True at a right-angled Dirichlet corner (nu = 2), which is why a square needs no cut.
         """
-        return _near_integer(self.nu) and _near_integer(self.offset * self.nu)
+        return near_integer(self.nu) and near_integer(self.offset * self.nu)
 
     @classmethod
     def from_wedge(cls, omega, bc_out, bc_in, beta=None, admits_branch_cut=True):
