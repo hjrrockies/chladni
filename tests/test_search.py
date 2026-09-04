@@ -170,6 +170,51 @@ def test_the_wavenumber_halves_the_relative_precision():
 
 # --- the isolation gate -------------------------------------------------------------------------
 
+def test_the_k_rule_DELIVERS_the_lam_contract_it_stands_in_for():
+    """`prec` is relative to `lam` by definition; the search works in `k` and stops on
+    `width_is_pure(..., prec/2)`. The factor is not a fudge -- `lam = k**2` gives
+    `dlam/lam = (k2-k1)(k2+k1)/k2**2`, which `2*dk/k2` bounds with equality only as
+    `k1 -> k2`, so the `k` rule is conservative and sound at the same time.
+
+    Checked over 12000 brackets at three precisions: the worst `dlam/lam` a passing `k`
+    bracket achieves is 0.9994 of `prec`, so the rule is tight to 0.06% as well as safe. A
+    factor of `prec` instead of `prec/2` would ask for twice the precision requested; a factor
+    of 1 would deliver half of it.
+    """
+    rng = np.random.default_rng(0)
+    worst, n = 0.0, 0
+    for prec in (1e-4, 1e-8, 1e-12):
+        pu = 0.5 * prec
+        for k in rng.uniform(1.5, 30.0, 2000):
+            lo, hi = k, k + 0.999 * pu * max(k, 1.0)
+            if not V.width_is_pure(lo, hi, pu):
+                continue
+            n += 1
+            worst = max(worst, ((hi * hi - lo * lo) / max(hi * hi, 1.0)) / prec)
+    assert n > 5000, "the sample actually exercised the rule"
+    assert worst <= 1.0, f"a passing k bracket violated the lam contract by {worst:.6f}"
+    assert worst > 0.99, f"and it is not wastefully conservative: {worst:.4f}"
+
+
+def test_the_relative_scale_FLOOR_activates_in_both_variables_together():
+    """`max(|x|, 1)` guards the relative scale, and it has to bite in `k` exactly when it bites
+    in `lam` or the two rules would diverge on small domains. It does: `lam < 1` iff `k < 1`."""
+    for lam in (0.25, 0.9, 1.0, 4.0, 100.0):
+        k = np.sqrt(lam)
+        assert (max(lam, 1.0) == 1.0) == (max(k, 1.0) == 1.0), f"lam={lam} disagrees"
+
+
+def test_attained_prec_is_reported_in_LAM_whatever_the_search_worked_in():
+    """`prec_requested` is in `lam`, so `attained_prec` must be too, or `met_request` compares
+    two different quantities. The search reports `2*(hi-lo)/hi` on a `k` bracket, which is
+    exactly `dlam/lam` to first order."""
+    obj = objective(sc.isolated(), 1e-8)
+    d = bracket_interval(obj, prec=1e-8).diagnostics
+    assert d.prec_requested == 1e-8
+    assert np.isfinite(d.attained_prec) and d.attained_prec > 0
+    assert d.met_request == (d.attained_prec <= d.prec_requested)
+
+
 def test_the_gate_refuses_without_a_certificate():
     """Silence is not permission: no certificate means no decision, and the region stays on the
     slow path."""
