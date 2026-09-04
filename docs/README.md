@@ -37,6 +37,14 @@ were tried and rejected.
 
 So: **do not edit above the delta section.** Supersede, do not revise.
 
+### Not here: `TODO.md`
+
+The backlog sits at the root and is tracked. It passes the half-life test the way
+`conventions.md` does --- not by being permanent, but by being **kept true at HEAD**: an item
+is deleted when it is done, never annotated as done. What was outstanding on a past date is
+what `git log` is for. It is at the root rather than under `docs/` because it is addressed to
+whoever picks the work up, not to a reader of the code.
+
 ### Not here: `notes/`
 
 Working notes, research memos, work orders, benchmark run logs --- anything addressed to a
