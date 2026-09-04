@@ -43,14 +43,19 @@ including refinement. What remains is promotion, not construction.
   really for: two roots at the SAME separation where one pair is a duplicate and the other is
   not. Needs the `modes(x)` widening below. Nothing in the roster exercises it, which is a
   measurement on one roster and not an argument.
-* **[next]** Multiplicity is UNDECIDABLE for a cluster whose diameter sits between the merge
-  licence and the wide bracket's reach, `1 < diameter/(prec*lam) < WIDE_FACTOR`. Measured on the
-  multiplicity-3 cluster: pass at ratios 0.40, 2.60 and 6.00, fail at 1.00 and 1.60. Such a
-  cluster is too wide to be one level of `S(prec)` and its members sit closer together than the
-  flanks a read needs, so no flank placement is both outside the level and inside the gap to the
-  next one. `rect_suite.multiplicity_undecided` reports it and the tests skip those cells.
-  Whether a smaller `WIDE_FACTOR` narrows the band without breaking the prominence bound
-  (`sqrt(1+f**2) >= P` needs `f > sqrt(3)`) is one experiment.
+* **[next]** State the multiplicity contract. `v1_solve` now DETECTS the regime where a
+  cluster's grouping is arbitrary and collapses it, so the total is right at every span
+  measured -- but nothing is written down about when the GROUPING is guaranteed. The condition
+  is that a level be clear of its neighbours by more than its own spread, and it belongs beside
+  `search.md` section 2.2's basis contract, since it is the same kind of statement about the
+  request rather than the pencil. Measure the UNEVENLY spaced case first: everything so far is
+  on evenly spaced triples, because that is how `crossover_cases` dials them, and an uneven
+  cluster may have a non-degenerate window -- which would make the contract weaker and more
+  useful. `surrogate_cases.cluster`'s 1 : 2.2 : 1 spacing is the case to try.
+* **[later]** Whether a smaller `WIDE_FACTOR` narrows the ambiguous band. The band is
+  `1 < diameter/(prec*lam) < WIDE_FACTOR` and the prominence bound needs `f > sqrt(3)`, so
+  there is little room; the collapse makes it a cost question rather than a correctness one,
+  since a collapsed level is coarser than `prec` asked for. Low priority for that reason.
 * **[next]** The open `floor_frac` bug. `lappy_repaired_search` misses a *different* L-shape
   eigenvalue depending on `floor_frac` over `k` in `[3, 5]`: 1e-6 loses 15.197, 1e-9 loses
   9.640, 1e-12 finds all three. "Load-bearing in a way nothing yet explains" -- `search.md`,
