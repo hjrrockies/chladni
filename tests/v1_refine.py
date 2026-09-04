@@ -1,0 +1,268 @@
+"""Stage 2: refine a bracket to a located eigenvalue, by iterated parabolic interpolation.
+
+TEST SUPPORT ONLY -- a scored candidate, not part of the package. `docs/design/candidates.md`
+section 1 is the seam; `CHLADNI_V1.md` section 3 is the design.
+
+# Why this algorithm, and why not Brent
+
+`sigma_1**2` is exactly quadratic near an eigenvalue -- for a simple smallest generalized
+singular value it is an eigenvalue of an analytic Hermitian family, and the cone model says it
+equals `eps**2 + c**2*delta**2`. So the vertex through three points is THE ANSWER rather than an
+approximation, and iterating it uses information that a bracketing method throws away. Measured
+over 26 eigenvalues at `prec = 1e-14`, on brackets from 1e-6 to 1e-1 wide:
+
+    refiner                                  median rel error   evals/bracket
+    iterated parabolic on sigma_1**2              1.6e-16          5.5 - 7.9
+    Brent on sigma_1**2                    5.4e-10 to 5.6e-5       5.0 - 11.7
+    straddled interpolation on sigma_1          0 (exact)          48 - 63
+
+**Do not reach for `scipy.optimize.minimize_scalar`.** Brent's parabolic step is guarded by a
+golden-section fallback and it terminates long before the curvature information is used up.
+
+And note what does NOT go wrong: **squaring the objective does not cost half the significant
+digits.** The `sqrt(eps_machine)` limit belongs to methods that locate a minimum by comparing
+function VALUES; solving for the vertex from the curvature does not suffer it.
+
+# The variable is `lam`
+
+Even though the search covers in `k`. Fitting a quadratic to `sigma_1**2` over identical
+physical sample points, the residual relative to the data range is smaller in `lam` in **17 of
+17 cases** across rect 1x1, 2x1 and 5x1, the disk, eq_tri and the L-shape -- median 5.1x, range
+2.5x to 15.4x -- and the located vertex is correspondingly more accurate. `docs/conventions.md`
+wants `lam` above the `mps` seam anyway, and here the measurement agrees with the convention.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+__all__ = ["RefineResult", "refine"]
+
+#: Evaluations before giving up. Generous: a bracket costs 3 to 12 in practice, and the point
+#: of a cap is to stop a pathological case rather than to bound a healthy one.
+MAX_EVALS = 40
+
+#: Steps after which a minimum still sitting on a handed-in endpoint is given up on. The
+#: bracket does not hold an interior minimum and no further stepping will produce one.
+_ENDPOINT_STEPS = 4
+
+#: Relative closeness at which two sample points are treated as the same point. Below this the
+#: vertex formula's `dx` is rounding rather than geometry.
+_SAME_POINT = 4.0
+
+
+@dataclass(frozen=True)
+class RefineResult:
+    """What one bracket refined to, and what it cost."""
+    lam: float                  # the located minimum
+    sigma: float                # sigma_1 there
+    accepted: bool
+    reason: str                 # converged | no_parabola | flat | budget
+    evaluations: int            # what the harness charges for this bracket
+    bracket: tuple = ()         # the interval it was handed
+    delta_res: float = float("nan")   # attained bound, from the parabola fit
+    steps: int = 0
+
+    @property
+    def rejected(self):
+        return not self.accepted
+
+
+def _xatol(lam, prec):
+    """Stopping width, from the target precision and the arithmetic.
+
+    `max(prec*|lam|, 4*ulp(lam))`, computed from the CURRENT iterate rather than from the
+    bracket. A tolerance derived from `lam` alone can EXCEED the bracket it is refining -- a
+    2.7e-13 bracket handed a tolerance of 7.9e-13 -- so the refiner terminates before doing
+    anything and returns a point that is not the minimum.
+    """
+    return max(prec * abs(lam), 4.0 * np.spacing(abs(lam)))
+
+
+def _vertex(x, y):
+    """Vertex of the parabola through three points, or `None` if there is not one.
+
+    Returns `(x_star, curvature)`. `curvature <= 0` means the three points do not describe a
+    single minimum -- guard 1 -- and `dx == 0` is guarded here rather than at the call site
+    because that is where the division is.
+    """
+    x0, x1, x2 = (float(v) for v in x)
+    y0, y1, y2 = (float(v) for v in y)
+    d01, d12, d20 = x0 - x1, x1 - x2, x2 - x0
+    denom = d01 * d12 * d20
+    if denom == 0.0:
+        return None
+    # Standard three-point quadratic coefficients; `c2` is the curvature.
+    c2 = -(d12 * y0 + d20 * y1 + d01 * y2) / denom
+    c1 = ((x1 * x1 - x2 * x2) * y0 + (x2 * x2 - x0 * x0) * y1
+          + (x0 * x0 - x1 * x1) * y2) / denom
+    if c2 <= 0.0 or not np.isfinite(c2) or not np.isfinite(c1):
+        return None
+    return -0.5 * c1 / c2, c2
+
+
+def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
+    """Locate the minimum of `sigma_1**2` in `[lo, hi]`. Both endpoints in `lam`.
+
+    `obj` is an `Objective`; it may be parameterized by `k`, in which case the conversion
+    happens here and the objective's cache is shared, so re-reading a point costs nothing.
+
+    Returns a `RefineResult` whose `evaluations` is what the harness charges for this bracket.
+    That number is the whole reason this stage is built before the searcher: a flat per-bracket
+    charge is wrong in both directions -- 3 evaluations for a bracket of width 1e-12, 12 for
+    width 20, and 2 to 7 to REJECT an empty one -- and using one reversed the answer to
+    "should the search refine or hand off?" twice.
+    """
+    prec = obj.prec if prec is None else float(prec)
+    lo, hi = float(min(lo, hi)), float(max(lo, hi))
+    start = obj.n_evals
+
+    def f(lam):
+        """`sigma_1**2` at `lam`, clamped into the bracket."""
+        lam = float(np.clip(lam, lo, hi))
+        s = obj.tension(obj.from_lam(lam))
+        return lam, s * s, s
+
+    # Three points to start: the ends and either the hint or the midpoint. The hint is the
+    # deepest sample the search already paid for, and reusing it is free -- the cache is shared.
+    mid = float(np.clip(lam_hint, lo, hi)) if lam_hint is not None else 0.5 * (lo + hi)
+    if not lo < mid < hi:
+        mid = 0.5 * (lo + hi)
+
+    # Every point this call has seen, so the working triple can be RE-SELECTED rather than
+    # patched. The first version kept `[i-1, i, i+1]` of the sorted list, which deadlocks: with
+    # the minimum at position 1 the left endpoint is pinned forever, every new point lands
+    # outside the retained triple and is discarded, and the same vertex is recomputed until the
+    # budget runs out. Machine-exact answer, 40 wasted steps, and `reason` stuck at "budget".
+    hist = [f(lo), f(mid), f(hi)]
+
+    # Guard 3: track the lowest point seen INDEPENDENTLY of the triple. The triple is re-formed
+    # by position rather than by value, so a bad vertex can discard the sub-interval holding
+    # the minimum -- and then the answer is gone even though it was once in hand.
+    best = min(hist, key=lambda p: p[1])
+
+    steps = 0
+    progressed = False
+    reason = "budget"
+    curvature = float("nan")
+
+    def triple():
+        """Best point, plus its nearest neighbour on each side.
+
+        Straddling is what makes the interval shrink: new points accumulate near the minimum,
+        so the two neighbours close in on it monotonically. Where the best point is at an end
+        -- the minimum lies outside the bracket -- there is no straddle and the three nearest
+        points are used instead, which is the configuration `_accept` then rejects.
+        """
+        b = min(hist, key=lambda p: p[1])
+        left = [p for p in hist if p[0] < b[0]]
+        right = [p for p in hist if p[0] > b[0]]
+        if left and right:
+            return [max(left, key=lambda p: p[0]), b, min(right, key=lambda p: p[0])]
+        return sorted(sorted(hist, key=lambda p: abs(p[0] - b[0]))[:3], key=lambda p: p[0])
+
+    # The loop is bounded by STEPS, not by `obj.n_evals`. `n_evals` counts cache MISSES, and a
+    # refiner that re-asks for a point it has already seen -- which happens as soon as the
+    # triple stops moving -- adds none. Budgeting on it spins forever at zero cost, which is
+    # exactly what the first version of this function did.
+    while steps < max_evals:
+        pts = triple()
+        v = _vertex([p[0] for p in pts], [p[1] for p in pts])
+        if v is None:
+            # Guards 1 and 2, and the difference between them is the whole point. `C <= 0`
+            # fires BOTH on a bracket that holds no single minimum -- empty, or spanning two
+            # well-separated eigenvalues where the fit is across a W -- and at the END of a
+            # good refinement, once the three points have collapsed onto the floor and the
+            # curvature is gone. Treating the second as failure discards correct answers.
+            reason = "flat" if progressed else "no_parabola"
+            break
+
+        x_star, curvature = v
+        # Guard 4: keep the step inside the interval, and nudge it off a duplicate point --
+        # clamped, so the nudge cannot leave the bracket it is supposed to be searching.
+        x_star = float(np.clip(x_star, lo, hi))
+        for p in pts:
+            if abs(x_star - p[0]) <= _SAME_POINT * np.spacing(abs(p[0]) + (hi - lo)):
+                near = min((q for q in pts if q[0] != p[0]),
+                           key=lambda q: abs(q[0] - p[0]), default=None)
+                target = 0.5 * (p[0] + near[0]) if near is not None else 0.5 * (lo + hi)
+                x_star = float(np.clip(target, lo, hi))
+                break
+
+        if any(x_star == p[0] for p in hist):
+            reason = "converged" if progressed else "flat"
+            break
+
+        new = f(x_star)
+        hist.append(new)
+        steps += 1
+        if new[1] < best[1]:
+            best = new
+            progressed = True
+
+        pts = triple()
+        if pts[-1][0] - pts[0][0] <= _xatol(best[0], prec):
+            reason = "converged"
+            progressed = True
+            break
+
+        # Rejecting must be CHEAP. On a bracket whose minimum sits at an end -- empty, or one
+        # wall of a root just outside -- the vertex keeps stepping toward that end and the
+        # parabola keeps closing, so nothing above stops it: measured 28 evaluations to reject
+        # what `_accept` was always going to refuse. The cost model prices a spurious bracket
+        # at 2 to 7 evaluations, and a search is entitled to keep a doubtful region at that
+        # price; 28 would change the architectural answer about where to draw the stage
+        # boundary, which is exactly the mistake a flat charge made twice.
+        if steps >= _ENDPOINT_STEPS and (best[0] <= lo or best[0] >= hi):
+            reason = "endpoint"
+            break
+
+    # `delta_res`: the scale on which the fit can still be trusted, from the curvature the
+    # parabola actually showed. MEASURED rather than predicted -- there is no
+    # predicted-accuracy constant, because the derived form did not predict observed error
+    # well on the two cases where it could be checked.
+    eta = max(best[2], np.finfo(float).eps)
+    delta_res = float(np.sqrt(eta * np.spacing(1.0) / curvature)) if (
+        np.isfinite(curvature) and curvature > 0) else float("nan")
+
+    ends = (hist[0][2], hist[2][2])      # sigma_1 at the handed-in endpoints; already paid for
+    accepted = _accept(best, lo, hi, prec, ends) if reason != "no_parabola" else False
+    if not accepted and reason in ("converged", "flat"):
+        reason = "not_a_minimum"
+
+    return RefineResult(lam=best[0], sigma=best[2], accepted=bool(accepted), reason=reason,
+                        evaluations=obj.n_evals - start, bracket=(lo, hi),
+                        delta_res=delta_res, steps=steps)
+
+
+def _accept(best, lo, hi, prec, ends):
+    """Is the located point a genuine INTERIOR minimum of the bracket it was handed?
+
+    Two conditions, both free -- the endpoints were evaluated on the way in, so this costs
+    nothing and cannot be skipped for economy.
+
+    1. **Strictly interior.** Bounded minimisation returns an ENDPOINT when the true minimum
+       lies outside the bracket, and next to a deep root that endpoint still passes any
+       threshold test: measured before this check existed, 8 phantom roots against 20 real
+       ones, each 2e-05 to 4e-04 from a genuine root with `sigma_1` between 1.6e-04 and
+       9.8e-04. Smallness is not minimality.
+    2. **Below both ends.** Which is the "compare against the cone OUTSIDE, where it must be
+       rising" rule, read off the points the bracket already carries.
+
+    An earlier version probed at `lam +/- 4*span` instead, meaning to sample the rising cone
+    beyond the bracket. On an empty bracket one wall away from a root that probe **jumped over
+    the eigenvalue entirely** and landed on the plateau beyond it, where the tension is high --
+    so both sides read "rising" and the wall point was accepted. A probe whose reach is set by
+    the bracket width cannot know what it is stepping across; the endpoints can, because they
+    are where the bracket actually ends.
+
+    The interior margin is `min(xatol, width/4)`, not `xatol`: a bracket already narrower than
+    the tolerance has no interior by the first measure, and refusing everything inside it would
+    reject exactly the tight brackets the refiner is best at.
+    """
+    lam, _, s_best = best
+    margin = min(_xatol(lam, prec), 0.25 * (hi - lo))
+    if not (lo + margin <= lam <= hi - margin):
+        return False
+    return bool(s_best < min(ends))
