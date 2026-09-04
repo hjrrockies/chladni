@@ -30,15 +30,18 @@ wins it moves into `src/chladni/mps/`.
   (`notes/landscape_findings.md` section 29). What moves is `v1_bracket` and `v1_refine` into
   `src/chladni/mps/`, rewritten against a spec that `CHLADNI_V1.md`'s As-built section will
   have corrected.
-* **[blocking]** Stage 3, `multiplicity(tensions, x, *, wide_bracket, prec)`. Specified in
-  `candidates.md` section 1 and `search.md` section 5 (Phase C); implemented nowhere. It
-  spends no evaluations and reads from the cache. Note that tier 1 **cannot decide it**: the
-  surrogate puts every non-well curve at the cap, so `sigma_3` and above carry no structure at
-  all, and (C1) reads exactly that branch. Pinned by
-  `tests/test_surrogate_cases.py::test_the_tier_states_that_it_cannot_judge_multiplicity`, so
-  any multiplicity result has to come from tier 2 or 3.
 * **[blocking]** Stage 4, `solve`. `candidates.md` section 1 calls it "the only mandatory
-  seam", and the v1 candidate registers stages 1 and 2 only.
+  seam", and the v1 candidate registers stages 1, 2 and 3 separately with nothing composing
+  them. Composition is not quite mechanical: stage 3 needs the WIDE bracket, which is the pair
+  of evaluated points either side of the root from BEFORE the locator collapsed the bracket, so
+  stage 4 has to keep it -- `wide_bracket_for` reconstructs it from the cache, which works but
+  is doing at the end what Phase B could have recorded at the time.
+* **[next]** Phase D, collapse-versus-merge. Stage 3 answers "how many branches dip HERE" and
+  says nothing about two roots reported close together, which is a different question that
+  distance provably cannot settle: one eigenvalue found twice and two genuine eigenvalues occur
+  at the SAME separation. `search.md` Phase D decides it on the interior Gram angle -- `|cos|`
+  at most 0.10 for distinct eigenfunctions against at least 0.948 for one well found twice --
+  and that needs the `modes(x)` widening below.
 * **[next]** The open `floor_frac` bug. `lappy_repaired_search` misses a *different* L-shape
   eigenvalue depending on `floor_frac` over `k` in `[3, 5]`: 1e-6 loses 15.197, 1e-9 loses
   9.640, 1e-12 finds all three. "Load-bearing in a way nothing yet explains" -- `search.md`,
@@ -63,6 +66,14 @@ wins it moves into `src/chladni/mps/`.
   detector: 3/3 genuine gaps at 160 samples per gap, 2/3 at 2560), and its cell-cutting is a
   uniform scan wearing an adaptive label. `notes/landscape_findings.md` sections 30.3-30.4
   gives three untested repairs.
+* **[later]** We should have a "warm-start" solver for eigenproblems that are perturbations of
+  eigenproblems with known solutions: a robust mechanism for taking old estimates and refining
+  them. This will have to handle multiplicity correctly, as well as target precision. The
+  warm-start solver may require bounds on the new eigs.
+* **[later/maybe]** If we cannot make the air-tight search have excellent average-case performance,
+  as measured by number of GSVD calls, then we should implement a "fast cold start" solver
+  which has excellent average-case performance, with guards that can opt back-in to the slower-
+  but-air-tight solver.
 
 ## 2. Generalization and validation debt
 

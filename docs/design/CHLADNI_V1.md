@@ -537,7 +537,8 @@ originating repo.
 | `tests/surrogate_cases.py` | tier 1, with `adequate()` |
 | `tests/rect_suite.py` | tier 2, with `assert_floor` and the new `assert_smooth` |
 | `tests/hard_roster.py` | tier 3: disk, eq_tri, L-shape, each with the `prec` its basis supports |
-| `tests/v1_refine.py`, `tests/v1_bracket.py` | the prototype, as a scored candidate |
+| `tests/v1_refine.py`, `tests/v1_bracket.py`, `tests/v1_multiplicity.py` | the prototype: stages 1, 2 and 3, as scored candidates |
+| `tests/level_score.py`, `tests/level_controls.py` | the multiplicity scorer, and the adversary that broke the one it replaces |
 | `tests/test_gate.py` | the standing gate, `-m gate` |
 | `src/chladni/asymp.expected_count`, `src/chladni/mps/calibrate.py`, `MPSPencil.with_rtol`, `MPSEigensolver.findability` | the parts that are features rather than candidates |
 
@@ -712,6 +713,35 @@ Each was found by running, not by reading, and each is pinned by a test:
 The single gate skip is a cell whose objective admits no slope bound at any sampled scale
 (secant 0.72 -> 15.3 across doublings), reported UNEXERCISABLE with that reason rather than
 counted as a failure.
+
+## Stage 3 confirms this document's one deferred reading, on its own terms
+
+Section 2.5.4 declines to read multiplicity off the sigma vector INSIDE the bracketer, and that
+stands -- the reading is ambiguous at range by construction, since approaching an unresolved
+pair from distance `u` gives `sigma_2/sigma_1 = 1 + d/u`, which is 1.0006 at the start of a
+cover pass. Section 10 item 4 says to revisit it "only with a tension-floor estimate the
+objective supplies".
+
+Read AFTER location, against a wide bracket, it is unambiguous. Measured on the disk, the
+equilateral triangle and the square's exact degeneracies: **14 levels, 14 correct readings, at
+zero evaluations** -- every point a cache hit. Within a multiplet `sigma_{j+1}/sigma_j` runs
+1.0 to 1.7 and across the gap 1e11 to 1e15, so `G = 10` is not a delicate parameter.
+
+Two corrections to the rule as it stood in `search.md`:
+
+* **(C2) is a prominence test, not a bare comparison.** Both existing implementations used
+  `sigma_j` lower than its two flanks, i.e. prominence > 1. Roughness minima reach `1 + 2.4e-10`
+  and true wells reach 72, so `>` counts noise as a branch; the spec's floor of `P = 2` does not.
+* **(C2) takes the longest PREFIX.** The multiplicity is a contiguous block `1..mu` by
+  definition, and checking only the top index and decrementing accepts a block with a hole in
+  it, because the property is not monotone in `j`.
+
+The wide bracket's distance is set by two constraints meeting. A genuine branch at `f*eps/c`
+shows prominence `sqrt(1+f**2)`, so clearing `P = 2` needs `f > sqrt(3)`; and the flanks must
+stay close enough for `sigma_2`'s asymmetry to show where (C1) double-counts, which measured
+`f = 1` rejecting throughout the ambiguous band and `f = 3` accepting into it. `f = 2` is where
+they meet. On an adequate pencil the factor is inert -- `eps/c` is ~1e-15 and no search samples
+that finely -- so every factor from 1 to 10 gives the same 14 readings.
 
 ## Cost, measured on real pencils
 
