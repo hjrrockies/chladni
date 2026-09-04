@@ -157,6 +157,22 @@ def test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives(band, ratio):
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize("band, wrong", [(0.5, 6), (0.8, 4), (1.0, 4)])
+def test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong(band, wrong):
+    """The guard shown to be load-bearing. V1 section 7.3: if disabling it breaks nothing, it
+    is not doing what you think. Disabled, the declared total is 4 or 6 where 3 exist -- and a
+    wrong total is what moves an index."""
+    (case,) = rs.crossover_cases(1e-8, window="cluster", bands=(band,))
+    obj = bs.objective_for(case, 1e-8)
+    off = solve(obj, prec=1e-8, collapse=False)
+    assert sum(x.mult for x in off.levels) == wrong, "the failure the guard prevents"
+    assert sum(x.mult for x in off.levels) != len(case.truth)
+
+    on = solve(bs.objective_for(case, 1e-8), prec=1e-8)
+    assert sum(x.mult for x in on.levels) == len(case.truth), "and with it, the total is right"
+
+
+@pytest.mark.slow
 @pytest.mark.parametrize("band", [1.3, 3.0])
 def test_a_SELF_CONSISTENT_fine_grouping_is_kept(band):
     """The reason this is a cross-check and not a merge radius. At spans of 2.6 and 6.0 licences

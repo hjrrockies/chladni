@@ -304,11 +304,16 @@ def _samples(obj):
     return (np.array([obj.in_lam(x) for x in xs]) if xs.size else xs), vs
 
 
-def solve(obj, *, prec=None):
+def solve(obj, *, prec=None, collapse=True):
     """Locate every eigenvalue in the objective's window, with its multiplicity.
 
     All three stages share one `Objective`, so the cost is the union of what they sampled and
     not the sum -- stage 3 in particular spends nothing, and that is asserted rather than hoped.
+
+    `collapse=False` disables the grouping cross-check, which is an ABLATION rather than an
+    option: without it the total is wrong wherever a neighbourhood's grouping is arbitrary --
+    4 or 6 declared where 3 exist -- and a wrong total moves an index. It exists so the guard
+    can be shown to be load-bearing, and so a figure can state the before as well as the after.
     """
     prec = obj.prec if prec is None else float(prec)
 
@@ -396,7 +401,10 @@ def solve(obj, *, prec=None):
 
     # The grouping cross-check. Reads only cached points, so it is charged to stage 3's window
     # and must leave it at zero.
-    levels, n_amb = _collapse_ambiguous(obj, lams, levels, prec, M.WIDE_FACTOR)
+    if collapse:
+        levels, n_amb = _collapse_ambiguous(obj, lams, levels, prec, M.WIDE_FACTOR)
+    else:
+        n_amb = 0
     mult_evals = obj.n_evals - mark
 
     unmet = tuple(x.lam for x in levels if not x.met(prec))
@@ -417,6 +425,7 @@ def v1_solve(**kw):
     `Declined` value rather than an empty list, because an empty list looks like success.
     """
     def fn(tensions, a, b, *, prec, modes=None, objective=None, expected_count=None):
+        # `v1_solve(collapse=False)` reaches the ablation through **kw.
         from objective import Objective
         obj = objective if objective is not None else Objective(
             tensions, a, b, prec=prec, variable="lam", expected_count=expected_count)
