@@ -55,7 +55,7 @@ def lappy_search(ppl=20, ttol=1e-3, ltol=1e-8, polish_frac=1e-2, max_recurse=8,
       its own floor is declared noise and not refined further.
     """
 
-    def search(tensions, a, b):
+    def search(tensions, a, b, *, modes=None):
         n = n_pts or max(int(ppl * (b - a) / _spacing(tensions, a, b)), 32)
         cache = {}
 
@@ -169,7 +169,7 @@ def lipschitz_search(gamma=2.0, tau_accept=1e-3, tau_scan=None, alpha=0.25, G=10
     """
     tau_scan = tau_scan if tau_scan is not None else 10.0 * tau_accept
 
-    def search(tensions, a, b):
+    def search(tensions, a, b, *, modes=None):
         cache = {}
 
         def T(x):
@@ -392,7 +392,7 @@ def lappy_repaired_search(ppl=20, ttol=1e-3, ltol=1e-8, polish_frac=1e-2, n_sub=
     so the two defects can be scored separately.
     """
 
-    def search(tensions, a, b):
+    def search(tensions, a, b, *, modes=None):
         cache = {}
 
         def T(x):
@@ -454,3 +454,133 @@ def _descend(T, a, b, n, n_sub, depth, floor):
 
 
 __all__ = ["lappy_search", "lipschitz_search", "lappy_repaired_search"]
+
+
+def swing_direct_search(per_gap=6.0, tau_frac=0.5, thresh=5.0, G=10.0, P=2.0,
+                        prec=1e-8, direct_budget=14, max_cells=200):
+    """The composed candidate: swing cells, DIRECT inside each, refine in a one-root bracket.
+
+    Three measured results, in order (`notes/landscape_findings.md` sections 22 and 23):
+
+    * the minimising eigenvector's IDENTITY changes at branch crossings, which lie BETWEEN
+      eigenvalues, so peaks in the swing partition `[a, b]` into cells holding one eigenvalue
+      each -- at 4 samples per gap on six of seven real domains, for 5-7% more cost per sample
+      than a tension evaluation;
+    * the swing splits a pair about 290x tighter than `sigma_1` does at the same stride, and
+      reads ZERO peaks at an exact degeneracy, so a peak inside a dip means two DISTINCT
+      eigenvalues;
+    * DIRECT needs no Lipschitz constant, which matters because a pilot-calibrated `L` was
+      measured UNSOUND -- it underestimated the true slope on GWW1.
+
+    Falls back to a plain adaptive pass when the case supplies no `modes`, so it can still be
+    scored against cases built for the older contract.
+    """
+    from scipy.optimize import minimize_scalar
+
+    def _locate(modes, lo, hi, ulo, uhi, tol, depth=24):
+        """Bisect toward the crossing inside `[lo, hi]`, one mode evaluation per level.
+
+        A detected peak only localizes the crossing to +/- h/2, and when the pair separation
+        is below `h` the cell boundary can land OUTSIDE the pair -- measured on
+        rect(1.01, 1), where the crossing at 48.86 was reported at 46.83 and both members
+        fell in one cell. Detection is not separation.
+
+        The repair is that a peak is a feature to BISECT TOWARD, not a sample to accept. The
+        crossing lies in whichever half carries the larger angle, halves are equal width so
+        the comparison is fair, and the cost is `log2(h/d)` -- the same logarithmic behaviour
+        adaptive subdivision has on the tension, obtained here from the eigenvector.
+        """
+        for _ in range(depth):
+            if hi - lo <= tol:
+                break
+            m = 0.5 * (lo + hi)
+            um = modes(m)
+            left = 1.0 - abs(float(ulo @ um))
+            right = 1.0 - abs(float(um @ uhi))
+            if left >= right:
+                hi, uhi = m, um
+            else:
+                lo, ulo = m, um
+        return 0.5 * (lo + hi)
+
+    def _cells(modes, a, b, n, tol):
+        xs = np.linspace(a, b, n)
+        U = np.array([modes(x) for x in xs])
+        ang = 1.0 - np.abs(np.sum(U[:-1] * U[1:], axis=1))
+        med = np.median(ang)
+        if not np.isfinite(med) or med <= 0:
+            return np.array([a, b])
+        j = np.nonzero((ang[1:-1] > ang[:-2]) & (ang[1:-1] >= ang[2:]))[0] + 1
+        j = j[ang[j] > thresh * med]
+        cuts = [_locate(modes, xs[i], xs[i + 1], U[i], U[i + 1], tol) for i in j]
+        return np.concatenate([[a], np.array(sorted(cuts)), [b]])
+
+    def _direct(f, lo, hi, tau, budget):
+        """Lipschitz-free subdivision: keep the lower-right hull of (width, value)."""
+        ivs = [(lo, hi, f(0.5 * (lo + hi)))]
+        used = 1
+        while used < budget:
+            w = np.array([v[1] - v[0] for v in ivs])
+            val = np.array([v[2] for v in ivs])
+            keep = set()
+            for wid in np.unique(w):
+                m = np.nonzero(w == wid)[0]
+                keep.add(int(m[np.argmin(val[m])]))
+            keep |= {int(i) for i in np.nonzero(val < tau)[0]}
+            new = []
+            for i in sorted(keep, reverse=True)[:6]:
+                p, q, _ = ivs.pop(i)
+                m1, m2 = p + (q - p) / 3, q - (q - p) / 3
+                new += [(p, m1, f(0.5 * (p + m1))), (m1, m2, f(0.5 * (m1 + m2))),
+                        (m2, q, f(0.5 * (m2 + q)))]
+                used += 3
+            if not new:
+                break
+            ivs += new
+        pts = np.array(sorted(0.5 * (v[0] + v[1]) for v in ivs))
+        return pts, np.array([f(x) for x in pts])
+
+    def search(tensions, a, b, *, modes=None):
+        # One pilot pass serves BOTH the spacing estimate and the plateau. The plateau is a
+        # median over an O(1)-varying curve and does not need cell-stride resolution, so
+        # re-scanning the cell grid for it was pure waste -- it doubled the tension cost.
+        xp = np.linspace(a, b, 48)
+        sp = np.array([tensions(x)[0] for x in xp])
+        tau = tau_frac * np.median(sp)
+        lvl = 0.5 * np.median(sp)
+        below = sp < lvl
+        nwell = max(int(np.sum(below[1:] & ~below[:-1])), 1)
+        gap = (b - a) / nwell
+        n = int(np.clip(np.ceil((b - a) / (gap / per_gap)), 16, max_cells * 4)) + 1
+        # Localize each crossing to the PRECISION CONTRACT, not to a fraction of the
+        # estimated mean gap. `1e-3 * gap` was the floor here and it is the same defect as
+        # section 25 at a smaller scale: with gap ~ 26 that floor is 2.6e-02, WIDER than a
+        # pair at d = 5.9e-03, so the boundary can again land outside the pair. The tolerance
+        # must not be tied to a quantity the pair is smaller than -- and `gap` is estimated
+        # from a pilot that has already merged the pair, so it is exactly the wrong scale.
+        tol = max(prec * abs(b), 1e-12)
+        edges = (_cells(modes, a, b, n, tol) if modes is not None
+                 else np.array([a, b]))
+
+        f = lambda x: tensions(x)[0]
+        out = []
+        for lo, hi in zip(edges[:-1], edges[1:]):
+            if hi - lo <= 0:
+                continue
+            pts, vals = _direct(f, lo, hi, tau, direct_budget)
+            i = int(np.argmin(vals))
+            if vals[i] >= tau:
+                continue
+            bl = pts[i - 1] if i > 0 else lo
+            br = pts[i + 1] if i + 1 < pts.size else hi
+            r = minimize_scalar(lambda x: f(x)**2, bounds=(bl, br), method="bounded",
+                                options={"xatol": max(prec * abs(pts[i]), 1e-13)})
+            x, val = r.x, np.sqrt(max(r.fun, 0.0))
+            if val >= tau or not (lo <= x <= hi):
+                continue
+            h = 0.25 * (hi - lo)
+            out.append((x, _gap_multiplicity(tensions, x, x - h, x + h, tau, G)))
+        out.sort()
+        return out
+
+    return search

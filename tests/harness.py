@@ -12,13 +12,22 @@ return", counted WITH multiplicity, and everything else is secondary.
 
 A search is any callable
 
-    search(tensions, a, b) -> [(x, mult), ...]
+    search(tensions, a, b, *, modes=None) -> [(x, mult), ...]
 
-where `tensions(x)` returns the ascending vector `sigma_1 <= sigma_2 <= ...`. That is the
-whole contract. It is deliberately narrower than either candidate design needs -- neither the
-Lipschitz branch-and-bound nor lappy's bracketing gets to see the domain, the basis, or the
-pencil -- because anything that needs more than the tension function is not comparable to
-anything that does not.
+where `tensions(x)` returns the ascending vector `sigma_1 <= sigma_2 <= ...`, and `modes(x)`
+-- when the case supplies one -- returns the normalized candidate eigenFUNCTION at `x`, as a
+vector sampled on a FIXED point set shared across all `x`.
+
+`tensions` alone was the whole contract until the Gram angle and the eigenvector swing were
+measured, and both need the eigenfunction rather than the tension. Widening rather than
+special-casing keeps the layer method-agnostic -- FEM and boundary-integral methods produce
+eigenvectors too -- and keeps candidates comparable, which is the reason the restriction
+existed. A search that does not want `modes` ignores it; the uniform-grid control and the
+lappy baselines do exactly that.
+
+The fixed point set is not an extra requirement on the method: `MPSPencil`'s interior
+`Sampling` is set at construction and only `k` changes, so vectors at different `x` already
+live on the same points and compare with a plain dot product.
 
 The variable `x` is whatever the caller set up; the harness never assumes `k` or `lam`. Truth
 is given in the same variable. `docs/conventions.md` asks only that a parameter's name state
@@ -258,6 +267,7 @@ class Case:
     domain: object = None
     complete: bool = True
     variable: str = "k"
+    modes: object = None       # modes(x) -> the normalized eigenfunction sample, or None
 
     def to_lam(self, x):
         x = np.asarray(x, dtype=float)
@@ -281,7 +291,7 @@ def run(search, cases, rtol=1e-6):
     out = []
     for c in cases:
         c.reset()
-        found = search(c.tensions, c.a, c.b)
+        found = search(c.tensions, c.a, c.b, modes=c.modes)
         out.append(score(found, c.truth, rtol=rtol, label=c.label,
                          evaluations=c.evaluations(), case=c))
     return out
@@ -319,7 +329,7 @@ def uniform_grid_search(n_per_well=8, tau=1e-3, refine=True, G=10.0):
     """
     from scipy.optimize import minimize_scalar
 
-    def search(tensions, a, b):
+    def search(tensions, a, b, *, modes=None):
         n = max(int(n_per_well * (b - a) / _spacing(tensions, a, b)), 16)
         xs = np.linspace(a, b, n)
         S = [tensions(x) for x in xs]
