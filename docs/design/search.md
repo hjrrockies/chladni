@@ -9,9 +9,13 @@ no basis, no pencil. That restriction is deliberate and is what makes two candid
 comparable, and what will let a later FEM or boundary-integral method reuse the same search.
 
 The originating proposal is `lipschitz-cone-mps.md`. This document is the spec: it records
-which of that proposal's claims have been measured, corrects the two that were wrong, and
+which of that proposal's claims have been measured, corrects the ones that were wrong, and
 specifies the parts it left open -- which are exactly the parts that a first implementation
 attempt got stuck on.
+
+Section 2 is the OPERATIONAL DEFINITION of a successful run, and it is the part to read if you
+read only one. The proposal has no such section, and every parameter argument in the sections
+below is settled by section 2.1's rule about which constants may be fixed at all.
 
 ---
 
@@ -76,9 +80,177 @@ Pairs are resolvable down to `d = 1.3e-06`; only an exact degeneracy collapses t
 **Refining below the flat bottom samples noise.** The flat half-width of a well is
 `eps*sqrt(2*eps_mach)/c`. Below that the curve is roughness, not signal.
 
+**Prominence separates a well from roughness by ten orders.** Over thirteen bases with `eps`
+from 7.5e-03 to 7.0e-15, a true well measured across its whole width has prominence
+`plateau/eps`, worst case 72; roughness minima in the flat bottom have prominence
+`1 + 2.4e-10` or less, and `P - 1` at that level IS the measured `eta`. A good basis has no
+flat bottom to measure at all -- 40 plane waves on a rectangle give a flat half-width of
+1.8e-21, twenty orders below float spacing -- so the roughness regime is reachable only by
+starving the basis deliberately.
+
+**The interior Gram angle separates a duplicate from a distinct pair.** Two roots reported
+close together give `|cos|` of at most 0.10 when they are distinct eigenfunctions -- a floor set
+by `1/sqrt(n_int)`, since the discrete interior inner product is a Monte-Carlo estimate -- and
+at least 0.948 when they are the same well found twice, even at two-thirds of an eigenvalue
+gap. `1 - cos = 7.8e-04 * d**2` inside a well, so the two arms would only meet at about three
+gaps' separation.
+
+Within ONE `lam` the test is vacuous and must not be used: the GSVD gives `A_I x_j = s_j * v_j`
+with `V` orthogonal, so the interior images of distinct generalized singular vectors are
+orthogonal BY CONSTRUCTION, measured at 4.6e-16. It is informative only ACROSS roots, where the
+vectors come from different pencils.
+
+**The discretization splits an exact degeneracy, and the splitting does not scale with `eps`.**
+Measured `|argmin sigma_1 - argmin sigma_2|` at protected degeneracies: constant to 1% while
+`eps` moves four orders across a plane-wave ladder and six across a Fourier-Bessel one. The
+stable normalisation is RELATIVE -- `1.8e-09 * lam` for plane waves, `3.9e-09 * lam` for
+Fourier-Bessel -- so it is a property of the basis family and the boundary discretization, not
+of the tension floor. Any tolerance written as a multiple of `eps/c` is therefore the wrong
+shape; see section 19 of the notes for the contract that was withdrawn over this.
+
+**The interior points are a normalization, not a quadrature.** Their job is to keep
+`||A_I c||` away from zero, and a STRUCTURED fill fails at exactly that: `method="grid"` places
+x at `k/(side+1)`, so the mode `side+1` sits on a nodal line at every point and is annihilated
+to 1e-56. Random points measure 0.70 to 0.91 on the same scale at every count and seed. The
+fill should stay pseudorandom, with a FIXED default seed for reproducibility -- no seed is bad,
+whereas a grid is catastrophic at one predictable mode.
+
 ---
 
-# 2. What the proposal got right, and what it got wrong
+# 2. What success means
+
+The layer above sets `prec`. The contract is that a user gets eigenvalues to relative accuracy
+`prec`, or an honest statement that MPS could not reach it here. Doing better than asked is
+always allowed; doing materially more work than `prec` requires is not.
+
+## 2.1 The rule that decides which constants may be fixed
+
+A constant may be **fixed** only if it is DIMENSIONLESS and separates two populations whose
+separation does not shrink as `prec` tightens. Anything carrying units of `lam`, and anything
+expressing HOW ACCURATE, must derive from `prec`.
+
+That rule is what removed the two loose constants an earlier draft of this section had. It is
+stated first because it, rather than any individual number, is the thing to apply when a new
+parameter appears.
+
+## 2.2 Assumptions
+
+The pencil -- basis, collocation points, regularization AND rank policy -- is given and
+adequate. The solver may DETECT inadequacy; it is not responsible for repairing it. Rank policy
+belongs in that list because the truth depends on it: a rank frozen at the wrong `lam` gives
+85 to 128 spurious minima in a window holding one eigenvalue.
+
+Adequacy is quantitative:
+
+    gap  >  20 * eps/c        on [a, b]
+
+measured directly in `notes/landscape_findings.md` section 9.4 -- (C1) is correct at
+`d/(eps/c) = 23` and wrong at 0.45 and 0.15. This is the basis planner's contract, and it gets
+EASIER as `prec` tightens, because `eps` falls.
+
+## 2.3 Ground truth, `S(prec)`
+
+`sigma_1` has local minima `lam_1 .. lam_n` with multiplicity `mu_i`, the largest `mu` such
+that `sigma_j` has a local minimum at `lam_i` for every `j <= mu`. `S` is the ordered multiset
+with each `lam_i` repeated `mu_i` times, and each member corresponds to a linearly independent
+approximate eigenfunction.
+
+Neither predicate survives floating point unmodified, so each gets a scale:
+
+* **"has a local minimum"** -- prominence at least `P = 1 + m*eta`, with `eta` measured per
+  solve and a floor of `P >= 2`.
+* **"at `lam_i`"** -- two branch minima are the same level when they lie within
+  `tol_merge = prec`, relative. There is no separate coalescence constant; an earlier draft had
+  one and section 19 of the notes shows the form it assumed does not hold.
+
+**`S` is indexed by `prec`, deliberately.** Two levels 4e-09 apart are ONE level at
+`prec = 1e-08` and TWO at `prec = 1e-12`. That matches `chladni.reference`, which returns an
+unfolded multiset and merges nothing, because collapsing is a comparison-time choice rather
+than a property of the spectrum.
+
+`S` is the Laplacian spectrum restricted to modes separated by more than about `20*eps/c`.
+Hitting `S` is the SEARCH's job; making `S` the whole spectrum is the PLANNER's.
+
+## 2.4 The three clauses
+
+A solver is **successful at `prec`** on `[a, b]` when all three hold.
+
+**(1) Completeness and multiplicity.** `S_hat` matches `S(prec)` as a multiset. Among roots
+reported close together, collapse-versus-merge is decided by the INTERIOR GRAM ANGLE, not by
+distance:
+
+    u_i = I(lam_hat_i) @ coef(lam_hat_i, 1)          # equilibrated; no unscaling
+
+    |<u_1, u_2>| >= tau_gram   ->  the same eigenfunction: collapse and RECOUNT
+    |<u_1, u_2>|  < tau_gram   ->  independent: merge and SUM
+
+Distance survives only as a prefilter deciding which pairs are worth testing. The angle is what
+distance cannot do: one simple eigenvalue found twice and two genuine simple eigenvalues can
+sit at the SAME separation, and only the eigenfunctions tell them apart.
+
+**(2) Accuracy.** Each `|lam_hat_i - lam_i| / lam_i <= prec`, OR the solver reports that
+`delta_res(lam_i) > prec * lam_i` and returns `delta_res` as the attained bound. There is no
+predicted-accuracy constant: `delta_res` is MEASURED from the parabola fit Phase B already
+performs, and compared against `prec`.
+
+**(3) Honesty.** The reported per-eigenvalue bar contains the true error, and the completeness
+diagnostics fire whenever (1) fails.
+
+Clause (3) is not decoration. `S` is unknown on every domain that matters -- `L_shape`, `GWW1`
+and `mushroom` have tabulated prefixes only -- so (1) and (2) need a truth-free proxy on a real
+run, which is section 6's diagnostics. And the recursion-floor bug was found by the WEYL AUDIT
+rather than by prefix truth, on a case the surrogate does not reproduce at all.
+
+## 2.5 The constants
+
+Fixed, because dimensionless and because the margin GROWS as `prec` tightens:
+
+    P            1 + m*eta, floor 2   roughness <= 1 + 2.4e-10, true wells >= 72
+    G            10                   within a multiplet 1.0-1.7, across the gap 1e11-1e15
+    tau_gram     0.5                  distinct <= 0.10, duplicate >= 0.948
+    contract     20 * eps/c           correct at 23, wrong at 0.45 and 0.15
+    tau_scan     a fraction of the plateau S, NEVER an absolute tension
+    weyl tol     0.5                  a correct set reaches +0.32, one missing reads +1.16
+
+Each of those improves with `prec`: a smaller `eps` deepens the wells (P), raises the
+across-gap ratio, which is `O(1)/eps` (G), and loosens the contract; a larger `n_int` lowers
+the `1/sqrt(n_int)` floor that sets `tau_gram`'s margin. `tau_scan` is relative to the plateau
+because `eps` varies FIVE ORDERS within a single scan, so no absolute tension threshold can
+serve.
+
+Derived from `prec`, because they carry units of `lam` or express accuracy:
+
+    tol_merge          prec
+    accuracy target    prec * lam
+    refinement stop    max(prec * lam, delta_res)
+    planner target     the `eps` that makes the MEASURED delta_res <= prec * lam
+
+No closed form is given for the planner target. `delta_res = sqrt(2*eps*eta)/c` is a derived
+scale that did not predict observed error well on the two cases where it could be checked, so
+the target is stated by measurement rather than by formula.
+
+## 2.6 Not more work than asked
+
+* Refinement stops at `max(prec * lam, delta_res)`. At loose `prec` the first term binds and
+  Brent stops early even though the floor would permit more.
+* The scan stride comes from Weyl -- about six samples per eigenvalue gap, since dips occupy
+  roughly half the spacing on every domain measured. **Completeness is not a precision
+  question** and the stride does not tighten with `prec`.
+* Phase C spends no new evaluations.
+* The Gram check costs one GSVD in `separate` mode per REPORTED ROOT, at the end. The scan
+  itself only ever calls `gsvdvals`.
+
+## 2.7 The limit to watch
+
+`tol_merge = prec` against pairs measured resolvable to about `3e-06` relative leaves a factor
+of 30 at `prec = 1e-08`. Below `prec ~ 4e-09` it INVERTS: the discretization's own splitting of
+a degenerate pair -- `1.8e-09 * lam` for plane waves and `3.9e-09 * lam` for Fourier-Bessel,
+and independent of basis size over six orders of `eps` -- exceeds `tol_merge`, so a true double
+is reported as two simple eigenvalues. That is a real ceiling on attainable `prec` at degenerate
+levels. It is measurable per solve, and clause (3) is what makes it surface instead of silently
+corrupting the count.
+
+# 3. What the proposal got right, and what it got wrong
 
 ## Right
 
@@ -116,7 +288,7 @@ it needs the pencil and this layer only has the tension function.
 
 ---
 
-# 3. Why adaptive subdivision -- the argument that survives
+# 4. Why adaptive subdivision -- the argument that survives
 
 An earlier version of this section argued that the design's advantage was section 3.4's
 offset detector, on the grounds that lappy's sigma_2 gate tests a VALUE that a coarse grid
@@ -154,7 +326,7 @@ open question this spec does not settle is how much the envelope, the attic and 
 calibration buy OVER a repaired recursive bisection. That comparison is cheap and should be
 run before the full machinery is built.
 
-# 4. The algorithm
+# 5. The algorithm
 
 Four phases. Where the proposal says "use this to decide how far to subdivide" without saying
 how, this section says how; those gaps are where the first implementation attempt failed.
@@ -220,9 +392,10 @@ deep root that endpoint still passes any threshold test. Measured before this ch
 phantom roots against 20 real ones, each 2e-05 to 4e-04 away from a genuine root with
 `sigma_1` between 1.6e-04 and 9.8e-04.
 
-**Termination.** Stop at `max(tol_rel * x, delta_res)` with
-`delta_res = sqrt(2*eps*eta)/c` from the current parabola fit, or on stagnation -- the last
-three values agreeing to within `eta`. The flat half-width `eps*sqrt(2*eps_mach)/c` is the
+**Termination.** Stop at `max(prec * x, delta_res)` with `delta_res` from the current
+parabola fit, or on stagnation -- the last three values agreeing to within `eta`. `prec * x` is
+the term that stops a loose request from paying for a tight one, and it binds first whenever
+the basis is better than the request. The flat half-width `eps*sqrt(2*eps_mach)/c` is the
 scale below which the curve is roughness rather than signal; `h_floor` in Phase A is set from
 the same quantity. Report the attained precision and which bound was active.
 
@@ -236,26 +409,54 @@ is why an earlier attempt's multiplicity test was reading noise.
 From the cache; no new evaluations. Index `j` is active when both hold:
 
 * **(C1)** the largest ratio gap in the low spectrum falls after `j`, i.e.
-  `sigma_{j+1}/sigma_j >= G`. A gap test, not an absolute threshold, because the floor varies
-  fifty-fold within one scan.
-* **(C2)** `sigma_j` is a local minimum at the root, against the WIDE bracket of Phase B.
+  `sigma_{j+1}/sigma_j >= G`, `G = 10`. A gap test, not an absolute threshold, because the
+  floor varies FIVE ORDERS within one scan.
+* **(C2)** `sigma_j` is a local minimum at the root, to prominence `P`, against the WIDE
+  bracket of Phase B.
 
 The multiplicity is the number of active indices, necessarily a contiguous block `1..kappa`.
+
+Section 2.3 defines multiplicity by (C2) ALONE, and that is deliberate: (C2) is the
+DEFINITION, (C1) is the TEST. Exact local-minimality is not decidable from samples, so the
+implementation needs the ratio gap as well; the two must not be confused when the definition
+is being reasoned about. (C1) alone double-counts once `d <~ eps/c`, which is what the
+`20*eps/c` contract of section 2.2 keeps the solver out of.
 
 ## Phase D -- collapse, then merge
 
 Bottom-up, and the order matters.
 
-* **Diameter <= `delta_res`**: the members are the same well found twice. Collapse to the one
-  with the smallest `sigma_1` and RECOUNT the multiplicity there. Do not sum -- summation is
-  the double-count.
-* **Diameter <= `tol_merge * x`**: separately resolved and independently verified, so total
-  multiplicity is the SUM. Place at the `sigma_1`-weighted centroid and report the diameter as
-  the uncertainty.
+**Distance is a PREFILTER, not the decision.** Roots whose diameter exceeds `tol_merge * x`
+with `tol_merge = prec` are separate levels and are not tested further. Everything closer than
+that goes to the Gram angle, because at those separations distance cannot discriminate: one
+simple eigenvalue found twice and two genuine simple eigenvalues occur at the SAME diameter.
+
+    |<u_1, u_2>| >= tau_gram   the same eigenfunction. Collapse to the smallest `sigma_1` and
+                               RECOUNT the multiplicity there. Do NOT sum -- summation is the
+                               double-count.
+    |<u_1, u_2>|  < tau_gram   independent. SUM the multiplicities, place at the
+                               `sigma_1`-weighted centroid, report the diameter as the
+                               uncertainty.
+
+The ambiguous case is benign. Inside a genuinely degenerate eigenspace which vector the GSVD
+returns is arbitrary, decided by roundoff, so a true double found twice may come back either
+nearly parallel or nearly orthogonal. Both verdicts are correct, because collapse RECOUNTS
+rather than discarding: parallel gives 2 by the recount, orthogonal gives `1 + 1 = 2` by the
+sum.
+
+An earlier version of this section used `delta_res` for the first rule and a fixed
+`tol_merge` for the second. Both are wrong. `delta_res` is the wrong scale -- the quantity
+that actually has to be merged is the discretization's splitting of a degeneracy, which does
+not scale with `eps` at all -- and a fixed `tol_merge` breaks the precision contract of
+section 2.1 by fixing a value that expresses resolution.
 
 ---
 
-# 5. Diagnostics, and the shape of the claim
+# 6. Diagnostics, and the shape of the claim
+
+This section is the machinery behind section 2.4's clause (3). Everything here is REQUIRED
+output, not optional instrumentation, because `S` is unknown on every domain that matters and
+these are the only signals that clause (1) has failed.
 
 The completeness claim is conditional and must be reported as such:
 
@@ -289,7 +490,7 @@ of them.
 
 ---
 
-# 6. Tests
+# 7. Tests
 
 Written before the implementation, against the surrogate and against real pencils.
 
@@ -297,23 +498,51 @@ Written before the implementation, against the surrogate and against real pencil
 |---|---|
 | `tests/test_search_scan.py` | Phase A: the envelope never prunes an interval containing a root when `L` is a true bound; the attic revives on a raised `L`; the subdivision depth reaches `beta*d_est` on a pair and stops at `h_floor` on a degeneracy |
 | `tests/test_search_refine.py` | Phase B: the apex case (root on a shared endpoint) is recovered to the floor; a wall point adjacent to a deep root is rejected; symmetric sampling still finds the well; stagnation terminates |
-| `tests/test_search_multiplicity.py` | Phase C: 9 for 9 on disk and eq_tri; (C2) rejects the `d <~ eps/c` double-count; the wide bracket is wide enough |
+| `tests/test_search_multiplicity.py` | Phase C: 9 for 9 on disk and eq_tri; (C2) rejects the `d <~ eps/c` double-count; a roughness minimum fails prominence `P` and a true well passes it by orders; the wide bracket is wide enough |
+| `tests/test_search_collapse.py` | Phase D: the Gram angle reads `<= 0.10` on a resolved pair of `rect(1+delta, 1)` and `>= 0.948` on one well sampled twice; within one `lam` it is 0 to machine precision and must not be consulted; a true double found twice gives multiplicity 2 under BOTH verdicts |
+| `tests/test_search_precision.py` | section 2's contract: the same domain solved at `prec` = 1e-6, 1e-8, 1e-10 returns levels agreeing to the looser `prec` and costs monotonically more; refinement stops on `prec * lam` when the basis is better than the request; `delta_res > prec * lam` is REPORTED rather than silently missed |
 | `tests/test_search_score.py` | end to end through the harness, against the uniform-grid control and the lappy baseline, on the surrogate and on real domains |
 
 The harness scores recall first, counted with multiplicity, and a root already claimed cannot
 be claimed twice -- so a cluster reported from two brackets scores as one match and one
 spurious rather than as two matches.
 
+`test_search_precision.py` is the one that defends the contract rather than the algorithm, and
+it is the one to write first. Every other row can pass while the solver quietly ignores `prec`,
+either by always working to machine precision or by always working to 1e-8.
+
 ---
 
-# 7. Deferred
+# 8. Deferred
 
-The two-level rank of section 2, which needs the pencil. Automatic `gamma` escalation on a
+The two-level rank of section 3, which needs the pencil. Automatic `gamma` escalation on a
 small margin. Parallel evaluation, which changes the objective from evaluation count to
 wall-clock rounds and may favour a graded uniform grid instead -- the branch and bound's
 advantage is adaptivity, and adaptivity is worth less when points are nearly free.
 
 ---
+
+# Superseded in part: read `CHLADNI_V1.md` and `candidates.md` alongside this
+
+Two later records overlap this document and neither existed when it was written. The split:
+
+**`docs/design/CHLADNI_V1.md` supersedes section 5's Phase A and the metric.** Its bracketing
+design -- seed from Weyl and double until the slope settles, cover by Piyavskii exclusion, gate
+isolation on `sigma_2`, locate by predict-then-straddle -- replaces the Lipschitz branch and
+bound with the attic, and its coverage/purity scoring on BRACKETS replaces the
+recall-with-multiplicity metric that section 27.2 of the notes shows is blind and inverted in
+exactly the regime it was built to probe. `CHLADNI_V1.md` has its own As-built section
+recording what did not transfer into `chladni`.
+
+**`docs/design/candidates.md` owns the seams.** Sections 1-3 there define the four stages, the
+variable convention, and how a method that does not decompose is compared fairly -- questions
+this document raises implicitly by comparing three searches and never settles.
+
+**What still lives only here**, and is not superseded: section 2's `prec` contract and its rule
+about which constants may be fixed at all; `S(prec)` as ground truth; Phase C's multiplicity
+conditions (C1) and (C2); Phase D's collapse-versus-merge on the interior Gram angle; the Weyl
+audit's placement in the harness; and the measurement that refinement belongs in `lam` while
+the scan belongs in `k`.
 
 # As built: deltas from this spec
 
@@ -323,14 +552,31 @@ what the implementation found; the gap between them is the useful part.
 
 ## What is built
 
+The older generation, which this document specified:
+
 | | |
 |---|---|
 | `tests/harness.py` | the scorer, the Weyl audit, `unfold`, `levels_agree`, and the uniform-grid control |
 | `tests/searches.py` | `lappy_search`, `lappy_repaired_search`, `lipschitz_search` |
 | `tests/surrogate.py` | a 2 us stand-in for the tension curve, fitted and validated against real pencils |
 
-Nothing is in `src/chladni/` yet. When a search wins it moves there, rewritten against a spec
-that this section will have corrected.
+And the current instrument, built against `candidates.md` and `CHLADNI_V1.md`:
+
+| | |
+|---|---|
+| `tests/objective.py` | the shared seam: one cache, one counter, `Declined` as a value |
+| `tests/bracket_score.py` | coverage / purity / spurious / fineness / measured cost, the `prec` ladder |
+| `tests/bracket_controls.py`, `tests/baselines.py` | six adversaries, five oracles, three baselines |
+| `tests/surrogate_cases.py`, `tests/rect_suite.py`, `tests/hard_roster.py` | the three tiers |
+| `tests/v1_bracket.py`, `tests/v1_refine.py` | the winning candidate, stages 1 and 2 |
+| `tests/test_gate.py` | the standing acceptance gate, `pytest -m gate` |
+
+Nothing is in `src/chladni/` yet -- except the parts that are features rather than candidates:
+`asymp.expected_count`, `mps/calibrate.py`, `MPSPencil.with_rtol` and
+`MPSEigensolver.findability`. When a search wins it moves there, rewritten against a spec that
+this section will have corrected. The v1 candidate has now won: it passes the gate at 26-27
+evaluations per eigenvalue on rectangles and 22-24 on the disk, equilateral triangle and
+L-shape, where the three searches below stop splitting at `d/lam ~ 1e-4`.
 
 ## The repaired baseline is the thing to beat
 
@@ -344,7 +590,7 @@ Twelve surrogate cases: 10/12 perfect at 5573 evaluations against the original's
 54443. On real rectangle pencils with exact truth it also LOCATES better -- 1e-15 to 3e-13
 against 6e-09 -- because the deeper recursion hands Brent a much tighter bracket.
 
-So the `O(log(1/d))` advantage of section 3 is a property of adaptive subdivision, which
+So the `O(log(1/d))` advantage of section 4 is a property of adaptive subdivision, which
 lappy's architecture already had. Its trigger was the only thing broken.
 
 ## `lipschitz_search` does not work
@@ -359,7 +605,7 @@ each fixed some cases and broke others:
     refine from the samples      cleanest structure, still broke pairs
     section 3.4 offset depth     no change: the signal never fired
 
-The last one is diagnosed and is section 4's `d_est` rule not being reached, not the rule
+The last one is diagnosed and is section 5's `d_est` rule not being reached, not the rule
 being wrong. The isolation width `alpha*S/L` measured 3.75e-02 against pairs 4e-03 apart, so
 intervals were declared isolated before the pair could separate.
 
@@ -387,7 +633,7 @@ domain with no closed form it is the only completeness signal there is.
 
 ## Refine in `lam`, not `k`
 
-Section 4 says Phase B minimises `sigma_1**2`, following the proposal's section 2.2 in working
+Section 5 says Phase B minimises `sigma_1**2`, following the proposal's section 2.2 in working
 in `k`. That is measured to be the wrong variable for the REFINEMENT, though 2.2's reasons --
 Weyl spacing, and `c` being flatter -- are about the SCAN and are untouched.
 
@@ -417,6 +663,41 @@ alone. The width/gap invariant of section 1 was measured at low `k` and does sur
 0.515, 0.495, 0.587 over `k` bands [3.5,5], [7,8.5], [12,13.5] on rect 2x1 -- because the
 PLATEAU falls with `k` (0.285 to 0.089) while `c` barely moves, so the dip width shrinks in
 step with the gap. The mild upward drift should be re-measured above `k ~ 15`.
+
+## What settling the operational definition changed
+
+Section 2 was written last, against measurements in `notes/landscape_findings.md` sections
+15-19, and writing it invalidated four things this document had previously asserted.
+
+**Two constants were eliminated rather than tightened.** A coalescence tolerance `kappa` and a
+predicted-accuracy constant `C` both failed section 2.1's rule. `kappa` was written as
+`m * eps/c` with `m ~ 120` taken from the max of THREE seeds; extending to 30 seeds on three
+domains moved the same ratio by three orders, because the splitting it was bounding does not
+scale with `eps` at all -- it is constant to 1% while `eps` moves six orders. The right form is
+relative, so `kappa` collapses into `tol_merge = prec` and stops existing. `C` was replaced by
+measuring `delta_res` and comparing it against `prec`.
+
+**A basis contract was withdrawn.** `gap > 240 * eps/c` was derived THROUGH `kappa` and
+inherited its wrong form. The contract that survives, `gap > 20 * eps/c`, was already measured
+directly in section 9.4 of the notes and simply had not been consulted. An order of magnitude,
+not two and a half, and from a measurement of the thing itself rather than from a chain.
+
+**Phase D's collapse-versus-merge moved off distance.** Two roots at the same separation can be
+one eigenvalue found twice or two genuine eigenvalues, so no length threshold can decide it.
+The interior Gram angle can, with distinct pairs at `|cos| <= 0.10` against duplicates at
+`>= 0.948`.
+
+**An interior-fill change was proposed and then withdrawn.** `method="grid"` measures 30x to
+1e4x more accurate as a discrete inner product, and annihilates the mode `side+1` exactly,
+because its points sit on that mode's nodal lines. The metric had been chosen before the
+failure mode was, and it flattered the alternative -- the same error as the planted null
+direction and the `c = 50` narrow dip. The interior block wants NON-DEGENERACY, not accuracy.
+What should change is only `MPSEigensolver`'s `rng=None` default, to a fixed constant: no seed
+is bad, and a fixed one removes the 110x run-to-run spread in the located eigenvalue and the
+noise it puts into a shape objective.
+
+The pattern in all four is one thing: a constant derived through another quantity was used
+before being checked against a direct measurement of what it was supposed to bound.
 
 ## What the scoring apparatus learned
 
