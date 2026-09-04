@@ -127,6 +127,115 @@ def test_reading_once_per_group_gets_the_COLLAPSE_branch_without_the_gram_angle(
     assert near[0].mult == 2, f"recounted, not summed away: got {near[0].mult}"
 
 
+# --- merge on an ambiguous grouping, for the sake of the total ---------------------------------
+
+@pytest.mark.slow
+@pytest.mark.parametrize("band, ratio", [(0.5, 1.0), (0.8, 1.6), (1.0, 2.0)])
+def test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives(band, ratio):
+    """The regime where the grouping has no answer but the total does.
+
+    Three eigenvalues evenly spaced with a span between one and two merge licences cannot all
+    be one level, and either pairing is legal, so the split is arbitrary. A count taken at the
+    middle one must look far enough to see its partner and therefore also sees the stranger the
+    same distance away on the other side -- measured exactly equidistant at a span of 1.6. The
+    counts came out 3 and 1, totalling 4 where 3 exist.
+
+    **A wrong total is the error that corrupts an index**, which is why the total is what is
+    defended here: `lam_3` becomes a different eigenvalue and a solver reports an accurate but
+    non-consecutive spectrum.
+    """
+    (case,) = rs.crossover_cases(1e-8, window="cluster", bands=(band,))
+    assert rs.cluster_diameter_ratio(case, 1e-8) == pytest.approx(ratio, rel=0.05)
+    res = solve(bs.objective_for(case, 1e-8), prec=1e-8)
+
+    assert sum(x.mult for x in res.levels) == len(case.truth), "the total is right"
+    assert res.diagnostics.n_ambiguous == 1, "and it says the grouping was arbitrary"
+    flagged = [x for x in res.levels if x.grouping_ambiguous]
+    assert len(flagged) == 1 and flagged[0].mult == len(case.truth)
+    assert flagged[0].spacings, "carrying the spacings, so a caller can choose a prec"
+    assert flagged[0].width > 1e-8 * flagged[0].lam, "and declaring that it is over-wide"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("band", [1.3, 3.0])
+def test_a_SELF_CONSISTENT_fine_grouping_is_kept(band):
+    """The reason this is a cross-check and not a merge radius. At spans of 2.6 and 6.0 licences
+    the roots are still within counting reach of one another, so a radius rule would collapse
+    them and throw away a correct fine answer -- but their individual counts agree with the
+    total, so they stand."""
+    (case,) = rs.crossover_cases(1e-8, window="cluster", bands=(band,))
+    res = solve(bs.objective_for(case, 1e-8), prec=1e-8)
+    assert res.diagnostics.n_ambiguous == 0
+    assert len(res.levels) == 3 and all(x.mult == 1 for x in res.levels)
+    assert sum(x.mult for x in res.levels) == len(case.truth)
+
+
+@pytest.mark.slow
+def test_the_collapse_does_not_fire_where_nothing_is_ambiguous():
+    """It must not reach for the merge on ordinary cases. Everything on the roster outside the
+    band comes back unflagged."""
+    import hard_roster as hr
+
+    for case in (hr.ROSTER["disk"](), hr.ROSTER["eq_tri"](), hr.ROSTER["L_shape"](),
+                 *rs.family_D(), *rs.family_A()):
+        res = solve(bs.objective_for(case, 1e-8), prec=1e-8)
+        assert res.diagnostics.n_ambiguous == 0, case.label
+        assert not any(x.grouping_ambiguous for x in res.levels), case.label
+
+
+@pytest.mark.slow
+def test_the_cross_check_reads_only_CACHED_points():
+    """It costs nothing: the spanning count is taken over samples the search already paid for."""
+    (case,) = rs.crossover_cases(1e-8, window="cluster", bands=(0.8,))
+    res = solve(bs.objective_for(case, 1e-8), prec=1e-8)
+    assert res.diagnostics.n_ambiguous == 1
+    assert res.diagnostics.multiplicity_evals == 0
+
+
+@pytest.mark.slow
+def test_the_escape_from_the_band_works_in_BOTH_directions():
+    """The band is `d/2 < prec*lam < d`, so a caller can leave it either way and both give a
+    correct total: more precision splits the neighbourhood into separate levels, less merges it
+    into one. That is what makes the flag actionable rather than merely honest."""
+    (case,) = rs.crossover_cases(1e-8, window="cluster", bands=(0.8,))
+    t = np.unique(np.asarray(case.truth, dtype=float))
+    d = float(t[-1] - t[0])
+    lam = float(t[-1])
+    tighter, looser = 0.4 * d / lam, 1.5 * d / lam
+
+    for prec in (tighter, looser):
+        res = solve(bs.objective_for(case, prec), prec=prec)
+        assert not res.declined
+        assert sum(x.mult for x in res.levels) == len(case.truth), (
+            f"prec={prec:.2e} must give a correct total")
+        assert res.diagnostics.n_ambiguous == 0, f"prec={prec:.2e} escapes the band"
+    # and the two escapes disagree about the GROUPING, which is the thing that was arbitrary
+    fine = solve(bs.objective_for(case, tighter), prec=tighter)
+    coarse = solve(bs.objective_for(case, looser), prec=looser)
+    assert len(fine.levels) > len(coarse.levels)
+
+
+def test_a_declared_width_is_HELD_TO_by_the_scorer():
+    """A level may span what it declares and no more. Plain tuples declare nothing, which is
+    why the adversaries are unaffected by this allowance."""
+    lam = 5 * np.pi**2
+    truth = np.array([lam, lam * (1 + 4e-8)])
+
+    class Wide:
+        def __init__(self, lam, mult, width):
+            self.lam, self.mult, self.width = lam, mult, width
+
+    honest = ls.score_levels([Wide(lam, 2, 4e-7)], truth, 1e-8)
+    assert honest.n_impure == 0 and honest.n_declared_wide == 1
+    assert honest.total_right
+
+    silent = ls.score_levels([(lam, 2)], truth, 1e-8)
+    assert not silent.ok, "declaring nothing means getting no allowance"
+    assert silent.verdict == "missed", (
+        "and the second eigenvalue is not even assigned to it -- 4e-08 away against a match "
+        "radius of prec, so the level is not merely impure, it does not reach")
+
+
 # --- real pencils ------------------------------------------------------------------------------
 
 @pytest.mark.slow

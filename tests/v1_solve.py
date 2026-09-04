@@ -48,6 +48,7 @@ import numpy as np
 
 from objective import Declined
 from v1_bracket import bracket_interval
+import v1_multiplicity as M
 from v1_multiplicity import multiplicity, wide_bracket_for
 from v1_refine import refine
 
@@ -69,6 +70,33 @@ class Level:
     wide_bracket: tuple = ()
     gap_ratio: float = float("nan")
     c2_rejected: bool = False
+    #: True when this level is the COLLAPSE of a neighbourhood whose internal grouping was
+    #: arbitrary. The count is trustworthy; the sub-structure is coarser than `prec` asked for,
+    #: so the level is deliberately wider than the merge licence. See `_collapse_ambiguous`.
+    grouping_ambiguous: bool = False
+    #: The spacings inside that neighbourhood, so a caller can choose a `prec` that resolves or
+    #: merges it rather than re-solving blind.
+    spacings: tuple = ()
+
+    @property
+    def width(self):
+        """The interval this level stands for, 0 for a single location.
+
+        For a collapsed level it is the WIDE BRACKET that was counted over, not the span
+        between the roots that were folded together. The roots understate it -- two roots were
+        folded where three eigenvalues lie, so their span was 0.9 licence units against a true
+        1.6 -- and a level must not declare less than it covers, or a scorer holding it to its
+        declaration would mark it impure for eigenvalues it correctly counted.
+
+        It over-claims in the other direction: the counted branches lie somewhere inside the
+        bracket and not necessarily out to its edges. That is the honest direction for a level
+        whose whole point is that its sub-structure is unresolved, and it is not exploitable --
+        a method that declared a huge span to buy purity would show up immediately in
+        `separation` and `in_lattice`, which count levels rather than measure them.
+        """
+        if not self.grouping_ambiguous or len(self.wide_bracket) != 2:
+            return 0.0
+        return float(self.wide_bracket[1] - self.wide_bracket[0])
 
     @property
     def attained_prec(self):
@@ -103,6 +131,7 @@ class SolveDiagnostics:
     n_brackets: int = 0
     n_rejected: int = 0              # brackets the refiner threw away as empty
     n_merged: int = 0                # located roots folded into a neighbour within `prec`
+    n_ambiguous: int = 0             # levels collapsed because their grouping was arbitrary
     search_evals: int = 0
     refine_evals: int = 0
     multiplicity_evals: int = 0      # must be zero: stage 3 reads the cache
@@ -165,6 +194,104 @@ def _slope_from_cache(lams, vs, lam):
     lo, v_lo = float(lams[left][i]), float(vs[left][i])
     hi, v_hi = float(lams[right][j]), float(vs[right][j])
     return (v_lo + v_hi) / (hi - lo) if hi > lo else 0.0
+
+
+def _spanning_bracket(lams, roots, reach):
+    """Cached samples at least `reach` outside the whole span of `roots`, or `None`."""
+    lo_t, hi_t = min(roots) - reach, max(roots) + reach
+    left, right = lams[lams <= lo_t], lams[lams >= hi_t]
+    if left.size == 0 or right.size == 0:
+        return None
+    return float(left.max()), float(right.min())
+
+
+def _collapse_ambiguous(obj, lams, levels, prec, reach_factor):
+    """Cross-check each neighbourhood's total, and collapse the ones whose grouping is arbitrary.
+
+    # The failure this exists for
+
+    Where several eigenvalues sit within about `prec*lam` of each other, the way they group into
+    LEVELS can be genuinely undetermined -- and then so are the individual counts, while the
+    TOTAL is not. Three eigenvalues evenly spaced at 0, 0.8 and 1.6 in units of the merge
+    licence cannot all be one level (the span is 1.6 > 1), and either pairing is legal, so the
+    split is arbitrary. Worse, a count taken at the middle one must look 0.8 to see its partner
+    and therefore also sees the stranger at 0.8 on the other side: **no radius includes one and
+    excludes the other**, measured exactly equidistant.
+
+    So the counts came out as 3 and 1, totalling **4 where 3 exist** -- and at a span of exactly
+    one licence, 3 and 3, totalling 6. For a shape optimization that is the worst kind of error:
+    a wrong total shifts the INDEXING, so `lam_3` becomes a different eigenvalue, which is how
+    a solver comes to report an accurate but non-consecutive spectrum.
+
+    # The test is a consistency check, not a threshold
+
+    Chain the located roots into neighbourhoods, consecutive members within the counting reach.
+    For each, compare the SUM of the individual counts against ONE count taken over a bracket
+    spanning the whole neighbourhood:
+
+        they agree      the fine grouping is self-consistent -- keep it
+        they disagree   the grouping is arbitrary -- collapse to one level and use the
+                        spanning count, which is the quantity that was never in doubt
+
+    Measured, in units of the licence, on the multiplicity-3 cluster at `50*pi^2`:
+
+        span   individual counts   spanning count   action     total
+        1.0         3 + 3                3          collapse   3  (was 6)
+        1.6         3 + 1                3          collapse   3  (was 4)
+        2.0         3 + 1                3          collapse   3  (was 4)
+        2.6         1 + 1 + 1            3          keep       3
+        6.0         1 + 1 + 1            3          keep       3
+
+    The last two rows are why this is a cross-check and not a merge radius: at spans of 2.6 and
+    6.0 the roots are still within reach of one another, so a radius rule would collapse them
+    and throw away a correct fine answer. Their counts agree with the total, so they stand.
+
+    # What it deliberately gives up
+
+    A collapsed level is WIDER than `prec*lam`, so it fails purity on purpose. That is the
+    trade: a level that is too wide but correctly counted beats two levels correctly narrow and
+    wrongly counted, because only the second corrupts an index. It is flagged rather than
+    silent, and it carries the spacings, so a caller can escape the regime in either direction
+    -- more precision splits the neighbourhood, less merges it, and both give a correct total.
+    """
+    if len(levels) < 2:
+        return levels, 0
+
+    reach = [reach_factor * max(prec * abs(x.lam), 4.0 * np.spacing(abs(x.lam)))
+             for x in levels]
+    groups, cur = [], [0]
+    for i in range(1, len(levels)):
+        if levels[i].lam - levels[i - 1].lam <= max(reach[i], reach[i - 1]):
+            cur.append(i)
+        else:
+            groups.append(cur)
+            cur = [i]
+    groups.append(cur)
+
+    out, collapsed = [], 0
+    for g in groups:
+        if len(g) == 1:
+            out.append(levels[g[0]])
+            continue
+        members = [levels[i] for i in g]
+        deepest = min(members, key=lambda x: x.sigma)
+        wb = _spanning_bracket(lams, [x.lam for x in members],
+                               max(reach[i] for i in g))
+        if wb is None:
+            out.extend(members)
+            continue
+        total = multiplicity(lambda z: obj.tensions(obj.from_lam(z)), deepest.lam,
+                             wide_bracket=wb, prec=prec).mu
+        if total == sum(x.mult for x in members):
+            out.extend(members)             # self-consistent: the fine grouping stands
+            continue
+        gaps = tuple(float(b.lam - a.lam) for a, b in zip(members[:-1], members[1:]))
+        out.append(Level(lam=deepest.lam, mult=total, sigma=deepest.sigma,
+                         delta_res=deepest.delta_res, bracket=deepest.bracket,
+                         wide_bracket=wb, gap_ratio=deepest.gap_ratio,
+                         grouping_ambiguous=True, spacings=gaps))
+        collapsed += 1
+    return out, collapsed
 
 
 def _samples(obj):
@@ -264,9 +391,14 @@ def solve(obj, *, prec=None):
         levels.append(Level(lam=r.lam, mult=m.mu, sigma=r.sigma, delta_res=r.delta_res,
                             bracket=bracket, wide_bracket=wb, gap_ratio=m.gap_ratio,
                             c2_rejected=m.c2_rejected))
-    mult_evals = obj.n_evals - mark
 
     levels.sort(key=lambda x: x.lam)
+
+    # The grouping cross-check. Reads only cached points, so it is charged to stage 3's window
+    # and must leave it at zero.
+    levels, n_amb = _collapse_ambiguous(obj, lams, levels, prec, M.WIDE_FACTOR)
+    mult_evals = obj.n_evals - mark
+
     unmet = tuple(x.lam for x in levels if not x.met(prec))
     attained = max((x.attained_prec for x in levels
                     if np.isfinite(x.attained_prec)), default=prec)
@@ -274,7 +406,7 @@ def solve(obj, *, prec=None):
     return SolveResult(tuple(levels), SolveDiagnostics(
         search=sd, n_brackets=len(res.brackets), n_rejected=rejected, n_merged=merged,
         search_evals=search_evals, refine_evals=refine_evals,
-        multiplicity_evals=mult_evals, evaluations=obj.n_evals,
+        multiplicity_evals=mult_evals, evaluations=obj.n_evals, n_ambiguous=n_amb,
         prec_requested=prec, attained_prec=float(attained), unmet=unmet))
 
 
