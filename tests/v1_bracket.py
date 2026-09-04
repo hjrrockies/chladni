@@ -567,6 +567,12 @@ def bracket_interval(obj, *, prec=None, budget=None):
     come back with it.
     """
     prec = obj.prec if prec is None else float(prec)
+    # The search works in `k` whatever it was handed, and returns brackets in the variable it
+    # was HANDED. Returning them in the internal variable instead is a footgun that caught two
+    # separate callers -- `obj.in_lam` converts from the objective's variable, so on a `lam`
+    # objective it left `k` values untouched and every level was reported at its square root.
+    # The conversion is one line and belongs here, once, rather than at each call site.
+    outer = obj
     obj = obj if getattr(obj, "variable", None) == "k" else _KView(obj)
     lo, hi = obj.lo, obj.hi
     span = hi - lo
@@ -643,7 +649,8 @@ def bracket_interval(obj, *, prec=None, budget=None):
     ks, vs, kept, dropped = _confirm(obj, ks, vs, regions, L, budget, plateau)
     confirm_evals += obj.n_evals - mark
 
-    brackets = tuple(Bracket(lo=a, hi=b, k_hint=_hint(ks, vs, a, b),
+    back = (lambda u: u) if outer is obj else (lambda u: u * u)
+    brackets = tuple(Bracket(lo=back(a), hi=back(b), k_hint=back(_hint(ks, vs, a, b)),
                              sigma=_hint_sigma(ks, vs, a, b),
                              certified=descent_certificate(ks, vs, a, b) is not None,
                              floor_limited=floor_limited and not width_is_pure(a, b, prec_u))
@@ -653,8 +660,9 @@ def bracket_interval(obj, *, prec=None, budget=None):
     # purpose: purity does not constrain its width, and refining past isolation buys nothing.
     # Reporting the widest bracket instead read 9e-02 on runs that met a 1e-08 request exactly,
     # which would tell a caller its answer was eight orders worse than it was.
-    unresolved = [b for b in brackets if b.floor_limited]
-    attained = max((2.0 * (b.hi - b.lo) / max(b.hi, np.spacing(1.0)) for b in unresolved),
+    unresolved = [(a, b) for a, b in kept
+                  if floor_limited and not width_is_pure(a, b, prec_u)]
+    attained = max((2.0 * (b - a) / max(b, np.spacing(1.0)) for a, b in unresolved),
                    default=float(prec))
     return SearchResult(brackets, diag(
         n_brackets=len(brackets), n_unconfirmed=dropped,
@@ -970,10 +978,8 @@ def v1_brackets(**kw):
             tensions, a, b, prec=prec, variable="k", expected_count=expected_count)
         res = bracket_interval(obj, prec=prec, **kw)
         brackets.last = res
-        # Brackets come back in the objective's OWN variable, which is what the harness
-        # converts from; the `k` transform is internal to the search.
-        out = [(x.lo, x.hi) if obj.variable == "k" else (x.lo ** 2, x.hi ** 2)
-               for x in res.brackets]
+        # Already in the objective's variable -- `bracket_interval` converts on the way out.
+        out = [(x.lo, x.hi) for x in res.brackets]
         if res.declined:
             return Declined(res.diagnostics.decline_reason, partial=out,
                             diagnostics=res.diagnostics)

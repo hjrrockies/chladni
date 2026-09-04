@@ -173,7 +173,7 @@ def test_the_reach_must_clear_the_LOCATED_ROOTS_OWN_ERROR():
     case = hr.ROSTER["disk"]()
     obj = bs.objective_for(case, 1e-8)
     res = bracket_interval(obj, prec=1e-8)
-    roots = [refine(obj, b.lo**2, b.hi**2, prec=1e-8, lam_hint=b.k_hint**2)
+    roots = [refine(obj, b.lo, b.hi, prec=1e-8, lam_hint=b.k_hint)
              for b in res.brackets]
     roots = [r for r in roots if r.accepted]
 

@@ -22,26 +22,35 @@ The layer everything else waits on. `MPSEigensolver.solve_interval` raises
 (`src/chladni/mps/solver.py:169`), and the candidates live in `tests/` on purpose -- when one
 wins it moves into `src/chladni/mps/`.
 
+All four stages now exist as scored candidates and the composed pipeline passes 15 of 15 cases
+it can decide -- disk, equilateral triangle, L-shape, exact degeneracies of multiplicity 2, 3
+and 4, and both sides of the crossover on two windows -- at 15 to 33 evaluations per eigenvalue
+including refinement. What remains is promotion, not construction.
+
 * **[blocking]** Promote the v1 candidate and implement `solve_interval`. The comparison is
-  settled: `tests/v1_bracket.py` + `tests/v1_refine.py` pass the standing gate -- 111 cases, 1
+  settled: `tests/v1_bracket.py`, `tests/v1_refine.py`, `tests/v1_multiplicity.py` and
+  `tests/v1_solve.py` pass the standing gate -- 111 cases, 1
   unexercisable, at 26-27 evaluations per eigenvalue on real rectangle pencils including the
   refinement each bracket hands on, and 22-24 on the disk, the equilateral triangle and the
   L-shape. The older generation stops splitting at `d/lam` between 1.2e-04 and 3.6e-05
   (`notes/landscape_findings.md` section 29). What moves is `v1_bracket` and `v1_refine` into
   `src/chladni/mps/`, rewritten against a spec that `CHLADNI_V1.md`'s As-built section will
   have corrected.
-* **[blocking]** Stage 4, `solve`. `candidates.md` section 1 calls it "the only mandatory
-  seam", and the v1 candidate registers stages 1, 2 and 3 separately with nothing composing
-  them. Composition is not quite mechanical: stage 3 needs the WIDE bracket, which is the pair
-  of evaluated points either side of the root from BEFORE the locator collapsed the bracket, so
-  stage 4 has to keep it -- `wide_bracket_for` reconstructs it from the cache, which works but
-  is doing at the end what Phase B could have recorded at the time.
-* **[next]** Phase D, collapse-versus-merge. Stage 3 answers "how many branches dip HERE" and
-  says nothing about two roots reported close together, which is a different question that
-  distance provably cannot settle: one eigenvalue found twice and two genuine eigenvalues occur
-  at the SAME separation. `search.md` Phase D decides it on the interior Gram angle -- `|cos|`
-  at most 0.10 for distinct eigenfunctions against at least 0.948 for one well found twice --
-  and that needs the `modes(x)` widening below.
+* **[next]** Phase D's Gram angle, for the case distance cannot settle. `tests/v1_solve.py`
+  implements Phase D's DISTANCE PREFILTER and gets the collapse branch for free -- reading
+  multiplicity once per merged group RECOUNTS by construction, which `search.md` says is the
+  right move and warns against replacing with a sum. What remains is the case the angle is
+  really for: two roots at the SAME separation where one pair is a duplicate and the other is
+  not. Needs the `modes(x)` widening below. Nothing in the roster exercises it, which is a
+  measurement on one roster and not an argument.
+* **[next]** Multiplicity is UNDECIDABLE for a cluster whose diameter sits between the merge
+  licence and the wide bracket's reach, `1 < diameter/(prec*lam) < WIDE_FACTOR`. Measured on the
+  multiplicity-3 cluster: pass at ratios 0.40, 2.60 and 6.00, fail at 1.00 and 1.60. Such a
+  cluster is too wide to be one level of `S(prec)` and its members sit closer together than the
+  flanks a read needs, so no flank placement is both outside the level and inside the gap to the
+  next one. `rect_suite.multiplicity_undecided` reports it and the tests skip those cells.
+  Whether a smaller `WIDE_FACTOR` narrows the band without breaking the prominence bound
+  (`sqrt(1+f**2) >= P` needs `f > sqrt(3)`) is one experiment.
 * **[next]** The open `floor_frac` bug. `lappy_repaired_search` misses a *different* L-shape
   eigenvalue depending on `floor_frac` over `k` in `[3, 5]`: 1e-6 loses 15.197, 1e-9 loses
   9.640, 1e-12 finds all three. "Load-bearing in a way nothing yet explains" -- `search.md`,

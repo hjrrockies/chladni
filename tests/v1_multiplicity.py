@@ -135,7 +135,8 @@ class Multiplicity:
         return self.c1_read > self.mu
 
 
-def wide_bracket_for(samples_lam, lam, sigma_1, c, *, factor=WIDE_FACTOR, prec=None):
+def wide_bracket_for(samples_lam, lam, sigma_1, c, *, factor=WIDE_FACTOR, prec=None,
+                     neighbour=None):
     """The nearest EVALUATED points either side of `lam` at a distance where branches have moved.
 
     **Everything here is in `lam`**, including `samples_lam`, `c` and the returned pair. The
@@ -164,6 +165,20 @@ def wide_bracket_for(samples_lam, lam, sigma_1, c, *, factor=WIDE_FACTOR, prec=N
     old one, which is correct only when `sigma_1` really is the floor -- as it is when the
     caller reads at a SAMPLED point rather than at a located root.
 
+    **And it must not reach past a DISTINCT neighbour**, which is the same constraint from the
+    other side. Pass `neighbour` -- the estimated distance to the next eigenvalue, `sigma_2/c`,
+    the quantity the isolation gate already uses -- and the reach is capped at half of it.
+    Measured on the wide rectangle window at `prec = 1e-8`: the (4,5)/(5,4) pair sits 5.3e-06
+    apart, the `prec*lam` term drove the reach to 8.1e-06, so the flanks straddled BOTH members
+    and (C2) correctly saw two branches dipping inside a bracket that spanned the pair. One
+    level over-read, and the reach now comes out at 2.98e-06, inside the pair.
+    
+    The cap never collapses a genuine degeneracy, because there `sigma_2` is at the floor and
+    `neighbour` is itself about `eps/c` -- so the cap is floored at `factor*eps/c`, which is the
+    term that lets (C2) confirm a real multiplet in the first place. The three terms together
+    say: far enough for the branches to have moved, past what the refinement could resolve, and
+    not as far as the next eigenvalue.
+
     Falls back to the outermost sample on a side that has nothing far enough: a bracket that is
     too narrow makes (C2) conservative -- it fails to confirm a branch and the multiplicity is
     under-read -- which is the safe direction, since over-reading is the double count.
@@ -171,10 +186,41 @@ def wide_bracket_for(samples_lam, lam, sigma_1, c, *, factor=WIDE_FACTOR, prec=N
     xs = np.asarray(samples_lam, dtype=float)
     if xs.size == 0:
         return None
-    reach = factor * (float(sigma_1) / c) if c > 0 else 0.0
+    # Three constraints, and they have to be applied in this order or two of them cancel.
+    #
+    #   moved  -- far enough that the higher branches have left the flat bottom, `eps/c`
+    #   unc    -- far enough to be outside the located root's own uncertainty, `prec*lam`
+    #   cap    -- closer than the nearest DISTINCT neighbour, `sigma_2/c`
+    #
+    # `cap` applies only when the neighbour is a SEPARATE LEVEL at this precision, i.e. further
+    # away than `prec*lam`. That is the definition of `S(prec)` and not a tuned threshold: a
+    # neighbour inside the merge licence belongs to THIS level, so the flanks should span it and
+    # count its branch; a neighbour outside the licence is a different level, so they must not.
+    #
+    # Applying the cap on any other test makes one of the three cases fail:
+    #
+    #   an EXACT degeneracy has `sigma_2` at the floor, so `neighbour ~ eps/c` -- not a
+    #   neighbour to avoid but the SAME level. Capping there collapsed the reach back below the
+    #   location uncertainty and the degeneracies read 1 instead of 2.
+    #
+    #   a resolvable PAIR has `neighbour` outside the licence, and without the cap the `unc`
+    #   term drove the reach past it: on the wide window the (4,5)/(5,4) pair sits 5.3e-06
+    #   apart against a reach of 8.1e-06, so the flanks spanned both members and it over-read.
+    #
+    #   a SUB-LICENCE pair -- separation below `prec*lam`, which `S(prec)` says is one level of
+    #   multiplicity 2 -- has `neighbour` small but far above the flat bottom. Capping on
+    #   "further than `eps/c`" therefore pulled the flanks INSIDE the pair, (C2) saw one branch,
+    #   and the level under-read: 3 declared against 4 true on the `b=0.5` crossover case.
+    moved = factor * (float(sigma_1) / c) if c > 0 else 0.0
+    reach = moved
     if prec is not None:
         xatol = max(float(prec) * abs(float(lam)), 4.0 * np.spacing(abs(float(lam))))
         reach = max(reach, factor * xatol)
+    licence = (max(float(prec) * abs(float(lam)), 4.0 * np.spacing(abs(float(lam))))
+               if prec is not None else 0.0)
+    if (neighbour is not None and np.isfinite(neighbour) and neighbour > licence
+            and neighbour > 2.0 * moved):
+        reach = max(min(reach, 0.5 * float(neighbour)), moved)
     left = xs[xs < lam]
     right = xs[xs > lam]
     if left.size == 0 or right.size == 0:

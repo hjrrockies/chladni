@@ -537,7 +537,7 @@ originating repo.
 | `tests/surrogate_cases.py` | tier 1, with `adequate()` |
 | `tests/rect_suite.py` | tier 2, with `assert_floor` and the new `assert_smooth` |
 | `tests/hard_roster.py` | tier 3: disk, eq_tri, L-shape, each with the `prec` its basis supports |
-| `tests/v1_refine.py`, `tests/v1_bracket.py`, `tests/v1_multiplicity.py` | the prototype: stages 1, 2 and 3, as scored candidates |
+| `tests/v1_refine.py`, `tests/v1_bracket.py`, `tests/v1_multiplicity.py`, `tests/v1_solve.py` | the prototype: all four stages, as scored candidates |
 | `tests/level_score.py`, `tests/level_controls.py` | the multiplicity scorer, and the adversary that broke the one it replaces |
 | `tests/test_gate.py` | the standing gate, `-m gate` |
 | `src/chladni/asymp.expected_count`, `src/chladni/mps/calibrate.py`, `MPSPencil.with_rtol`, `MPSEigensolver.findability` | the parts that are features rather than candidates |
@@ -742,6 +742,63 @@ stay close enough for `sigma_2`'s asymmetry to show where (C1) double-counts, wh
 `f = 1` rejecting throughout the ambiguous band and `f = 3` accepting into it. `f = 2` is where
 they meet. On an adequate pencil the factor is inert -- `eps/c` is ~1e-15 and no search samples
 that finely -- so every factor from 1 to 10 gives the same 14 readings.
+
+## Composition is not the sum of the parts
+
+Every stage passed its own tests, and composing them scored separation 0.00 on all three exact
+degeneracies and read multiplicity LOW on two of seven disk levels. Four seam defects, none
+visible from either side:
+
+* **The refiner's interior margin refused genuine off-centre minima.** `min(xatol, width/4)`,
+  and on the multiplicity-3 degeneracy the level sits 8.8e-08 from a bracket end against a
+  demanded 2.15e-07. The margin was redundant too -- `s_best < min(ends)` already excludes a
+  locator that walked to an endpoint.
+* **The refiner started from the arithmetic midpoint.** A bracket is guaranteed to CONTAIN the
+  eigenvalue, not to have a sampled descent inside it: stage 1 stops on purity by width, and on
+  that degeneracy the well is 1e-07 wide inside an 8.6e-07 bracket, so the starting triple was
+  monotone. Starting from the deepest CACHED sample costs nothing and moves the located value
+  from 1.8e-10 to 7.4e-12.
+* **Stage 3's wide bracket was sized from `sigma` at the LOCATED root**, which is within
+  `prec*lam` of the minimum rather than at it -- 6.2e-10 against a floor of 7.2e-16 on the
+  disk, so the flanks straddled asymmetrically and prominence came out at 1.45 against `P = 2`.
+* **And then the reach needed a CEILING as well as a floor.** Widening it past the location
+  uncertainty drove it past the neighbour: the (4,5)/(5,4) pair sits 5.3e-06 apart against a
+  reach of 8.1e-06, so a level over-read. The ceiling is `sigma_2/c`, applied only when the
+  neighbour lies OUTSIDE the merge licence -- which is the definition of `S(prec)` and not a
+  threshold. Keyed on anything else, each of the three cases fails in turn: an exact degeneracy
+  has its neighbour at the floor and must not be capped; a resolvable pair must be; and a
+  sub-licence pair, which `S(prec)` says is one level of multiplicity 2, must not.
+
+## Phase D's collapse branch comes free; its angle does not
+
+Two located roots within `prec*lam` are one level, and reading multiplicity at each separately
+double-counts -- the wide bracket spans the group, correctly, so each fragment declares the
+group's total. Stage 4 applies Phase D's DISTANCE PREFILTER and reads once per group, which
+**recounts by construction**: `search.md` gives collapse-and-recount or merge-and-sum for roots
+this close and warns "do NOT sum", and a single read is right either way. So the Gram angle is
+not needed for this, only for the case it was really written for -- two roots at the same
+separation where one pair is a duplicate and the other is not.
+
+## One regime is genuinely undecidable, and the band is bounded by the reach
+
+A cluster whose diameter sits between the merge licence and the wide bracket's reach cannot have
+its multiplicity read at all. Measured on the multiplicity-3 cluster at `50*pi^2`:
+
+    diameter/licence   0.40   1.00   1.60   2.60   4.00   6.00
+    verdict            pass   FAIL   FAIL   pass   pass   pass
+
+Below the licence the cluster is one level and the reach spans it; above the reach its members
+are further apart than the flanks and each is read alone. Between, no flank placement is both
+outside the level and inside the gap to the next one. The band is `[1, WIDE_FACTOR]` exactly,
+so it is a property of the configuration rather than a tuning failure, and
+`rect_suite.multiplicity_undecided` reports it.
+
+**How those cases come to sit there is section 5.4's trap in a form this document does not
+name.** The sweep dials the MINIMUM ADJACENT GAP, because that is what decides whether two
+neighbours must be told apart -- but `S(prec)` groups by DIAMETER, and for an `m`-member cluster
+the diameter is `(m-1)` times the dialled gap. At `m = 3, band = 0.5` it lands on the licence to
+ten figures. Section 5.4 warns that the tightest PAIR is not the one you are dialling; for a
+cluster the DIAMETER is not the thing you are dialling either.
 
 ## Cost, measured on real pencils
 

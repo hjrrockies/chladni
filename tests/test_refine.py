@@ -232,10 +232,10 @@ def test_a_genuine_minimum_OFF_CENTRE_in_its_bracket_is_accepted():
     obj = bscore.objective_for(case, 1e-8)
     res = bracket_interval(obj, prec=1e-8)
 
-    holding = [b for b in res.brackets if b.lo**2 <= true <= b.hi**2]
+    holding = [b for b in res.brackets if b.lo <= true <= b.hi]
     assert holding, "stage 1 must bracket the level at all"
     b = holding[0]
-    lo, hi = b.lo**2, b.hi**2
+    lo, hi = b.lo, b.hi
     r = refine(obj, lo, hi, prec=1e-8, lam_hint=b.k_hint**2)
     assert r.accepted, f"rejected a bracket that holds the level: {r.reason}"
     assert abs(r.lam - true) / true < 1e-9, f"relative error {abs(r.lam - true) / true:.2e}"
@@ -264,8 +264,8 @@ def test_the_start_point_is_the_DEEPEST_SAMPLE_not_the_midpoint():
     true = float(np.unique(case.truth)[0])
     obj = bscore.objective_for(case, 1e-8)
     res = bracket_interval(obj, prec=1e-8)
-    b = [x for x in res.brackets if x.lo**2 <= true <= x.hi**2][0]
-    lo, hi = b.lo**2, b.hi**2
+    b = [x for x in res.brackets if x.lo <= true <= x.hi][0]
+    lo, hi = b.lo, b.hi
 
     deep = _deepest_inside(obj, lo, hi)
     assert deep is not None and lo < deep < hi
