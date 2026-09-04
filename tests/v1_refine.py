@@ -69,6 +69,22 @@ class RefineResult:
         return not self.accepted
 
 
+def _deepest_inside(obj, lo, hi):
+    """The lowest ALREADY-EVALUATED point strictly inside `(lo, hi)`, in `lam`, or `None`.
+
+    A cache read, so it costs nothing. The objective may be parameterized by `k`, in which case
+    its samples are too, and they are mapped back here.
+    """
+    xs, vs = obj.samples
+    if xs.size == 0:
+        return None
+    lams = np.array([obj.in_lam(x) for x in xs])
+    inside = (lams > lo) & (lams < hi)
+    if not np.any(inside):
+        return None
+    return float(lams[inside][int(np.argmin(vs[inside]))])
+
+
 def _xatol(lam, prec):
     """Stopping width, from the target precision and the arithmetic.
 
@@ -124,10 +140,29 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
         s = obj.tension(obj.from_lam(lam))
         return lam, s * s, s
 
-    # Three points to start: the ends and either the hint or the midpoint. The hint is the
-    # deepest sample the search already paid for, and reusing it is free -- the cache is shared.
-    mid = float(np.clip(lam_hint, lo, hi)) if lam_hint is not None else 0.5 * (lo + hi)
-    if not lo < mid < hi:
+    # Three points to start: the ends, and the DEEPEST SAMPLE ALREADY INSIDE the bracket.
+    #
+    # The arithmetic midpoint is the wrong third point, and badly so on a bracket that stage 1
+    # stopped refining on width purity: **a bracket is guaranteed to CONTAIN the eigenvalue, not
+    # to have a sampled descent inside it.** On the multiplicity-3 degeneracy the well is about
+    # 1e-07 wide inside an 8.6e-07 bracket, so the midpoint misses it entirely and the starting
+    # triple reads 1.5e-09 -> 5.6e-09 -> 1.3e-08, monotone. The parabola cannot close on that
+    # and the refiner walks to an endpoint.
+    #
+    # The search already paid for a sample in the well -- that is what earned the bracket -- so
+    # the fix is to read it back rather than to sample again. Measured, on the degeneracies:
+    #
+    #     level          midpoint start   deepest-sample start
+    #     D:mult=3          1.8e-10             7.4e-12
+    #     D:mult=4          9.1e-10             3.3e-11
+    #
+    # An explicit `lam_hint` still wins, for a caller that knows better.
+    mid = None
+    if lam_hint is not None:
+        mid = float(np.clip(lam_hint, lo, hi))
+    if mid is None or not lo < mid < hi:
+        mid = _deepest_inside(obj, lo, hi)
+    if mid is None or not lo < mid < hi:
         mid = 0.5 * (lo + hi)
 
     # Every point this call has seen, so the working triple can be RE-SELECTED rather than
@@ -257,12 +292,20 @@ def _accept(best, lo, hi, prec, ends):
     the bracket width cannot know what it is stepping across; the endpoints can, because they
     are where the bracket actually ends.
 
-    The interior margin is `min(xatol, width/4)`, not `xatol`: a bracket already narrower than
-    the tolerance has no interior by the first measure, and refusing everything inside it would
-    reject exactly the tight brackets the refiner is best at.
+The interior margin is a few ULPS, not a fraction of the width. It was
+    `min(xatol, width/4)`, and the `width/4` term rejected genuine minima that sit off-centre:
+    on the multiplicity-3 degeneracy at `493.48022`, the bracket `[493.480219963,
+    493.480220823]` really does contain the level, the refiner locates it to 7.4e-12 relative,
+    and the true minimum sits 8.8e-08 from the left end against a demanded margin of 2.15e-07.
+    Every degeneracy in the suite was rejected that way, and the composed pipeline scored
+    separation 0.00 on all three.
+
+    The margin was redundant as well as wrong. Condition 2 already excludes a locator that
+    converged to an endpoint, because there `s_best == s(end)` and the strict `<` fails. So the
+    interior test only has to mean "not AT an endpoint", which is a question about ulps.
     """
     lam, _, s_best = best
-    margin = min(_xatol(lam, prec), 0.25 * (hi - lo))
+    margin = 4.0 * np.spacing(max(abs(lo), abs(hi)))
     if not (lo + margin <= lam <= hi - margin):
         return False
     return bool(s_best < min(ends))

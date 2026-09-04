@@ -210,6 +210,71 @@ def test_a_flat_objective_terminates_without_claiming_a_root():
     assert not r.accepted and r.steps < 40
 
 
+# --- the two seam defects that only composition exposed ---------------------------------------
+
+@pytest.mark.slow
+def test_a_genuine_minimum_OFF_CENTRE_in_its_bracket_is_accepted():
+    """The interior margin was `min(xatol, width/4)`, and the `width/4` term rejected real
+    minima sitting near a bracket end. On the multiplicity-3 degeneracy the level sits 8.8e-08
+    from the left end of a bracket 8.6e-07 wide, against a demanded margin of 2.15e-07 -- so
+    every degeneracy in the suite was refused and the composed pipeline scored separation 0.00.
+
+    The margin was redundant as well as wrong: condition 2 already excludes a locator that
+    walked to an endpoint, since there `s_best == s(end)`. So the interior test only has to
+    mean "not AT an endpoint", which is a question about ulps.
+    """
+    import bracket_score as bscore
+    import rect_suite as rs
+    from v1_bracket import bracket_interval
+
+    (case,) = [c for c in rs.family_D() if "mult=3" in c.label]
+    true = float(np.unique(case.truth)[0])
+    obj = bscore.objective_for(case, 1e-8)
+    res = bracket_interval(obj, prec=1e-8)
+
+    holding = [b for b in res.brackets if b.lo**2 <= true <= b.hi**2]
+    assert holding, "stage 1 must bracket the level at all"
+    b = holding[0]
+    lo, hi = b.lo**2, b.hi**2
+    r = refine(obj, lo, hi, prec=1e-8, lam_hint=b.k_hint**2)
+    assert r.accepted, f"rejected a bracket that holds the level: {r.reason}"
+    assert abs(r.lam - true) / true < 1e-9, f"relative error {abs(r.lam - true) / true:.2e}"
+
+    off = min(r.lam - lo, hi - r.lam) / (hi - lo)
+    assert off < 0.25, f"the minimum sits {off:.3f} of the way in -- inside the old margin"
+
+
+@pytest.mark.slow
+def test_the_start_point_is_the_DEEPEST_SAMPLE_not_the_midpoint():
+    """**A bracket is guaranteed to CONTAIN the eigenvalue, not to have a sampled descent inside
+    it.** Stage 1 stops on purity by width, which can be satisfied without ever sampling at well
+    scale: on the multiplicity-3 degeneracy the well is ~1e-07 wide inside an 8.6e-07 bracket,
+    so the arithmetic midpoint misses it and the starting triple reads
+    1.5e-09 -> 5.6e-09 -> 1.3e-08, monotone. The parabola cannot close on that.
+
+    The search already paid for a sample in the well -- that is what earned the bracket -- so
+    the fix is a cache read, not another evaluation.
+    """
+    import bracket_score as bscore
+    import rect_suite as rs
+    from v1_bracket import bracket_interval
+    from v1_refine import _deepest_inside
+
+    (case,) = [c for c in rs.family_D() if "mult=3" in c.label]
+    true = float(np.unique(case.truth)[0])
+    obj = bscore.objective_for(case, 1e-8)
+    res = bracket_interval(obj, prec=1e-8)
+    b = [x for x in res.brackets if x.lo**2 <= true <= x.hi**2][0]
+    lo, hi = b.lo**2, b.hi**2
+
+    deep = _deepest_inside(obj, lo, hi)
+    assert deep is not None and lo < deep < hi
+    assert obj.tension(deep) < obj.tension(0.5 * (lo + hi)), (
+        "the deepest sample is deeper than the midpoint, which is why it is the start point")
+    assert abs(refine(obj, lo, hi, prec=1e-8).lam - true) / true < 1e-10, (
+        "and with no explicit hint the refiner now finds it anyway")
+
+
 # --- tier 2: a real pencil --------------------------------------------------------------------
 
 @pytest.mark.slow
