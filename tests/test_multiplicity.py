@@ -154,6 +154,52 @@ def test_the_factor_is_above_the_cone_bound():
     assert np.sqrt(1 + M.WIDE_FACTOR**2) > M.PROMINENCE
 
 
+@pytest.mark.slow
+def test_the_reach_must_clear_the_LOCATED_ROOTS_OWN_ERROR():
+    """`sigma_1` read at a REPORTED root is not the floor -- the root sits within `prec*lam` of
+    the true minimum, so on a well-resolved pencil `sigma` there is orders above `eps`.
+
+    Measured on the disk at `prec = 1e-8`: the reported root sits ~3e-09 from the minimum,
+    `sigma` there is 6.2e-10 against a floor of 7.2e-16, and `2*sigma/c` gives a reach of
+    6.4e-09. The flanks then straddle asymmetrically -- one side moves TOWARD the true minimum
+    and one away -- prominence comes out at 1.45 against `P = 2`, (C2) rejects `sigma_1` itself,
+    and a genuine multiplicity-2 level reads as 1. Two of seven disk levels went that way, and
+    the isolated stage-3 tests could not see it because they read at SAMPLED points.
+    """
+    import hard_roster as hr
+    from v1_bracket import bracket_interval
+    from v1_refine import refine
+
+    case = hr.ROSTER["disk"]()
+    obj = bs.objective_for(case, 1e-8)
+    res = bracket_interval(obj, prec=1e-8)
+    roots = [refine(obj, b.lo**2, b.hi**2, prec=1e-8, lam_hint=b.k_hint**2)
+             for b in res.brackets]
+    roots = [r for r in roots if r.accepted]
+
+    lv, mult = np.unique(case.truth, return_counts=True)
+    doubles = [float(x) for x, m in zip(lv, mult) if m == 2]
+    assert doubles, "the disk window must hold a degenerate level"
+
+    xs, _ = obj.samples
+    checked = 0
+    for lam in doubles:
+        near = [r for r in roots if abs(r.lam - lam) / lam < 1e-6]
+        if not near:
+            continue
+        r = near[0]
+        h = 0.005 * abs(r.lam)
+        c = 0.5 * (obj.tension(r.lam + h) + obj.tension(r.lam - h)) / h
+        naive = M.wide_bracket_for(xs, r.lam, r.sigma, c)
+        aware = M.wide_bracket_for(xs, r.lam, r.sigma, c, prec=1e-8)
+        assert min(r.lam - aware[0], aware[1] - r.lam) > min(r.lam - naive[0],
+                                                             naive[1] - r.lam), (
+            "knowing `prec` must widen the bracket")
+        assert M.multiplicity(obj.tensions, r.lam, wide_bracket=aware, prec=1e-8).mu == 2
+        checked += 1
+    assert checked, "no degenerate level was reached"
+
+
 # --- it spends nothing ------------------------------------------------------------------------
 
 @pytest.mark.slow

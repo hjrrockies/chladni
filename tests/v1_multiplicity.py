@@ -135,22 +135,46 @@ class Multiplicity:
         return self.c1_read > self.mu
 
 
-def wide_bracket_for(samples, lam, sigma_1, c, *, factor=WIDE_FACTOR):
+def wide_bracket_for(samples_lam, lam, sigma_1, c, *, factor=WIDE_FACTOR, prec=None):
     """The nearest EVALUATED points either side of `lam` at a distance where branches have moved.
+
+    **Everything here is in `lam`**, including `samples_lam`, `c` and the returned pair. The
+    name says so because the mix is silent otherwise: `prec` is relative to `lam` by definition
+    (`docs/conventions.md`), the search works in `k`, and an `Objective` parameterized by `k`
+    reports its `samples` in `k` -- so handing those straight in would compare a `k` distance
+    against a `prec*lam` reach and be wrong by a factor of `2k` without failing.
+    Use `[obj.in_lam(x) for x in obj.samples[0]]`.
 
     `eps/c` is the scale on which the cone flattens into its quadratic bottom, so inside it the
     higher branches carry no information and (C2) would be reading the floor against itself.
     This walks outward through the samples the search already paid for and takes the first on
-    each side past `factor * eps/c`.
+    each side past the reach.
+
+    **The reach must also clear the located root's OWN uncertainty, and that is not the same
+    thing.** `sigma_1` here is read at the REPORTED root, which sits within `prec*lam` of the
+    true minimum -- so on a well-resolved pencil it is not the floor at all. Measured on the
+    disk at `prec = 1e-8`: the reported root sits ~3e-09 from the minimum, `sigma` there is
+    6.2e-10 against a floor of 7.2e-16, and `2*sigma/c` gives a reach of 6.4e-09. The flanks
+    then straddle asymmetrically -- one side moves TOWARD the true minimum and one away -- so
+    the prominence comes out at 1.45 against `P = 2`, (C2) rejects `sigma_1` itself, and a
+    genuine multiplicity-2 level reads as 1. Two of seven disk levels went that way.
+
+    Passing `prec` fixes it: the reach then also exceeds `factor * xatol`, so both flanks are
+    outside the region the refinement could not resolve. Without `prec` the behaviour is the
+    old one, which is correct only when `sigma_1` really is the floor -- as it is when the
+    caller reads at a SAMPLED point rather than at a located root.
 
     Falls back to the outermost sample on a side that has nothing far enough: a bracket that is
     too narrow makes (C2) conservative -- it fails to confirm a branch and the multiplicity is
     under-read -- which is the safe direction, since over-reading is the double count.
     """
-    xs = np.asarray(samples, dtype=float)
+    xs = np.asarray(samples_lam, dtype=float)
     if xs.size == 0:
         return None
     reach = factor * (float(sigma_1) / c) if c > 0 else 0.0
+    if prec is not None:
+        xatol = max(float(prec) * abs(float(lam)), 4.0 * np.spacing(abs(float(lam))))
+        reach = max(reach, factor * xatol)
     left = xs[xs < lam]
     right = xs[xs > lam]
     if left.size == 0 or right.size == 0:
