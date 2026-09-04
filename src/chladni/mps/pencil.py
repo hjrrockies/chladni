@@ -185,6 +185,20 @@ class MPSPencil(Frozen):
              lam_ref=lam_ref, prec=prec,
              _cache={})
 
+    def with_rtol(self, rtol):
+        """The same pencil at a different rank-truncation threshold.
+
+        Follows the `with_prec` transform protocol: a new object, sharing both `Sampling`s, so
+        the assembly is not repeated -- only `regularize`'s cutoff moves. That is what makes a
+        five-step calibration of the threshold affordable (`mps.calibrate`).
+
+        The cache is NOT shared. It holds regularized factorizations, which are exactly what
+        `rtol` changes; carrying them over would return the old rank under the new threshold.
+        """
+        return type(self)(self.bdry, self.interior, reg=self.reg,
+                          rank=self.rank if self.is_frozen else None,
+                          rtol=float(rtol), lam_ref=None, prec=self.prec)
+
     @classmethod
     def from_basis(cls, basis, bdry_quad, int_pts, **kw):
         """Bind the basis to both point sets, then build. Sugar, and the common spelling."""

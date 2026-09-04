@@ -11,7 +11,7 @@ import numpy as np
 from scipy.optimize import brentq
 
 __all__ = ["weyl_count", "weyl_est", "weyl_count_poly", "weyl_est_poly", "weyl_deficit",
-           "weyl_count_check", "corner_correction"]
+           "weyl_count_check", "corner_correction", "expected_count"]
 
 
 def _resolve(domain, area, perim, bc_type, need_perim=True):
@@ -72,6 +72,28 @@ def weyl_count(lam, domain=None, *, area=None, perim=None, bc_type="dir"):
     s = _sign(bc_type)
     lam = np.asarray(lam, dtype=float)
     return (area * lam + s * perim * np.sqrt(np.maximum(lam, 0.0))) / (4 * np.pi)
+
+
+def expected_count(lo, hi, domain=None, *, area=None, perim=None, bc_type="dir"):
+    """How many eigenvalues the two-term law expects in `[lo, hi]`. **SIZING ONLY.**
+
+    A search may read this to choose a starting sample density and for nothing else. It says
+    nothing about WHERE anything is and must not be used as if it did -- the whole failure
+    this warning exists for is a rescue loop whose stopping condition was a COUNT rather than
+    consecutiveness, which filled its quota with whatever it could reach and returned a
+    non-consecutive spectrum with no exception and no warning.
+
+    It is also an estimate of the MEAN gap, while recall is bounded by the MINIMUM LOCAL gap.
+    Measured across seven domains, the smallest observed gap runs 0.127 to 0.792 of the Weyl
+    mean -- 1.3x to 8x tighter -- so a stride computed from this is an estimate of the wrong
+    quantity and has to be corrected in the loop rather than trusted once.
+
+    Clamped at zero: the two-term count is not monotone at very small `lam`, where the
+    perimeter term dominates, and a negative width is never a useful answer.
+    """
+    n_lo = weyl_count(lo, domain, area=area, perim=perim, bc_type=bc_type)
+    n_hi = weyl_count(hi, domain, area=area, perim=perim, bc_type=bc_type)
+    return np.maximum(n_hi - n_lo, 0.0)
 
 
 def weyl_est(k, domain=None, *, area=None, perim=None, bc_type="dir"):

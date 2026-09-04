@@ -15,6 +15,8 @@ from .._core import PREC, PrecisionWarning
 from ..eigensolver import Eigensolver, k_to_lam, lam_to_k, weyl_window
 from ._gsvd import coef, coef_of, tensions, tensions_of
 from ._regularize import RegularizedPencil, choose_rank, regularize
+from .calibrate import (RtolCalibration, calibrate_rtol, findability_target,
+                        required_dk, sigma_base)
 from .pencil import MPSPencil, RankDiagnostics, assemble, equilibrate
 from .solver import MPSEigensolver
 
@@ -23,5 +25,6 @@ __all__ = [
     "assemble", "equilibrate", "choose_rank", "regularize", "RegularizedPencil",
     "tensions", "tensions_of", "coef", "coef_of", "RankDiagnostics",
     "lam_to_k", "k_to_lam", "weyl_window",
+    "sigma_base", "findability_target", "required_dk", "calibrate_rtol", "RtolCalibration",
     "PREC", "PrecisionWarning",
 ]

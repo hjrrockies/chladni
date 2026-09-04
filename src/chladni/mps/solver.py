@@ -22,7 +22,7 @@ import concurrent.futures as cf
 import numpy as np
 
 from .._core import Frozen, _set
-from ..eigensolver import Eigensolver, weyl_window
+from ..eigensolver import Eigensolver, lam_to_k, weyl_window
 from .pencil import MPSPencil
 
 __all__ = ["MPSEigensolver"]
@@ -124,6 +124,46 @@ class MPSEigensolver(Eigensolver, Frozen):
         return self._pencil.rank_diagnostics(lam)
 
     # --- the deferred layer ------------------------------------------------------------------
+
+    def findability(self, a, b, *, dk, calibrate=False, n=None):
+        """Can a scan of step `dk` SEE every dip in `[a, b]`? Cached per window and step.
+
+        The check `chladni.mps.calibrate` exists for, exposed where a caller has both a domain
+        and a window. It answers the question the tension at a located eigenvalue cannot: not
+        "how well is the basis resolving what I found" but "could I have found it at all".
+
+        Costs about 40 evaluations and is worth them. The failure it guards against returned a
+        NON-CONSECUTIVE spectrum -- every value accurate, three levels missing -- with an
+        excellent tension at every value returned, no exception and no warning, and a Weyl
+        deficit that read the wrong sign. `calibrate=True` additionally tries to raise the
+        plateau by loosening the rank truncation; see `calibrate.calibrate_rtol` for why that
+        lever is measured INERT on `chladni` pencils and the scan step is the real remedy.
+        """
+        from . import calibrate as _cal
+
+        key = (float(a), float(b), float(dk), bool(calibrate))
+        cache = getattr(self, "_findability", None)
+        if cache is None:
+            _set(self, _findability={})
+            cache = self._findability
+        if key in cache:
+            return cache[key]
+
+        kw = {} if n is None else {"n": n}
+        if calibrate:
+            cal = _cal.calibrate_rtol(self._pencil, self.domain, a, b, dk=dk, **kw)
+        else:
+            sb = _cal.sigma_base(self._pencil, a, b, **kw)
+            target = _cal.findability_target(self.domain, dk)
+            cal = _cal.RtolCalibration(
+                rtol=float(self.rtol), sigma_base=sb, target=target, dk=float(dk),
+                achieved=bool(sb >= target), calibrated=False,
+                required_dk=_cal.required_dk(self.domain, sb),
+                evaluations=int(kw.get("n", _cal._N_PROBE)),
+                history=((float(self.rtol), sb, float("nan")),))
+        _cal.warn_if_unfindable(cal, span_k=lam_to_k(b) - lam_to_k(a))
+        cache[key] = cal
+        return cal
 
     def solve_interval(self, a, b):
         raise NotImplementedError(
