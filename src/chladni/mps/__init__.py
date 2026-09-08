@@ -18,12 +18,18 @@ from ._regularize import RegularizedPencil, choose_rank, regularize
 from .calibrate import (RtolCalibration, calibrate_rtol, findability_target,
                         required_dk, sigma_base)
 from .pencil import MPSPencil, RankDiagnostics, assemble, equilibrate
+# A MODULE NAMED AFTER ITS VERB DOES NOT RE-EXPORT THE VERB. Importing `refine` here would
+# rebind the package attribute `chladni.mps.refine` from the submodule to the function, so a
+# later `from . import refine as R` inside the package would bind the function and fail on
+# first attribute access. The earlier promotion attempt shipped exactly that bug for
+# `multiplicity` and hit it the moment `solve_interval` called it. Result types only.
+from .refine import RefineResult
 from .solver import MPSEigensolver
 
 __all__ = [
     "Eigensolver", "MPSEigensolver", "MPSPencil",
     "assemble", "equilibrate", "choose_rank", "regularize", "RegularizedPencil",
-    "tensions", "tensions_of", "coef", "coef_of", "RankDiagnostics",
+    "tensions", "tensions_of", "coef", "coef_of", "RankDiagnostics", "RefineResult",
     "lam_to_k", "k_to_lam", "weyl_window",
     "sigma_base", "findability_target", "required_dk", "calibrate_rtol", "RtolCalibration",
     "PREC", "PrecisionWarning",
