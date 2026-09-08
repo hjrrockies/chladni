@@ -201,6 +201,119 @@ and `mushroom` have tabulated prefixes only -- so (1) and (2) need a truth-free 
 run, which is section 6's diagnostics. And the recursion-floor bug was found by the WEYL AUDIT
 rather than by prefix truth, on a case the surrogate does not reproduce at all.
 
+## 2.4a The same contract, per stage
+
+Section 2.4 states the contract for a whole run. This section states it for each stage of
+`candidates.md` section 1's decomposition, because a stage and a pipeline fail differently and
+a clause that only exists at the pipeline level cannot be tested on the stage that violates it.
+Every stage postcondition below is derivable from 2.4; nothing new is asserted. What is new is
+WHERE each clause is owned.
+
+`prec` plays a different role in each stage, and conflating the three is the recurring error:
+
+| stage | product | role of `prec` |
+|---|---|---|
+| bracket | intervals + a conditional completeness claim | a WIDTH -- when to stop splitting |
+| refine | a location + an attained bar | an ACCURACY -- when to stop stepping |
+| multiplicity | a grouping + an integer per group | a GROUPING TOLERANCE -- what counts as one level |
+
+The same number, three jobs. They are consistent because all three come from `S(prec)` in
+section 2.3, and NOT because any one of them implies the others: a bracket set can satisfy the
+width rule on an interval where refinement cannot attain `prec*lam`, and both can succeed while
+the grouping is arbitrary -- which is section 2.7's inversion.
+
+Each stage is stated in four parts: what it PRODUCES, what it GUARANTEES given section 2.2's
+assumption, what it SAYS INSTEAD when it cannot, and what it HANDS FORWARD.
+
+### Stage 1 -- bracket
+
+**Produces.** A finite set of disjoint intervals, each COMMITTED to rather than a subdivision of
+`[a, b]` (`candidates.md` section 1), together with the evaluation cache and the slope and
+plateau model built along the way.
+
+**Guarantees.**
+
+* *Coverage, conditional on `L`.* Every `lam*` in `S(prec)` on `[a, b]` lies in some bracket.
+  Conditional is not a hedge: `L` is a largest observed secant inflated by `safety`, a LOWER
+  bound with no formal status, so the claim is about the sampling and is reported with the
+  margin that justifies it (section 6).
+* *Purity at `prec`.* The eigenvalues inside one bracket are ONE LEVEL of `S(prec)`, i.e. they
+  span at most `prec*lam`. This is the right phrasing rather than "at most one eigenvalue": a
+  multiplet spans zero and is legal, and a cluster tighter than `prec*lam` is one level BY
+  DEFINITION at this `prec`.
+
+**Not guaranteed, and it cost a seam defect to learn.** A bracket guarantees CONTAINMENT, not
+that it holds a sampled descent -- stage 1 stops on purity by width, so the deepest sample may
+sit on an endpoint or nowhere near the well. The refiner must be able to start anywhere inside.
+Nor is `#brackets == #levels`: over-bracketing is legal and is stage 3's problem;
+under-bracketing is a coverage failure.
+
+**Says instead.** `Declined`, carrying the brackets found so far (`candidates.md` section 5).
+Per bracket it also records whether the `sigma_2` gate certified isolation, or whether the
+interval is a live region handed on unresolved.
+
+**Hands forward.** The cache -- stage 3 cannot work without it and spends nothing of its own --
+plus `L` and its growth history, the plateau, and the measured roughness `eta`.
+
+### Stage 2 -- refine
+
+**Produces.** Per bracket, one of THREE outcomes, and the third is the one that leaks when it is
+missing: a location, a rejection, or an admission that the bracket holds structure it cannot
+separate.
+
+**Guarantees.** For a located root, `|lam_hat - lam*| / lam* <= max(prec, delta/lam_hat)`, with
+`delta` MEASURED from the parabola fit rather than predicted -- `delta_res = sqrt(2*eps*eta)/c`
+is a derived scale that did not predict observed error on the two cases where it could be
+checked. Which stop rule bound is reported. A rejection means the bracket holds no interior
+minimum to the check of section 5 Phase B; smallness alone is not enough, and before that check
+existed it passed 8 phantom roots against 20 real ones.
+
+**Says instead.** A rejection is an OUTPUT, not a failure -- stage 2 is the only stage that can
+falsify a bracket. So is "this bracket holds structure I cannot separate", which is a stage 1
+PURITY failure that only stage 2 can see; flattening it into a plausible midpoint is the shape
+of the error.
+
+**Hands forward.** The by-products of the fit, which cost nothing extra and which stage 3 and
+the basis planner both need: `delta_res`, the local wall slope `c`, and the floor `eps` at the
+root.
+
+**Not its job.** Splitting a bracket that holds two levels, or deciding multiplicity. Detecting
+both is.
+
+### Stage 3 -- multiplicity
+
+Multiplicity is undefined without a grouping, so the stage owns both. "How many branches dip
+here" is only half the count; "are these two reported roots the same level" is the other half,
+and section 5's Phase D is where it is decided -- distance as a PREFILTER only, the interior
+Gram angle as the decision, collapse-and-RECOUNT rather than sum.
+
+**Produces.** A partition of the reported roots into levels, and an integer `mu` per level.
+
+**Guarantees**, in two nested clauses, weaker than "the multiplicity of every level" and true:
+
+1. *Total, on a window.* Over any sub-window whose endpoints are clear of the nearest level by
+   more than that level's spread, `sum(mu)` is the true count in `S(prec)`. This holds EVEN WHEN
+   the grouping inside the window is arbitrary.
+2. *Per level.* `mu_i` is correct when that level is clear of its neighbours by more than its
+   own spread. Outside that condition, clause 1 is all there is.
+
+The slogan, because it is what makes the weaker contract useful: **the count is a property of a
+WINDOW, the grouping is a property of a SEPARATION.** A caller whose grouping is not guaranteed
+knows exactly what to do -- widen the window and take the total.
+
+Both clauses are conditional on section 2.2's `gap > 20*eps/c`. Below it (C1) alone
+double-counts a simple eigenvalue and (C2) is what rejects it.
+
+**Says instead.** Two admissions that must not be conflated. COLLAPSED: the grouping was
+arbitrary at this `prec`, here is the total over a level coarser than was asked for. DECLINED:
+the basis violates 2.2 and `mu` is not readable here at all. Section 2.7's ceiling is a third
+report of its own -- below `prec ~ 4e-09` the discretization's own splitting of a degenerate
+pair exceeds `tol_merge`, so a true double is reported as two simples. That is a real limit on
+attainable `prec` at degenerate levels and it is stated, never silently hit.
+
+**Costs nothing.** Every point read was paid for by stage 1. The one exception is the Gram
+angle, one GSVD in `separate` mode per reported root, at the end.
+
 ## 2.5 The constants
 
 Fixed, because dimensionless and because the margin GROWS as `prec` tightens:
