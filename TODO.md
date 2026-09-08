@@ -56,11 +56,6 @@ including refinement. What remains is promotion, not construction.
   `1 < diameter/(prec*lam) < WIDE_FACTOR` and the prominence bound needs `f > sqrt(3)`, so
   there is little room; the collapse makes it a cost question rather than a correctness one,
   since a collapsed level is coarser than `prec` asked for. Low priority for that reason.
-* **[next]** The open `floor_frac` bug. `lappy_repaired_search` misses a *different* L-shape
-  eigenvalue depending on `floor_frac` over `k` in `[3, 5]`: 1e-6 loses 15.197, 1e-9 loses
-  9.640, 1e-12 finds all three. "Load-bearing in a way nothing yet explains" -- `search.md`,
-  As built. It is the only known correctness failure in a search that otherwise works, and it
-  was found by the Weyl audit rather than by prefix truth.
 * **[next]** Widen the candidate interface from `tensions(x)` to also carry `modes(x)` -- the
   candidate eigenfunctions on a fixed shared point set. Phase D's collapse-versus-merge is
   decided by the interior Gram angle, which `tensions(x)` cannot supply, so everything about

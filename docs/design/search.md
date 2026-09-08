@@ -631,6 +631,47 @@ the WEYL AUDIT that surfaced it -- reading 0.79 and flagging, independently of t
 truth that showed the same miss. That is the argument for the audit in one example: on a
 domain with no closed form it is the only completeness signal there is.
 
+## The open bug is explained, and it was never in the search
+
+Rewritten from "load-bearing in a way nothing yet explains". It is an ACCEPTANCE failure
+downstream of a correct search, which is why looking at the recursion never explained it.
+
+Over `k` in `[3, 5]`, every one of the three levels is LOCATED at every setting -- to at worst
+1.2e-08 -- and at the DEFAULT `floor_frac = 1e-3` all three are then thrown away:
+
+    floor_frac   located, error in k          error/h              kept
+    1e-03        6.4e-09, 5.9e-09, 3.5e-09    2.06, 1.51, 0.78     0/3
+    1e-06        4.4e-15, 1.2e-08, 3.6e-15    0.00, 2.97, 0.00     2/3
+    1e-09        3.1e-10, 1.4e-10, 1.3e-10    0.10, 0.04, 0.03     3/3
+    1e-12        5.7e-14, 2.8e-13, 9.0e-14    0.00, 0.00, 0.00     3/3
+
+What throws them away is the interiority probe, which reads `T(x +/- h)` at a fixed
+`h = 1e-9 * k` and demands both exceed `T(x)`:
+
+    h = max(1e-9 * max(abs(r.x), 1.0), 1e-12)
+    if not (T(r.x - h)[0] > f and T(r.x + h)[0] > f): continue
+
+`h` is a FIXED relative step, so the probe demonstrates interiority only when the located root is
+nearer the true minimum than `h` is. Otherwise one step moves TOWARD the minimum and reads lower,
+and the genuine root is refused. `floor_frac` enters only because it sets how tight a bracket the
+polisher is handed, and therefore how accurate the root is -- and that the MIDDLE level is the one
+lost at 1e-6 is the L-shape's five-order floor spread showing through Brent's attained accuracy,
+which section 3.1 measured varying from 5.4e-10 to 5.6e-5.
+
+Stated as a SEPARATION rather than a threshold. The kept and dropped populations split by a factor
+of eight in `error/h` -- 0.000 to 0.098 against 0.782 to 2.974 -- but not at 1: the probe compares
+tension values on flanks of unequal slope, and one row is dropped at 0.78. A first version of the
+test asserted `error > h` exactly and was falsified by that row; what survives is the mechanism and
+the separation, not a constant.
+
+**`v1_refine._accept` is immune, and that is not a coincidence.** Strictly interior, and below the
+tension at both SAMPLED endpoints, it keeps 3 of 3 at every `floor_frac` including the default
+where the fixed-step probe keeps none. Its docstring already made this argument about a different
+wrong version of the same probe: a probe whose reach is set by the bracket width cannot know what
+it is stepping across. One whose reach is set by a CONSTANT cannot know that, and cannot know how
+accurate the point it steps from is either. `tests/test_searches.py` is the tracked measurement;
+`tests/searches.py` had no test file at all before it.
+
 ## Refine in `lam`, not `k`
 
 Section 5 says Phase B minimises `sigma_1**2`, following the proposal's section 2.2 in working

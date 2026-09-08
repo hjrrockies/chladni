@@ -105,6 +105,32 @@ HOLDS an `MPSPencil` and exposes it as the `pencil` property -- so the variable 
 hop that changed nothing about the numbers. Both now speak `lam`; `MPSPencil.matrices(lam)` calls
 `assemble(bdry, interior, k)`, and that call is the seam.
 
+**One clause above is now measured wrong, and the seam it was arguing for is not.** "Eigenvalue
+SPACING is asymptotically uniform in `lam` and not in `k`, which is the variable a minimizer's
+step control should see" -- true of the REFINEMENT and false of the COVERING, and the covering is
+where the cost is. What a cover phase's step is controlled by is not the spacing but the WALL
+SLOPE, and `c(lam) = C/sqrt(lam)`, so under `u = lam**p` the slope is constant for `p = 1/2` and
+no other power. Measured spread of the wall slope across levels:
+
+    transform   lam    lam^(3/4)   lam^(1/4)   log lam   sqrt(lam)
+    spread      57%       27%         17%        32%        5%
+
+A single global slope bound is conservative by the ratio of the largest local slope to the
+smallest, so that 5% was worth 1.8x of a 2.6x total cost improvement -- more than every
+algorithmic change in the search combined. In the other direction, fitting `sigma_1**2` to a
+quadratic over identical physical points, the residual is smaller in `lam` in 17 of 17 cases
+across six domains, median 5.1x, so the refinement is in `lam`.
+
+**The seam does not move, and the two answers do not fight.** The candidate searcher is driven
+through an objective stated in `lam` (`tests/objective.py`), and it transforms to `k` internally
+through a view that shares the caller's evaluation cache (`tests/v1_bracket.py`'s `_KView`),
+returning brackets in the variable it was handed. An algorithm owning its own abscissa is not a
+variable convention; it is an implementation detail that the naming discipline above already
+covers, since every argument that crosses the boundary is named for what it carries.
+
+The search is a scored candidate in `tests/` and not part of the package, so this entry describes
+where the conversion falls whenever it is promoted, not a seam that exists in `src/` today.
+
 Under `Domain.normalized(by=s)`: `lam -> lam * s**2`, equivalently `k -> k * s`.
 
 ---
