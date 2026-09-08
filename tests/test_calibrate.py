@@ -23,7 +23,6 @@ from chladni.mps import MPSEigensolver, MPSPencil
 from chladni.mps import calibrate as C
 from chladni.reference import disk_eig, eq_tri_eig, rect_eig
 
-pytestmark = pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 
 
 def pencil(d, lam_hi, pad=1.3, seed=0):

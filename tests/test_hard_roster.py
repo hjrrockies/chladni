@@ -21,8 +21,7 @@ from harness import weyl_audit
 from v1_bracket import bracket_interval, v1_brackets
 from v1_refine import refine
 
-pytestmark = [pytest.mark.slow,
-              pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")]
+pytestmark = [pytest.mark.slow]
 
 PRECS = (1e-4, 1e-8, 1e-14)
 

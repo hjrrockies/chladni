@@ -39,8 +39,7 @@ import rect_suite as rs
 from v1_bracket import v1_brackets
 from v1_refine import refine
 
-pytestmark = [pytest.mark.gate,
-              pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")]
+pytestmark = [pytest.mark.gate]
 
 BANDS = (0.5, 0.8, 1.3, 3.0)
 

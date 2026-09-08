@@ -22,7 +22,6 @@ from chladni import asymp
 from chladni.geometry import rect
 from chladni.reference import rect_eig, rect_spectrum
 
-pytestmark = pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 
 A_WINDOW = (5.0, 120.0)
 

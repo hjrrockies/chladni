@@ -165,6 +165,29 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 * **[next]** Weyl asymptotics raise for any `bc_type` other than Dirichlet or Neumann
   (`src/chladni/asymp.py:39`), and there is no curvature term, so a smooth domain gets only
   the two-term law. `docs/design/reference.md:293` records the same limit.
+* **[next]** Decide whether `Sampling._check_accuracy`'s shortfall on Fourier-Bessel is real.
+  It was invisible until the plane-wave conditioning guard was rescoped: eighteen modules
+  suppressed the whole `PrecisionWarning` class to silence that guard, and took this signal
+  with it. Uncovered, it fires on eight tests -- **about 1e-7 against a requested 1e-8** on the
+  L-shape `pencil` fixture evaluated far from its `lam_ref`, and **about 1e2, i.e. no accuracy
+  at all**, on the sector references in `tests/test_tension.py`. Both sites carry an argument
+  for why the bound is not their claim, written before the mark that hid it:
+  `tests/test_regularization.py:117` ("accuracy at those lam is not the claim, and is tested in
+  test_precision.py") and `tests/test_tension.py:43` (with a SINGLE column the common kernel
+  scale divides out of the tension). The arguments are plausible and the `< 1e-10` assertions
+  do re-check the sector case immediately -- but neither has been verified since the warning
+  became visible, and the sector is the project's sharpest ground truth. The suppressions are
+  now targeted by message, so the rank and findability signals stay live while this is open.
+* **[next]** `_UNSAFE_RATIO` and `SUITE_RTOL` disagree, and neither cites the other.
+  `src/chladni/mps/pencil.py:68` calls a cut below `1e-13` unsafe, measured on the disk;
+  `tests/rect_suite.py:113` sets the suite's threshold rank to `sqrt(FINEST_PREC*eps)` = 1.5e-15,
+  so every threshold-rank pencil in the suite cuts two decades BELOW the level the frozen-rank
+  guard calls unsafe -- deliberately, and measured to work (0 spurious minima in `[5, 35]` on
+  `family_A`, `sigma_1` of 8.6e-16 to 1.5e-15 at all eleven true eigenvalues). Either the
+  constant is domain-dependent, or the threshold path is safe at cuts the frozen path is not,
+  and which it is has not been measured. Related: `_warn_if_unsafe` fires only for a FROZEN
+  rank and only from `rank_diagnostics`, never from `tension`, so a caller looping over
+  `tension` with a bad frozen rank is told nothing.
 * **[later]** The end-to-end reference values in `docs/design/particular_solutions.md` --
   sector eigenfunctions, square, disk, equilateral triangle, and the L-shape's
   `lam_1 = 9.6397238440219410527` -- are written down but untested, because there is no
@@ -174,8 +197,6 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 5. Test-suite hygiene
 
-* **[next]** Commit the untracked instrument. It is now substantially complete and green --
-  1380 default tests in 10 s, 52 slow, 111 gate in 4:48 -- and untracked, CI runs none of it.
 * **[next]** `tests/bracketers.py` is orphaned. No `test_*.py` imports it, and it is the only
   importer of `tests/searches.py`. Wire both in or delete both -- and note that
   `tests/baselines.py` now supplies the honest-baseline role on the current seam, so the case
@@ -197,6 +218,10 @@ Each is one experiment. None blocks anything.
   work.
 * Does the `lam`-over-`k` refinement advantage (17 of 17 cases, median 5.1x) survive at
   `delta_res`-scale brackets, and does it grow at large `lam`? `search.md`, As built.
+* `PlaneWave.n_useful_at(k)` has no composite counterpart: `Basis` concatenates `log_scale` and
+  `singular_exponents` across families but has no `n_useful_at`, so a mixed basis cannot report
+  a bound. Nothing needs one today, because the verdict lives at the pencil and is
+  basis-agnostic. A per-family basis planner would.
 * The dip-width / gap invariant drifts mildly upward, 0.515 to 0.587 over `k` in `[3.5, 13.5]`.
   Re-measure above `k ~ 15` before anyone relies on it there.
   `notes/handoff_minimization.md` section 3c.

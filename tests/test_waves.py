@@ -127,52 +127,52 @@ def test_n_useful_tracks_the_measured_numerical_rank_at_every_prec():
             assert abs(rank - predicted) / rank < 0.06, f"k*R={kR} tol={tol:g}"
 
 
-def test_the_warning_respects_prec():
-    """The same 40 directions at the same k*R: fine at 1e-13, wasteful at 1e-4.
+def test_n_useful_at_reports_the_bound_against_this_familys_own_radius():
+    """The same 40 directions at the same k*R: ample at 1e-13, wasteful at 1e-4.
 
     Note the direction of that, which is easy to get backwards. A TIGHTER prec resolves MORE
     independent columns, because it is willing to keep smaller singular values -- so the
     bound rises as prec falls, and a fixed direction count becomes wasteful as prec LOOSENS.
     """
-    import warnings as w
-
     assert PlaneWave.n_useful(20.0, 1e-13) > 40 > PlaneWave.n_useful(20.0, 1e-4)
 
-    with w.catch_warnings():
-        w.simplefilter("error", PrecisionWarning)
-        PlaneWave.uniform(40, radius=1.0, prec=1e-13).log_scale(20.0)
+    tight = PlaneWave.uniform(40, radius=1.0, prec=1e-13)
+    loose = PlaneWave.uniform(40, radius=1.0, prec=1e-4)
 
-    with pytest.warns(PrecisionWarning, match="prec=1e-04"):
-        PlaneWave.uniform(40, radius=1.0, prec=1e-4).log_scale(20.0)
-
-
-def test_asking_for_more_directions_than_are_useful_warns():
-    """Past the cutoff the columns arrive at machine noise: they do not enrich the space,
-    they lower the smallest singular value and corrupt the tension. The bound costs a cube
-    root, so there is no reason not to check it."""
-    fam = PlaneWave.uniform(60, radius=1.0)
-    with pytest.warns(PrecisionWarning, match="directions"):
-        fam.log_scale(5.0)
+    # Reported in COLUMNS, because the consumer is a RANK. `n_useful` counts directions and
+    # a direction is a cosine and a sine.
+    assert tight.n_useful_at(20.0) == pytest.approx(2 * PlaneWave.n_useful(20.0, 1e-13))
+    assert tight.n_cols == loose.n_cols == 80
+    assert tight.n_useful_at(20.0) > 80 > loose.n_useful_at(20.0)
 
 
-def test_a_family_within_the_bound_is_silent():
-    import warnings
-
-    fam = PlaneWave.uniform(20, radius=1.0)
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", PrecisionWarning)
-        fam.log_scale(40.0)
-
-
-def test_a_family_with_no_radius_cannot_and_does_not_warn():
+def test_a_family_with_no_radius_reports_no_bound_rather_than_guessing():
     """`n_useful` needs the enclosing radius, and a bare direction set does not have one.
-    Warning on a guess would be worse than not warning."""
+    A guess would be worse than an honest `None`."""
+    assert PlaneWave.uniform(200).n_useful_at(1.0) is None
+
+
+def test_an_over_enriched_family_does_NOT_warn_because_it_cannot_know():
+    """Whether extra columns are harmful is a PENCIL question, and the basis cannot answer it.
+
+    `n_useful` is a sizing helper, not a verdict. A basis deliberately enriched past the
+    cutoff and then cut back by a THRESHOLD rank is not a mistake -- it is the configuration
+    `rect_suite.pencil_for` measures as ten orders better than the alternative, 2.1e-12
+    against 3.5e-02 at the worst true eigenvalue. A warning here fires on the recommended
+    setup, at every evaluation of every scan, and it did: 316 of them in one suite run, which
+    is why eighteen test modules had `filterwarnings` marks blanket-suppressing the whole
+    `PrecisionWarning` class and with it the pencil-level signals that ARE load bearing.
+
+    The judgment lives at `MPSPencil._warn_if_unsafe`, which compares the RETAINED rank's
+    singular value against the noise floor and so knows the thing the basis does not.
+    """
     import warnings
 
-    fam = PlaneWave.uniform(200)
     with warnings.catch_warnings():
         warnings.simplefilter("error", PrecisionWarning)
-        fam.log_scale(1.0)
+        PlaneWave.uniform(60, radius=1.0).log_scale(5.0)      # far past the bound
+        PlaneWave.uniform(20, radius=1.0).log_scale(40.0)     # comfortably within it
+        PlaneWave.uniform(200).log_scale(1.0)                 # no radius at all
 
 
 # --- shapes -----------------------------------------------------------------------------------

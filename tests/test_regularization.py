@@ -118,7 +118,8 @@ def test_a_rank_deficient_pencil_is_truncated_not_solved():
 # -- where FourierBessel reports a digit less than the requested 1e-8. That is the point of
 # the tests: the rank is frozen at construction and must hold wherever it is later evaluated.
 # Accuracy at those lam is not the claim, and is tested in test_precision.py.
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
+@pytest.mark.filterwarnings(
+    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_a_frozen_rank_gives_a_continuous_tension_curve(pencil):
     """The whole point. Sample the tension densely across a window containing no eigenvalue
     and measure the largest jump between neighbours against the typical one. A rank change
@@ -211,7 +212,8 @@ def test_the_two_rules_agree_on_a_real_scan_through_an_eigenvalue():
                 == tensions_fn(A, I, reg="svd", rank=p.rank)[0])
 
 
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
+@pytest.mark.filterwarnings(
+    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_frozen_rank_does_not_depend_on_where_it_is_evaluated(pencil):
     """`rank` is fixed at construction and every later call uses it, whatever lam arrives."""
     r = pencil.rank
@@ -366,7 +368,8 @@ def test_the_short_coef_vector_names_the_same_function_when_padded(pencil):
 # lam = 60 is far above the fixture's lam_ref of 10.89, where FourierBessel reports a digit
 # less than the requested 1e-8. The claim here is about counting directions, not about
 # accuracy at that lam.
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
+@pytest.mark.filterwarnings(
+    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_rank_at_tracks_lam_for_a_non_truncating_mode(pencil):
     """`k + l` is LAPACK's own number and moves with `lam`, so `rank_at` must not be fixed
     at construction. Measured on the L-shape fixture in THRESHOLD mode, where `reg=None`
@@ -408,12 +411,15 @@ def test_an_annihilated_direction_comes_back_as_an_infinite_tension():
 # --- the rank must be safe across the whole range it will be used over --------------------
 
 
-# The four tests below deliberately oversubscribe the basis: 27 plane-wave directions on a
-# disk where about 16 are independent at the low end of the lam range. That is the POINT --
-# rank saturation is the phenomenon under study -- so `PlaneWave.log_scale` warning about it
-# is the setup working, not a defect. `test_an_unsafe_frozen_rank_says_so` keeps a positive
-# `pytest.warns` on the diagnostic that must still speak up.
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
+# The tests below deliberately oversubscribe the basis: 27 plane-wave directions on a disk
+# where about 16 are independent at the low end of the lam range. That is the POINT -- rank
+# saturation is the phenomenon under study.
+#
+# These used to carry `filterwarnings` marks, because `PlaneWave.log_scale` warned on the
+# COUNT and so fired on a setup that is correct under a threshold rank. It no longer does,
+# and the marks are gone: a `PrecisionWarning` reaching this file now means the RANK is
+# unsafe, which is the thing worth hearing. `test_an_unsafe_frozen_rank_says_so` keeps the
+# positive `pytest.warns` and its silent twin keeps the negative.
 def test_the_numerical_rank_grows_with_k():
     """The fact everything below turns on, and nothing in the code knew until it bit.
 
@@ -434,7 +440,6 @@ def test_the_numerical_rank_grows_with_k():
     assert lo < hi, f"rank did not grow with lam: {lo} at lam=5.29, {hi} at lam=32.49"
 
 
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 def test_a_rank_chosen_at_one_lam_is_unsafe_at_the_low_end():
     """The defect this pair of tests exists to prevent.
 
@@ -465,7 +470,6 @@ def test_a_rank_chosen_at_one_lam_is_unsafe_at_the_low_end():
     assert sp[point.rank - 1] / sp[0] < 1e-15, "this lam no longer exercises the defect"
 
 
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 def test_an_unsafe_frozen_rank_says_so():
     """A reported precision is never a claim contradicted elsewhere in the same object.
     Silent roughness reads as extra eigenvalues, which is the worst way to be wrong."""
@@ -479,6 +483,54 @@ def test_an_unsafe_frozen_rank_says_so():
     point = MPSPencil.from_basis(b, q, pts, lam_ref=15.6025)
     with pytest.warns(PrecisionWarning, match="frozen rank"):
         point.rank_diagnostics(5.5225)
+
+
+def test_the_SAME_over_enriched_basis_is_safe_and_SILENT_under_a_threshold_rank():
+    """The complement of the two tests above, and the reason the BASIS must not warn.
+
+    27 directions on a disk is over-enriched by construction -- 54 columns where `n_useful`
+    allows about 33 at the low end. Frozen at one lam that is the defect the pair above
+    exists to catch. Left to a threshold rank it is the RECOMMENDED configuration, and the
+    numbers say so: the cut tracks k (31 -> 47), lands BELOW the useful bound at every lam,
+    and stays three decades clear of the noise floor.
+
+    So the same basis is a defect or a good setup depending entirely on the rank policy --
+    which the basis cannot see. `PlaneWave.log_scale` used to render that verdict anyway, on
+    every evaluation, and it was wrong here every time.
+    """
+    import warnings
+
+    from chladni.geometry import disk
+    from chladni.helmholtz import PlaneWave
+    from chladni.mps import PrecisionWarning
+
+    dom = disk(1.0)
+    b = PlaneWave.uniform(27, radius=dom.diameter)
+    q, pts = dom.bdry_quad(600), dom.interior_pts(200, rng=np.random.default_rng(0))
+    lams = (5.5225, 15.6025, 32.49)
+
+    # The silence check runs FIRST, on a pencil whose cache is cold. `MPSPencil` memoizes the
+    # equilibrated matrices, so a warmed pencil never re-enters the basis and would pass this
+    # for the wrong reason -- measured: it passed while the guard was still installed.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", PrecisionWarning)
+        cold = MPSPencil.from_basis(b, q, pts)
+        for lam in lams:
+            cold.tension(lam)
+            cold.rank_diagnostics(lam)
+
+    p = MPSPencil.from_basis(b, q, pts)          # no rank, no lam_ref: threshold rank
+    assert p.rank is None
+    assert p.rank_at(5.5225) < p.rank_at(32.49), "the cut must track k"
+
+    for lam in lams:
+        r = p.rank_at(lam)
+        useful = b.n_useful_at(np.sqrt(lam))
+        assert r < b.n_cols, f"nothing was truncated at lam={lam}"
+        assert r <= useful, f"rank {r} exceeds the useful bound {useful:.0f} at lam={lam}"
+        B, I = p.pencil(lam)
+        s = np.linalg.svd(np.vstack([B, I]), compute_uv=False)
+        assert s[r - 1] / s[0] > 1e-13, f"the cut reached the noise floor at lam={lam}"
 
 
 def test_a_lam_ref_range_is_validated():
@@ -495,7 +547,6 @@ def test_a_lam_ref_range_is_validated():
 
 
 @pytest.mark.slow
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 def test_a_range_chosen_rank_leaves_one_minimum_per_eigenvalue():
     """The end-to-end statement of the fix, in the units that matter for recall."""
     from chladni.geometry import disk

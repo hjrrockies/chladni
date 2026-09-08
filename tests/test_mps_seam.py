@@ -86,7 +86,8 @@ def test_tensions_are_deterministic(pencil):
 # shortfall in the kernel's own scale. These two tests assert shape, determinism and thread
 # safety, none of which that digit touches; the accuracy claim itself is tested in
 # test_precision.py, where it is the subject rather than the weather.
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
+@pytest.mark.filterwarnings(
+    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_tensions_take_an_array(solver):
     lams = np.linspace(8.0, 30.0, 17)
     got = solver.tensions(lams)
@@ -94,7 +95,8 @@ def test_tensions_take_an_array(solver):
     assert np.allclose(got[3], solver.tensions(lams[3]), rtol=0, atol=EXACT)
 
 
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
+@pytest.mark.filterwarnings(
+    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_a_solver_is_safe_to_share_across_threads(solver):
     """`douse` runs solves in a thread pool over generated domains, so the object has to be
     holdable. It is immutable, which is the whole argument -- this checks the argument."""

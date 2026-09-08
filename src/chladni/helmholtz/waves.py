@@ -25,17 +25,26 @@ matrix:
 
 The numerical rank saturates at the Jacobi-Anger cutoff: measured ranks 33/45/65/95/149 at
 `k*R = 2/5/10/20/40` fit `n_useful ~ k*R + 11*(k*R)**(1/3)`, the 11 being an eps_mach
-constant. Past that, columns arrive at machine noise. They do not enrich the space -- they
-lower the smallest singular value and corrupt the tension the solver is minimizing. The bound
-costs a cube root, so `PlaneWave` checks it whenever it knows the enclosing radius.
+constant. Past that, columns arrive at machine noise.
+
+**Whether that is a defect is not the family's to say, and it used to try.** Columns at the
+noise floor corrupt the tension only if they SURVIVE into the pencil; a threshold rank cuts
+them at every `lam` and the same over-enriched basis is then the recommended configuration
+rather than a mistake -- measured ten orders better than the alternative
+(`tests/rect_suite.py`, `pencil_for`). `log_scale` warned on the count alone, so it fired on
+the recommended setup at every evaluation of every scan: 316 warnings in one suite run, and
+eighteen test modules carrying `filterwarnings` marks that suppressed the whole
+`PrecisionWarning` class -- including the pencil-level signals that ARE load bearing.
+
+So the family reports and does not judge: `n_useful_at(k)` is the bound against this family's
+own radius, and `MPSPencil._warn_if_unsafe` renders the verdict, because it can see the
+retained rank and the family cannot.
 """
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 
-from .._core import PREC, PrecisionWarning, _set, check_prec
+from .._core import PREC, _set, check_prec
 from ._core import HelmholtzFamily, Sampling, SingularStructure, _take, check_k
 
 #: The Jacobi-Anger cutoff is `ell_max ~ x + C*x**(1/3)`, and C was first fitted to the
@@ -60,7 +69,8 @@ class PlaneWaveSampling(Sampling):
 
     def _eval(self, k, cols, want_grad):
         f = self._family
-        f.log_scale(k, cols)                          # the conditioning check lives there
+        # No `log_scale` call here. It used to be made for its SIDE EFFECT, the conditioning
+        # check; the value is zeros for this family by construction and was discarded.
         ks = k * self._s
         c, sn = np.cos(ks), np.sin(ks)
         # Column 2*i is cos, column 2*i+1 is sin, so a column index maps to a direction by
@@ -84,9 +94,10 @@ class PlaneWaveSampling(Sampling):
 class PlaneWave(HelmholtzFamily):
     """A cosine and a sine per direction.
 
-    `radius` is the radius of the smallest disk containing Omega, used only for the
-    conditioning check. Without it the check cannot run, and warning on a guess would be
-    worse than not warning.
+    `radius` is the radius of the smallest disk containing Omega. It is what turns the
+    dimensionless `n_useful(k*R)` bound into a statement about THIS family, and `n_useful_at`
+    is where it is read. Without it no bound can be reported, and a guess would be worse than
+    an honest `None`.
     """
 
     def __init__(self, directions, radius=None, prec=PREC):
@@ -123,20 +134,20 @@ class PlaneWave(HelmholtzFamily):
     def n_cols(self):
         return 2 * len(self.directions)
 
+    def n_useful_at(self, k):
+        """Columns numerically independent at `k`, or `None` without an enclosing radius.
+
+        A REPORT, not a verdict. Exceeding it is only a defect if the excess columns survive
+        truncation into the pencil, which this object cannot see -- see the module docstring.
+        Doubled relative to `n_useful`, which counts directions, because a direction is two
+        columns.
+        """
+        if self.radius is None:
+            return None
+        return 2.0 * self.n_useful(check_k(k) * self.radius, self.prec)
+
     def log_scale(self, k, cols=None):
-        k = check_k(k)
-        if self.radius is not None:
-            useful = self.n_useful(k * self.radius, self.prec)
-            if len(self.directions) > useful:
-                warnings.warn(
-                    f"{len(self.directions)} plane-wave directions at k*R = "
-                    f"{k * self.radius:.3g}, where about {useful:.0f} are numerically "
-                    f"independent at prec={self.prec:.0e}. The extra columns arrive at the noise floor: do not "
-                    f"enrich the space, they lower the smallest singular value and corrupt "
-                    f"the tension.",
-                    PrecisionWarning,
-                    stacklevel=3,
-                )
+        check_k(k)
         n = self.n_cols if cols is None else len(cols)
         return np.zeros(n)
 

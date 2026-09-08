@@ -561,8 +561,13 @@ Numerical rank saturates at the Jacobi-Anger cutoff: measured ranks 33/45/65/95/
     n_useful ~ k*R + 11*(k*R)**(1/3)
 
 with `R` the radius of the smallest enclosing disk. Beyond that, columns arrive at machine
-noise -- they do not enrich the space, they lower the smallest singular value and corrupt the
-tension. `PlaneWave.uniform` warns past the bound; the bound costs a cube root.
+noise, and **if they reach the GSVD** they lower the smallest singular value and corrupt the
+tension. The conditional is the whole content of the claim: a threshold rank cuts those
+columns at every `lam`, and a basis enriched past the bound and then truncated is the
+recommended configuration rather than a mistake. So the bound is a SIZING helper, reported by
+`PlaneWave.n_useful_at(k)`, and the verdict belongs to whoever knows the retained rank --
+`MPSPencil._warn_if_unsafe`. See the As-built note below; an earlier version of this sentence
+was unconditional, and the warning it specified fired on the recommended setup.
 
 # The composite
 
@@ -781,6 +786,31 @@ the position is recorded rather than assumed.
 Note the direction of that last one, which is easy to invert: a TIGHTER `prec` resolves MORE
 independent columns, so the bound RISES as `prec` falls, and a fixed direction count becomes
 wasteful as `prec` loosens.
+
+**Withdrawn: the `n_useful` check was a warning, and at the wrong layer.** The spec put it on
+`PlaneWave.uniform`; the implementation moved it to `log_scale`, because `uniform` has no `k`
+and the bound needs one. That turned a once-per-basis check into a once-per-EVALUATION one, on
+a family that cannot see whether the excess columns survive truncation -- and they usually do
+not. Measured on `rect_suite.pencil_for`'s `rect(1, 1/phi)` over `[5, 300]`, 63 directions
+against a bound of 25 columns at the low end:
+
+    lam        k*R    useful cols   retained rank   sigma_1 at the eigenvalue
+      5       2.63        25             29          -- (no eigenvalue here)
+    183.8    15.9         67             55          9.4e-16
+    300      20.4         79             63          -- (no eigenvalue here)
+
+The threshold rank tracks `k` and cuts the excess; `sigma_1` at all eleven true eigenvalues in
+that window is 8.6e-16 to 1.5e-15, and the empty interval `[5, 35]` holds ZERO spurious minima
+across 400 samples with the tension never below 3.5e-02. Nothing was corrupted, and the
+warning fired at every one of those points -- 316 times in one suite run. Eighteen test modules
+had grown `filterwarnings` marks suppressing the whole `PrecisionWarning` class in response,
+which also suppressed `_warn_if_unsafe` and `warn_if_unfindable`, the two that are load
+bearing.
+
+So `log_scale` no longer warns, `n_useful_at` reports the bound in COLUMNS (the unit a rank is
+in), and all eighteen suppressions are gone. The sharp criterion was always the pencil's:
+`s[r-1]/s[0]` against the noise floor, measured with a transition that "is sharp and sits at
+eps" (`mps/pencil.py`), where `n_useful` is a heuristic good to about 6%.
 
 The geometry side was audited in the same pass. `prec` there is load-bearing for accuracy and
 was tested by exactly one assertion, `tight <= loose`, on a mild ellipse where both sides sit

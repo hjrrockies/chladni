@@ -18,7 +18,6 @@ import v1_multiplicity as M
 from objective import Declined, Objective
 from v1_solve import solve, v1_solve
 
-pytestmark = pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 
 
 def _cone(lams, eps=1e-13, c_k=0.27, plateau=0.2, lo=15.0, hi=110.0, prec=1e-8):

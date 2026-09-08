@@ -46,8 +46,9 @@ def _rng():
 # divides out of the tension entirely, which is the whole reason the sector is the sharp
 # reference. The `< 1e-10` assertions below are the evidence, so suppressing here costs
 # nothing that the test does not immediately re-check.
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 @pytest.mark.parametrize("omega", [np.pi / 3, np.pi / 2, 2 * np.pi / 3, 3 * np.pi / 2])
+@pytest.mark.filterwarnings(
+    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_sector_eigenfunction_is_one_basis_column(omega):
     """`nu = pi/omega`, and the l-th Dirichlet mode is `J_{l*nu}(k r) sin(l*nu*theta)`. With
     a single column the pencil is 1-dimensional, so the tension is the exact relative
@@ -71,8 +72,9 @@ def test_the_sector_eigenfunction_is_one_basis_column(omega):
     assert p.tension(lam) < 1e-10
 
 
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 @pytest.mark.parametrize("omega", [2 * np.pi / 3, 3 * np.pi / 2])
+@pytest.mark.filterwarnings(
+    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_sector_tension_has_a_minimum_at_each_eigenvalue(omega):
     """Away from an eigenvalue the same single column cannot satisfy the arc condition, so
     the tension is O(1). That gap is what the deferred minimizer will hunt."""
@@ -89,7 +91,8 @@ def test_the_sector_tension_has_a_minimum_at_each_eigenvalue(omega):
         assert off > 1e3 * at, f"no dip at {lam}: {at:.2e} against {off:.2e} nearby"
 
 
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
+@pytest.mark.filterwarnings(
+    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_sector_coefficient_reproduces_the_exact_eigenfunction():
     """The coefficient half of the same reference. With one column the eigenfunction is that
     column, so `coef` must return a scalar multiple of it -- checked on interior points the
@@ -121,10 +124,15 @@ def test_the_sector_coefficient_reproduces_the_exact_eigenfunction():
 def _waves(dom, lam):
     """As many plane-wave directions as are numerically independent at `prec`, and no more.
 
-    `PlaneWave.n_useful` is not advice: past that count the extra columns arrive at the
-    noise floor and, in its own words, "lower the smallest singular value and corrupt the
-    tension" -- which is this file's measurement, not a distant one. Oversizing the basis
-    makes the tension look BETTER while meaning less.
+    Sizing matters HERE because every pencil in this file freezes its rank at a single `lam`
+    (`lam_ref=lam`), so nothing downstream will cut a column that arrives at the noise floor:
+    the excess reaches the GSVD, lowers the smallest singular value, and makes the tension
+    look BETTER while meaning less.
+
+    That condition is the whole of it. Under a THRESHOLD rank the same oversizing is harmless
+    and is what `rect_suite.pencil_for` deliberately does -- see
+    `test_regularization.py::test_the_SAME_over_enriched_basis_is_safe_and_SILENT_under_a_threshold_rank`.
+    `PlaneWave.n_useful` is a sizing helper, not a verdict, and it stopped rendering one.
     """
     R = dom.diameter
     return PlaneWave.uniform(int(PlaneWave.n_useful(np.sqrt(lam) * R)), radius=R)

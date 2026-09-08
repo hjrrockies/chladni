@@ -23,7 +23,6 @@ from chladni.mps import MPSPencil
 from chladni.reference import rect_eig
 from v1_bracket import v1_brackets
 
-pytestmark = pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 
 PAIR = 5 * np.pi**2
 TRUTH = np.array([2 * np.pi**2, PAIR, PAIR * (1 + 3e-7), 8 * np.pi**2])
