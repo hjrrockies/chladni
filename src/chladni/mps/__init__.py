@@ -24,6 +24,7 @@ from .pencil import MPSPencil, RankDiagnostics, assemble, equilibrate
 # first attribute access. The earlier promotion attempt shipped exactly that bug for
 # `multiplicity` and hit it the moment `solve_interval` called it. Result types and the
 # helpers that are not the verb; reach a verb through its module.
+from .bracket import Bracket, SearchDiagnostics, SearchResult, bracket_interval
 from .multiplicity import Multiplicity, wide_bracket_for
 from .refine import RefineResult
 from .solver import MPSEigensolver
@@ -33,6 +34,7 @@ __all__ = [
     "assemble", "equilibrate", "choose_rank", "regularize", "RegularizedPencil",
     "tensions", "tensions_of", "coef", "coef_of", "RankDiagnostics",
     "RefineResult", "Multiplicity", "wide_bracket_for",
+    "Bracket", "SearchResult", "SearchDiagnostics", "bracket_interval",
     "lam_to_k", "k_to_lam", "weyl_window",
     "sigma_base", "findability_target", "required_dk", "calibrate_rtol", "RtolCalibration",
     "PREC", "PrecisionWarning",
