@@ -12,7 +12,7 @@ The eigenvalue search and multiplicity estimation are deferred; so is Rellich or
 tion. See `docs/design/mps.md`.
 """
 from .._core import PREC, PrecisionWarning
-from ..eigensolver import Eigensolver, k_to_lam, lam_to_k, weyl_window
+from ..eigensolver import Eigensolver, Spectrum, k_to_lam, lam_to_k, weyl_window
 from ._gsvd import coef, coef_of, tensions, tensions_of
 from ._regularize import RegularizedPencil, choose_rank, regularize
 from .calibrate import (RtolCalibration, calibrate_rtol, findability_target,
@@ -41,7 +41,7 @@ __all__ = [
     "Bracket", "SearchResult", "SearchDiagnostics", "bracket_interval",
     "Level", "SolveResult", "SolveDiagnostics", "solve",
     "Objective", "Declined",
-    "lam_to_k", "k_to_lam", "weyl_window",
+    "lam_to_k", "k_to_lam", "weyl_window", "Spectrum",
     "sigma_base", "findability_target", "required_dk", "calibrate_rtol", "RtolCalibration",
     "PREC", "PrecisionWarning",
 ]

@@ -20,7 +20,7 @@ the pipeline able to detect the omission."
 import numpy as np
 import pytest
 
-from chladni.eigensolver import Eigensolver, k_to_lam, lam_to_k, weyl_window
+from chladni.eigensolver import Eigensolver, Spectrum, k_to_lam, lam_to_k, weyl_window
 from chladni.geometry import disk, eq_tri, rect
 
 from conftest import EXACT, disk_eigs, eq_tri_eigs, rect_eigs
@@ -31,17 +31,66 @@ class ClosedForm(Eigensolver):
 
     Everything the base class does -- the window, the widening, the truncation to n -- is
     exercised through this, with no MPS anywhere in the call.
+
+    `decline` makes `solve_interval` return a declining `Spectrum` instead of an answer, which
+    is how the base class's response to a DECLARED failure is tested. Truth arrives unfolded,
+    as `chladni.reference` supplies it, and is grouped into levels here -- so the double
+    exercises the round trip rather than sidestepping it.
     """
 
     def __init__(self, domain, truth, **kw):
         super().__init__(domain, **kw)
         self.calls = []          # a plain list; ClosedForm is a test double, not Frozen
         self._truth = truth
+        self.decline = None
 
     def solve_interval(self, a, b):
         self.calls.append((a, b))
+        if self.decline is not None:
+            return Spectrum.declining(self.decline, prec=self.prec)
         t = self._truth
-        return t[(t >= a) & (t <= b)]
+        return Spectrum.from_unfolded(t[(t >= a) & (t <= b)], prec=self.prec)
+
+
+# --- Spectrum: what an eigensolver returns ----------------------------------------------
+
+
+def test_unfolded_repeats_each_level_by_its_multiplicity():
+    """The round trip that the old array-only contract could not make. A COMPUTED
+    multiplicity of 2 and two levels a whisker apart are different claims, and an unfolded
+    array cannot tell them apart -- so the multiplicity has to survive as an integer."""
+    s = Spectrum.from_unfolded(disk_eigs(12, 1.0), prec=1e-8)
+    assert np.array_equal(s.mult, [1, 2, 2, 1, 2, 2, 2])
+    assert s.count == 12
+    assert np.allclose(s.unfolded, disk_eigs(12, 1.0), rtol=0, atol=EXACT)
+    assert np.all(np.diff(s.lam) > 0), "levels are strictly ascending"
+
+
+def test_a_declining_spectrum_carries_its_reason_and_is_falsy():
+    """Declining is a VALUE, not an exception (`candidates.md` section 5). Falsy so that
+    `if spectrum:` treats it as nothing usable without anyone having to remember to check."""
+    s = Spectrum.declining("the slope never settled", prec=1e-8)
+    assert s.declined and not s
+    assert "slope" in s.reason
+    assert s.count == 0 and s.unfolded.size == 0
+
+
+def test_unmet_is_derived_from_the_attained_bound_against_prec():
+    """Clause (3), honesty: the bar is reported, and whether it met the request is a
+    comparison anyone can redo rather than a flag the solver sets."""
+    lam = np.array([10.0, 20.0])
+    tight = Spectrum(lam, np.array([1, 1]), np.array([1e-9, 1e-9]), prec=1e-8)
+    loose = Spectrum(lam, np.array([1, 1]), np.array([1e-9, 1e-3]), prec=1e-8)
+    assert not tight.unmet.any() and tight.achieved
+    assert list(loose.unmet) == [False, True] and not loose.achieved
+
+
+def test_a_spectrum_with_no_bound_claims_nothing():
+    """A solver that does not measure its own error says so with nan, and `achieved` is then
+    False -- an unmeasured bound is not a met one."""
+    s = Spectrum.from_unfolded(np.array([1.0, 2.0]), prec=1e-8)
+    assert np.all(np.isnan(s.bound))
+    assert not s.achieved
 
 
 # --- the spectral parameter -------------------------------------------------------------
@@ -121,6 +170,30 @@ def test_solve_reports_rather_than_under_delivering():
     signal is the failure mode this rules out."""
     s = ClosedForm(rect(2.0, 1.0), rect_eigs(3, 2.0, 1.0))   # only 3 exist to be found
     with pytest.raises(RuntimeError, match="8"):
+        s.solve(8)
+
+
+def test_solve_stops_at_a_DECLARED_decline_instead_of_widening():
+    """The defect the rich return type exists to remove.
+
+    Under the old array contract a short return was ambiguous between "there really are only
+    k here", "the search missed some" and "the search declined", and the base class resolved
+    it the only way it could: widen and ask again, eight times, then blame the spectrum. A
+    declared decline is not a short answer, and widening a window whose search has already
+    given up costs eight more searches and ends in a message naming the wrong cause.
+    """
+    s = ClosedForm(rect(2.0, 1.0), rect_eigs(40, 2.0, 1.0))
+    s.decline = "the slope never settled"
+    with pytest.raises(RuntimeError, match="declined"):
+        s.solve(8)
+    assert len(s.calls) == 1, f"widened {len(s.calls) - 1} times past a declared decline"
+
+
+def test_the_decline_message_names_the_reason_the_solver_gave():
+    """Clause (3) again: the caller is told what went wrong, not merely that something did."""
+    s = ClosedForm(rect(2.0, 1.0), rect_eigs(40, 2.0, 1.0))
+    s.decline = "the slope never settled"
+    with pytest.raises(RuntimeError, match="slope never settled"):
         s.solve(8)
 
 
