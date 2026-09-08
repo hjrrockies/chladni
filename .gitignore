@@ -4,6 +4,9 @@
 
 # figures & scratch notebooks
 figures/
+# ...except the ones a tracked document includes. docs/*.pdf is tracked so a reader
+# needs no TeX installation, and that is worth nothing if the images it embeds are not.
+!docs/figures/
 jupyter_notebooks/
 
 # Byte-compiled / optimized / DLL files

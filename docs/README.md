@@ -16,11 +16,20 @@ what. Not a record of a past decision: a live constraint the code has to satisfy
 why it sits beside the code in version control rather than in `design/`. Shipped docstrings
 cite it.
 
-### `bessel_evaluation.tex` / `.pdf` --- exposition
+### `bessel_evaluation.tex` / `.pdf`, `bracket_search.tex` / `.pdf` --- exposition
 
 Why the code is correct, at a level of detail that does not fit in a docstring. The `.pdf` is
 tracked as well as the source so a reader needs no TeX installation; rebuild with
 `latexmk -pdf` and then `latexmk -c`.
+
+`bracket_search` covers the eigenvalue-bracketing and refinement stages -- the cone model, why
+the scan works in `k` and the refiner in `lam`, Piyavskii exclusion and its cost law, the
+`sigma_2` isolation gate, predict-then-straddle, pseudocode for the three routines, and what
+changed when the algorithm was ported in. Unlike a design record it is organised for a reader learning the method rather than by what
+was decided when, and it says throughout which claims follow from the model and which are
+measurements from one family. Its figures are computed from the code they illustrate by
+`figures/make_bracket_figures.py`, which prints every number its captions quote; regenerate them
+before rebuilding if the algorithm changes.
 
 ### `design/` --- design records
 
