@@ -47,12 +47,13 @@ import numpy as np
 
 from chladni.geometry import L_shape, disk, eq_tri
 from chladni.helmholtz import FourierBessel, PlaneWave
-from chladni.mps import MPSPencil
+from chladni.mps import MPSEigensolver, MPSPencil
 from chladni.reference import L_shape_eigs, disk_spectrum, eq_tri_spectrum
 
 from harness import Case
 
-__all__ = ["nonanalytic", "recipe_basis", "pencil_for", "make_case", "finest_prec",
+__all__ = ["nonanalytic", "recipe_basis", "pencil_for", "solver_for", "make_case",
+           "finest_prec",
            "l_shape_case", "disk_case", "eq_tri_case", "all_cases", "ROSTER"]
 
 _PENCILS: dict = {}
@@ -105,6 +106,35 @@ def pencil_for(dom, lam_hi, *, label="", n_fb=80, pad=1.3, seed=0):
         dom.interior_pts(n, rng=np.random.default_rng(seed)))
     _PENCILS[key] = p
     return p
+
+
+def solver_for(dom, lam_hi, *, label="", n_fb=80, pad=1.3, seed=0, prec=None):
+    """An `MPSEigensolver` on the SAME recipe basis as `pencil_for`, memoized.
+
+    The point of sharing the recipe is attribution. `solve_interval` is the one piece of this
+    layer that was newly written rather than promoted, so when an end-to-end solve is wrong the
+    first question is whether the wiring or the basis is at fault. Built on a basis whose
+    tension floor is already pinned by `finest_prec` and by `chladni.reference`'s own tables,
+    the basis is ruled out and the wiring is what is left.
+
+    `MPSEigensolver` builds its own quadrature and interior fill from the basis size, on the
+    same 3x/1x rule, so this passes the basis and the counts and lets the solver do the rest.
+    """
+    key = ("solver", label, float(lam_hi), int(n_fb), float(pad), int(seed),
+           None if prec is None else float(prec))
+    hit = _PENCILS.get(key)
+    if hit is not None:
+        return hit
+    basis = recipe_basis(dom, n_fb)
+    if basis is None:
+        nw = int(pad * PlaneWave.n_useful(np.sqrt(lam_hi) * dom.diameter))
+        basis = PlaneWave.uniform(nw, radius=dom.diameter)
+    n = len(basis)
+    s = MPSEigensolver(dom, basis=basis, n_bdry=3 * n, n_int=n,
+                       rng=np.random.default_rng(seed),
+                       **({} if prec is None else {"prec": prec}))
+    _PENCILS[key] = s
+    return s
 
 
 def finest_prec(case, *, margin=3.0, h_frac=0.005):
