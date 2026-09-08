@@ -8,9 +8,12 @@ Three rules this file lives by:
 * **Every item names the evidence that forces it** -- a measurement, a design document, or a
   line of code. An item with no source is a preference, and belongs in a design record where
   it can be argued with.
-* **Citations into `notes/` are deliberate**, and `notes/` is not tracked. The sharpest open
-  items were measured there and exist nowhere else; dropping them to keep this file
-  self-contained would make it shorter and less useful.
+* **Citations into `notes/` are deliberate.** The sharpest open items were measured there and
+  exist nowhere else, so an item that cites one is pointing at its evidence rather than at a
+  file someone happens to have. `notes/` is tracked for that reason -- it was not, and an item
+  whose justification lived only in a working directory was an item nobody else could argue
+  with. It stays working notes: dated, superseded, addressed to a moment, and excluded from a
+  release rather than from the repository.
 
 Priorities are `[blocking]` (something else waits on it), `[next]`, `[later]`.
 

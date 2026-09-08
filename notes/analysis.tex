@@ -1,0 +1,193 @@
+\section{Analysis}
+
+\subsection{The headline: nobody splits a pair below \texorpdfstring{$d/\lam \approx 10^{-4}$}{d/lam ~ 1e-4}}
+\label{sec:headline}
+
+Family B is the pair ladder. The table gives the \emph{oracle} cost --- the cheapest tested
+setting that succeeded --- at each separation, at the tightest $\pr$ for which the pair must
+still be \emph{split} rather than merged. A dash is failure at every setting within the
+1500-evaluation budget.
+
+\begin{center}
+\begin{tabular}{rrrrrrrr}
+\toprule
+$d$ & $d/\lam$ & \texttt{uniform} & \texttt{lappy} & \texttt{lappy\_rep} & \texttt{lipschitz}
+& \texttt{swing\_cells} & \texttt{swing\_direct} \\
+\midrule
+5.8e-01 & 1.2e-02 & 446 & 302 & 1316 & 293 & \textbf{131} & 152 \\
+1.8e-01 & 3.6e-03 & --  & 1016 & 1103 & 1298 & \textbf{528} & 688 \\
+5.9e-02 & 1.2e-03 & --  & -- & 922 & 1308 & \textbf{184} & 225 \\
+1.8e-02 & 3.6e-04 & --  & -- & \textbf{830} & -- & -- & -- \\
+5.9e-03 & 1.2e-04 & --  & -- & 1426 & -- & \textbf{658} & 844 \\
+1.8e-03 & 3.6e-05 & --  & -- & -- & -- & -- & -- \\
+\multicolumn{2}{r}{$\dots$ down to} & -- & -- & -- & -- & -- & -- \\
+5.9e-12 & 1.2e-13 & --  & -- & -- & -- & -- & -- \\
+1.8e-12 & 3.6e-14 & --  & -- & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+\textbf{Every method's splitting limit lies between $d/\lam = 1.2\mathrm{e}{-4}$ and
+$3.6\mathrm{e}{-5}$} at this budget --- four to five orders coarser than the pencil's own
+resolution limit of $\varepsilon/c \approx 4\mathrm{e}{-14}$ absolute, about $10^{-15}$
+relative. \textbf{The gap between what the objective supports and what the searches extract is
+roughly ten orders of magnitude}, and it is the most important number here.
+
+Below the limit the methods do not fail loudly: they merge the pair and report success at any
+$\pr$ loose enough to permit it. At $d = 1.8\mathrm{e}{-3}$ and $\pr = 10^{-4}$, where merging
+is legal, \texttt{uniform\_grid} passes at 86 evaluations; at $\pr = 10^{-8}$ on the same case,
+where it is not, every method fails.
+
+\subsection{Family B is not the whole story, and reading it alone gives the wrong verdict}
+
+A first draft of this report concluded from the ladder above that \texttt{lipschitz} should be
+cut. The per-family breakdown contradicts that, and the contradiction is recorded here rather
+than quietly fixed. Oracle\,/\,autonomous passes at $\pr = 10^{-8}$:
+
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+method & A (1) & B (12) & C (8) & D (3) & E (1) \\
+\midrule
+\texttt{uniform\_grid}   & 1/0 & 3/2 & 3/2 & 3/3 & 0/0 \\
+\texttt{lappy}           & 0/0 & 4/3 & 4/2 & 3/3 & 0/0 \\
+\texttt{lappy\_repaired} & 1/0 & \textbf{6}/0 & \textbf{6}/2 & 3/3 & 0/0 \\
+\texttt{lipschitz}       & 1/0 & 5/\textbf{5} & 5/\textbf{4} & 3/3 & 0/0 \\
+\texttt{swing\_cells}    & 0/0 & \textbf{6}/\textbf{5} & 3/3 & 3/3 & 0/0 \\
+\texttt{swing\_direct}   & 1/\textbf{1} & \textbf{6}/\textbf{5} & 3/3 & 3/3 & 0/0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three things the pair ladder alone concealed:
+
+\textbf{The swing methods are notably worse on clusters than on pairs} --- 3 of 8 on family C
+against 6 of 12 on family B, where \texttt{lappy\_repaired} reaches 6 of 8 and
+\texttt{lipschitz} 5. A cell decomposition cut at eigenvector crossings is well suited to
+splitting two eigenvalues and less so to a tight group of three or four with unequal internal
+gaps.
+
+\textbf{\texttt{lappy\_repaired} has the best oracle record and the worst autonomous one} ---
+6 of 12 on family B at oracle, and \textbf{0 of 12} autonomously. Essentially all of its
+apparent capability is per-case tuning. That is the single largest oracle--autonomous gap in
+the study, and it is exactly the failure mode the two-column protocol exists to expose: a
+method that looks strongest in a tuned comparison and would ship as the weakest.
+
+\textbf{\texttt{lipschitz} is the most consistent autonomous performer}, 5/5 on B and 4 of 5
+on C --- its oracle and autonomous columns nearly coincide, meaning one fixed setting works
+across cases. Its known theoretical weakness, that a pilot-estimated Lipschitz constant can
+underestimate the true slope and render the completeness certificate false, did not bite on
+rectangles. That is a real caveat for corner domains, not a measured failure here.
+
+\textbf{Nobody passes family E} --- the 29-eigenvalue mixed window --- at any $\pr$ or any
+setting. A window holding isolated levels, six pairs and a triple defeats every method in the
+study within budget.
+
+\subsection{Cost scales with \texorpdfstring{$\pr$}{prec} even when the requirement does not}
+
+On most cases the purity requirement is \emph{identical} at $\pr = 10^{-8}$, $10^{-11}$ and
+$10^{-14}$: the smallest true gap is far above $\pr\!\cdot\!\lam$ at all three, so nothing about
+what must be resolved changes. Yet cost rises monotonically. On $d = 5.8\mathrm{e}{-1}$,
+\texttt{swing\_cells} needs 131, 170, 200 and 230 evaluations at the four precisions --- a
+$1.8\times$ increase for ten orders of $\pr$, buying nothing.
+
+The cause is that every method bisects to $\pr\!\cdot\!\lam$ regardless of the local gap.
+Refining a cell boundary to $10^{-13}$ when the nearest other eigenvalue is $0.58$ away is pure
+waste. This violates the ``not more work than asked'' clause of the operational definition, and
+it is a defect of the whole field rather than of any one method.
+
+That this is cost and not capability was confirmed directly rather than inferred. On
+$d = 5.9\mathrm{e}{-3}$ at $\pr = 10^{-14}$, where the requirement is identical to
+$\pr = 10^{-11}$, \texttt{swing\_cells} fails at the 1500-evaluation cap and \textbf{succeeds at
+1549 evaluations} once the cap is raised --- against the 1279 it needs at $10^{-11}$. A
+21\,\% cost increase, and the only thing separating ``fails'' from ``succeeds'' is the budget
+line.
+
+\subsection{The controls validate the metrics}
+
+\texttt{single\_bracket} returns $[(a,b)]$ and scores coverage $1.0$ with zero spurious on every
+case. It is rejected by \textbf{purity alone}, on 18 of 21 cases. The three it passes are the
+family-D exact-degeneracy cases, which contain a single level --- there one bracket \emph{is}
+the correct answer, so the metric accepting it is right rather than broken.
+
+\texttt{fine\_grid} exceeds the evaluation cap on every case and is rejected on \textbf{cost}.
+Neither degenerate strategy survives, and each is rejected by the criterion intended for it.
+
+\section{Filter verdict}
+
+Capability claims within the measured budget of 1500 evaluations, on rectangles, for the
+bracketing phase only.
+
+\begin{description}
+\item[\texttt{uniform\_grid} --- CUT as a candidate.] Weakest or joint-weakest in every family,
+splits no pair tighter than $d/\lam = 1.2\mathrm{e}{-2}$. It should be retained as the control
+that every proposal must beat, which is the role it already has.
+
+\item[\texttt{lappy} (original) --- CUT.] Dominated by \texttt{lappy\_repaired} in every family
+at both oracle and autonomous, and splits nothing below $d/\lam = 3.6\mathrm{e}{-3}$. Its
+$\sig_2$-value recursion gate was already known to test the grid rather than the pair; this
+measures the consequence.
+
+\item[\texttt{lappy\_repaired} --- KEEP, with the gap as the priority.] Best oracle record of
+any method (6/12 on B, 6/8 on C) and the worst autonomous (0/12 on B). Nothing about its
+subdivision is wrong; what fails is its self-configuration. Closing that gap is worth more than
+any change to its search strategy.
+
+\item[\texttt{lipschitz} --- KEEP.] The most consistent autonomous performer, with oracle and
+autonomous nearly coinciding. This reverses the draft verdict, which cut it on the pair ladder
+alone. Its unsound-certificate risk is real but was not exercised here, and should be tested on
+a corner domain before it is either trusted or discarded.
+
+\item[\texttt{swing\_cells} --- KEEP.] Cheapest method wherever it succeeds, often by
+$3$--$7\times$, and reaches the ladder's limit. Its weaknesses are clusters of three and four
+(3 of 8) and the isolated-eigenvalue case, which it fails at every $\pr$.
+
+\item[\texttt{swing\_direct} --- KEEP.] Costs 15--25\,\% more than \texttt{swing\_cells} and
+buys no pair-splitting capability, but it is what rescues the isolated case (1/1 against 0/0).
+The two mechanisms are orthogonal rather than ranked, and the ablation says so: cell-cutting
+handles pairs, \textsc{direct} handles isolated wells.
+\end{description}
+
+\noindent
+No method is cut on the strength of family B alone, and no method survives family E.
+
+\section{What this cannot conclude}
+
+\begin{itemize}
+\item \textbf{A correction.} An earlier draft of this report claimed that
+$\pr = 10^{-14}$ could never be exercised as a requirement on this instrument, on the grounds
+that the only separation distinguishing it from $10^{-11}$ --- a pair at
+$d/\lam \approx 10^{-13}$ --- sits just $1.2\times$ above the \texttt{snap} merge floor of the
+closed-form spectrum. \textbf{That reasoning was wrong: family B does not use snapped truth.} It
+takes the pair values from the mode formula directly, precisely so that a controlled separation
+is not at the mercy of a merge policy. Measured, the two values are 833 floating-point ulps
+apart at $\delta = 10^{-13}$ and 250 apart at $3 \times 10^{-14}$, and the pencil has
+$d/(\varepsilon/c) = 138$ of headroom at the first.
+
+Two such cases were therefore built and run, and both pass the floor precondition (headroom
+$4.1$ and $3.3$). At $\pr = 10^{-4}$, $10^{-8}$ and $10^{-11}$ the pair may legally merge and
+most methods pass cheaply; at $\pr = 10^{-14}$ it must be split, and \textbf{every method
+fails}. So $\pr = 10^{-14}$ is now exercised as a genuine requirement, and the answer is
+consistent with the ladder: nothing splits a pair at $d/\lam = 1.2\mathrm{e}{-13}$ when nothing
+splits one at $3.6\mathrm{e}{-5}$.
+
+\item \textbf{Rectangles only.} The property rectangles cannot reproduce is the tension floor
+jumping between adjacent modes on a corner domain --- separately found to be largely an
+artifact of a marginal basis, but re-measured at recipe grade on only one domain.
+
+\item \textbf{Bracketing only.} A method that deliberately blurs bracketing into multiplicity
+estimation is under-credited by construction. The swing is such a method: the same eigenvector
+signal that cuts its cells also distinguishes a true degeneracy from two distinct eigenvalues,
+and none of that is visible to a bracket-set metric.
+
+\item \textbf{One budget, one seed, three settings per knob.} A method rejected here is
+rejected \emph{at 1500 evaluations}, not in principle. The one non-monotonicity in the ladder
+--- \texttt{lappy\_repaired} passing $d = 1.8\mathrm{e}{-2}$ while both swing variants pass the
+tighter $5.9\mathrm{e}{-3}$ and fail it --- is most likely a knob-grid artifact, since
+\texttt{per\_gap} was swept only over $\{6, 32, 160\}$, but that was not confirmed.
+
+\item \textbf{The oracle column is best-of-$K$} and biased upward in the number of knobs. Only
+the autonomous column may be compared across methods, and the gap between the two is the most
+actionable quantity in the report.
+\end{itemize}

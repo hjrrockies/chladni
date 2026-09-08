@@ -1,0 +1,1571 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1.15in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{microtype}
+\usepackage{enumitem}
+\emergencystretch=3em
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=black,citecolor=black}
+
+\newcommand{\file}[1]{\texttt{#1}}
+\newcommand{\lf}[1]{(landscape\_findings~\S#1)}
+\newcommand{\sm}[1]{(search.md~\S#1)}
+\newcommand{\sfe}[1]{(solver\_features~\S#1)}
+\newcommand{\ap}[1]{(approaches~\S#1)}
+\newcommand{\sig}{\sigma}
+\newcommand{\sione}{\sig_1}
+\newcommand{\sitwo}{\sig_2}
+\newcommand{\lam}{\lambda}
+
+\title{The eigenvalue search in \texttt{chladni}:\\
+tension-curve measurements, solver requirements,\\
+and a triage of candidate methods}
+\author{Technical report, compiled from \file{notes/} and \file{docs/design/}}
+\date{1 September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+This report consolidates a measurement session on the eigenvalue-search layer of
+\file{chladni}, the method-of-particular-solutions (MPS) solver for Laplacian eigenvalues of
+planar domains. It has three parts. Part~1 reports the first tension-curve measurements taken
+on \emph{real} corner domains with corner-adapted Fourier--Bessel bases, rather than on the
+surrogate or on a single test shape: a seven-domain roster with bases validated against
+tabulated eigenvalues, the finding that the tension plateau is stable across domains
+($0.12$--$0.36$) while the attainable floor spreads four to five orders \emph{within} a single
+scan, an end-to-end recall-versus-stride measurement showing that the project's standing
+``six samples per gap'' rule is wrong by a factor of three, and the identification of the
+minimum \emph{local} gap --- $0.13$ to $0.79$ of Weyl's mean --- as the quantity that actually
+governs recall. It also records that the Weyl completeness audit reads as a false alarm on
+every symmetric domain if it is run before multiplicity estimation.
+Part~2 translates those measurements into a requirements list for the minimization and
+multiplicity-estimation routines, organized as functional requirements, required diagnostics,
+and anti-features that were measured \emph{not} to work, each tied to the measurement that
+forces it. It also records that the harness's search interface must widen from a tension
+function to a mode function, because the collapse-versus-merge decision needs eigenfunctions.
+Part~3 reframes the problem as a level-set/certification problem rather than global
+optimization, enumerates 27 candidate methods, and reports six falsifying tests: Weyl-stratified
+sampling and the argument principle on $\det A_B$ are dead; pilot-calibrated Lipschitz
+certification is \emph{unsound}, not merely loose; the exact $k$-derivative identity holds once
+a $k$-dependent column scale is corrected for; DIRECT is strong; and the eigenvector-swing
+proposal was falsified and reinterpreted into a cell decomposition. The composed candidate
+(swing cells $+$ DIRECT $+$ refinement) reaches mean recall $0.975$ on a five-domain roster at
+$2.2\times$ the cost of a uniform grid. A prominent self-correction is recorded: an earlier
+claim that the swing separates pairs $290\times$ tighter than the dip was a statement about
+\emph{detection}, and had to be repaired with a bisection-toward-the-peak step before it
+became a statement about \emph{separation}.
+\end{abstract}
+
+\tableofcontents
+
+\newpage
+
+\section{Scope, sources, and what is new}
+
+The layer under discussion sits above \file{mps}. Its contract is
+\begin{quote}
+given a tension function returning the ascending vector
+$\sione \le \sitwo \le \cdots$, find every approximate eigenvalue in $[a,b]$ with its
+multiplicity, using as few evaluations as possible,
+\end{quote}
+and it sees only the tension function and the interval: no domain, no basis, no pencil
+\sm{preamble}. That restriction is deliberate --- it is what makes two candidate searches
+comparable, and what would let a later finite-element or boundary-integral method reuse the
+same search. Part~2, \S\ref{sec:interface}, records the one measured reason to widen it.
+
+The material reported here is drawn from
+\file{notes/landscape\_findings.md} \S\S20--25 (new),
+\file{notes/solver\_features.md},
+\file{notes/approaches.md}, and
+\file{docs/design/search.md} \S2. Sections 1--19 of \file{landscape\_findings.md} are earlier
+context; they are drawn on for background but not re-reported. The supporting scripts are
+\file{notes/curve\_lab.py} (basis builder, scanner, roster),
+\file{notes/curve\_study.py} (the three studies of \S20),
+\file{notes/adaptive\_scan.py} (\S21),
+\file{notes/test\_approaches.py} (\S22),
+\file{notes/swing\_pairs.py} (\S23), and
+\file{tests/searches.py::swing\_direct\_search} (\S\S24--25).
+
+\subsection{The project-specific machinery, briefly}
+
+Three pieces of vocabulary recur and are worth fixing before the measurements.
+
+\paragraph{Tension and the GSVD pencil.}
+MPS assembles, at a trial value $\lam$, a matrix of particular solutions of the Helmholtz
+equation evaluated at boundary collocation points ($A_B$) and at interior points ($A_I$). The
+\emph{tension} is the generalized singular value spectrum of the pencil $(A_B, A_I)$: it
+measures how small the boundary residual of a candidate solution can be made while its
+interior norm is held away from zero. Writing $\sione(\lam) \le \sitwo(\lam) \le \cdots$ for
+that ascending spectrum, the eigenvalues of the domain appear as local minima of $\sione$. The
+GSVD formulation is used in preference to a determinant or a plain least-squares residual
+because it is what makes the objective numerically stable; this matters directly to A11 in
+Part~3. The interior points are a \emph{normalization}, not a quadrature: their only job is to
+keep $\|A_I c\|$ away from zero \sm{1}.
+
+\paragraph{The cone model.}
+Near an eigenvalue $\lam_i$ the measured shape of the first tension is
+\begin{equation}
+  \sione(\lam) \;\approx\; \sqrt{\varepsilon^2 + c^2 (\lam-\lam_i)^2},
+  \label{eq:cone}
+\end{equation}
+a hyperbola that looks like a cone with a rounded bottom. It fits the far field to a median
+relative residual of 1--3\% on rect, disk, eq\_tri and the L-shape, failing only where the
+floor approaches the plateau, i.e.\ where the basis cannot represent the eigenfunction
+\sm{1}. The two parameters are independent and it matters which is which:
+$\varepsilon$ is the \emph{floor}, $\sione$ at the eigenvalue, and is a property of
+\emph{the basis}; $c$ is the \emph{wall slope}, $d\sione/dk$ away from the eigenvalue, and is a
+property of \emph{the domain}. On the L-shape at 20, 40 and 60 Fourier--Bessel terms,
+$\varepsilon$ falls $4.0\times10^{-5} \to 1.6\times10^{-8} \to 1.1\times10^{-12}$ while $c$
+moves only $1.602 \to 1.595$. The ratio $\varepsilon/c$ is the \emph{resolution limit}: the
+scale in $k$ at which the cone flattens into its quadratic bottom, so two eigenvalues closer
+than that have overlapping bottoms and cannot be separated. Since $c$ is fixed by geometry,
+$\varepsilon$ alone sets it --- which is the concrete form of ``the search is bounded by the
+basis''. Away from all eigenvalues $\sione$ sits on a \emph{plateau}, denoted $S$ below; the
+plateau is what $\tau_{\mathrm{scan}}$ is measured against.
+
+\paragraph{Multiplicity by (C1) and (C2).}
+Multiplicity $\mu$ at a located level is read off the tension spectrum by two conditions:
+(C1) a \emph{ratio gap} --- $\sig_{j+1}/\sig_j$ is $1.0$--$1.7$ within a multiplet and
+$10^{11}$--$10^{15}$ across the gap to the next branch, so a gap parameter $G=10$ separates
+them; and (C2) a \emph{local-minimum} condition --- $\sig_j$ must itself have a local minimum
+at that $\lam$, with prominence at least $P$, on a bracket wide enough to see it. (C2) is
+load-bearing rather than belt-and-braces: once the separation $d \lesssim \varepsilon/c$, the
+ratio rule alone reports multiplicity $2$ at a \emph{simple} eigenvalue, and (C2) rejects it
+every time because $\sitwo$ there is a monotone wall \sm{1}, \sfe{F9}.
+
+\section{The governing principle: what a successful run means}
+\label{sec:opdef}
+
+Every approach below is judged against \file{docs/design/search.md} \S2, the \emph{operational
+definition}. It is summarized here because nothing later is meaningful without it.
+
+The layer above sets \verb|prec|. The contract is that the user gets eigenvalues to relative
+accuracy \verb|prec|, or an honest statement that MPS could not reach it. Doing better than
+asked is always allowed; doing materially more work than \verb|prec| requires is not.
+
+\subsection{The rule that decides which constants may be fixed}
+
+A constant may be \textbf{fixed} only if it is dimensionless and separates two populations
+whose separation does not shrink as \verb|prec| tightens. Anything carrying units of $\lam$,
+and anything expressing \emph{how accurate}, must derive from \verb|prec| \sm{2.1}. This rule,
+rather than any individual number, is what to apply when a new parameter appears --- and it is
+the reason the roster measurement of the plateau in Part~1 is decisive for
+$\tau_{\mathrm{scan}}$.
+
+\subsection{Assumptions and ground truth}
+
+The pencil --- basis, collocation points, regularization \emph{and} rank policy --- is given
+and adequate. The solver may \emph{detect} inadequacy; it is not responsible for repairing it.
+Adequacy is quantitative: $\text{gap} > 20\,\varepsilon/c$ on $[a,b]$, from a direct
+measurement in which (C1) is correct at $d/(\varepsilon/c) = 23$ and wrong at $0.45$ and
+$0.15$ \sm{2.2}.
+
+The ground truth $S(\verb|prec|)$ is the ordered multiset of local minima of $\sione$, each
+repeated by its multiplicity $\mu_i$ (the largest $\mu$ such that $\sig_j$ has a local minimum
+at $\lam_i$ for every $j \le \mu$), with two floating-point scales attached: ``has a local
+minimum'' means prominence at least $P = 1 + m\eta$ with a floor $P \ge 2$, and ``at $\lam_i$''
+means two branch minima lie within $\verb|tol_merge| = \verb|prec|$, relative. $S$ is indexed
+by \verb|prec| deliberately: two levels $4\times10^{-9}$ apart are \emph{one} level at
+$\verb|prec| = 10^{-8}$ and \emph{two} at $10^{-12}$ \sm{2.3}.
+
+\subsection{The three clauses}
+
+A solver is \textbf{successful at \texttt{prec}} on $[a,b]$ when all three hold \sm{2.4}.
+
+\begin{description}[leftmargin=2.2em,style=nextline]
+\item[(1) Completeness and multiplicity.] $\hat S$ matches $S(\verb|prec|)$ as a multiset.
+  Among roots reported close together, collapse-versus-merge is decided by the \emph{interior
+  Gram angle}, not by distance: with $u_i = I(\hat\lam_i)\,\mathrm{coef}(\hat\lam_i,1)$,
+  $|\langle u_1,u_2\rangle| \ge \tau_{\mathrm{gram}}$ means the same eigenfunction (collapse and
+  recount) and $< \tau_{\mathrm{gram}}$ means independent (merge and sum). Distance survives
+  only as a prefilter deciding which pairs are worth testing.
+\item[(2) Accuracy.] Each $|\hat\lam_i - \lam_i|/\lam_i \le \verb|prec|$, \emph{or} the solver
+  reports that $\delta_{\mathrm{res}}(\lam_i) > \verb|prec|\cdot\lam_i$ and returns
+  $\delta_{\mathrm{res}}$ as the attained bound. There is no predicted-accuracy constant:
+  $\delta_{\mathrm{res}}$ is measured from the parabola fit the refinement phase already
+  performs.
+\item[(3) Honesty.] The reported per-eigenvalue bar contains the true error, and the
+  completeness diagnostics fire whenever (1) fails.
+\end{description}
+
+Clause~(3) is not decoration. $S$ is unknown on every domain that matters --- \file{L\_shape},
+\file{GWW1} and \file{mushroom} have tabulated prefixes only --- so (1) and (2) need a
+truth-free proxy on a real run. Part~1 is largely about which proxies actually work.
+
+\subsection{The constants, and not more work than asked}
+
+Fixed (dimensionless, margin grows as \verb|prec| tightens): $P = 1+m\eta$ with floor 2;
+$G = 10$; $\tau_{\mathrm{gram}} = 0.5$; the contract $20\,\varepsilon/c$; the Weyl tolerance
+$0.5$; and $\tau_{\mathrm{scan}}$ \emph{as a fraction of the plateau, never an absolute
+tension}. Derived from \verb|prec|: $\verb|tol_merge| = \verb|prec|$, the accuracy target
+$\verb|prec|\cdot\lam$, and the refinement stop
+$\max(\verb|prec|\cdot\lam,\ \delta_{\mathrm{res}})$ \sm{2.5}.
+
+Section 2.6 adds that \textbf{completeness is not a precision question} and the scan stride
+must not tighten with \verb|prec|. That clause is right; the \emph{number} attached to it in
+the same paragraph --- ``about six samples per eigenvalue gap'' --- is what Part~1 falsifies.
+
+Finally, \S2.7 records a real ceiling: $\verb|tol_merge| = \verb|prec|$ against pairs
+resolvable to about $3\times10^{-6}$ relative leaves a factor of 30 at $\verb|prec|=10^{-8}$,
+but below $\verb|prec|\sim 4\times10^{-9}$ it \emph{inverts} --- the discretization's own
+splitting of a degenerate pair ($1.8\times10^{-9}\lam$ for plane waves,
+$3.9\times10^{-9}\lam$ for Fourier--Bessel) exceeds $\verb|tol_merge|$ and a true double is
+reported as two simple eigenvalues.
+
+\part*{Part 1: Tension curves on real corner domains}
+\addcontentsline{toc}{section}{Part 1: Tension curves on real corner domains}
+\setcounter{section}{2}
+
+\section{The roster and how the bases were built and validated}
+\label{sec:roster}
+
+Everything measured before \S20 used either the surrogate, a rectangle with plane waves, or the
+L-shape. The solver has to work on domains with \emph{several} reentrant corners, where
+Fourier--Bessel families at those corners are what make it work at all \lf{20}.
+
+The first thing \file{curve\_lab.py} had to get right is which corners need such a family. A
+corner is \textbf{singular} when its local orders $(\ell+\text{offset})\pi/\omega$ are not all
+integers, which under a single boundary condition is just ``$\pi/\omega$ is not an integer''.
+\verb|Corner.is_singular| then meant ``geometric corner'', a much larger and different set ---
+all four corners of a rectangle were \verb|is_singular| and none of them needs a
+Fourier--Bessel family, so the basis builder keyed on the fractional exponent itself \lf{20}.
+That property is gone. The question is now asked where its answer actually lives, as
+\verb|CornerModes.is_singular| (the offset comes from the boundary-condition pair through
+Grisvard's Robin rule, which is not a geometric fact); \verb|geometry| keeps only the angle
+half of it, \verb|Corner.is_reflection_closed|, meaning $\omega=\pi/m$. The builder's test is
+unchanged and is now one call: \verb|CornerModes.from_corner(c).is_singular|.
+
+Bases were built as plane waves sized by \verb|n_useful(k*R)| plus 40 Fourier--Bessel terms per
+non-analytic corner. Crucially, each basis was \emph{validated before} anything was concluded
+from its curves, by evaluating the tension at the tabulated eigenvalues
+(Table~\ref{tab:roster}).
+
+\begin{table}[htbp]
+\centering
+\caption{The roster. Columns are basis size, corner structure, and the tension attained at the
+tabulated eigenvalues --- the basis-adequacy check run before any curve was interpreted
+\lf{20}.}
+\label{tab:roster}
+\begin{tabular}{lrll}
+\toprule
+domain & cols & corner structure & tension at table values \\
+\midrule
+\file{L\_shape}  & 134 & 1 reentrant                        & $10^{-8}\,..\,2\times10^{-11}$ \\
+\file{mushroom}  & 168 & 2 reentrant                        & $7\times10^{-10}\,..\,2\times10^{-10}$ \\
+\file{GWW1}      & 272 & 2 reentrant $+$ two $3\pi/4$       & $3\times10^{-9}\,..\,10^{-9}$ \\
+\file{H\_shape}  & 258 & 4 reentrant                        & $5\times10^{-8}\,..\,2\times10^{-8}$ \\
+\file{plus}      & 248 & 4 reentrant, $D_4$                 & (no table) \\
+\file{chevron}   & 252 & an $18^\circ$ spike                & $2\times10^{-7}\,..\,5\times10^{-8}$ \\
+\file{rect81}    & 176 & no singular corner, control        & (closed form) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\file{cut\_square} was dropped from the roster. The \verb|reference| recipe for it is an
+\emph{origin-centred} Fourier--Bessel expansion of 320 terms, which the corner-adapted builder
+does not offer, and plane waves leave the tension at $10^{-2}$. That is a basis-planning gap,
+not a curve finding \lf{20}, and it is the reason the roster contains no curved boundary at all
+(see \S\ref{sec:open}).
+
+\section{The plateau is stable across domains; the floor is not, within one scan}
+\label{sec:plateau}
+
+\begin{table}[htbp]
+\centering
+\caption{Plateau height and the range of attained floors within a single scan \lf{20.1}.}
+\label{tab:plateau}
+\begin{tabular}{lrrrr}
+\toprule
+domain & plateau & floor min & floor max & spread \\
+\midrule
+\file{L\_shape}  & $0.1981$ & $3.6\times10^{-11}$ & $9.1\times10^{-7}$ & $2.5\times10^{4}$ \\
+\file{mushroom}  & $0.1829$ & $2.2\times10^{-10}$ & $1.4\times10^{-8}$ & $6.4\times10^{1}$ \\
+\file{GWW1}      & $0.1228$ & $1.0\times10^{-10}$ & $2.6\times10^{-8}$ & $2.5\times10^{2}$ \\
+\file{H\_shape}  & $0.2251$ & $2.7\times10^{-12}$ & $1.2\times10^{-7}$ & $4.4\times10^{4}$ \\
+\file{plus}      & $0.2131$ & $1.1\times10^{-11}$ & $3.7\times10^{-8}$ & $3.4\times10^{3}$ \\
+\file{chevron}   & $0.3555$ & $4.9\times10^{-8}$  & $2.3\times10^{-7}$ & $4.7\times10^{0}$ \\
+\file{rect81}    & $0.1541$ & $5.3\times10^{-7}$  & $4.9\times10^{-2}$ & $9.2\times10^{4}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two findings, and they point in opposite directions.
+
+\paragraph{The plateau spans 0.12 to 0.36 across seven domains} --- a factor of $2.9$, across
+areas from $1.0$ to $14.0$ and from zero to four reentrant corners. That is the strongest
+support yet for $\tau_{\mathrm{scan}}$ as a \emph{fraction of the plateau}, and against any
+absolute tension threshold \lf{20.1}. Under the \S\ref{sec:opdef} rule, the plateau-relative
+form is admissible as a fixed constant and the absolute form is not.
+
+\paragraph{The floor spreads four to five orders \emph{within} a single scan on three of seven
+domains.} The L-shape's five orders, reported earlier \sm{1} and explained there by modes whose
+eigenfunction vanishes at the reentrant corner and is therefore analytic there, was not
+special. This is the direct justification for clause~(2) of the operational definition being
+\emph{per eigenvalue}: one \verb|prec| target cannot be met uniformly when the attainable floor
+moves by $10^{5}$ across the interval being scanned \lf{20.1}.
+
+\file{rect81} is the informative failure. Its floor maximum is $4.9\times10^{-2}$, which is no
+dip at all --- about a third of its own plateau. A high aspect ratio with plane waves is a
+genuinely inadequate basis, and \file{rect81} is the only roster member whose audit flags for
+that reason rather than for multiplicity \lf{20.1}. It recurs throughout Part~1 as the domain
+that no amount of sampling can fix.
+
+\section{Recall versus stride: six samples per gap is not enough}
+\label{sec:stride}
+
+\file{search.md} \S6 states that ``roughly six samples per eigenvalue gap always place three
+inside every dip, and Weyl's law sizes that directly''. That was \emph{inferred} from the
+width/gap invariant on four benign domains. It was then measured end to end: subsample the fine
+scan at stride $h$ and count how many true dips survive as discrete minima
+(Table~\ref{tab:stride}).
+
+\begin{table}[htbp]
+\centering
+\caption{Recall as a function of stride, measured by subsampling the fine scans \lf{20.2}.
+The first column is the coarsest stride, in samples per median gap, at which recall is still
+exactly $1$.}
+\label{tab:stride}
+\begin{tabular}{lrrr}
+\toprule
+domain & recall $=1.000$ down to & at $\sim6$ per gap & at $\sim4$ per gap \\
+\midrule
+\file{L\_shape}  & $4.8$ per gap & $1.000$ & $0.889$ \\
+\file{mushroom}  & $5.0$         & $1.000$ & $0.917$ \\
+\file{GWW1}      & $8.0$         & $0.933$ & $0.867$ \\
+\file{H\_shape}  & $9.1$         & $0.875$ & $1.000$ \\
+\file{plus}      & $4.4$         & $1.000$ & $1.000$ \\
+\file{chevron}   & $10.1$        & $0.667$ & $0.667$ \\
+\file{rect81}    & $17.7$        & $0.929$ & $0.929$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Full recall on every domain needs about 18 samples per median gap, not six. At six,
+four of seven domains lose eigenvalues} \lf{20.2}. This is a direct falsification of a standing
+design rule, and it is the single most consequential number in Part~1: the rule it replaces is
+cited in \file{search.md} \S2.6 as part of the ``not more work than asked'' argument, and the
+replacement is three times as expensive.
+
+Two qualifications are recorded in the source and are preserved here. First, 18 is a
+\emph{fitted} number on seven domains, not a bound \sfe{6}. Second, the $\sim4$-per-gap column
+is not monotone with the $\sim6$ column on \file{H\_shape} ($1.000$ against $0.875$), which is
+a reminder that at coarse strides recall is a sampling accident rather than a smooth function
+of the stride.
+
+\subsection{The mechanism: minimum local gap, not Weyl's mean}
+
+The width/gap invariant is about the \emph{mean} gap; recall is bounded by the \emph{minimum
+local} gap. Measured, $\min(\text{observed gap})/\text{Weyl mean gap}$:
+
+\begin{table}[htbp]
+\centering
+\caption{Minimum observed gap as a fraction of the Weyl mean gap \lf{20.2}.}
+\label{tab:mingap}
+\begin{tabular}{lrlr}
+\toprule
+domain & ratio & domain & ratio \\
+\midrule
+\file{mushroom} & $0.127$ & \file{chevron}  & $0.336$ \\
+\file{H\_shape} & $0.210$ & \file{L\_shape} & $0.571$ \\
+\file{rect81}   & $0.295$ & \file{plus}     & $0.740$ \\
+                &         & \file{GWW1}     & $0.792$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{The local gap runs $1.3\times$ to $8\times$ tighter than Weyl's mean.} A stride computed
+from Weyl is therefore an estimate of the wrong quantity, and no a-priori stride can be safe
+--- which is the case for correcting the stride \emph{in the loop} rather than choosing it once
+\lf{20.2}. This finding does more work than the 18-per-gap number itself: it is the reason
+Part~3's A2 (Weyl-stratified sampling) was tested at all, and the reason its falsification kills
+the whole a-priori-schedule family.
+
+A third measurement in the same section corrects an earlier invariant. The half-width/gap ratio
+is \emph{not} the near-constant reported in \S14 of the notes. Measured consistently as the
+half-width at half the plateau, it runs $0.13$ to $0.39$ across the roster --- a $3\times$
+range, with \file{H\_shape} and \file{chevron} at the top. Section~14's $0.46$--$0.52$ used a
+different definition (full width at the plateau) on four benign domains; converted, the roster
+runs about $0.5$ to $1.6$. \textbf{The invariant is much looser than one domain family
+suggested} \lf{20.2}.
+
+\section{The Weyl audit is a post-multiplicity check}
+\label{sec:weyl}
+
+The Weyl deficit is the only completeness diagnostic available on a domain with no closed form:
+compare the number of levels found below a cut against the three-term asymptotic count
+$N(\lam)$. When the audit was run at each stride, it flagged \verb|MISS| at recall $1.000$ on
+four of seven domains. That looks like a false positive and is not:
+
+\begin{quote}
+$\sione$ shows one dip per \textbf{level}, and Weyl counts \textbf{with multiplicity}. The
+deficit was reporting exactly the multiplicity that had not been estimated yet \lf{20.3}.
+\end{quote}
+
+Closing the loop --- (C1) with $G=10$ plus (C2) at prominence $P=2$ on a wide bracket, then
+auditing the \emph{unfolded} list --- gives Table~\ref{tab:weyl}.
+
+\begin{table}[htbp]
+\centering
+\caption{Weyl deficit before and after multiplicity estimation \lf{20.3}.}
+\label{tab:weyl}
+\begin{tabular}{lrrrr}
+\toprule
+domain & dips & $\sum \mu$ & deficit on dips & deficit after multiplicity \\
+\midrule
+\file{L\_shape} &  9 & 10 & $0.41$ & $0.41$ \\
+\file{mushroom} & 12 & 12 & $0.59$ & $0.59$ \\
+\file{GWW1}     & 15 & 15 & $0.33$ & $0.33$ \\
+\file{H\_shape} &  8 &  8 & $1.18$ & $1.18$ \\
+\file{plus}     &  8 & 10 & $2.79$ & $\mathbf{0.79}$ \\
+\file{chevron}  &  3 &  3 & $0.12$ & $0.12$ \\
+\file{rect81}   & 14 & 14 & $2.55$ & $2.55$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\file{plus} is the case that proves it: $D_4$ symmetry, two doubles found, and the deficit falls
+from $2.79$ to $0.79$. \textbf{(C1)$+$(C2) works on a domain with four reentrant corners and a
+corner-adapted basis} --- the earlier 9-for-9 multiplicity score was on the disk and the
+equilateral triangle, both smooth \lf{20.3}.
+
+The residual flags are then real, and each names a different fault:
+\begin{itemize}[nosep]
+\item \file{rect81} at $2.55$ --- an inadequate \emph{basis}, floor $4.9\times10^{-2}$ at some
+  levels;
+\item \file{H\_shape} at $1.18$ --- a genuine miss; its minimum observed gap is $0.378$ against a
+  Weyl mean of $1.795$, so there is a tight pair the stride merged;
+\item \file{plus} at $0.79$ --- one more level or multiplicity not yet accounted for.
+\end{itemize}
+
+And \file{chevron} reads $0.12$ at recall $0.667$. \textbf{The audit is blind here}, because
+three distinct levels give too few cuts and every cut lies below the top level. That limitation
+is documented in \verb|asymp.weyl_deficit|, and this is it firing on a real domain \lf{20.3}.
+
+\subsection{What \S20 changes}
+
+\begin{itemize}[nosep]
+\item $\tau_{\mathrm{scan}}$ as a fraction of the plateau is now measured across seven domains,
+  not assumed.
+\item The per-eigenvalue accuracy clause is necessary, not defensive: $10^5$ floor spread in one
+  scan.
+\item \textbf{The ``six samples per gap'' rule in \file{search.md} \S6 is wrong and should be
+  replaced.} About 18 per median gap reaches full recall on this roster, and even that is a
+  fitted number rather than a bound, because it is the minimum local gap that governs.
+\item \textbf{The Weyl audit must run on the unfolded list, after multiplicity.} Run on dips, it
+  reads as a false alarm on every symmetric domain --- which is exactly the class the solver will
+  meet at the optimizers of a shape optimization.
+\item The audit needs enough distinct levels to have cuts. Below about five it says nothing, and
+  \file{chevron} shows it saying nothing while a third of the spectrum is missing \lf{20.4}.
+\end{itemize}
+
+\section{The Weyl deficit as a localizer, not a verdict}
+\label{sec:localizer}
+
+Since no a-priori stride is safe, the stride has to be corrected in the loop.
+\file{notes/adaptive\_scan.py} tests one way: make the Weyl deficit a \emph{profile} over cuts,
+so it says not only \emph{that} a level is missing but \emph{where}, and re-scan only that
+interval. Cost then goes as the number of tight spots rather than as the whole range \lf{21}.
+
+Scored against the \S20 fine scans as truth, with $s_0 = 8$ (one sample per Weyl gap divided by
+8), prominence $P=2$, $G=10$, $\tau_{\mathrm{scan}} = 0.5\,S$:
+
+\begin{table}[htbp]
+\centering
+\caption{The audit-guided adaptive scan \lf{21}. ``found'' includes spurious roots; the fine
+scan's evaluation count is given for comparison.}
+\label{tab:adaptive}
+\begin{tabular}{lrrrrrrr}
+\toprule
+domain & truth & found & recall & spurious & deficit & evals & fine-scan $n$ \\
+\midrule
+\file{L\_shape} &  9 &  9 & $1.000$ & 0 & $0.13$ &  205 & 317 \\
+\file{mushroom} & 12 & 11 & $0.917$ & 0 & $0.47$ &  238 & 348 \\
+\file{GWW1}     & 15 & 15 & $0.867$ & 2 & $-0.09$&  326 & 483 \\
+\file{H\_shape} &  8 &  8 & $0.875$ & 1 & $0.81$ & 1556 & 376 \\
+\file{plus}     &  8 &  8 & $0.875$ & 1 & $0.43$ &  206 & 355 \\
+\file{chevron}  &  3 &  3 & $0.667$ & 1 & $-0.78$&   84 & 154 \\
+\file{rect81}   & 14 & 17 & $1.000$ & 0 & $0.94$ & 4094 & 582 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The bug it found first, which was the author's}
+
+The first version anchored the profile by subtracting $N(a)$, on the reasoning that the count is
+only meaningful relative to the bottom of the scanned range. \textbf{The three-term count is an
+asymptotic and goes negative at the low end} --- measured $N(a)$ of $-0.230$ on
+\file{L\_shape}, $-0.687$ on \file{H\_shape}, $-0.752$ on \file{rect81}, $-1.041$ on
+\file{chevron}. Subtracting it \emph{adds} that much to every deficit, so the loop chased a
+phantom:
+
+\begin{table}[htbp]
+\centering
+\caption{Effect of removing the spurious anchor \lf{21}.}
+\begin{tabular}{l@{\quad}p{9.2cm}}
+\toprule
+\file{plus}     & 1794 evaluations $\to$ 206, an $8.7\times$ reduction, and the deficit
+                  reads $0.43$ instead of $0.89$ \\
+\file{L\_shape} & deficit $0.36 \to 0.13$ \\
+\file{GWW1}     & deficit $-0.01 \to -0.09$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The count is absolute, so the correct form subtracts nothing and instead \emph{requires} the
+found set to be a complete prefix from the bottom of the spectrum --- the same precondition
+\verb|asymp.weyl_deficit| already carries, and it should be asserted rather than papered over
+with an anchor that looks principled and is not \lf{21}.
+
+\subsection{Two structural flaws, both real}
+
+\paragraph{(1) A cluster miss is \emph{at} a level, not \emph{between} levels.}
+The localizer re-scans the interval between the two found levels straddling a hot cut. But when
+the missing eigenvalue is the second member of an unresolved pair, it sits at the \emph{same}
+location as a found level, and no amount of re-scanning between levels will ever reach it. That
+is \file{mushroom} (recall $0.917$, deficit $0.47$, minimum observed gap $0.352$ against a Weyl
+mean of $2.771$) and \file{H\_shape} ($0.875$, deficit $0.81$, minimum gap $0.378$ against
+$1.795$). \file{H\_shape} became \emph{more} expensive after the anchor fix, $958 \to 1556$,
+because the corrected deficit is real and the loop keeps trying to fix it by the one mechanism
+that cannot. The deficit response therefore has to be two-pronged:
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+between levels & re-scan the interval \quad(a genuinely unsampled dip) \\
+at a level     & re-examine multiplicity \quad(an unresolved cluster) \\
+\bottomrule
+\end{tabular}
+\end{center}
+and only the first is implemented \lf{21}.
+
+\paragraph{(2) No basis-adequacy termination guard.}
+\file{rect81} spends 4094 evaluations --- $7\times$ the fine scan --- and still reports a
+deficit of $0.94$, because its floor reaches $4.9\times10^{-2}$ at some levels and no stride can
+fix a basis. This is the unbounded-refinement stall, and the predicate that stops it already
+exists: $\text{gap} > 20\,\varepsilon/c$. Measured on \file{H\_shape} at every level,
+$\text{gap}/(\varepsilon/c)$ runs $2.2\times10^{6}$ to $1.4\times10^{11}$ --- massively adequate,
+so the guard correctly does \emph{not} fire there and correctly separates ``refine harder'' from
+``the basis cannot do this''. That discrimination is the thing the loop most needs and it is one
+predicate away \lf{21}.
+
+\subsection{Two cautions on the scoring itself}
+
+\file{chevron} reads deficit $-0.78$ at recall $0.667$: the audit says clean while a third of the
+spectrum is missing. Inside a control loop this is worse than in \S\ref{sec:weyl}, because
+\textbf{the loop terminates on it}.
+
+And the truth is basis-dependent. ``Truth'' here is the fine scan's dips below $0.5\,S$. On
+\file{rect81} the floor reaches $4.9\times10^{-2}$, about a third of the plateau, so real dips
+fall below that cutoff and the adaptive scan finding 17 against a ``truth'' of 14 is the truth
+undercounting, not the search over-reporting. \textbf{Any recall number on a domain whose basis
+is marginal is measuring the cutoff as much as the search} \lf{21}.
+
+\paragraph{Verdict.} The localizer is worth keeping --- it is what turned \file{plus} into 206
+evaluations, and on the three domains where the miss is genuinely a resolution problem it reaches
+the fine scan's recall at $0.6\times$ its cost. It is not sufficient on its own; the two additions
+it needs (the at-level prong, and the $20\,\varepsilon/c$ guard) are both specified and neither
+is speculative. What it should \emph{not} be is a verdict \lf{21}.
+
+\part*{Part 2: What the solver has to have}
+\addcontentsline{toc}{section}{Part 2: What the solver has to have}
+
+\section{Functional requirements}
+\label{sec:functional}
+
+The list below is from \file{notes/solver\_features.md}, derived from the operational definition
+of \S\ref{sec:opdef} and from the measurements of Part~1. Every entry names the measurement that
+forces it.
+
+\begin{description}[leftmargin=1.2em,style=nextline,itemsep=0.4em]
+
+\item[F1. Recall first, and recall is conditional.]
+Missing an eigenvalue cannot be repaired downstream; a located root a digit short can. Every
+claim of completeness is conditional on the scan's own assumptions and must say so.
+
+\item[F2. Adaptive subdivision, not a uniform grid.]
+A pair at separation $d$ is resolved once sampling near it is finer than about $d/3$. A uniform
+grid pays that everywhere at $n \sim 3(b-a)/d$; subdivision pays $O(\log(1/d))$. Measured
+$2048$ against $47$ evaluations at $d = 3\times10^{-3}$, and $6\times10^{10}$ against $97$ at
+$d = 10^{-10}$. $d$ is not known in advance, so the uniform cost is paid against a pair that may
+not exist. \sm{3}
+
+\item[F3. A stride that is corrected in the loop.]
+Six samples per gap loses eigenvalues on four of seven real domains; full recall needs about 18
+per median gap. And the governing quantity is the \emph{minimum local} gap, which runs $0.13$ to
+$0.79$ of Weyl's mean --- so no a-priori stride is safe and the correction has to happen during
+the solve. \lf{20.2}, and \S\ref{sec:stride} above.
+
+\item[F4. Per-solve calibration of $c$.]
+$c$ runs $0.45$ to $1.73$ across domains, stable within one. A fixed Lipschitz constant is either
+wrong or wasteful. \lf{2}
+
+\item[F5. Threshold rank, re-derived at each $\lam$.]
+The numerical rank \emph{grows} with $\lam$, so a rank frozen at one point is unsafe at the low
+end of a range: 39 columns chosen at $k = 3.95$ gives 85 spurious minima at $k = 2.35$, where the
+correct 31 gives exactly one. Threshold cannot pick an unsafe rank by construction, at
+$1.2$--$1.6\times$ the cost. \lf{3, 5, 8}
+
+\item[F6. Two-level rank from \emph{one} factorization.]
+The scan wants a low rank (smooth, wide dips); the refinement wants a high one (accurate floor).
+The L-shape locates $\lam_1$ to $3.2\times10^{-12}$ at rank 111 against $1.4\times10^{-10}$ at
+rank 61, because what limits it is the floor rather than the roughness. One SVD serves both ---
+no second basis, no second assembly. \lf{6} \textbf{Not built.}
+
+\item[F7. Refine in $\lam$.]
+Fitting $\sione^2$ over identical physical points, the residual is smaller in $\lam$ in 17 of 17
+cases across four domains, median $5.1\times$, and the located vertex is $5.1\times$ more
+accurate. The \emph{scan} variable is a separate choice. \lf{3b}
+
+\item[F8. Squared objective.]
+Minimize $\sione^2$, never $\sione$: squaring removes the kink and makes refinement
+machine-exact. \sm{3}
+
+\item[F9. Multiplicity by (C1) \emph{and} (C2).]
+The ratio gap alone double-counts once $d \lesssim \varepsilon/c$, reporting multiplicity 2 at a
+\emph{simple} eigenvalue; (C2) rejects it every time because $\sitwo$ there is a monotone wall.
+Confirmed on a domain with four reentrant corners: on \file{plus\_shape} the two $D_4$ doubles are
+found and the Weyl deficit falls $2.79 \to 0.79$. \lf{9.4, 20.3}
+
+\item[F10. Collapse-versus-merge by the interior Gram angle.]
+Two roots at the same separation can be one eigenvalue found twice or two genuine ones; no length
+threshold decides it. Distinct pairs read $|\cos| \le 0.10$, duplicates $\ge 0.948$. Within one
+$\lam$ the test is \emph{vacuous} --- the GSVD makes the interior images orthogonal by
+construction, measured $4.6\times10^{-16}$ --- so it is only informative \emph{across} roots.
+\lf{15}
+
+\item[F11. Work scaled to \texttt{prec}.]
+Refinement stops at $\max(\verb|prec|\cdot\lam,\ \delta_{\mathrm{res}})$; the first term binds
+whenever the basis is better than the request. Completeness is \emph{not} a precision question
+and the stride must not tighten with \verb|prec|. \sm{2.6}
+
+\item[F12. Deterministic output.]
+The same domain returns the same eigenvalue twice. An unseeded interior fill gives a $110\times$
+run-to-run spread in the located eigenvalue and puts that into the shape objective as noise.
+\lf{17}
+
+\end{description}
+
+\section{Required diagnostics}
+\label{sec:diagnostics}
+
+These are output, not instrumentation. $S$ is unknown on every domain that matters, so they are
+the only signals that F1 has failed.
+
+\begin{description}[leftmargin=1.2em,style=nextline,itemsep=0.4em]
+
+\item[D1. The Weyl deficit, on the \emph{unfolded} list.]
+The only completeness check that does not depend on the search being right. It found the
+recursion-floor bug that prefix truth did not. Two hard limits, both measured firing on real
+domains: run \emph{before} multiplicity it reads as a false alarm on every symmetric domain
+($2.79$ on \file{plus}, which is really $0.79$), and below about five distinct levels it says
+nothing at all while a third of the spectrum is missing (\file{chevron}, $0.12$ at recall
+$0.667$). \lf{20.3}
+
+\item[D2. $L$ and the largest observed secant slope, with their ratio.]
+A small margin means the constant was being pushed and the run deserves a rerun. The only signal
+that the first pass was too coarse. (See A6 in Part~3: this diagnostic is what would have caught
+the unsound pilot.)
+
+\item[D3. Per root: $\delta_{\mathrm{res}}$, and which termination bound was active.]
+This is what makes clause~(2) enforceable while its constant is uncalibrated.
+
+\item[D4. The basis-adequacy predicate, per interval.]
+$\text{gap} > 20\,\varepsilon/c$, from a direct measurement --- (C1) correct at
+$d/(\varepsilon/c) = 23$, wrong at $0.45$ and $0.15$. \lf{9.4}
+
+\item[D5. A flag when \texttt{tol\_merge} approaches the local resolution limit.]
+At $\verb|prec| \sim 4\times10^{-9}$ the discretization's own splitting of a degenerate pair
+exceeds \verb|tol_merge| and a true double is reported as two simple eigenvalues. \lf{19}
+
+\item[D6. Evaluation count and attic revivals.]
+
+\end{description}
+
+\section{Anti-features: measured not to work}
+\label{sec:anti}
+
+These carry their own numbering in \file{solver\_features.md} (A1--A9) which is \emph{unrelated}
+to the approach numbering A1--A27 of Part~3. They are relabelled X1--X9 here to avoid the
+collision.
+
+\begin{description}[leftmargin=1.2em,style=nextline,itemsep=0.4em]
+
+\item[X1. No absolute tension threshold, anywhere.]
+The floor spreads four to five orders \emph{within} one scan on three of seven domains.
+Thresholds are fractions of the plateau, which is $0.12$ to $0.36$ across the whole roster.
+\lf{20.1}
+
+\item[X2. No $\sitwo$-\emph{value} gate for cluster detection.]
+$\sitwo$'s minimum is $c\,d/2$ only at the crossing point, which is never a sample, so a grid of
+spacing $h$ sees $c\,h/2$. The gate tests the \emph{grid}, not the pair. \lf{11}
+
+\item[X3. No offset detector expecting early warning.]
+The $\sitwo$ offset relation is real (1\% of $d/2$, confirmed over six decades) but it fires at
+exactly the same coarseness at which $\sione$ first shows two minima. It measures $d$ once
+resolved; it does not detect earlier. \lf{9.2, 16} (Part~3, \S\ref{sec:swingpairs}, records the
+one detector that \emph{does} fire earlier, and the extent to which the corresponding general
+claim had been over-stated.)
+
+\item[X4. No distance-only collapse/merge.] See F10.
+
+\item[X5. No structured interior fill.]
+\verb|method="grid"| is $30\times$ to $10^{4}\times$ more accurate as a discrete inner product
+\emph{and} annihilates the mode $\mathrm{side}+1$ exactly, to $10^{-56}$, because its points sit
+on that mode's nodal lines. The interior block wants \emph{non-degeneracy}, not accuracy.
+\lf{18}
+
+\item[X6. No interior-cubature project.]
+Accurate interior inner products for eigenfunctions are hard and the path is dysfunctional. The
+interior block only has to bound $\|u\|$ away from zero. Anything that must be \emph{accurate}
+belongs on the Rellich boundary integrals.
+
+\item[X7. No fixed tolerance that expresses resolution or accuracy.] \sm{2.1}
+
+\item[X8. No auto-swap to a symmetry-reduced solve on detected symmetry.]
+A tolerance threshold makes the objective discontinuous in shape, and it fires in the endgame of
+the optimization. (\file{mps\_symmetry.md} \S2.) This is the constraint that makes A25 in Part~3
+a \emph{declared}-symmetry option only.
+
+\item[X9. Do not design against a narrow dip.]
+No domain produces one; measured $c$ is $0.445$ to $1.725$ over 19 eigenvalues. The real failure
+is a \emph{cluster}. \lf{14}
+
+\end{description}
+
+\section{The interface has to widen}
+\label{sec:interface}
+
+The current harness contract is \verb|search(tensions, a, b) -> [(lam, mult)]|, and
+\file{search.md} defends it: the search sees only the tension function, which is what makes
+candidates comparable and lets a later FEM or boundary-integral method reuse it.
+
+\textbf{F10 breaks that.} The Gram angle needs the candidate eigen\emph{functions}, which
+\verb|tensions(x)| cannot supply. Two ways out \sfe{4}:
+\begin{enumerate}[nosep]
+\item Widen the interface to \verb|modes(x) -> (sigma[:], U[:, :])|, where $U$'s columns are the
+  candidate functions sampled on a \emph{fixed} common point set. FEM and BIM produce
+  eigenvectors too, so this stays method-agnostic and keeps candidates comparable. The fixed
+  point set is already what \verb|MPSPencil| has --- \verb|interior| is set at construction and
+  only $k$ changes.
+\item Move the collapse phase above the search, into \verb|MPSEigensolver|, as post-processing.
+\end{enumerate}
+\textbf{(1) is better}, and it is a small change: the harness's \verb|Case| grows one callable,
+and \verb|uniform_grid_search| and the lappy baselines ignore it. (2) makes the collapse
+decision un-benchmarkable, which is precisely the decision that most needs benchmarking.
+
+This finding is more consequential than it first looks, because Part~3's two surviving approaches
+--- the eigenvector swing and the bisection repair --- both read \verb|modes(x)| and neither is
+expressible under the narrow contract.
+
+\section{Ranked build order}
+
+\begin{enumerate}[nosep]
+\item \textbf{The stride rule and the in-loop Weyl correction (F3, D1).} The measured defect is
+  here --- six per gap loses eigenvalues on four of seven domains --- and recall is the headline.
+\item \textbf{The interface widening (\S\ref{sec:interface}), then F10.} Everything about
+  multiplicity is un-benchmarkable until the harness can see eigenfunctions.
+\item \textbf{\texttt{prec}-derived termination (F11)} and the $\delta_{\mathrm{res}}$ report
+  (D3). This is what makes the precision contract real rather than aspirational; nothing
+  currently reads \verb|prec| at all.
+\item \textbf{Two-level rank (F6).} A pure win already measured, and cheap: one factorization.
+\item Basis planning, which bounds all of it and is a separate project.
+\end{enumerate}
+
+\part*{Part 3: Candidate methods}
+\addcontentsline{toc}{section}{Part 3: Candidate methods}
+
+\section{The reframing that generates the list}
+\label{sec:reframe}
+
+\textbf{This is not global optimization.} Global optimization finds $\arg\min f$. What is needed
+is
+\[
+  \{\, x \in [a,b] \;:\; x \text{ is a local minimum of } \sione \text{ with prominence} \ge P \,\}
+\]
+with a multiplicity at each, and a certificate that none was missed. That is a
+\textbf{level-set / sublevel-set problem} --- find and certify $\{f \le \tau\}$ --- with a
+local-structure problem inside each component \ap{0}. Two consequences follow, and they organize
+everything below:
+\begin{itemize}[nosep]
+\item the hard half is the \textbf{certificate} (what is provably absent), not the location;
+\item methods designed to converge fast to \emph{one} minimum are mostly irrelevant, and methods
+  designed to \textbf{count} or \textbf{enclose} are directly relevant even when they locate
+  nothing.
+\end{itemize}
+The enumeration is therefore organized by \emph{what supplies the certificate}.
+
+\section{The enumeration}
+\label{sec:enum}
+
+\subsection{Family 1 --- deterministic sampling, local extraction}
+Certificate: ``the samples were fine enough.'' The weakest kind, and everything currently built
+lives here.
+\begin{description}[leftmargin=1.2em,style=nextline,itemsep=0.25em]
+\item[A1. Uniform grid.] The control, \verb|harness.uniform_grid_search|. Falsifiable claim: a
+  grid at $s$ samples per Weyl gap reaches recall $1.0$ for $s \ge s^\ast$. Measured
+  $s^\ast \approx 18$ on the roster, and it is not a bound (\S\ref{sec:stride}).
+\item[A2. Weyl-stratified grid.] Sample equispaced in $N(\lam)$, not in $\lam$. \textbf{Tested.}
+\item[A3. Recursive bisection into every dip.] \verb|lappy_repaired_search|, 10/12 at 5573
+  evaluations. The open recursion-floor bug lives here.
+\item[A4. Audit-guided local refinement.] \S\ref{sec:localizer}. Works where the miss is a
+  resolution problem; structurally cannot reach a miss that sits \emph{at} a level; no basis
+  guard.
+\item[A5. Coarse-to-fine cascade sharing evaluations.] One sorted cache, repeated passes at
+  halved stride, extraction from the cache each time.
+\end{description}
+
+\subsection{Family 2 --- bounding and certification}
+Certificate: a proven lower bound on $f$ over an interval. The only family that can certify
+\emph{absence} rather than assert it.
+\begin{description}[leftmargin=1.2em,style=nextline,itemsep=0.25em]
+\item[A6. Piyavskii--Shubert with a calibrated $L$.] The originating proposal. Built, broken,
+  7/12. \textbf{Tested.}
+\item[A7. DIRECT (dividing rectangles).] Lipschitz-free: no constant to calibrate, considers all
+  Lipschitz constants at once by keeping the potentially-optimal set. \textbf{Tested.}
+\item[A8. Cone-model envelope.] Bound from the measured structure \eqref{eq:cone} rather than from
+  secants: between two samples the cone model says how deep a dip can hide.
+\item[A9. Interval arithmetic / rigorous enclosure.] The only route to a true proof. Needs an
+  interval extension of a generalized singular value through a GSVD --- not available and not
+  plausible to build. \textbf{Rejected}, with the reason recorded.
+\item[A10. Derivative-bounded envelope.] A two-point Hermite bound, far tighter than a secant
+  bound. Gated on A14.
+\end{description}
+
+\subsection{Family 3 --- analytic root counting}
+Certificate: a contour integral counts the roots inside, exactly and with multiplicity. The only
+family that answers the completeness question \emph{directly} rather than by sampling.
+\begin{description}[leftmargin=1.2em,style=nextline,itemsep=0.25em]
+\item[A11. Argument principle on $\det A_B(\lam)$.] With a square collocation
+  ($n_{\mathrm{bdry}} = n_{\mathrm{cols}}$), $\det A_B(\lam)$ is analytic in $\lam$ and
+  $(2\pi i)^{-1}\oint d(\log\det)$ counts its zeros. \textbf{Tested.}
+\item[A12. Beyn / Sakurai--Sugiura contour integration.] The standard tool for ``all eigenvalues
+  inside a contour, with multiplicity'' for nonlinear eigenproblems $T(\lam)v=0$. Obstacle: MPS
+  is rectangular and least-squares, so the moment matrices are not defined; a square
+  reformulation exists only in A11's setting, which gives up least-squares stability.
+\item[A13. Inertia / Sylvester count.] $N(\lam)$ exactly, by counting negative eigenvalues of a
+  shifted Hermitian pencil. \textbf{Rejected}: FEM and BIM have this; MPS does not, because there
+  is no Hermitian matrix whose inertia counts Laplacian eigenvalues below $\lam$. It is recorded
+  because it is the single feature whose absence makes this problem hard, and a hybrid borrowing
+  a coarse FEM count purely as a counting oracle is a real option (A24).
+\end{description}
+
+\subsection{Family 4 --- derivative-based}
+\begin{description}[leftmargin=1.2em,style=nextline,itemsep=0.25em]
+\item[A14. Exact $d\sig/d\lam$ from existing primitives.] Every particular solution here is
+  $\psi(x) = \Psi(kx)$ about its own centre --- plane waves $e^{ik\,d\cdot x}$ and
+  Fourier--Bessel $J_\nu(kr)e^{i\nu t}$ both --- so Euler's identity gives
+  $\partial\psi/\partial k = (x\cdot\nabla\psi)/k$ exactly, and $x\cdot\nabla\psi$ is the
+  \emph{Rellich multiplier}, which the boundary-integral layer is already planned around.
+  \textbf{Tested.}
+\item[A15. Sign-of-derivative bracketing.] A bracket is a sign change --- no extra evaluations, and
+  no reliance on three-point local-minimum tests that fail in the flat bottom.
+\item[A16. Curvature for $\delta_{\mathrm{res}}$.] The second derivative at the minimum gives
+  $\delta_{\mathrm{res}}$ directly rather than through a three-point parabola fit.
+\end{description}
+
+\subsection{Family 5 --- structure of the branch family}
+\begin{description}[leftmargin=1.2em,style=nextline,itemsep=0.25em]
+\item[A17. Track all $\sig_j$ as smooth curves.] $\sione$ is $\min_j$ of branches and has kinks at
+  crossings; the individual branches are smooth. Continuation turns a non-smooth minimization into
+  several smooth ones.
+\item[A18. $\sitwo$ as a between-dip certificate.] Between two eigenvalues $\sione$ is the meeting
+  of two cones and $\sitwo$ is bounded below there; a lower bound on $\sitwo$ over an interval may
+  certify ``no third eigenvalue hiding here''.
+\item[A19. Eigenvector continuation.] Track $c(\lam)$ rather than $\sig(\lam)$. The coefficient
+  vector swings as $\lam$ crosses an eigenvalue, and the swing is a large $O(1)$ signal where the
+  tension change may be small. \textbf{Tested.}
+\end{description}
+
+\subsection{Family 6 --- model-based and statistical}
+\begin{description}[leftmargin=1.2em,style=nextline,itemsep=0.25em]
+\item[A20. Gaussian process with a level-set acquisition.] Evaluations cost 14--100\,ms, expensive
+  enough that model-based placement can pay. Concern: a GP prior is stationary and $\sione$ is
+  emphatically not --- deep narrow dips on a flat plateau. Would need the cone model as a mean
+  function, which is A21.
+\item[A21. Parametric cone-mixture fit.] Fit
+  $\sione \approx \min_i \sqrt{\varepsilon_i^2 + c^2(\lam-\lam_i)^2}$ over a window, then place the
+  next sample where adding one more cone would be least detectable.
+\item[A22. Multistart local minimization with clustering.] No certificate at all, and the starts
+  have to come from somewhere --- which is A1. \textbf{Rejected as a primary}, kept as a
+  refinement stage.
+\item[A23. Stochastic global search (annealing, evolutionary, CMA-ES).] \textbf{Rejected.} No
+  completeness certificate, and clause~(1) is a multiset match. These answer a different question.
+\end{description}
+
+\subsection{Family 7 --- exploiting problem structure}
+\begin{description}[leftmargin=1.2em,style=nextline,itemsep=0.25em]
+\item[A24. A coarse FEM counting oracle.] Borrow $N(\lam)$ from a cheap low-order FEM inertia
+  count as the completeness certificate, keeping MPS for accuracy. It supplies precisely the
+  missing A13, and the Weyl audit is a weak surrogate for it --- Weyl is blind at the top of the
+  range and needs five distinct levels; inertia is exact and local.
+\item[A25. Symmetry decomposition into irreps.] For a \emph{declared} symmetry, each irrep has a
+  simple spectrum and multiplicity becomes bookkeeping across irreps rather than a numerical test.
+  Falsifiable on \file{plus\_shape} ($D_4$), where the two measured doubles should split into
+  distinct irreps. Constraint: declared only, never detected (X8).
+\item[A26. Two-level rank.] Low rank for the scan, high for refinement, one factorization. Already
+  half-measured: rank 111 locates $\lam_1$ to $3.2\times10^{-12}$ against $1.4\times10^{-10}$ at
+  rank 61.
+\item[A27. Basis-adaptive escalation.] When the audit says the basis is binding
+  ($\text{gap} < 20\,\varepsilon/c$), raise the basis rather than the sampling. Half-measured:
+  \file{rect81}'s 4094 evaluations did not fix it (\S\ref{sec:localizer}).
+\end{description}
+
+\subsection{Triage}
+
+\begin{table}[htbp]
+\centering
+\caption{Triage of the 27 candidates \ap{8}.}
+\begin{tabular}{ll}
+\toprule
+tier & approaches \\
+\midrule
+\textsc{test}   & A2, A6, A7, A11, A14, A19 --- cheap, and each falsifies something load-bearing \\
+\textsc{keep}   & A3, A4, A5, A8, A15, A24, A25, A26, A27 --- plausible, needs the tested ones first \\
+\textsc{later}  & A12, A17, A18, A20, A21 --- real but expensive to evaluate \\
+\textsc{reject} & A9, A13, A22, A23 --- reasons recorded above \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The six in \textsc{test} were chosen because each one, if it fails, removes a whole family: A2, if
+stratification does not beat uniform, no sampling schedule will and the answer must come from the
+certificate side; A6, if pilot secants underestimate the true slope, every Lipschitz certificate
+in the design is unsound as built; A7, if Lipschitz-free subdivision matches it, the calibration
+problem disappears; A11, if the phase of $\det A_B$ survives, we get an \emph{exact} count, which
+nothing else offers; A14, if the derivative identity holds, four other approaches become available
+for one gradient; A19, if the eigenvector swing is coarser-samplable than the dip, the stride
+problem of \S\ref{sec:stride} is solved outright \ap{8}.
+
+\section{The six tests}
+\label{sec:tests}
+
+All six were run (\file{notes/test\_approaches.py}). Table~\ref{tab:six} is the summary; each is
+then given in full.
+
+\begin{table}[htbp]
+\centering
+\caption{Outcomes of the six \textsc{test}-tier approaches \lf{22}.}
+\label{tab:six}
+\begin{tabular}{llp{7.2cm}}
+\toprule
+& outcome & evidence \\
+\midrule
+A2  & \textsc{falsified}      & worse or equal in 22 of 28 comparisons \\
+A6  & \textsc{unsound}        & \file{GWW1} at $n_{\mathrm{pilot}}=20$ reads $0.672$: the
+                                certificate is \emph{false}, not merely loose \\
+A7  & \textsc{strong}         & mean recall $0.95$ against uniform's $0.75$, and no constant to
+                                calibrate \\
+A11 & \textsc{falsified}      & 455 spurious sign flips against 9 roots \\
+A14 & \textsc{confirmed}      & $4.65\times10^{-9}$ once the $k$-dependent column scale is
+                                corrected for \\
+A19 & \textsc{reinterpreted}  & false as proposed; the peaks are crossings, not eigenvalues \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{A2 --- Weyl-stratified sampling: falsified}
+
+\paragraph{What it is.} Sample equispaced in $N(\lam)$ rather than in $\lam$, so that points
+concentrate where the spectral density is high.
+
+\paragraph{The falsifiable claim.} At equal point count, stratified recall $\ge$ uniform recall,
+with the gain largest where $\min\text{gap}/\text{mean gap}$ is smallest --- i.e.\ on
+\file{mushroom} ($0.127$) and \file{H\_shape} ($0.210$).
+
+\paragraph{The evidence.} Measured against uniform at equal point count, on all seven domains at
+$n = 40, 60, 90, 130$: \textbf{28 comparisons, and stratification is worse or equal in 22 of
+them.} At $n = 130$ it is worse on four of seven \lf{22}.
+
+\paragraph{Why it kills the family.} The reason is structural. $N(\lam)$ is nearly \emph{linear}
+in $\lam$, so stratifying by it is nearly uniform sampling, and the deviations it does introduce
+are not aligned with where the local gaps are tight. \textbf{Local clustering is a fluctuation
+phenomenon --- level repulsion, accidental near-degeneracy --- not a density phenomenon, and
+Weyl's law describes only the density.} No a-priori schedule computed from Weyl can concentrate
+samples where they are actually needed \lf{22}, \ap{9}. This is the formal reason F3 must correct
+the stride \emph{in the loop}: the information needed to choose it in advance does not exist in
+$N(\lam)$.
+
+\subsection{A6 --- Lipschitz calibration: unsound at small pilots}
+
+\paragraph{What it is.} Piyavskii--Shubert branch-and-bound with
+$L = \gamma \max|d\sig/d\lam|$ estimated over $n_{\mathrm{pilot}}$ pilot points, $\gamma = 2$.
+This is the originating proposal for the whole search.
+
+\paragraph{The falsifiable claim.} The certificate is only as good as $L$, and $L$ from pilot
+secants underestimates the true slope on some real domain.
+
+\paragraph{The evidence.} Ratios of the pilot-derived $L$ to the true maximum slope from the fine
+scan; values above 1 mean the certificate holds (Table~\ref{tab:a6}).
+
+\begin{table}[htbp]
+\centering
+\caption{A6: pilot-derived $L$ against the true maximum slope \lf{22}.}
+\label{tab:a6}
+\begin{tabular}{lrrrrr}
+\toprule
+domain & true max & $n=20$ & $n=40$ & $n=80$ & $n=160$ \\
+\midrule
+\file{L\_shape} & $0.2013$ & $1.894$ & $1.989$ & $1.996$ & $2.000$ \\
+\file{mushroom} & $0.3589$ & $1.524$ & $1.945$ & $1.974$ & $1.995$ \\
+\file{GWW1}     & $0.7612$ & $\mathbf{0.672}$ & $1.974$ & $1.988$ & $1.999$ \\
+\file{H\_shape} & $0.2438$ & $1.886$ & $1.941$ & $1.985$ & $1.991$ \\
+\file{plus}     & $0.2738$ & $1.939$ & $1.986$ & $1.996$ & $1.999$ \\
+\file{chevron}  & $0.0472$ & $1.993$ & $2.000$ & $2.000$ & $2.000$ \\
+\file{rect81}   & $0.2264$ & $1.917$ & $1.945$ & $1.951$ & $1.961$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{\file{GWW1} at $n = 20$ reads $0.672$: the pilot underestimates the true slope even with
+$\gamma = 2$, so the certificate is \emph{false}.} It is the domain with the densest spectrum, and
+the pilot simply never lands on a steep wall \lf{22}.
+
+\paragraph{Why this is \emph{unsound}, not merely loose.} The distinction matters and is worth
+stating plainly. A loose constant costs evaluations; an \emph{underestimated} one voids the
+guarantee. \file{search.md} \S6's conditional claim --- ``no $x$ with
+$\sione(x) \le \tau_{\mathrm{scan}}$ outside the returned set, \emph{given} $L$'' --- is
+conditional on something that can be false, and the failure mode is a silently missed eigenvalue
+rather than wasted work \ap{9}. Everything converges to $2.000$ by $n = 40$, so the failure is not
+asymptotic; it is that ``a fine enough pilot'' is domain-dependent and not knowable in advance,
+which is \S\ref{sec:stride}'s stride problem wearing a different hat. A6 is usable only if
+something else sizes the pilot --- which is why it survives as \textsc{wounded} rather than dead.
+
+\subsection{A7 --- DIRECT, Lipschitz-free: strong}
+
+\paragraph{What it is.} Keep every interval that is potentially optimal for \emph{some} Lipschitz
+constant --- the lower-right convex hull of (width, value) --- plus every interval already below
+$\tau$. There is no constant to calibrate, so A6's failure mode cannot occur.
+
+\paragraph{The falsifiable claim.} Extended to keep every interval potentially containing a point
+below $\tau$, DIRECT reaches recall $1.0$ at fewer evaluations than a uniform grid.
+
+\paragraph{The evidence.} At about 230 evaluations (Table~\ref{tab:a7}).
+
+\begin{table}[htbp]
+\centering
+\caption{A7: DIRECT against a uniform grid at the same evaluation count \lf{22}.}
+\label{tab:a7}
+\begin{tabular}{lrr}
+\toprule
+domain & DIRECT recall & uniform recall at the same $n$ \\
+\midrule
+\file{L\_shape} & $1.000$ & $0.778$ \\
+\file{mushroom} & $1.000$ & $0.917$ \\
+\file{GWW1}     & $0.800$ & $0.867$ \\
+\file{H\_shape} & $0.875$ & $0.625$ \\
+\file{plus}     & $1.000$ & $0.875$ \\
+\file{chevron}  & $1.000$ & $0.333$ \\
+\file{rect81}   & $1.000$ & $0.857$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Six of seven at or above uniform, mean recall $0.95$ against $0.75$}, and it beats
+\S\ref{sec:localizer}'s audit-guided loop on \file{mushroom}, \file{chevron} and \file{plus} while
+costing $7\times$ less than it on \file{H\_shape} and $18\times$ less on \file{rect81} \lf{22}.
+
+\paragraph{Caveat, recorded.} This simulation interpolates from the cached fine scan, so it does
+not pay real evaluation cost and the interpolation smooths the curve. The structural result --- no
+constant needed, and it beats uniform --- does not depend on that \lf{22}.
+
+\subsection{\texorpdfstring{A11 --- the argument principle on $\det A_B$: falsified}{A11 -- the argument principle on det A\_B: falsified}}
+
+\paragraph{What it is.} With a square collocation, $\det A_B(\lam)$ is analytic in $\lam$ and its
+sign changes count the odd-multiplicity roots. This was the only exact-count candidate available
+to MPS.
+
+\paragraph{The falsifiable claim, and why it was not the usual objection.} The determinant method
+is known to be numerically bad --- that is exactly why Betcke and Trefethen introduced the
+subspace angle and why this project uses the GSVD. But that objection is about the
+\emph{magnitude}, and counting needs only the \emph{sign}, which comes from LU pivot parity and is
+a different question. The narrow claim was that the phase might survive where the magnitude does
+not \ap{3}.
+
+\paragraph{The evidence.} It is not a different question. On 900 samples:
+
+\begin{table}[htbp]
+\centering
+\caption{A11: sign flips of $\det A_B$ against the true eigenvalue count \lf{22}.}
+\begin{tabular}{lrrr}
+\toprule
+domain & $\log|\det|$ span & sign flips & true eigenvalues \\
+\midrule
+\file{L\_shape} & 214 orders & 464 (455 spurious) & 9 \\
+\file{mushroom} & 163 orders & 456 (444 spurious) & 12 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Every true eigenvalue does have a flip near it --- 9/9 and 12/12 --- but at 2\% precision that is
+worthless.
+
+\paragraph{The finding, which is stronger than the standard objection.}
+\textbf{The conditioning destroys the determinant's \emph{topology}, not merely its magnitude}
+\lf{22}. That is a strictly stronger statement than the usual complaint about determinant methods,
+and it kills A11 and most of A12 (Beyn on a square MPS collocation) with it, because they rest on
+the same matrix. With A13 already rejected, MPS is left with no exact counting oracle of its own,
+which is what makes A24 (borrowing one from FEM) the standing option.
+
+\subsection{\texorpdfstring{A14 --- the exact $k$-derivative: confirmed, after a correction}{A14 -- the exact k-derivative: confirmed, after a correction}}
+
+\paragraph{What it is.} Every particular solution here is $\Psi(kx)$ about its own centre, so
+Euler's identity for a homogeneous argument gives
+\[
+  \frac{\partial \psi}{\partial k} \;=\; \frac{x\cdot\nabla\psi}{k}
+\]
+exactly. $d\sione/d\lam$ then follows by first-order perturbation of the GSVD.
+
+\paragraph{The falsifiable claim.} The analytic derivative matches a central finite difference to
+the accuracy the finite difference deserves.
+
+\paragraph{The evidence, including the initial failure.} Measured against a central difference:
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\verb|PlaneWave|   & $3.12\times10^{-10}$ \quad (finite-difference noise floor $2.23\times10^{-10}$) \\
+\verb|FB @ corner| & $2.35\times10^{1}$ \;$\to$\; $4.65\times10^{-9}$ after the correction below \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{The raw identity fails for Fourier--Bessel}, and the reason is the $k$-dependent
+\emph{column scale}. With $\psi_s = e^{-L(k)}\psi$ and $L$ spatially constant,
+\[
+  \frac{\partial \psi_s}{\partial k}
+  \;=\; \frac{x\cdot\nabla\psi_s}{k} \;-\; L'(k)\,\psi_s ,
+\]
+and $|dL/dk|$ reaches $1.74$ for the corner family against exactly $0$ for plane waves --- which is
+precisely why one passed and one did not. With the correction both sit at the finite-difference
+floor \lf{22}. The episode is worth keeping in the record: the identity is exact mathematics, and
+what broke it was an implementation detail of the equilibration, not the mathematics.
+
+\paragraph{What it opens.} $d\sig/d\lam$ is available for one gradient evaluation plus a scalar
+per column, rather than two extra tension evaluations. And $x\cdot\nabla\psi$ is the Rellich
+multiplier, which the boundary-integral layer is already planned around. This opens A10 (a Hermite
+envelope, far tighter than a secant bound), A15 (sign-change bracketing with no extra evaluations),
+A16 (curvature for $\delta_{\mathrm{res}}$ directly), and a $c$ calibrated exactly rather than by
+secants --- which is the direct repair for A6 \lf{22}, \ap{9}.
+
+\subsection{A19 --- the eigenvector swing: falsified as proposed, strong as reinterpreted}
+\label{sec:a19}
+
+\paragraph{What it is, as proposed.} Track $c(\lam)$ rather than $\sig(\lam)$: the angle between
+$c(\lam)$ and $c(\lam+h)$ was hypothesized to peak \emph{at} eigenvalues, giving an indicator that
+survives a coarser stride than $\sione$'s dip.
+
+\paragraph{The evidence against the original hypothesis.} \textbf{It does not: recall $0.333$ at
+4 samples per gap, falling to $0.000$ at 8 and finer} \lf{22}. The finer the stride, the worse it
+gets --- the signature of an indicator that is firing somewhere other than where it was expected.
+
+\paragraph{The reinterpretation.} The swing peaks where the \emph{minimising vector changes
+identity}, which is at a branch \emph{crossing} --- and crossings lie \emph{between} eigenvalues.
+This is far more useful than the original hypothesis: a peak in every gap partitions $[a,b]$ into
+cells holding exactly one eigenvalue each, which is a completeness certificate of a kind no
+sampling schedule gives. Measured as ``gaps hit'' out of the gaps between known dips
+(Table~\ref{tab:a19}).
+
+\begin{table}[htbp]
+\centering
+\caption{A19b: the swing as a cell decomposition \lf{22}. Timing is per sample, for
+\texttt{coef}.}
+\label{tab:a19}
+\begin{tabular}{lllllrr}
+\toprule
+domain & 3/gap & 4/gap & 6/gap & 8/gap & extra peaks at 4/gap & ms per sample \\
+\midrule
+\file{L\_shape} & 8/8   & 8/8   & 8/8   & 9 (1 extra) & 0 & $13.7$ \\
+\file{mushroom} & 10/11 & 11/11 & 11/11 & 11/11       & 0 & $32.7$ \\
+\file{GWW1}     & 14/14 & 14/14 & 14/14 & 14/14       & 0 & $111.3$ \\
+\file{H\_shape} & 7/7   & 7/7   & 7/7   & 7/7         & 0 & $81.7$ \\
+\file{plus}     & 7/7   & 7/7   & 7/7   & 7/7         & 0 & $78.9$ \\
+\file{chevron}  & 2/2   & 2/2   & 2/2   & 2/2         & 0 & $106.9$ \\
+\file{rect81}   & 12/13 & 12/13 & 13/13 & 13/13       & 0 & $10.7$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{At four samples per Weyl gap, six of seven domains give a perfect cell decomposition},
+and \file{rect81} needs six. Against the 18 per median gap that $\sione$ dip detection needs for
+full recall (\S\ref{sec:stride}), that is a $3\times$ to $4.5\times$ reduction in samples.
+
+\textbf{And it is nearly free.} \verb|coef| costs $13.7$\,ms against \verb|tensions|' $13.6$ on
+\file{L\_shape}, $111.3$ against $104.8$ on \file{GWW1}, $81.7$ against $76.6$ on
+\file{H\_shape} --- \textbf{5 to 7 percent} --- because both need the same regularization and
+factorization, and the \verb|separate|-mode GSVD is comparable to \verb|gsvdvals| \lf{22}.
+
+Extra peaks are 0 or 1--2 and are the safe direction: an extra cell is an empty cell, which is
+cheap to detect and discard, whereas a missing cell is a missing eigenvalue.
+
+\paragraph{Three caveats, all real and all recorded.} The denominator is gaps between
+\emph{detected} dips, so this measures ``does it separate the levels we already know about'', not
+``does it find a hidden pair'' --- the pair-resolution question is untouched. The
+$5\times\text{median}$ peak threshold is a parameter and has not had the margin study that $G$
+and $\tau_{\mathrm{gram}}$ got. And it \emph{brackets} rather than locates: refinement still runs
+inside each cell, though refinement inside a bracket known to hold exactly one minimum is the easy
+and robust case, which is the entire point \lf{22}.
+
+\subsection{Shortlist after the six tests}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textsc{keep, tested}   & A7 (DIRECT), A19b (swing cell decomposition), A14 (exact derivative) \\
+\textsc{keep, untested} & A3, A5, A8, A15, A24, A25, A26, A27 \\
+\textsc{dead}           & A2, A11, A12-square, A9, A13, A22, A23 \\
+\textsc{wounded}        & A6 --- unsound at small pilots; usable only with A7 or A19b sizing it \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The two survivors attack the same defect from opposite sides. \textbf{A19b gives the partition;
+A7 gives the search inside it, with no constant to calibrate.} They compose: use the swing at 4
+per gap to cut $[a,b]$ into one-eigenvalue cells, then run DIRECT inside each cell against $\tau$,
+then refine. That combination has a completeness argument that neither the Lipschitz certificate
+(A6, measured unsound) nor the Weyl audit (\S\ref{sec:weyl}, blind at the top and needing five
+levels) can provide, and it is the first candidate in this project that does \lf{22}.
+
+\section{The swing on a pair: a detection result}
+\label{sec:swingpairs}
+
+\S\ref{sec:a19} left A19b's central question open: its cells were measured against gaps between
+\emph{detected} dips, so it had never been shown to split a pair that $\sione$ presents as one
+dip. That is the failure mode that \lf{9.4} and \lf{19} call real, and it decides whether the
+composed method is a capability win or only a cost win. The instrument is
+\verb|rect(1+delta, 1)| with modes $(2,1)$ and $(1,2)$, in one window holding the pair and no
+neighbour (\file{notes/swing\_pairs.py}).
+
+\begin{table}[htbp]
+\centering
+\caption{Pair detection at stride $h = 1.005$, about 12 samples per gap \lf{23}.}
+\label{tab:swingpair}
+\begin{tabular}{lccl}
+\toprule
+$d(\lam)$ & $\sione$ dips & swing peaks & verdict \\
+\midrule
+$5.139\times10^{0}$  & 2 & 1 & $\sione$ already splits \\
+$1.700\times10^{0}$  & 2 & 1 & $\sione$ already splits \\
+$5.834\times10^{-1}$ & 1 & 1 & swing sees it, dip does not \\
+$1.769\times10^{-1}$ & 1 & 1 & swing sees it \\
+$5.913\times10^{-2}$ & 1 & 1 & swing sees it \\
+$1.776\times10^{-2}$ & 1 & 1 & swing sees it \\
+$5.921\times10^{-3}$ & 1 & 1 & swing sees it \\
+$1.776\times10^{-3}$ & 1 & 0 & neither \\
+$0$ (exact)          & 1 & 0 & degenerate control \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At that stride $\sione$ stops splitting the pair below $d \sim 1.7$, and the swing keeps splitting
+it down to $d \sim 5.9\times10^{-3}$: \textbf{a factor of about 290}, at the same sampling cost.
+In stride units the swing fires at $d/h = 5.9\times10^{-3}$ --- it resolves a pair about
+$170\times$ finer than the sample spacing \lf{23}.
+
+\paragraph{This contradicts a recorded conclusion.} \file{search.md} \S3 says ``there is no
+detector here that sees a pair before $\sione$ does'', and \lf{11} measured the offset detector
+firing ``at exactly the same coarseness at which $\sione$ first shows two minima''. Both are
+correct \emph{about the offset}, and both were generalized into a claim about detectors in
+general. The swing is a counterexample, and it works because it keys on something neither of those
+does: \textbf{the identity of the minimising eigenfunction, not the shape of the tension curve.}
+The two eigenfunctions stay near-orthogonal at $|\cos| \sim 1/\sqrt{n_{\mathrm{int}}}$ far past
+where the tension merges them, and that orthogonality is what survives \lf{23}.
+
+\paragraph{The degenerate control is the other half of the result.} At $\delta = 0$ the swing
+reads \emph{zero} peaks. That is correct and not a failure: a true double has no crossing, because
+there is no other branch for the minimiser to switch to. So
+\begin{center}
+\begin{tabular}{l@{\ }l}
+\toprule
+swing peak inside a dip & $\to$ two \emph{distinct} eigenvalues \\
+no swing peak           & $\to$ a genuine degeneracy, \emph{or} a pair below the swing's own limit \\
+\bottomrule
+\end{tabular}
+\end{center}
+The first arrow is a multiplicity discriminator of a kind (C1)$+$(C2) does not have: the
+double-count case (the gap rule reporting multiplicity 2 at a \emph{simple} eigenvalue once
+$d \lesssim \varepsilon/c$) is exactly where the swing says ``distinct'', whereas (C2) currently
+has to reject it by a monotonicity argument on $\sitwo$. The second arrow is still ambiguous, so
+this does not remove the resolution limit; \textbf{it moves it} \lf{23}.
+
+\paragraph{Where the limit sits, and it is not the pencil.}
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+$h = 3.770$ & fires to $d = 5.9\times10^{-2}$, not $1.8\times10^{-2}$ \\
+$h = 1.885$ & fires to $d = 5.9\times10^{-2}$, not $1.8\times10^{-2}$ \\
+$h = 1.005$ & fires to $d = 5.9\times10^{-3}$, not $1.8\times10^{-3}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+$d_{\min}$ tracks $h$, roughly $h/30$ to $h/170$. It is \emph{not} $\varepsilon/c$, which is about
+$3.5\times10^{-9}$ here --- six orders below where the swing stops. \textbf{So the swing's limit is
+set by the stride and the peak threshold, not by the basis}, and there is a great deal of headroom
+left: a finer stride buys proportionally finer pair detection, which is not true of any dip-based
+detector \lf{23}.
+
+\paragraph{Caveats.} One domain, one mode pair, one basis, $\text{thresh} = 5\times\text{median}$.
+The threshold has had no margin study --- $G$ and $\tau_{\mathrm{gram}}$ both turned out
+non-delicate and this one has not been checked at all. And $d_{\min} \sim h/30$ to $h/170$ is a
+$5\times$ spread across three strides, so the scaling is indicative rather than established
+\lf{23}.
+
+\section{The composed candidate, scored}
+\label{sec:composed}
+
+\verb|tests/searches.py::swing_direct_search|: swing cells at 6 samples per estimated gap, DIRECT
+inside each cell against $\tau = 0.5\,S$, Brent in the resulting one-root bracket, (C1)$+$(C2) for
+multiplicity. Scored through the harness on five real domains with \verb|reference| table truth,
+windows cut inside a tabulated gap so the truth is \emph{complete}:
+
+\begin{center}
+\begin{tabular}{ll@{\ }r@{\qquad}ll@{\ }r}
+\toprule
+\file{L\_shape} & $[4.82, 49.35]$ & 9 & \file{GWW1}    & $[1.27, 11.94]$   & 8 \\
+\file{mushroom} & $[2.75, 33.39]$ & 8 & \file{H\_shape}& $[3.87, 25.58]$   & 8 \\
+\file{chevron}  & $[19.83, 192.25]$ & 8 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{table}[htbp]
+\centering
+\caption{End-to-end scores on the five-domain roster \lf{24}.}
+\label{tab:e2e}
+\begin{tabular}{lrrrr}
+\toprule
+method & mean recall & total evals & spurious & mult errors \\
+\midrule
+\verb|uniform_grid|   & $0.881$ & 1010 & 0 & 0 \\
+\verb|lappy_repaired| & $0.319$ & 1946 & 0 & 0 \\
+swing $+$ DIRECT      & $0.975$ & 2221 & 0 & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Per case, swing $+$ DIRECT \lf{24}. The exclamation mark on \file{H\_shape} is the Weyl
+deficit exceeding its $0.5$ threshold --- the flag firing on the one miss.}
+\label{tab:percase}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+case & recall & prec & miss & spur & multX & max err & evals & weyl \\
+\midrule
+\file{L\_shape} & $1.000$ & $1.000$ & 0 & 0 & 0 & $2.3\times10^{-8}$ & 473 & $0.41$ \\
+\file{mushroom} & $1.000$ & $1.000$ & 0 & 0 & 0 & $4.1\times10^{-9}$ & 442 & $0.02$ \\
+\file{GWW1}     & $1.000$ & $1.000$ & 0 & 0 & 0 & $8.8\times10^{-9}$ & 454 & $0.33$ \\
+\file{H\_shape} & $0.875$ & $1.000$ & 1 & 0 & 0 & $8.0\times10^{-9}$ & 385 & $0.76$\;! \\
+\file{chevron}  & $1.000$ & $1.000$ & 0 & 0 & 0 & $9.2\times10^{-9}$ & 467 & $0.12$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Four of five perfect, no spurious roots and no multiplicity errors anywhere}, and the one
+miss is \emph{flagged} --- \file{H\_shape} reads $0.76$ against the $0.5$ threshold. That is
+clause~(3) of the operational definition doing its job: the failure is reported rather than
+silent, which is the difference between recoverable and fatal inside a shape-optimization loop
+\lf{24}.
+
+\subsection{The honest ledger}
+
+\paragraph{It costs $2.2\times$ the uniform grid} for $+0.094$ recall. Recall is the headline
+metric by design --- a missed eigenvalue cannot be repaired downstream --- so this is the right
+trade under the stated principle, but \textbf{it is a trade and not a free win} \lf{24}.
+
+\paragraph{\texttt{lappy\_repaired}'s $0.319$ is not a fair comparison.} It is starved by the
+harness's crude \verb|_spacing| estimator, exactly the caveat \lf{11} records: a coarse pass sees
+a pair as one dip, concludes the interval holds one eigenvalue, and sizes a 20-point grid.
+\textbf{The number measures the estimator, not lappy's architecture.} Its own recall table, with
+\verb|n_pts| set explicitly, is 10/12 \lf{24}.
+
+\paragraph{The accuracy column is F11 working, not a defect.} swing$+$DIRECT reports maximum errors
+of $4\times10^{-9}$ to $2\times10^{-8}$ against a requested $\verb|prec| = 10^{-8}$; the uniform
+grid reports $8\times10^{-10}$ to $6\times10^{-9}$ because it refines to
+$\verb|xatol| = 10^{-13}$ regardless of what was asked. The composed search stops at
+$\max(\verb|prec|\cdot\lam,\ \delta_{\mathrm{res}})$ and the first term binds. Doing better than
+asked is allowed; doing it at $2\times$ the refinement cost on every root is what \sm{2.6} rules
+out \lf{24}.
+
+\subsection{Two efficiency findings}
+
+The first version re-scanned the \emph{cell} grid to estimate the plateau, having already scanned
+a 64-point pilot for the spacing. The plateau is a median over an $O(1)$-varying curve and needs no
+cell-stride resolution; folding both into one 48-point pilot cut 2535 evaluations to 2221 with
+identical recall.
+
+Dropping to 4 samples per gap and a DIRECT budget of 10 cuts cost further to 1583 --- $1.6\times$
+--- but recall falls to $0.925$ (\file{H\_shape} $0.875 \to 0.750$, \file{chevron}
+$1.000 \to 0.875$). \S\ref{sec:a19} measured 4 per gap as sufficient for the \emph{cells}, and it
+is; \textbf{what fails at 4 is the DIRECT search inside them}. The two budgets are separable and
+should be tuned separately \lf{24}.
+
+\subsection{What the roster scoring left untested}
+
+Five domains, all with table truth, all at low $\lam$. No pair below the swing's own limit appears
+in any of these windows, so \S\ref{sec:swingpairs}'s $290\times$ is not exercised here --- the
+composed search had not yet been scored on a case where it should beat a dip-based method
+outright. \verb|rect(1+delta, 1)| is the instrument and it was not wired into the harness
+\lf{24}. That is what \S\ref{sec:sep} does, and what it found was a correction.
+
+\section{Detection is not separation: a correction to the pair result}
+\label{sec:sep}
+
+\verb|rect(1+delta, 1)| was wired in as harness cases: window $[10, 88]$, holding $(1,1)$, the
+$(2,1)/(1,2)$ pair and $(2,2)$; truth from the closed form and \emph{complete}; $\delta$ swept so
+the pair separation runs $5.8\times10^{-1}$ down to $0$.
+
+\textbf{The first run failed, at every separation including the widest.} All three methods scored
+recall $0.750$ --- three of four --- and the degenerate $\delta = 0$ case scored $1.000$. A window
+whose \emph{split} cases fail while its \emph{degenerate} case passes says the pair is being
+merged, not that a level is missing \lf{25}.
+
+\subsection{The defect}
+
+Instrumenting the $\delta = 10^{-2}$ case, $d = 5.83\times10^{-1}$:
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+pilot sees 3 wells in a 4-eigenvalue window & $\to$ estimated gap $26.0$ \\
+cell grid $n = 19$ over $[10, 88]$          & $\to$ stride $h = 4.33$ \\
+crossing truly at $48.86$                   & \\
+swing peak \emph{reported} at $46.83$       & \\
+cells $[10,\ 29.5,\ 46.83,\ 64.17,\ 88]$    & $\to$ \textbf{both pair members in one cell} \\
+\bottomrule
+\end{tabular}
+\end{center}
+The swing \emph{detected} the crossing. It localized it only to $\pm h/2$, and with $d < h$ the
+cell boundary landed outside the pair instead of between its members.
+
+\paragraph{The self-correction, stated plainly.}
+\textbf{Section~\ref{sec:swingpairs} measured detection, not separation, and one was generalized
+into the other.} Its in-pair test counted a peak as in-pair if it lay within
+$[\lam_a - h,\ \lam_b + h]$ --- a tolerance of a full stride on each side. Every number in
+\S\ref{sec:swingpairs} stands as a statement about \emph{detection}; none of them was ever a
+statement about splitting. \textbf{A pair detector and a pair separator are different things, and
+the $290\times$ is the first, not the second} \lf{25}.
+
+\subsection{The repair: a peak is a feature to bisect toward}
+
+The crossing lies in whichever half of an interval carries the larger angle; the halves are equal
+width so the comparison is fair; and each level costs one mode evaluation. Cost is
+$\log_2(h/d)$ --- the same logarithmic behaviour adaptive subdivision has on the tension, obtained
+here from the eigenvector instead --- and it converges to the crossing \emph{regardless of how
+coarse the initial stride was}. That last property matters, because the stride here was set by a
+pilot that merged the pair and therefore could not have been chosen correctly in advance \lf{25}.
+
+\begin{table}[htbp]
+\centering
+\caption{swing$+$DIRECT on \texttt{rect(1+delta, 1)}, before and after crossing localization
+\lf{25}.}
+\label{tab:rectpair}
+\begin{tabular}{lrrrr}
+\toprule
+$d(\lam)$ & recall before & recall after & \verb|uniform_grid| & \verb|lappy_repaired| \\
+\midrule
+$5.834\times10^{-1}$ & $0.750$ & $1.000$ & $0.750$ & $0.250$ \\
+$1.769\times10^{-1}$ & $0.750$ & $1.000$ & $0.750$ & $0.750$ \\
+$5.913\times10^{-2}$ & $0.750$ & $1.000$ & $0.750$ & $0.250$ \\
+$1.776\times10^{-2}$ & $0.750$ & $1.000$ & $0.750$ & $0.250$ \\
+$5.921\times10^{-3}$ & $0.750$ & $0.750$ & $0.750$ & $0.750$ \\
+$1.776\times10^{-3}$ & $0.750$ & $0.750$ & $0.750$ & $0.500$ \\
+$5.922\times10^{-4}$ & $0.750$ & $0.750$ & $0.750$ & $0.500$ \\
+$0$ (exact double)   & $1.000$ & $1.000$ & $1.000$ & $0.250$ \\
+\midrule
+mean                 & $0.781$ & $0.906$ & $0.781$ & $0.438$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{The uniform grid never splits this pair at any separation tested, including the widest},
+because its stride comes from the same merged-well estimate. The composed search splits it down to
+$d = 1.78\times10^{-2}$, so its advantage over the control is at least $32\times$ in separation,
+and the true factor is larger since the control's own limit is above $5.8\times10^{-1}$.
+
+The roster of \S\ref{sec:composed} is unchanged at mean recall $0.975$, at 2596 evaluations
+against 2221 --- localization costs about 17\% and buys the pair regime \lf{25}.
+
+\subsection{The remaining frontier}
+
+At $d \le 5.9\times10^{-3}$ the composed search still scores $0.750$ with one spurious root and one
+multiplicity error. The cell boundary \emph{is} found (\S\ref{sec:swingpairs} says the swing
+detects to $5.9\times10^{-3}$), but the two refinements in adjacent cells converge to the same
+minimum. The tension floor at this pair is $9.1\times10^{-8}$ to $1.1\times10^{-7}$, so
+$\varepsilon/c$ is about $2\times10^{-6}$ and $d = 5.9\times10^{-3}$ is $3000\times$ above it:
+\textbf{the pair is resolvable in principle and this is a search failure, not a basis limit.} Two
+candidates, neither tested \lf{25}:
+\begin{enumerate}[nosep]
+\item DIRECT's fixed budget is too small for a cell whose dip sits near its edge;
+\item the Gram-angle collapse phase is \emph{not implemented} in \verb|swing_direct_search|, so a
+  duplicate arising from two adjacent cells is reported rather than collapsed and recounted.
+\end{enumerate}
+The second is a direct instance of the interface finding of \S\ref{sec:interface}: the collapse
+decision is exactly the one the harness could not see before \verb|modes(x)| was available.
+
+\section{Open questions and what is untested}
+\label{sec:open}
+
+Collected from the ``what was not checked'', ``still untested'' and ``remaining frontier''
+passages of the sources.
+
+\paragraph{On the stride rule.} The 18-per-gap number is a \emph{fitted} value on seven domains,
+not a bound. The governing quantity --- the minimum local gap --- is not predictable a priori, so
+this can only ever be a starting point for F3's in-loop correction \sfe{6}.
+
+\paragraph{On the accuracy contract.} $C$ in the accuracy clause remains uncalibrated; clause~(3)
+is the workaround. And the wide bracket used for (C2) was taken as $0.02\lam$, an ad-hoc fraction;
+it should be derived from the refinement's own parabola, and is not \sfe{6}.
+
+\paragraph{On the roster's coverage.} Everything above is at low $\lam$ --- the roster tops out at
+90 and mostly sits at 30--40. There is no domain with a hole, and no curved boundary except
+\file{cut\_square}, which was dropped for a basis-planning reason rather than a curve one
+\sfe{6}, \lf{20}. The composed candidate's five-domain scoring is likewise all low $\lam$ and all
+table truth \lf{24}.
+
+\paragraph{On the swing.} One domain, one mode pair, one basis for the pair study. The
+$5\times\text{median}$ peak threshold has had no margin study, unlike $G$ and
+$\tau_{\mathrm{gram}}$. The $d_{\min} \sim h/30$ to $h/170$ scaling is indicative, not established
+--- a $5\times$ spread over three strides \lf{23}.
+
+\paragraph{On DIRECT.} The A7 numbers come from a simulation that interpolates the cached fine
+scan, so it pays no real evaluation cost and the interpolation smooths the curve \lf{22}.
+
+\paragraph{On the sub-$5.9\times10^{-3}$ pair regime.} Both candidate explanations --- an
+under-sized DIRECT budget in an edge-dip cell, and the missing Gram-angle collapse --- are
+untested \lf{25}.
+
+\paragraph{Structurally unbuilt.} F6 (two-level rank from one factorization) is measured and not
+built. The at-level prong of the deficit response and the $20\,\varepsilon/c$ termination guard
+(\S\ref{sec:localizer}) are both specified and neither is implemented. The interface widening of
+\S\ref{sec:interface} gates everything about multiplicity.
+
+\paragraph{Still open in the enumeration.} A24 (a coarse FEM inertia count as a counting oracle) is
+the standing answer to the fact that A11 and A13 are both dead and MPS therefore has no exact
+count of its own. A25 (declared-symmetry irrep decomposition) would remove the (C1)/(C2) test
+entirely for symmetric domains --- the class the solver will meet at the optimizers of a shape
+optimization --- and is untested. A8 (the cone-model envelope), A15 (sign bracketing, now
+available since A14 is confirmed), A26 and A27 are all in the \textsc{keep, untested} tier.
+
+\section*{Note on two inconsistencies in the sources}
+\addcontentsline{toc}{section}{Note on two inconsistencies in the sources}
+
+Two points were left as the sources have them rather than silently resolved.
+
+First, \file{docs/design/search.md} \S2.6 still states the scan stride as ``about six samples per
+eigenvalue gap'' as part of its ``not more work than asked'' argument, while
+\file{landscape\_findings} \S20.4 explicitly says that rule ``is wrong and should be replaced''.
+The design document has not been updated. The clause it is attached to --- completeness is not a
+precision question, and the stride does not tighten with \verb|prec| --- is unaffected by the
+correction.
+
+Second, the anti-feature list in \file{solver\_features.md} \S3 uses the labels A1--A9 for a set
+of things measured not to work, while \file{approaches.md} uses A1--A27 for the candidate methods.
+The two numberings are unrelated and collide (for instance, anti-feature A2 forbids a
+$\sitwo$-value gate, while approach A2 is Weyl-stratified sampling). The anti-features were
+relabelled X1--X9 in \S\ref{sec:anti} of this report; the underlying notes should probably adopt a
+distinct prefix.
+
+\end{document}

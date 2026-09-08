@@ -1,0 +1,642 @@
+\section{Results}
+
+\texttt{orc} is the cheapest of the tested settings that reached coverage $1.0$ with no impure bracket; \texttt{aut} is the single setting fixed across the whole suite before any per-case result was seen. \textbf{--} means no setting succeeded within the budget of 1500 evaluations. Only the \texttt{aut} column may be aggregated: \texttt{orc} is a best-of-$K$ statistic and is biased upward in $K$.
+
+\subsection{Aggregate: autonomous passes}
+
+Across the 27 swept cases (the multiplicity-6 stress case excluded), counting only the autonomous setting:
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+method & $\pr=10^{-4}$ & $10^{-8}$ & $10^{-11}$ & $10^{-14}$ \\
+\midrule
+\texttt{uniform\_grid} & 16/27 & 9/27 & 7/27 & 5/27 \\
+\texttt{lappy} & 17/27 & 10/27 & 8/27 & 6/27 \\
+\texttt{lappy\_repaired} & 12/27 & 5/27 & 5/27 & 5/27 \\
+\texttt{lipschitz} & 22/27 & 14/27 & 12/27 & 10/27 \\
+\texttt{swing\_cells} & 21/27 & 13/27 & 11/27 & 8/27 \\
+\texttt{swing\_direct} & 22/27 & 14/27 & 10/27 & 8/27 \\
+\midrule
+\texttt{single\_bracket} & 5/27 & 3/27 & 3/27 & 3/27 \\
+\texttt{fine\_grid} & 0/27 & 0/27 & 0/27 & 0/27 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Family A --- isolated}
+
+\paragraph{A:isolated} 11 eigenvalues in $[5, 300]$; sweep took 320\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 830 & \textbf{--} & 830 & \textbf{--} & 830 & \textbf{--} & 830 & \textbf{--} \\
+\texttt{lappy} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 1449 & 1449 & 1449 & \textbf{--} & 1449 & \textbf{--} & 1449 & \textbf{--} \\
+\texttt{lipschitz} & 610 & \textbf{--} & 610 & \textbf{--} & 610 & \textbf{--} & 610 & \textbf{--} \\
+\texttt{swing\_cells} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 923 & 923 & 1302 & 1302 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Family B --- pair ladder}
+
+\paragraph{B:d=1.8e-01} 4 eigenvalues in $[10, 88]$; sweep took 151\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 1016 & \textbf{--} & 1016 & \textbf{--} & 1016 & \textbf{--} & 1016 & \textbf{--} \\
+\texttt{lappy\_repaired} & 1103 & \textbf{--} & 1103 & \textbf{--} & 1103 & \textbf{--} & 1103 & \textbf{--} \\
+\texttt{lipschitz} & 1298 & 1298 & 1298 & 1298 & 1298 & 1298 & 1298 & 1298 \\
+\texttt{swing\_cells} & 528 & 528 & 788 & 788 & 988 & 988 & 1188 & 1188 \\
+\texttt{swing\_direct} & 688 & 688 & 942 & 942 & 1150 & 1150 & 1352 & 1352 \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=1.8e-02} 4 eigenvalues in $[10, 88]$; sweep took 144\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 830 & \textbf{--} & 830 & \textbf{--} & 830 & \textbf{--} & 830 & \textbf{--} \\
+\texttt{lipschitz} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=1.8e-03} 4 eigenvalues in $[10, 88]$; sweep took 152\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 86 & 158 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 122 & 302 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & 286 & 709 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 184 & 704 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 219 & 850 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=1.8e-04} 4 eigenvalues in $[10, 88]$; sweep took 151\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 86 & 158 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 122 & 302 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 1454 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & 289 & 1174 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 184 & 648 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 227 & 779 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=1.8e-08} 4 eigenvalues in $[10, 88]$; sweep took 166\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 86 & 158 & 86 & 158 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 122 & 302 & 122 & 302 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 1011 & \textbf{--} & 1011 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & 441 & 1191 & 441 & 1191 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 163 & 686 & 215 & 1063 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 197 & 891 & 245 & 1257 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=1.8e-12} 4 eigenvalues in $[10, 88]$; sweep took 180\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 86 & 158 & 86 & 158 & 86 & 158 & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 122 & 302 & 122 & 302 & 122 & 302 & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & 471 & 1246 & 471 & 1246 & 471 & 1246 & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 131 & 349 & 170 & 492 & 200 & 602 & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 152 & 418 & 191 & 561 & 215 & 661 & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=5.8e-01} 4 eigenvalues in $[10, 88]$; sweep took 150\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 446 & \textbf{--} & 446 & \textbf{--} & 446 & \textbf{--} & 446 & \textbf{--} \\
+\texttt{lappy} & 302 & 302 & 302 & 302 & 302 & 302 & 302 & 302 \\
+\texttt{lappy\_repaired} & 1316 & \textbf{--} & 1316 & \textbf{--} & 1316 & \textbf{--} & 1316 & \textbf{--} \\
+\texttt{lipschitz} & 293 & 1193 & 293 & 1193 & 293 & 1193 & 293 & 1193 \\
+\texttt{swing\_cells} & 131 & 379 & 170 & 548 & 200 & 678 & 230 & 808 \\
+\texttt{swing\_direct} & 152 & 458 & 197 & 633 & 225 & 773 & 251 & 900 \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=5.9e-02} 4 eigenvalues in $[10, 88]$; sweep took 142\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 922 & \textbf{--} & 922 & \textbf{--} & 922 & \textbf{--} & 922 & \textbf{--} \\
+\texttt{lipschitz} & 1308 & 1308 & 1308 & 1308 & 1308 & 1308 & 1308 & 1308 \\
+\texttt{swing\_cells} & 184 & \textbf{--} & 249 & \textbf{--} & 299 & \textbf{--} & 349 & \textbf{--} \\
+\texttt{swing\_direct} & 225 & \textbf{--} & 300 & \textbf{--} & 338 & \textbf{--} & 392 & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=5.9e-03} 4 eigenvalues in $[10, 88]$; sweep took 152\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 1426 & 1426 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 658 & 658 & 1009 & 1009 & 1279 & 1279 & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 844 & 844 & 1213 & 1213 & 1462 & 1462 & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=5.9e-04} 4 eigenvalues in $[10, 88]$; sweep took 149\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 86 & 158 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 122 & 302 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 684 & 1324 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & 305 & 1283 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 137 & 510 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 159 & 648 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=5.9e-05} 4 eigenvalues in $[10, 88]$; sweep took 150\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 86 & 158 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 122 & 302 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 1223 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & 503 & 1349 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 172 & 556 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 216 & 694 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=5.9e-07} 4 eigenvalues in $[10, 88]$; sweep took 173\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 86 & 158 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 122 & 302 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 1025 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & 502 & 1379 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 171 & 482 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 208 & 617 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=5.9e-10} 4 eigenvalues in $[10, 88]$; sweep took 166\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 86 & 158 & 86 & 158 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 122 & 302 & 122 & 302 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 1295 & \textbf{--} & 1295 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & 306 & 789 & 306 & 789 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 195 & 644 & 273 & 982 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 235 & 804 & 319 & 1149 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{B:d=5.9e-12} 4 eigenvalues in $[10, 88]$; sweep took 189\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 86 & 158 & 86 & 158 & 86 & 158 & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 122 & 302 & 122 & 302 & 122 & 302 & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 583 & 1063 & 583 & \textbf{--} & 583 & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & 488 & 1347 & 488 & 1347 & 488 & 1347 & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 179 & 686 & 244 & 1063 & 294 & 1353 & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 218 & 887 & 283 & 1257 & 333 & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Family C --- clusters of 3 and 4}
+
+\paragraph{C:m=3,s=9.3e+00} 3 eigenvalues in $[478.7, 508.3]$; sweep took 800\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 94 & 190 & 94 & 190 & 94 & 190 & 94 & 190 \\
+\texttt{lappy} & 142 & 382 & 142 & 382 & 142 & 382 & 142 & 382 \\
+\texttt{lappy\_repaired} & 278 & 278 & 634 & \textbf{--} & 634 & \textbf{--} & 634 & \textbf{--} \\
+\texttt{lipschitz} & 263 & 403 & 263 & 663 & 263 & 663 & 263 & 663 \\
+\texttt{swing\_cells} & 119 & 327 & 158 & 496 & 188 & 626 & 218 & 756 \\
+\texttt{swing\_direct} & 142 & 400 & 189 & 567 & 213 & 705 & 245 & 837 \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{C:m=3,s=9.5e-01} 3 eigenvalues in $[478.7, 508.3]$; sweep took 670\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 190 & \textbf{--} & 190 & \textbf{--} & 190 & \textbf{--} & 190 & \textbf{--} \\
+\texttt{lappy} & 382 & \textbf{--} & 382 & \textbf{--} & 382 & \textbf{--} & 382 & \textbf{--} \\
+\texttt{lappy\_repaired} & 252 & 252 & 387 & 1352 & 387 & 1352 & 387 & 1352 \\
+\texttt{lipschitz} & 162 & 347 & 162 & 347 & 162 & 347 & 162 & 347 \\
+\texttt{swing\_cells} & 1312 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{C:m=3,s=9.5e-02} 3 eigenvalues in $[478.7, 508.3]$; sweep took 503\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 165 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 102 & 262 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 122 & 336 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{C:m=3,s=9.5e-03} 3 eigenvalues in $[478.7, 508.3]$; sweep took 576\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 76 & 94 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 94 & 142 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & \textbf{--} & \textbf{--} & 899 & 899 & 899 & 899 & 899 & 899 \\
+\texttt{lipschitz} & 160 & 344 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 138 & 346 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 162 & 429 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & 1 & 1 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{C:m=4,s=1.2e+00} 4 eigenvalues in $[622.3, 660.8]$; sweep took 792\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 382 & \textbf{--} & 382 & \textbf{--} & 382 & \textbf{--} & 382 & \textbf{--} \\
+\texttt{lappy\_repaired} & 328 & 328 & 625 & \textbf{--} & 625 & \textbf{--} & 625 & \textbf{--} \\
+\texttt{lipschitz} & 170 & 385 & 170 & 385 & 170 & 385 & 170 & 385 \\
+\texttt{swing\_cells} & 378 & 378 & 547 & 547 & 677 & 677 & 807 & 807 \\
+\texttt{swing\_direct} & 491 & 491 & 668 & 668 & 788 & 788 & 928 & 928 \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{C:m=4,s=1.2e+01} 4 eigenvalues in $[622.3, 660.8]$; sweep took 1062\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 94 & 190 & 94 & 190 & 94 & 190 & 94 & 190 \\
+\texttt{lappy} & 142 & 382 & 142 & 382 & 142 & 382 & 142 & 382 \\
+\texttt{lappy\_repaired} & 334 & 334 & 1054 & \textbf{--} & 1054 & \textbf{--} & 1054 & \textbf{--} \\
+\texttt{lipschitz} & 273 & 442 & 273 & 762 & 273 & 762 & 273 & 762 \\
+\texttt{swing\_cells} & 144 & 438 & 196 & 685 & 236 & 875 & 276 & 1065 \\
+\texttt{swing\_direct} & 180 & 551 & 242 & 808 & 272 & 986 & 314 & 1188 \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{C:m=4,s=1.2e-01} 4 eigenvalues in $[622.3, 660.8]$; sweep took 794\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 478 & \textbf{--} & 752 & \textbf{--} & 752 & \textbf{--} & 752 & \textbf{--} \\
+\texttt{lipschitz} & 407 & 407 & 772 & \textbf{--} & 772 & \textbf{--} & 772 & \textbf{--} \\
+\texttt{swing\_cells} & 1145 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{C:m=4,s=1.2e-02} 4 eigenvalues in $[622.3, 660.8]$; sweep took 758\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 76 & 94 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & 94 & 142 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & 381 & 381 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & 160 & 364 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & 131 & 338 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & 154 & 389 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & 1 & 1 & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Family D --- exact degeneracy}
+
+\paragraph{D:mult=2} 2 eigenvalues in $[239.3, 254.1]$; sweep took 345\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 76 & 94 & 76 & 94 & 76 & 94 & 76 & 94 \\
+\texttt{lappy} & 94 & 142 & 94 & 142 & 94 & 142 & 94 & 142 \\
+\texttt{lappy\_repaired} & 210 & 210 & 295 & 936 & 295 & 936 & 295 & 936 \\
+\texttt{lipschitz} & 108 & 317 & 108 & 317 & 108 & 317 & 108 & 317 \\
+\texttt{swing\_cells} & 132 & 393 & 184 & 640 & 224 & 830 & 264 & 1020 \\
+\texttt{swing\_direct} & 168 & 552 & 220 & 781 & 260 & 969 & 296 & 1175 \\
+\midrule
+\texttt{single\_bracket} & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{D:mult=3} 3 eigenvalues in $[478.7, 508.3]$; sweep took 542\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 76 & 94 & 76 & 94 & 76 & 94 & 76 & 94 \\
+\texttt{lappy} & 94 & 142 & 94 & 142 & 94 & 142 & 94 & 142 \\
+\texttt{lappy\_repaired} & 221 & 221 & 331 & 1224 & 331 & 1224 & 331 & 1224 \\
+\texttt{lipschitz} & 99 & 188 & 99 & 188 & 99 & 188 & 99 & 188 \\
+\texttt{swing\_cells} & 119 & 261 & 158 & 352 & 188 & 422 & 218 & 492 \\
+\texttt{swing\_direct} & 138 & 302 & 189 & 397 & 209 & 469 & 249 & 535 \\
+\midrule
+\texttt{single\_bracket} & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{D:mult=4} 4 eigenvalues in $[622.3, 660.8]$; sweep took 615\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & 76 & 94 & 76 & 94 & 76 & 94 & 76 & 94 \\
+\texttt{lappy} & 94 & 142 & 94 & 142 & 94 & 142 & 94 & 142 \\
+\texttt{lappy\_repaired} & 201 & 201 & 262 & 759 & 262 & 759 & 262 & 759 \\
+\texttt{lipschitz} & 152 & 358 & 152 & 358 & 152 & 358 & 152 & 358 \\
+\texttt{swing\_cells} & 146 & 454 & 185 & 597 & 215 & 707 & 245 & 817 \\
+\texttt{swing\_direct} & 173 & 515 & 214 & 662 & 236 & 762 & 274 & 882 \\
+\midrule
+\texttt{single\_bracket} & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Family E --- mixed window}
+
+\paragraph{E:mixed} 29 eigenvalues in $[150, 560]$; sweep took 1145\,s.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$\pr=10^{-4}$} & \multicolumn{2}{c}{$10^{-8}$} & \multicolumn{2}{c}{$10^{-11}$} & \multicolumn{2}{c}{$10^{-14}$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+method & orc & aut & orc & aut & orc & aut & orc & aut \\
+\midrule
+\texttt{uniform\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lappy\_repaired} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{lipschitz} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_cells} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{swing\_direct} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\midrule
+\texttt{single\_bracket} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\texttt{fine\_grid} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\bottomrule
+\end{tabular}
+\end{center}
+

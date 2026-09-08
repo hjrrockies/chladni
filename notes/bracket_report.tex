@@ -1,0 +1,285 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\usepackage{longtable}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black}
+\usepackage{parskip}
+
+\title{Filtering the bracketing phase\\
+\large A rectangle benchmark for candidate eigenvalue searches in \texttt{chladni}}
+\author{}
+\date{2 September 2026}
+
+% \pr is a built-in relation symbol; use \pr for the precision parameter
+\newcommand{\pr}{\ensuremath{\mathrm{prec}}}
+\newcommand{\lam}{\ensuremath{\lambda}}
+\newcommand{\sig}{\ensuremath{\sigma}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+An eigenvalue search in \texttt{chladni} decomposes into three phases: \emph{bracketing}
+(produce intervals each believed to hold one eigenvalue), \emph{refinement} (locate the minimum
+inside a bracket), and \emph{multiplicity estimation}. This report tests the first phase alone,
+on rectangles, where the spectrum is known in closed form and clustering and multiplicity are
+under exact control.
+
+Bracketing is the phase worth testing first. Every search failure measured during the design
+work was a bracketing failure, and bracketing is where essentially all the evaluations go ---
+refinement is a handful of them and multiplicity is three. Testing it in isolation also
+sidesteps a defect in the joint scorer, described in \S\ref{sec:whybracket}, which makes
+recall-with-multiplicity unable to distinguish ``split the pair'' from ``guessed~2''.
+
+The purpose is to \textbf{filter}: to identify methods not worth developing further. Results are
+therefore stated as capability claims within an explicit evaluation budget, never as performance
+scores.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{What is being tested, and why bracketing alone}
+\label{sec:whybracket}
+
+\subsection{The three phases}
+
+Most candidate searches decompose the same way: a bracketing pass produces candidate intervals,
+a local refinement locates the minimum inside each, and a multiplicity estimator reads the
+tension spectrum at the located point. This decomposition was verified rather than assumed. In
+all five searches implemented to date, the bracketing pass provably terminates before the first
+call to the refinement routine, and no refined value re-enters subdivision; none is entangled.
+
+The three phases are also very unequal. All five searches dispatch to one of only two
+multiplicity estimators, and only one of those is live --- the ratio-gap plus local-minimum test
+(C1)+(C2). So multiplicity is a \emph{shared} component: a defect there affects every candidate
+identically, and the filter cannot discriminate between candidates on that axis. Refinement is
+similarly settled: Brent on $\sig_1^2$ is measured machine-exact on every domain tried, at every
+regularization tolerance from \texttt{1e-7} to \texttt{1e-16}. That leaves bracketing as the
+phase where the candidates actually differ.
+
+\subsection{The joint scorer cannot measure what we need}
+
+The end-to-end scorer matches found eigenvalues against truth at a fixed relative tolerance of
+\texttt{1e-6}, expanding a reported $(\lam, \mu)$ into $\mu$ copies of $\lam$. Below
+$d/\lam < \texttt{1e-6}$, a method that never separates a pair but claims multiplicity~2 has both
+copies match two \emph{distinct} truth entries, scoring recall $1.000$, zero spurious, and
+\texttt{perfect=True} --- while the honest report of one root of multiplicity~1 scores $0.500$
+\emph{and} takes a multiplicity penalty. Measured:
+
+\begin{center}
+\begin{tabular}{rrll}
+\toprule
+$d$ & $d/\lam$ & reports one root, claims $\mu=2$ & reports one root, honest $\mu=1$ \\
+\midrule
+5.9e-04 & 1.2e-05 & recall 0.000, spurious 2 & recall 0.000, spurious 1 \\
+5.9e-05 & 1.2e-06 & recall 1.000, \textbf{perfect} & recall 0.500 \\
+5.9e-07 & 1.2e-08 & recall 1.000, \textbf{perfect} & recall 0.500, multX 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+The metric does not merely go blind, it rewards the wrong behaviour, and it does so at
+$\pr\!\cdot\!\lam \approx \texttt{4.9e-5}$, essentially the boundary at which the basis stops
+being able to resolve the pair at all. This is the same error the reference layer had already
+found and removed from its own \texttt{collapse} function, three orders tighter, with the
+comment that a tolerance ``does not describe the spectrum, it imposes a policy on it''.
+
+A bracket set carries no multiplicities, so the exploit does not exist and the joint scorer is
+not on the path for anything in this report.
+
+\section{The acceptance rule}
+
+\subsection{A lattice, not a bijection}
+
+Let $S(\pr)$ denote the true spectrum with levels merged whenever a group's \emph{diameter}
+is at most $\pr\!\cdot\!\lam$. A bracket set is acceptable when it lies in the lattice
+
+\begin{center}
+\begin{tabular}{ll}
+\textbf{fine end} & one bracket per true eigenvalue \\
+\textbf{coarse end} & one bracket per level of $S(\pr)$ \\
+\end{tabular}
+\end{center}
+
+\noindent
+and anything between the two is acceptable. In particular an \emph{accidental} split of a
+within-$\pr$ cluster is not penalised: downstream, refinement finds both members, the
+collapse rule sees two roots inside the merge tolerance, and the reported answer is two levels
+of multiplicity~1 --- which is legal, because merging is permitted and never required.
+Penalising the bracketer for it would contradict the multiplicity convention.
+
+Bounding the bracket count rather than fixing it is also what defeats the two degenerate
+strategies. Returning $[(a,b)]$ scores coverage $1.0$ and zero spurious while being useless;
+returning ten thousand slivers has perfect purity and absurd cost. Neither survives a rule that
+constrains the count from both sides.
+
+\subsection{Metrics}
+
+\begin{description}
+\item[Coverage] --- hard. Every true eigenvalue lies in some bracket. A miss is unrecoverable
+downstream.
+\item[Purity] --- hard, and the metric with teeth. No bracket may contain eigenvalues spanning
+more than $\pr\!\cdot\!\lam$. If it does, refinement returns one of them and the other is
+lost.
+\item[Fineness] --- free within the lattice. Reported against both bounds.
+\item[Spurious] --- a count, not a failure: cost, plus the risk of a phantom root from a bracket
+that brushes a well without containing its minimum.
+\item[Cost] --- evaluations. Tension and eigenvector calls are counted in one counter, since an
+eigenvector call costs 100--107\,\% of a tension call and a method that leans on them should
+not get them free.
+\end{description}
+
+\noindent
+A method \textbf{passes} a case when coverage is $1.0$ and no bracket is impure.
+
+\subsection{Committing}
+
+A bracketing method must \emph{commit}: the returned intervals are those it believes hold an
+eigenvalue, not a subdivision of $[a,b]$. Without this requirement a partitioning method gets
+coverage for free. Measured on one case with four true eigenvalues in $[10, 88]$: the swing's
+cells tile the interval, total width $78.0$ of $78.0$, and score coverage $4/4$ by
+construction, while uniform windows cover $5.9$ of $78.0$ and have to earn it.
+
+\section{The instrument}
+
+\subsection{Why rectangles}
+
+The search layer is basis-agnostic by construction --- it sees only the tension function and the
+interval. So a method can only respond to the \emph{shape} of the tension curve, and that shape
+has four parameters: the floor $\varepsilon$, the wall slope $c$, the plateau, and the eigenvalue
+spacing. Rectangles control all four, and add three things no other domain offers: closed-form
+truth (no table-precision ceiling), exact control of clustering and multiplicity, and low cost.
+
+On the unit square the eigenvalues are $\lam/\pi^2 = m^2 + n^2$, so multiplicity is a
+number-theoretic property of the level: $2$ at $N=5$, $3$ at $N=50$, $4$ at $N=65$, $6$ at
+$N=325$. Perturbing to $\mathrm{rect}(1+\delta, 1)$ splits a multiplicity-$m$ level into $m$
+eigenvalues whose spacing scales with $\delta$ and whose internal gaps are unequal --- for
+$N=65$ they are in the ratio $1 : 2.2 : 1$, and that ratio is invariant as $\delta$ sweeps
+decades. The cluster \emph{shape} is fixed while its \emph{scale} varies, so a method cannot
+pass by exploiting one particular spacing.
+
+\subsection{The basis, and a correction}
+\label{sec:basis}
+
+The pencil must resolve the tension to below the finest $\pr$ under test, or the experiment
+measures the objective rather than the algorithm. Checking that requirement found that
+\textbf{corner-adapted Fourier--Bessel is the wrong basis for a rectangle}, by four orders.
+Unit square, truncation effectively off, $\sig_\mu$ at each level (i.e.\ counting multiplicity):
+
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+basis & cols & $N{=}2\,(\mu{=}1)$ & $N{=}5\,(\mu{=}2)$ & $N{=}50\,(\mu{=}3)$ & $N{=}65\,(\mu{=}4)$ \\
+\midrule
+FB $n{=}80$   &  80 & 1.68e-15 & 2.60e-14 & 1.42e-11 & 3.17e-12 \\
+FB $n{=}160$  & 160 & 1.56e-15 & 2.51e-14 & 1.41e-11 & 3.15e-12 \\
+PlaneWave 100 & 200 & 4.57e-16 & 5.67e-16 & 1.67e-15 & 1.66e-15 \\
+PlaneWave 160 & 320 & 4.86e-16 & 6.02e-16 & 1.20e-15 & 1.45e-15 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+The reason is that a right angle has $\pi/\omega = 2$, an integer, so the eigenfunction is
+\emph{analytic} there and no fractional expansion is called for. Corner-FB is the right tool for
+a singular corner and the wrong one for a domain with none; that pure Fourier--Bessel wins on
+the L-shape does not transfer.
+
+Three candidate explanations for the Fourier--Bessel floor were tested and rejected before the
+basis itself was suspected. It is not the expansion order (flat from 80 to 300 columns), not the
+collocation (flat from $n_b = 400$ to $6400$ and $n_i = 200$ to $3200$), and not the rank
+truncation --- sweeping the threshold from its default \texttt{1.5e-12} down to zero moves the
+floor by under 1\,\% while the retained rank rises from 70 to 80. It is also not a property of
+$\lam$: the mode $(7,1)$ gives the same $3.5$--$3.7\mathrm{e}{-12}$ on squares of side 1, 2, 3
+and 5, i.e.\ at $\lam$ from 493 down to 19.7, so it is set by $k\!\cdot\!\mathrm{diam}$, the mode
+index, and rescaling the domain cannot buy precision.
+
+With sized plane waves every level used in this report resolves to \texttt{1.2e-15} or better,
+multiplicity~6 included.
+
+\subsection{The controlling principle: fix the pencil, vary only \texorpdfstring{$\pr$}{prec}}
+
+\textbf{The pencil is built once per case at the best resolution available and is identical
+across the whole $\pr$ sweep.} $\pr$ enters only as an input to the bracketing algorithm,
+telling it when to stop splitting.
+
+This is the difference between testing bracketing and re-discovering the limits of an
+under-resolved tension curve. Three separate basis-construction errors arose during this work
+--- a rank frozen over a wide window, too few Fourier--Bessel terms on a corner domain, and
+corner-FB on a rectangle --- and every one silently degraded the objective by orders while
+looking healthy. With the pencil fixed, any difference across $\pr$ is attributable to the
+algorithm by construction. A hard precondition asserts, before any case is scored, that
+$\sig_\mu$ is at or below \texttt{1e-14} at every true eigenvalue counting multiplicity, and
+that the finest $\pr$ in the sweep clears the pencil's own limit.
+
+\subsection{Truth}
+
+Window completeness comes from the closed-form spectrum function, which is complete by
+construction rather than by truncation. The perturbed levels take their values from the mode
+formula directly, because the spectrum function snaps near-degenerate values together at a
+relative tolerance of \texttt{1e-13} --- measured, it holds the $5\pi^2$ pair distinct down to
+$d = \texttt{5.9e-12}$ and merges it at \texttt{6.0e-13}. No case in this report approaches that
+floor.
+
+\section{The methods}
+
+Each is exposed as \texttt{brackets(tensions, a, b, *, prec, modes)}, extracted from the
+corresponding search rather than reimplemented, and reusing that search's own helpers. The five
+searches themselves are untouched.
+
+\begin{description}
+\item[\texttt{uniform\_grid}] One grid, discrete minima of $\sig_1$, bracket from the
+neighbouring samples. Deliberately not $\pr$-aware beyond a cap: a uniform grid cannot reach a
+spacing of $\pr\!\cdot\!\lam$ at any usable cost, so its brackets are grid-spacing wide
+whatever is asked. That is the honest behaviour of the method.
+
+\item[\texttt{lappy}] The original recursive bisection. Its recursion is gated on $\sig_2$'s
+\emph{value} against a threshold, which is a property of the grid rather than of the pair: a
+grid of spacing $h$ sees about $c h/2$, so the gate engages when $h \le 2\,\mathrm{ttol}/c$
+whatever the separation.
+
+\item[\texttt{lappy\_repaired}] The same, with the gate removed: recurse into \emph{every}
+discrete minimum, unconditionally, down to a floor. The floor here is $\pr\!\cdot\!\lam$
+rather than a fixed fraction of the interval --- the fixed fraction was previously found to be
+load-bearing and unexplained, losing a different eigenvalue at each of three values.
+
+\item[\texttt{lipschitz}] Piyavskii--Shubert branch and bound. Its completeness certificate is
+conditional on the Lipschitz constant $L$, and $L$ estimated from a pilot has been measured
+\emph{unsound}: on one domain a 20-point pilot with $\gamma = 2$ underestimated the true slope,
+ratio $0.672$, so the certificate can be false. It is included to measure that, not because it
+is expected to win. Brackets are read off the sample cache, not off the candidate intervals ---
+the candidate list in the original is dead code, left behind when refinement was rewritten to
+work from the samples.
+
+\item[\texttt{swing\_cells}] Cells cut at peaks of the angle between successive minimising
+eigenvectors. Those peaks fall at branch \emph{crossings}, which lie between eigenvalues, so
+they partition the interval into cells holding one eigenvalue each. Each crossing is
+\textbf{bisected} rather than taken at the peak sample: detection localises a crossing only to
+the sampling interval, and when the pair separation is below the stride the cell boundary can
+land outside the pair. Bisection costs $\log_2(h/d)$ eigenvector evaluations and converges
+regardless of how coarse the stride was.
+
+\item[\texttt{swing\_direct}] The same cells, each then narrowed by a Lipschitz-free
+\textsc{direct} subdivision before the bracket is returned. The ablation against
+\texttt{swing\_cells} is what attributes the composed method's behaviour to one mechanism or
+the other.
+\end{description}
+
+\subsection{Controls}
+
+Two adversarial controls, without which the metrics are unvalidated:
+\texttt{single\_bracket} returns $[(a,b)]$ and must fail purity on every case with more than one
+level; \texttt{fine\_grid} returns thousands of equal slivers and must fail on spurious count
+and cost. If either scores well, the metric is broken rather than the control.
+
+\input{bracket_tables}
+
+\input{analysis}
+
+\end{document}
