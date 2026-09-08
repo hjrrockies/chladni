@@ -27,6 +27,9 @@ from .pencil import MPSPencil, RankDiagnostics, assemble, equilibrate
 from .bracket import Bracket, SearchDiagnostics, SearchResult, bracket_interval
 from .multiplicity import Multiplicity, wide_bracket_for
 from .refine import RefineResult
+# `solve` is safe to export where `refine` and `multiplicity` are not: the module is `search`,
+# so the function shadows no submodule.
+from .search import Level, SolveDiagnostics, SolveResult, solve
 from .solver import MPSEigensolver
 
 __all__ = [
@@ -35,6 +38,7 @@ __all__ = [
     "tensions", "tensions_of", "coef", "coef_of", "RankDiagnostics",
     "RefineResult", "Multiplicity", "wide_bracket_for",
     "Bracket", "SearchResult", "SearchDiagnostics", "bracket_interval",
+    "Level", "SolveResult", "SolveDiagnostics", "solve",
     "lam_to_k", "k_to_lam", "weyl_window",
     "sigma_base", "findability_target", "required_dk", "calibrate_rtol", "RtolCalibration",
     "PREC", "PrecisionWarning",
