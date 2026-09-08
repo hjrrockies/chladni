@@ -26,6 +26,7 @@ from .pencil import MPSPencil, RankDiagnostics, assemble, equilibrate
 # helpers that are not the verb; reach a verb through its module.
 from .bracket import Bracket, SearchDiagnostics, SearchResult, bracket_interval
 from .multiplicity import Multiplicity, wide_bracket_for
+from .objective import Declined, Objective
 from .refine import RefineResult
 # `solve` is safe to export where `refine` and `multiplicity` are not: the module is `search`,
 # so the function shadows no submodule.
@@ -39,6 +40,7 @@ __all__ = [
     "RefineResult", "Multiplicity", "wide_bracket_for",
     "Bracket", "SearchResult", "SearchDiagnostics", "bracket_interval",
     "Level", "SolveResult", "SolveDiagnostics", "solve",
+    "Objective", "Declined",
     "lam_to_k", "k_to_lam", "weyl_window",
     "sigma_base", "findability_target", "required_dk", "calibrate_rtol", "RtolCalibration",
     "PREC", "PrecisionWarning",
