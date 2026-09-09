@@ -298,19 +298,43 @@ Gram angle as the decision, collapse-and-RECOUNT rather than sum.
 
 **Produces.** A partition of the reported roots into levels, and an integer `mu` per level.
 
-**Guarantees**, in two nested clauses, weaker than "the multiplicity of every level" and true:
+**Guarantees.**
 
-1. *Total, on a window.* Over any sub-window whose endpoints are clear of the nearest level by
-   more than that level's spread, `sum(mu)` is the true count in `S(prec)`. This holds EVEN WHEN
-   the grouping inside the window is arbitrary.
-2. *Per level.* `mu_i` is correct when that level is clear of its neighbours by more than its
-   own spread. Outside that condition, clause 1 is all there is.
+1. *Per level, when the level is isolated.* `mu_i` is correct when that level is clear of its
+   neighbours by more than its own spread.
+2. *Per level, for a genuine multiplet.* When a group's members are coincident to within the
+   DISCRETIZATION's own splitting -- section 1's `1.8e-09*lam` for plane waves, `3.9e-09*lam`
+   for Fourier-Bessel -- collapse-and-recount reads the right multiplicity, because every
+   member's branch really is minimal at the representative.
 
-The slogan, because it is what makes the weaker contract useful: **the count is a property of a
-WINDOW, the grouping is a property of a SEPARATION.** A caller whose grouping is not guaranteed
-knows exactly what to do -- widen the window and take the total.
+**And there it stops. The TOTAL is not guaranteed, which an earlier version of this section
+claimed.** That version said `sum(mu)` over a clear window was right even where the grouping
+inside it was arbitrary, and that a caller could always widen the window and take the total.
+Measured over `bracket_score.PREC_LADDER` on the real cases, it is false wherever a group is
+collapsed because it fell inside `tol_merge` while its members are GENUINELY SEPARATED:
 
-Both clauses are conditional on section 2.2's `gap > 20*eps/c`. Below it (C1) alone
+    case                  prec     truth in window   reported total
+    B:d=1.8e-03           1e-04           4                3
+    C:m=3,s=9.5e-02       1e-04           3                1
+    C:m=4,s=1.2e-01       1e-04           4                1
+
+The mechanism is Phase D's, and commit `e2ac06c` named it before this measurement found it
+again: the recount reads at ONE representative, the partner's branch is minimal at the PARTNER
+rather than there, so (C2) refuses it and a level of multiplicity 2 reads 1. Members are
+dropped, not merely regrouped.
+
+The contrast is the sharp part. `B:d=1.8e-12` at `prec = 1e-08` -- a pair far closer than the
+merge licence -- collapses and recounts to 2 correctly. **Collapse-and-recount is sound for a
+duplicate and unsound for two distinct eigenvalues inside the licence**, and distance cannot
+tell those apart, which is exactly why Phase D decides on the interior Gram angle instead. Until
+that is built, a collapsed group is DETECTED (`n_ambiguous`, and `solve_interval` warns) and its
+total is a LOWER BOUND.
+
+So the honest slogan is narrower than the one that stood here: **multiplicity is a property of a
+LEVEL and only where the level is resolved.** A caller who wants a trustworthy count over a
+cluster must ask at a `prec` fine enough to resolve it, not widen the window.
+
+Everything above is conditional on section 2.2's `gap > 20*eps/c`. Below it (C1) alone
 double-counts a simple eigenvalue and (C2) is what rejects it.
 
 **Says instead.** Two admissions that must not be conflated. COLLAPSED: the grouping was

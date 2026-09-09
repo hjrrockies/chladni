@@ -29,7 +29,20 @@ with multiplicities come out. `tests/candidates_v1.py` holds the two adapters th
 What is left here is not construction. It is the multiplicity contract, the `modes(x)` widening
 Phase D needs, and the constants still inherited from one rectangle family.
 
-* **[next]** Phase D's Gram angle, for the case distance cannot settle. `chladni.mps.search`
+* **[blocking]** Phase D's Gram angle. **A collapsed cluster DROPS members**, so the reported
+  total is a lower bound rather than a count, and `search.md` section 2.4a stage 3 had to be
+  corrected because it claimed otherwise. Measured over `bracket_score.PREC_LADDER` on the real
+  cases: `B:d=1.8e-03` at `prec = 1e-04` reports 3 eigenvalues where the window holds 4,
+  `C:m=3,s=9.5e-02` reports 1 of 3, `C:m=4,s=1.2e-01` reports 1 of 4. The mechanism is the one
+  commit `e2ac06c` named -- the recount reads at ONE representative, the partner's branch is
+  minimal at the partner rather than there, (C2) refuses it, and multiplicity 2 reads 1. The
+  contrast that makes it sharp: `B:d=1.8e-12` at `prec = 1e-08` collapses and recounts to 2
+  CORRECTLY, so collapse-and-recount is sound for a duplicate and unsound for two distinct
+  eigenvalues inside the merge licence -- which distance cannot tell apart, and the angle can.
+  It is detected (`n_ambiguous`) and warned about, so it is not silent; it is still wrong.
+  Needs the `modes(x)` widening below. An earlier version of this item said nothing in the
+  roster exercised it; `tests/test_precision_ladder.py` now does, at every precision.
+* **[next]** The old Phase D note, for the case distance cannot settle. `chladni.mps.search`
   implements Phase D's DISTANCE PREFILTER and gets the collapse branch for free -- reading
   multiplicity once per merged group RECOUNTS by construction, which `search.md` says is the
   right move and warns against replacing with a sum. What remains is the case the angle is
