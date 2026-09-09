@@ -21,8 +21,10 @@ import concurrent.futures as cf
 
 import numpy as np
 
-from .._core import Frozen, _set
-from ..eigensolver import Eigensolver, lam_to_k, weyl_window
+import warnings
+
+from .._core import Frozen, PrecisionWarning, _set, check_prec
+from ..eigensolver import Eigensolver, Spectrum, lam_to_k, weyl_window
 from .pencil import MPSPencil
 
 __all__ = ["MPSEigensolver"]
@@ -165,14 +167,103 @@ class MPSEigensolver(Eigensolver, Frozen):
         cache[key] = cal
         return cal
 
+    # --- the search ----------------------------------------------------------------------
+
+    def objective(self, a, b, *, prec=None):
+        """The counted, memoized tension function on `[a, b]`, in `lam`. Cached per window.
+
+        Public because the evaluation cache is the expensive thing here: a caller can run one
+        search, inspect what it paid for, and drive another stage against the same samples
+        instead of buying them twice. Stage 3 depends on exactly that -- it reads multiplicity
+        out of this cache and spends nothing of its own.
+
+        **`lam`, not `k`.** `bracket_interval` covers in `k` internally, wrapping a non-`k`
+        objective in its own view and converting brackets back to the variable it was handed,
+        so handing it `lam` gives `lam` brackets out and the refiner gets the variable it
+        wants. A second conversion here would be the footgun `bracket.py` records.
+
+        Weyl reaches the searcher through `expected_count`, for SIZING only.
+        """
+        from .. import asymp
+        from .objective import Objective
+
+        prec = self.prec if prec is None else check_prec(prec)
+        key = (float(a), float(b), float(prec))
+        cache = getattr(self, "_objectives", None)
+        if cache is None:
+            _set(self, _objectives={})
+            cache = self._objectives
+        if key not in cache:
+            cache[key] = Objective.from_pencil(
+                self._pencil, float(a), float(b), variable="lam", prec=prec,
+                expected_count=lambda lo, hi: asymp.expected_count(lo, hi, self.domain))
+        return cache[key]
+
+    def search_interval(self, a, b, *, prec=None, objective=None):
+        """Every level in `[a, b]` as a `SolveResult`: the MPS-rich answer, diagnostics and all.
+
+        This is the seam to reach for. `solve_interval` narrows what comes back to the
+        method-agnostic `Spectrum` that `Eigensolver` contracts for, which necessarily drops
+        the tension, the brackets and the gap ratios; here they survive.
+
+        A decline comes back as a VALUE with `diagnostics.declined` set, per
+        `docs/design/candidates.md` section 5. `solve_interval` is where it becomes an error,
+        because that is where an empty answer would otherwise be indistinguishable from one.
+        """
+        from .search import solve
+
+        obj = self.objective(a, b, prec=prec) if objective is None else objective
+        return solve(obj, prec=self.prec if prec is None else check_prec(prec))
+
     def solve_interval(self, a, b):
-        raise NotImplementedError(
-            "the eigenvalue search is not built yet: this layer assembles the collocation "
-            "matrices, regularizes the pencil, calls the GSVD and reports the tension, and "
-            "stops there. Minimizing tension(lam) over an interval and estimating "
-            "multiplicities is the next layer -- see docs/design/mps.md. Until then, scan "
-            "tension(lam) yourself."
-        )
+        """The `Spectrum` of `[a, b]` -- `Eigensolver`'s contract, over `search_interval`.
+
+        Two things are reported rather than swallowed, and they are different in kind.
+
+        A **decline** raises. It must not come back as an empty `Spectrum`, because an empty
+        `Spectrum` already means "there are none in this interval" -- and `Eigensolver.solve`
+        answers a short count by widening and asking again eight times before blaming the
+        spectrum, which is precisely the accurate-but-incomplete failure this layer exists to
+        prevent.
+
+        A **precision shortfall** warns. The values are right to the bar they attained; it is
+        the pencil that binds, not the caller's request, so the numbers are still returned and
+        the bar is carried on the `Spectrum` for the caller to check.
+
+        An **ambiguous grouping** warns too. `search.md` section 2.4a stage 3 guarantees the
+        TOTAL over a clear window even where the grouping inside it is arbitrary, so the count
+        is right and the split may be coarser than `prec` asked for. That is the in-scope half
+        of Phase D; deciding the grouping needs the interior Gram angle and is not built.
+        """
+        res = self.search_interval(a, b)
+        d = res.diagnostics
+        if d.declined:
+            raise RuntimeError(
+                f"the search declined on lam in [{float(a):.6g}, {float(b):.6g}]: "
+                f"{d.decline_reason}. It found {len(res.levels)} level(s) before stopping; "
+                f"call search_interval to inspect them."
+            )
+        if d.n_ambiguous:
+            warnings.warn(
+                f"{d.n_ambiguous} level(s) in [{float(a):.6g}, {float(b):.6g}] have an "
+                f"ambiguous grouping and were collapsed. The TOTAL count is right; the split "
+                f"between them is coarser than prec={self.prec:.0e} asked for, because "
+                f"deciding it needs the interior Gram angle (search.md Phase D).",
+                PrecisionWarning, stacklevel=2,
+            )
+        if len(d.unmet):
+            warnings.warn(
+                f"{len(d.unmet)} level(s) in [{float(a):.6g}, {float(b):.6g}] reached only "
+                f"{d.attained_prec:.1e} relative, short of the requested "
+                f"{self.prec:.0e}. The values are correct to the bar reported on the "
+                f"Spectrum; the pencil is what binds here, not the request.",
+                PrecisionWarning, stacklevel=2,
+            )
+        lam = np.array([x.lam for x in res.levels], dtype=float)
+        mult = np.array([x.mult for x in res.levels], dtype=int)
+        bound = np.array([x.delta_res for x in res.levels], dtype=float)
+        order = np.argsort(lam)
+        return Spectrum(lam[order], mult[order], bound[order], prec=self.prec)
 
     def __repr__(self):
         return (f"MPSEigensolver({self.domain!r}, n_cols={self.n_cols}, "

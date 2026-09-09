@@ -31,7 +31,8 @@ import pytest
 from chladni.eigensolver import Eigensolver
 from chladni.geometry import Polygon
 from chladni.helmholtz import FourierBessel, Fundamental
-from chladni.mps import MPSEigensolver, MPSPencil, assemble, coef, regularize, tensions
+from chladni.mps import (MPSEigensolver, MPSPencil, PrecisionWarning, assemble, coef,
+                         regularize, tensions)
 
 from conftest import EXACT, L_SHAPE
 
@@ -193,13 +194,48 @@ def test_the_solver_is_an_eigensolver(solver):
     assert solver.bc_type == "dir"
 
 
-def test_the_search_is_absent_and_says_so(solver):
-    """One honest stub, against lappy's three `pass`-bodied `default_*` methods. The message
-    has to name what is missing, or the next person reads it as a bug."""
-    with pytest.raises(NotImplementedError, match="search"):
+def test_the_search_seam_is_wired_in_lam_and_costs_nothing_to_open(solver):
+    """`search.md` section 2.4a, stage 1: what the bracketer is HANDED.
+
+    A seam test, not a correctness one. This fixture is a deliberately thin 20-column L-shape
+    basis chosen to exercise plumbing, so an eigenvalue it locates would prove nothing; what
+    it can prove is that the objective is built in the variable the stages expect and that
+    building one is free.
+    """
+    obj = solver.objective(8.0, 30.0)
+    assert obj.variable == "lam", "stage 2 refines in lam; the seam must not hand it k"
+    assert (obj.lo, obj.hi) == (8.0, 30.0)
+    assert obj.prec == solver.prec
+    assert obj.n_evals == 0, "constructing an objective must not evaluate the pencil"
+    assert obj.expected_count() > 0, "Weyl sizing must reach the searcher"
+
+
+def test_a_declined_search_raises_rather_than_returning_an_empty_spectrum(solver, monkeypatch):
+    """`search.md` section 2.4 clause (3). An empty `Spectrum` already MEANS "none in this
+    interval", so a decline must not borrow that spelling -- `Eigensolver.solve` would widen
+    and ask again eight times, then blame the spectrum for a search that had given up."""
+    import chladni.mps.search as S
+
+    monkeypatch.setattr(S, "solve", lambda *a, **k: S.SolveResult(
+        levels=(), diagnostics=S.SolveDiagnostics(declined=True,
+                                                  decline_reason="the slope never settled")))
+    with pytest.raises(RuntimeError, match="slope never settled"):
         solver.solve_interval(8.0, 30.0)
-    with pytest.raises(NotImplementedError, match="search"):
-        solver.solve(4)
+    assert solver.search_interval(8.0, 30.0).declined, "the rich seam reports it as a VALUE"
+
+
+def test_a_precision_shortfall_warns_and_still_returns_the_values(solver, monkeypatch):
+    """`search.md` section 2.4 clause (2): the values are right to the bar they ATTAINED, and
+    the bar is reported. Not an error -- the pencil is what binds, not the caller's request."""
+    import chladni.mps.search as S
+
+    lvl = S.Level(lam=12.0, mult=1, sigma=1e-9, delta_res=1e-3)
+    monkeypatch.setattr(S, "solve", lambda *a, **k: S.SolveResult(
+        levels=(lvl,), diagnostics=S.SolveDiagnostics(attained_prec=1e-4, unmet=(12.0,))))
+    with pytest.warns(PrecisionWarning, match=r"reached only 1\.0e-04 relative"):
+        spec = solver.solve_interval(8.0, 30.0)
+    assert spec.lam == pytest.approx([12.0])
+    assert spec.unmet.all() and not spec.achieved
 
 
 # --- the solver's own construction -------------------------------------------------------
