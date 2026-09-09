@@ -8,8 +8,9 @@ Every stage is also a free function on raw arrays -- `assemble`, `equilibrate`, 
 inspecting one stage without standing up a solver is how it gets debugged. The rule, stated
 once: the free function holds the algorithm, the method holds the defaults.
 
-The eigenvalue search and multiplicity estimation are deferred; so is Rellich orthonormaliza-
-tion. See `docs/design/mps.md`.
+The eigenvalue search is here too, in four stages -- `bracket`, `refine`, `multiplicity` and
+`search` -- reached through `MPSEigensolver.solve_interval`. `docs/design/search.md` is their
+spec and `mps.md` is this layer's. Rellich orthonormalization is still deferred.
 """
 from .._core import PREC, PrecisionWarning
 from ..eigensolver import Eigensolver, Spectrum, k_to_lam, lam_to_k, weyl_window

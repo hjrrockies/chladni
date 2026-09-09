@@ -9,9 +9,11 @@ It is a ground-up rebuild of `lappy`, designed around the lessons learned there:
 geometry, a clean separation between geometry / basis / solver, and a black-box path that
 works without hand-tuning.
 
-> **Status: in development.** The geometry layer, the Helmholtz particular-solution families
-> and the plotting are implemented and tested. The eigensolver is not written yet, so nothing
-> here solves an eigenvalue problem so far.
+> **Status: in development.** The geometry layer, the Helmholtz particular-solution families,
+> the MPS pencil and the eigenvalue search are implemented and tested: `MPSEigensolver` solves
+> for eigenvalues and multiplicities on a supplied basis. What is not written is the BASIS
+> PLANNER, so the black-box path below still needs a basis chosen by hand, and Rellich-identity
+> orthonormalization of eigenfunctions.
 
 ## A first look
 
@@ -29,6 +31,32 @@ q.wts.sum()                         # 8.0, the perimeter
 
 d.plot_diagnostic()                 # colour-coded segments, annotated corners
 ```
+
+And the eigenvalues, on a basis supplied by hand until the planner exists:
+
+```python
+import numpy as np
+from chladni.helmholtz import PlaneWave
+from chladni.mps import MPSEigensolver
+
+d = G.disk(1.0)
+basis = PlaneWave.uniform(42, radius=d.diameter)
+s = MPSEigensolver(d, basis=basis, n_bdry=3 * len(basis), n_int=len(basis),
+                   rng=np.random.default_rng(0))
+
+spec = s.solve_interval(5.0, 40.0)
+spec.lam        # [ 5.783186, 14.681971, 26.374616, 30.471262]  -- j_{m,n}^2
+spec.mult       # [1, 2, 2, 1]  -- the sin/cos pairs, READ rather than inferred
+spec.bound      # [2.9e-08, 8.2e-09, 6.1e-09, 1.2e-08]  -- attained, per level
+spec.achieved   # True: every level met the requested prec
+
+s.solve(4)      # [5.783186, 14.681971, 14.681971, 26.374616] -- unfolded, ascending
+```
+
+`spec.mult` is the part an array of eigenvalues cannot carry: a computed multiplicity of 2 and
+two levels a whisker apart are different claims. If a level cannot be reached to the requested
+`prec`, `spec.unmet` says which and `achieved` is False — the solver reports the shortfall
+rather than returning a confident wrong answer.
 
 **[`examples/geometry_tour.ipynb`](examples/geometry_tour.ipynb)** tours the whole geometry
 layer with figures — segments and arclength parameterization, corners and their boundary
@@ -62,7 +90,7 @@ numbers, so the test suite runs them end to end.
 | `geometry` | **implemented** | Segments with arclength parameterization; boundaries, orientation and frames; domains with holes; corners carrying angle, boundary conditions, clearance and branch cuts; boundary quadrature with weights and provenance. |
 | `helmholtz` | **implemented** | Corner-adapted Fourier-Bessel families with branch cuts and Zaremba (mixed-BC) corners; `Y_m` multipoles at exterior sources, offset layers and lightning clusters; plane waves; a composite `Basis`. A scaled Bessel kernel that keeps full relative accuracy past the point where `scipy.special.jv` underflows to zero, and an analytic per-column scale that leaves the columns O(1). |
 | `plotting` | **implemented** | Domains, boundary conditions, normals and tangents, and a colour-coded diagnostic view. Kept in its own layer so `geometry` never imports matplotlib. |
-| `mps` | **partial** | Collocation matrix assembly, column equilibration, index-truncated SVD and column-pivoted-QR regularization, the `gsvd4py` call, the tension and eigenfunction coefficients. `MPSPencil` is domain-free and speaks `k`; `MPSEigensolver` owns the domain and speaks `lam`. The L-shape reaches 1.7e-12 at its first eigenvalue. The eigenvalue search and multiplicity estimation, basis planning, and Rellich-identity orthonormalization are not written yet. |
+| `mps` | **partial** | Collocation matrix assembly, column equilibration, index-truncated SVD and column-pivoted-QR regularization, the `gsvd4py` call, the tension and eigenfunction coefficients. `MPSPencil` is domain-free and speaks `k`; `MPSEigensolver` owns the domain and speaks `lam`. The L-shape reaches 1.7e-12 at its first eigenvalue. The eigenvalue search and multiplicity estimation are built -- `bracket`, `refine`, `multiplicity` and `search`, reached through `MPSEigensolver.solve_interval`, which returns a `Spectrum` of levels with multiplicities and a per-level bound. Basis planning and Rellich-identity orthonormalization are not written yet. |
 
 ## Installation
 

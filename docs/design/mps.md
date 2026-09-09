@@ -8,8 +8,9 @@ Decomposition. Eigenvalues are located by scanning across `lam`, identifying nea
 of a quantity called the *tension*.
 
 This document specifies the layer up to and including the tension. The eigenvalue search and
-multiplicity estimation are deferred; so is Rellich-identity orthonormalization, which belongs
-to `boundary_integrals.md`.
+multiplicity estimation have since been built on top of it -- `search.md` is their spec and
+`chladni.mps.{bracket,refine,multiplicity,search}` the code -- and Rellich-identity
+orthonormalization is still deferred to `boundary_integrals.md`.
 
 ---
 
@@ -144,9 +145,11 @@ threads. `tests/test_mps_seam.py` pins those four properties, the way
 `test_helmholtz_seam.py` pinned this layer's dependencies on the one below.
 
 The base class declares `solve_interval(a, b)` abstract and implements `solve(n)` over it
-with a Weyl window. `MPSEigensolver.solve_interval` raises `NotImplementedError` naming the
-deferred layer -- one honest stub, against `lappy`'s three `pass`-bodied `default_*` methods,
-one of which is missing `cls` and would fail if ever called.
+with a Weyl window. `MPSEigensolver` fills it in over three methods, because two contracts have
+to hold at once: `objective(a, b)` is the counted, memoized tension function in `lam`,
+`search_interval` returns the MPS-rich `SolveResult`, and `solve_interval` narrows that to the
+method-agnostic `Spectrum` the base class contracts for. A decline raises there rather than
+returning an empty `Spectrum`, which already means "none in this interval".
 
 One cost is noted and not solved: `gsvdvals` computes every generalized singular value, and
 `lappy`'s search uses two. There is no way to ask LAPACK for fewer.

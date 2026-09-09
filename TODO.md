@@ -21,25 +21,15 @@ Priorities are `[blocking]` (something else waits on it), `[next]`, `[later]`.
 
 ## 1. The eigenvalue search
 
-The layer everything else waits on. `MPSEigensolver.solve_interval` raises
-(`src/chladni/mps/solver.py:169`), and the candidates live in `tests/` on purpose -- when one
-wins it moves into `src/chladni/mps/`.
+The search SHIPS. `chladni.mps.{bracket,refine,multiplicity,search}` are the four stages and
+`MPSEigensolver.solve_interval` returns a `Spectrum`, so a `Domain` goes in and eigenvalues
+with multiplicities come out. `tests/candidates_v1.py` holds the two adapters that keep V1 on
+`candidates.md`'s scored seam, so a fourth candidate is still measured on the same instrument.
 
-All four stages now exist as scored candidates and the composed pipeline passes 15 of 15 cases
-it can decide -- disk, equilateral triangle, L-shape, exact degeneracies of multiplicity 2, 3
-and 4, and both sides of the crossover on two windows -- at 15 to 33 evaluations per eigenvalue
-including refinement. What remains is promotion, not construction.
+What is left here is not construction. It is the multiplicity contract, the `modes(x)` widening
+Phase D needs, and the constants still inherited from one rectangle family.
 
-* **[blocking]** Promote the v1 candidate and implement `solve_interval`. The comparison is
-  settled: `tests/v1_bracket.py`, `tests/v1_refine.py`, `tests/v1_multiplicity.py` and
-  `tests/v1_solve.py` pass the standing gate -- 111 cases, 1
-  unexercisable, at 26-27 evaluations per eigenvalue on real rectangle pencils including the
-  refinement each bracket hands on, and 22-24 on the disk, the equilateral triangle and the
-  L-shape. The older generation stops splitting at `d/lam` between 1.2e-04 and 3.6e-05
-  (`notes/landscape_findings.md` section 29). What moves is `v1_bracket` and `v1_refine` into
-  `src/chladni/mps/`, rewritten against a spec that `CHLADNI_V1.md`'s As-built section will
-  have corrected.
-* **[next]** Phase D's Gram angle, for the case distance cannot settle. `tests/v1_solve.py`
+* **[next]** Phase D's Gram angle, for the case distance cannot settle. `chladni.mps.search`
   implements Phase D's DISTANCE PREFILTER and gets the collapse branch for free -- reading
   multiplicity once per merged group RECOUNTS by construction, which `search.md` says is the
   right move and warns against replacing with a sum. What remains is the case the angle is
@@ -96,7 +86,7 @@ L-shape for a re-entrant corner -- and it settled the cost question: 22-24 evalu
 eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 * **[next]** Re-measure the three constants that are still inherited: `straddle = 0.02`,
-  `margin = 1.5`, `safety = 1.5`. Each carries a `RECALIBRATE` comment in `tests/v1_bracket.py`
+  `margin = 1.5`, `safety = 1.5`. Each carries a `RECALIBRATE` comment in `chladni/mps/bracket.py`
   naming what it was measured on. The others are done: `kappa` re-measured at 2.591 +- 0.226
   against the study's 2.384 (`tests/test_calibrate.py`), the wall slope at 0.64-1.41 across
   four domains, and the floor set by `sqrt(prec*eps)` landing on the crossover of Betcke's
@@ -215,7 +205,7 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   for keeping `bracketers.py` is only that it holds the older generation for comparison.
 * **[next]** Delete `lipschitz_search`. `notes/handoff_minimization.md` section 1 gave it two
   fates -- rebuild against `search.md` sections 4-5, or delete, explicitly and without
-  patching. **The rebuild happened**: `tests/v1_bracket.py` is that structure done properly,
+  patching. **The rebuild happened**: `chladni.mps.bracket` is that structure done properly,
   and it passes the gate where `lipschitz_search` scored 7/12. Nothing now depends on the old
   one.
 * **[later]** No direct `test_searches.py` covering the older searches; they are exercised
@@ -283,7 +273,7 @@ GIL. Everything below is what that leaves open.
   adaptivity is worth less when points are nearly free. This is an ordering risk, not a
   refinement: an evaluation-count-only instrument can crown a winner that a parallel machine
   would not choose.
-* **[next]** `tests/objective.py:82` is deliberately not thread-safe -- a lock there would make
+* **[next]** `chladni.mps.objective`'s `Objective` is deliberately not thread-safe -- a lock there would make
   the miss count depend on scheduling. So no parallel candidate can be scored on the current
   instrument at all. The way out is a batch seam, `Objective` taking a vector of points and
   counting misses deterministically, rather than a lock; a batch-submitting search is also the

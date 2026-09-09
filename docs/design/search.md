@@ -698,19 +698,24 @@ And the current instrument, built against `candidates.md` and `CHLADNI_V1.md`:
 
 | | |
 |---|---|
-| `tests/objective.py` | the shared seam: one cache, one counter, `Declined` as a value |
+| `chladni.mps.objective` | the shared seam: one cache, one counter, `Declined` as a value |
 | `tests/bracket_score.py` | coverage / purity / spurious / fineness / measured cost, the `prec` ladder |
 | `tests/bracket_controls.py`, `tests/baselines.py` | six adversaries, five oracles, three baselines |
 | `tests/surrogate_cases.py`, `tests/rect_suite.py`, `tests/hard_roster.py` | the three tiers |
-| `tests/v1_bracket.py`, `tests/v1_refine.py` | the winning candidate, stages 1 and 2 |
+| `chladni.mps.{bracket,refine,multiplicity,search}` | the winning candidate, all four stages |
+| `tests/candidates_v1.py` | the two adapters that put those modules on the scored seam |
 | `tests/test_gate.py` | the standing acceptance gate, `pytest -m gate` |
 
-Nothing is in `src/chladni/` yet -- except the parts that are features rather than candidates:
-`asymp.expected_count`, `mps/calibrate.py`, `MPSPencil.with_rtol` and
-`MPSEigensolver.findability`. When a search wins it moves there, rewritten against a spec that
-this section will have corrected. The v1 candidate has now won: it passes the gate at 26-27
-evaluations per eigenvalue on rectangles and 22-24 on the disk, equilateral triangle and
-L-shape, where the three searches below stop splitting at `d/lam ~ 1e-4`.
+**The search now ships.** `MPSEigensolver.solve_interval` returns a `Spectrum`, so a `Domain`
+goes in and eigenvalues with multiplicities come out. What stayed in `tests/` is the
+instrument: the scorers, the three tiers, the adversaries, and the two adapters -- because a
+fourth candidate has to be measured on the same apparatus, and a scorer that ships is a scorer
+that can be tuned to flatter what it scores. An earlier version of this paragraph said
+"nothing is in `src/chladni/` yet"; that is what changed.
+
+The v1 candidate won on the numbers: it passes the gate at 26-27 evaluations per eigenvalue on
+rectangles and 22-24 on the disk, equilateral triangle and L-shape, where the three searches
+below stop splitting at `d/lam ~ 1e-4`.
 
 ## The repaired baseline is the thing to beat
 

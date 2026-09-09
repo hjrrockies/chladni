@@ -25,8 +25,8 @@ a pair but claimed multiplicity 2 scored perfectly.
     # stage 1 -- BRACKET
     brackets(tensions, a, b, *, prec, modes=None) -> [(lo, hi), ...] | Declined
 
-    # stage 2 -- REFINE
-    refine(tensions, lo, hi, *, prec) -> RefineResult
+    # stage 2 -- REFINE          (takes the Objective, not a bare callable: it reads the cache)
+    refine(obj, lo, hi, *, prec) -> RefineResult
 
     # stage 3 -- MULTIPLICITY
     multiplicity(tensions, x, *, wide_bracket, prec) -> int

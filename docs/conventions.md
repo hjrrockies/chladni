@@ -122,8 +122,8 @@ quadratic over identical physical points, the residual is smaller in `lam` in 17
 across six domains, median 5.1x, so the refinement is in `lam`.
 
 **The seam does not move, and the two answers do not fight.** The candidate searcher is driven
-through an objective stated in `lam` (`tests/objective.py`), and it transforms to `k` internally
-through a view that shares the caller's evaluation cache (`tests/v1_bracket.py`'s `_KView`),
+through an objective stated in `lam` (`chladni.mps.objective`), and it transforms to `k` internally
+through a view that shares the caller's evaluation cache (`chladni.mps.bracket`'s `_KView`),
 returning brackets in the variable it was handed. An algorithm owning its own abscissa is not a
 variable convention; it is an implementation detail that the naming discipline above already
 covers, since every argument that crosses the boundary is named for what it carries.

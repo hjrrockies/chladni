@@ -530,14 +530,14 @@ originating repo.
 | | |
 |---|---|
 | `docs/design/candidates.md` | the stage seams every candidate plugs into, and how a method that does not decompose is compared fairly |
-| `tests/objective.py` | the shared seam: one cache, one evaluation counter, `Declined` as a value |
+| `chladni.mps.objective` | the shared seam: one cache, one evaluation counter, `Declined` as a value |
 | `tests/bracket_score.py` | coverage / purity / spurious / fineness / **measured** cost, the `prec` ladder, separation classification |
 | `tests/bracket_controls.py` | six adversaries and **five oracles** |
 | `tests/baselines.py` | `uniform_grid`, `grid_then_bisect`, `random_probe` -- may not read truth |
 | `tests/surrogate_cases.py` | tier 1, with `adequate()` |
 | `tests/rect_suite.py` | tier 2, with `assert_floor` and the new `assert_smooth` |
 | `tests/hard_roster.py` | tier 3: disk, eq_tri, L-shape, each with the `prec` its basis supports |
-| `tests/v1_refine.py`, `tests/v1_bracket.py`, `tests/v1_multiplicity.py`, `tests/v1_solve.py` | the prototype: all four stages, as scored candidates |
+| `chladni.mps.{refine,bracket,multiplicity,search}` | all four stages, PROMOTED; `tests/candidates_v1.py` holds the two adapters that keep them on the scored seam |
 | `tests/level_score.py`, `tests/level_controls.py` | the multiplicity scorer, and the adversary that broke the one it replaces |
 | `tests/test_gate.py` | the standing gate, `-m gate` |
 | `src/chladni/asymp.expected_count`, `src/chladni/mps/calibrate.py`, `MPSPencil.with_rtol`, `MPSEigensolver.findability` | the parts that are features rather than candidates |
