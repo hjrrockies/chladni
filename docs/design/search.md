@@ -262,9 +262,18 @@ missing: a location, a rejection, or an admission that the bracket holds structu
 separate.
 
 **Guarantees.** For a located root, `|lam_hat - lam*| / lam* <= max(prec, delta/lam_hat)`, with
-`delta` MEASURED from the parabola fit rather than predicted -- `delta_res = sqrt(2*eps*eta)/c`
-is a derived scale that did not predict observed error on the two cases where it could be
-checked. Which stop rule bound is reported. A rejection means the bracket holds no interior
+`delta = delta_res = DELTA_SAFETY * eps/c`, both quantities read off the parabola fit the
+refiner already performed: `eps` is `sigma_1` where it stopped and `c` is the wall slope from
+the fitted curvature. That is the RESOLUTION LIMIT of section 1 -- a minimum cannot be located
+finer than the region over which the curve is flat -- and it is measured against truth at a
+ratio of 0.99 to 1.27 over 12 levels, three domains and two basis families, which is why it
+carries a margin rather than being reported bare.
+
+It is a bound rather than a fit because it is SELF-CALIBRATING: `eps` is `sigma_1` where the
+refiner stopped, not the floor of the well, so on the wall -- where `sigma ~ c*delta` --
+`eps/c` IS the remaining distance, read off the value already in hand. Inside the flat bottom
+`sigma` saturates and the estimate becomes conservative, which is the direction a bound may err
+in. Which stop rule bound is reported. A rejection means the bracket holds no interior
 minimum to the check of section 5 Phase B; smallness alone is not enough, and before that check
 existed it passed 8 phantom roots against 20 real ones.
 
@@ -338,9 +347,11 @@ Derived from `prec`, because they carry units of `lam` or express accuracy:
     refinement stop    max(prec * lam, delta_res)
     planner target     the `eps` that makes the MEASURED delta_res <= prec * lam
 
-No closed form is given for the planner target. `delta_res = sqrt(2*eps*eta)/c` is a derived
-scale that did not predict observed error well on the two cases where it could be checked, so
-the target is stated by measurement rather than by formula.
+The planner target now has a closed form, because `delta_res` does: `delta_res <= prec*lam`
+means `eps <= prec*lam*c/DELTA_SAFETY`, so a planner is asked for a floor rather than for a
+number nobody could compute. An earlier version of this line said no closed form was
+available, on the strength of `sqrt(2*eps*eta)/c` failing to predict observed error -- that
+form was wrong, not the idea of a formula. See the As-built note.
 
 ## 2.6 Not more work than asked
 
@@ -386,6 +397,16 @@ reason.
 relative at a safe rank, four orders above that, and 1e-2 at an unsafe one. Every quantity
 derived from `eta` -- `delta_res` above all -- must be recomputed against the measured value,
 and `delta_res` should be estimated per eigenvalue from the parabola fit rather than assumed.
+
+**And `delta_res` in particular was wrong for exactly that reason, for as long as this
+paragraph stood above it unapplied.** `sqrt(eps*eps_mach/curvature)` assumes the tension
+carries absolute noise of order machine epsilon; it does not, and the correct scale is the
+resolution limit `eps/c` that section 1 already names. The two differ by
+`sqrt(eps_mach/eps)`, so the shortfall GROWS as the floor rises -- measured against
+closed-form truth, the old form under-reported by 5x at `eps ~ 1e-14` and 2100x at
+`eps ~ 1e-9`, and contained the true error at ZERO of six disk levels where the corrected
+form contains all six. It is fixed in `chladni.mps.refine`; this entry stays because the
+gap between a recorded correction and an applied one is the useful part.
 
 **Section 3.4's claim that a cluster can be "measured before it is resolved."** It cannot.
 Measured: the offset becomes nonzero at exactly the same sampling coarseness at which

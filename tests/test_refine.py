@@ -194,6 +194,86 @@ def test_delta_res_is_measured_and_reported():
     assert np.isnan(r.delta_res) or r.delta_res >= 0.0
 
 
+@pytest.mark.parametrize("eps", [1e-14, 1e-11, 1e-8])
+def test_delta_res_IS_the_resolution_limit_eps_over_c(eps):
+    """`search.md` section 1: `eps/c` is the scale on which the cone flattens into its
+    quadratic bottom. A minimum cannot be located finer than the region where the curve is
+    flat, so that scale IS the attained bound, times a margin.
+
+    The surrogate knows both quantities exactly, so this pins the FORMULA rather than a
+    measurement. Two conversions have to be right and neither is visible in the result: the
+    cone is built in `k` with slope `C_K` while the refiner works in `lam`, where
+    `dlam = 2k dk` makes the slope `C_K/(2k)`; and `_vertex` returns the parabola's LEADING
+    COEFFICIENT, which is `c**2` rather than `2*c**2`. Getting the second wrong is a silent
+    sqrt(2), which is exactly how it was caught.
+    """
+    from v1_refine import DELTA_SAFETY
+
+    r = refine(cone(LAM, eps=eps), LAM - 1e-3, LAM + 1e-3, prec=1e-16)
+    c_lam = C_K / (2.0 * np.sqrt(LAM))
+    assert r.delta_res == pytest.approx(DELTA_SAFETY * eps / c_lam, rel=1e-3)
+
+
+def _disk_levels(prec=1e-10):
+    """The disk over `[8, 60]` through the REAL pipeline, against exact truth.
+
+    Through the pipeline on purpose. Handed an artificially tight bracket the refiner reaches
+    the true floor and lands exactly on the eigenvalue, so every bound contains a zero error
+    and nothing is tested. The search hands it a bracket 0.43 wide, the refiner stops where the
+    curve goes flat, and THAT is the regime a bound has to describe.
+    """
+    from chladni.geometry import disk
+    from chladni.mps.search import solve
+    from chladni.reference import disk_spectrum
+    from hard_roster import solver_for
+
+    p = solver_for(disk(1.0), 60.0, label="disk", prec=prec).pencil
+    obj = Objective.from_pencil(p, 8.0, 60.0, variable="lam", prec=prec)
+    truth = np.unique(disk_spectrum(8.0, 60.0, 1.0))
+    for L in solve(obj, prec=prec).levels:
+        yield truth[int(np.argmin(np.abs(truth - L.lam)))], L
+
+
+@pytest.mark.slow
+def test_delta_res_CONTAINS_the_true_error_on_a_real_pencil():
+    """Clause (3), honesty, as the assertion that matters: a reported bar must contain the
+    error it reports on.
+
+    The disk is the case that exposes it, because its floor is not flat across the window --
+    the level at `j_0,2` stops four orders higher than its neighbours, and the old formula's
+    shortfall grew with the floor. A domain with a uniform floor would have hidden this.
+    """
+    slack = []
+    for lam0, L in _disk_levels():
+        err = abs(L.lam - lam0)
+        assert err <= L.delta_res, (
+            f"lam={lam0:.6f}: error {err:.3e} EXCEEDS the reported bound {L.delta_res:.3e}")
+        slack.append(L.delta_res / err)
+    assert max(slack) < 10, f"loose by {max(slack):.1f}x: a scale with margin, not a guess"
+
+
+@pytest.mark.slow
+def test_ABLATION_the_machine_epsilon_formula_contains_NOTHING():
+    """The correction shown to be load bearing, by putting the old formula back.
+
+    It read `sqrt(eps * eps_mach / curvature)`, assuming the tension carries ABSOLUTE noise of
+    order machine epsilon. It does not -- the error is `eps/c` -- so the two differ by
+    `sqrt(eps_mach / eps)`, and the shortfall GROWS as the floor rises. `search.md` section 3
+    had already recorded the assumption as wrong; the consequence had never been applied here.
+    """
+    from v1_refine import DELTA_SAFETY
+
+    missed = 0
+    total = 0
+    for lam0, L in _disk_levels():
+        total += 1
+        old = L.delta_res * np.sqrt(np.spacing(1.0) / L.sigma) / DELTA_SAFETY
+        missed += abs(L.lam - lam0) > old
+    assert missed == total, (
+        f"the old formula contained the error at {total - missed} of {total} levels; it was "
+        f"supposed to fail at every one")
+
+
 # --- termination -----------------------------------------------------------------------------
 
 def test_it_always_terminates_even_when_every_point_is_cached():

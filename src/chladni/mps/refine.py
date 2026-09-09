@@ -38,7 +38,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-__all__ = ["RefineResult", "refine"]
+__all__ = ["RefineResult", "refine", "DELTA_SAFETY"]
 
 #: Evaluations before giving up. Generous: a bracket costs 3 to 12 in practice, and the point
 #: of a cap is to stop a pathological case rather than to bound a healthy one.
@@ -51,6 +51,14 @@ _ENDPOINT_STEPS = 4
 #: Relative closeness at which two sample points are treated as the same point. Below this the
 #: vertex formula's `dx` is rounding rather than geometry.
 _SAME_POINT = 4.0
+
+#: Margin on the reported `delta_res`. The located error is `eps/c` to a measured ratio of 0.99
+#: to 1.27 over 12 levels, three domains and two basis families -- so `eps/c` is the right
+#: SCALE but not an upper bound, and a quantity that clause (2) compares against `prec*lam` has
+#: to err upward. 2.0 leaves about 1.6x over the worst observed ratio. Dimensionless, and the
+#: margin does not shrink as `prec` tightens, which is `search.md` section 2.1's rule for a
+#: constant that may be fixed at all.
+DELTA_SAFETY = 2.0
 
 
 @dataclass(frozen=True)
@@ -254,12 +262,30 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
             reason = "endpoint"
             break
 
-    # `delta_res`: the scale on which the fit can still be trusted, from the curvature the
-    # parabola actually showed. MEASURED rather than predicted -- there is no
-    # predicted-accuracy constant, because the derived form did not predict observed error
-    # well on the two cases where it could be checked.
-    eta = max(best[2], np.finfo(float).eps)
-    delta_res = float(np.sqrt(eta * np.spacing(1.0) / curvature)) if (
+    # `delta_res = DELTA_SAFETY * eps / c`: the RESOLUTION LIMIT, from the floor the refiner
+    # reached and the curvature the parabola actually showed. `search.md` section 1 names
+    # `eps/c` as the scale on which the cone flattens into its quadratic bottom, and a minimum
+    # cannot be located finer than the region over which the curve is flat.
+    #
+    # **Why this is a bound and not a fit.** It is SELF-CALIBRATING through the cone. `eps`
+    # here is `sigma_1` where the refiner actually stopped, not the floor of the well, so on
+    # the wall -- where `sigma ~ c*delta` -- `eps/c` IS the remaining distance to the minimum,
+    # recovered from the one value already in hand. Inside the flat bottom `sigma` saturates
+    # at the true floor and the estimate becomes conservative, which is the direction a bound
+    # is allowed to be wrong in. That is why it holds across five orders of `eps` rather than
+    # over a fitted range.
+    #
+    # This replaced `sqrt(eps * eps_mach / curvature)`, which assumed the tension carries
+    # ABSOLUTE noise of order machine epsilon. It does not, and `search.md` section 3 had
+    # already recorded that the assumption was wrong without the consequence being applied
+    # here. The two differ by `sqrt(eps_mach / eps)`, so the shortfall GROWS as the floor
+    # rises: on the disk through the real pipeline the old form contained the true error at
+    # ZERO of six levels, under-reporting by 280x to 2000x, where this one contains all six.
+    # `curvature` is `_vertex`'s `c2`, the parabola's LEADING COEFFICIENT, so `c = sqrt(c2)`
+    # directly -- `f = eps**2 + c**2*delta**2` means `c2 == c**2`, not `2*c**2`. Getting that
+    # factor wrong is a silent sqrt(2) on the reported bound.
+    eps_floor = max(best[2], np.finfo(float).eps)
+    delta_res = float(DELTA_SAFETY * eps_floor / np.sqrt(curvature)) if (
         np.isfinite(curvature) and curvature > 0) else float("nan")
 
     ends = (hist[0][2], hist[2][2])      # sigma_1 at the handed-in endpoints; already paid for
