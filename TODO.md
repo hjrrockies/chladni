@@ -178,6 +178,18 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   do re-check the sector case immediately -- but neither has been verified since the warning
   became visible, and the sector is the project's sharpest ground truth. The suppressions are
   now targeted by message, so the rank and findability signals stay live while this is open.
+* **[next]** Enrichment is NOT monotone, and nothing tests that it helps at all. Measured on
+  the L-shape, worst tension over the first six levels: plane waves alone **3.8e-01** (the
+  basis cannot represent `r**(2/3)` and the solve is meaningless), then corner Fourier-Bessel
+  at 5/10/20/40 terms per corner giving 5.7e-03, 3.1e-05, 6.0e-11, **4.3e-14** -- thirteen
+  orders, and the whole argument for corner families. But 80 terms per corner reads
+  **4.8e-13**, a 10x REGRESSION past the optimum around 40. So "add more basis" is not a safe
+  default and a planner cannot hill-climb on column count. Two things follow: the enrichment
+  claim in `docs/design/particular_solutions.md` is still untested (section 4 above), and the
+  regression above the optimum is not recorded anywhere. Note this is Fourier-Bessel, so it is
+  NOT the plane-wave conditioning bound `n_useful` describes -- on the disk, enrichment from
+  0.6x to 2.5x `n_useful` moves the floor not at all (rank saturates at 49 from 38 to 160
+  columns), which is the case that made the old `log_scale` guard fire on healthy setups.
 * **[next]** `_UNSAFE_RATIO` and `SUITE_RTOL` disagree, and neither cites the other.
   `src/chladni/mps/pencil.py:68` calls a cut below `1e-13` unsafe, measured on the disk;
   `tests/rect_suite.py:113` sets the suite's threshold rank to `sqrt(FINEST_PREC*eps)` = 1.5e-15,
