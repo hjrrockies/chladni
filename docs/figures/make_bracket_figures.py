@@ -4,8 +4,8 @@
     uv run python docs/figures/make_bracket_figures.py --only ladder
 
 Every figure is computed from the code it illustrates, not drawn by hand: the exclusion
-picture calls `v1_bracket.live_regions`, the ladder calls `wall_ladder_ratio` and then
-measures the ratio it predicts, the straddle sweep drives `v1_bracket._locator_step`, and
+picture calls `chladni.mps.bracket.live_regions`, the ladder calls `wall_ladder_ratio` and then
+measures the ratio it predicts, the straddle sweep drives `bracket._locator_step`, and
 the tension curves come from real `MPSPencil` evaluations. Where a caption states a number,
 the script prints it, so a caption that has drifted from the code is visible.
 
@@ -68,7 +68,7 @@ def _measured_ladder_ratio(safety, c=0.7, n=40, lo=1e-9, hi=1e3):
     Bisected against `live_regions` itself, so what is measured is the code's own verdict and
     not a re-derivation of it.
     """
-    from v1_bracket import live_regions
+    from chladni.mps.bracket import live_regions
 
     def covered(r):
         # One wall of a cone at the origin, sampled at u = r**j. Exclusion is scale-free, so
@@ -91,7 +91,7 @@ def _measured_ladder_ratio(safety, c=0.7, n=40, lo=1e-9, hi=1e3):
 
 def fig_ladder():
     """A wall is covered by a geometric ladder, and its ratio follows from `safety` alone."""
-    from v1_bracket import SAFETY, live_regions, wall_ladder_ratio
+    from chladni.mps.bracket import SAFETY, live_regions, wall_ladder_ratio
 
     safeties = np.array([1.2, 1.5, 2.0, 3.0, 5.0])
     predicted = np.array([wall_ladder_ratio(s) for s in safeties])
@@ -177,7 +177,7 @@ def _rect_case(L=1.0, H=None, lam_lo=30.0, lam_hi=200.0):
 
 def fig_exclusion():
     """The Piyavskii sawtooth on a real tension curve, and what it certifies empty."""
-    from v1_bracket import SAFETY, _envelope_min, _secants, live_regions
+    from chladni.mps.bracket import SAFETY, _envelope_min, _secants, live_regions
 
     pen, k_true = _rect_case()
     k_lo, k_hi = np.sqrt(30.0), np.sqrt(200.0)
@@ -299,9 +299,9 @@ def fig_whyk():
 # =================================================================================================
 
 class _PencilView:
-    """The `.sigma(k, j)` seam `v1_bracket.isolation` reads, backed by a real pencil.
+    """The `.sigma(k, j)` seam `bracket.isolation` reads, backed by a real pencil.
 
-    The searcher never sees a pencil -- it is handed an `Objective` (`tests/objective.py`) and
+    The searcher never sees a pencil -- it is handed an `Objective` (`chladni.mps.objective`) and
     works in `k`. This is that same seam with the cache and the counter left out, which is all
     the gate needs.
     """
@@ -316,7 +316,7 @@ class _PencilView:
 
 def _gate_reading(pen, k_star, half, n=9):
     """What `isolation` reports at a level, from a symmetric descent triple around it."""
-    from v1_bracket import isolation
+    from chladni.mps.bracket import isolation
 
     ks = k_star + np.linspace(-half, half, n)      # odd `n`, so `k_star` is a sample
     vs = np.array([pen.tension(k * k) for k in ks])
@@ -398,7 +398,7 @@ def _straddle_run(pen, k_star, half, straddle, target, cap=60):
     The locator is a pure function of the samples, so nothing here reimplements it: the module
     constant is set, the step is asked where to sample, and the answer is evaluated.
     """
-    import v1_bracket as v1
+    import chladni.mps.bracket as v1
 
     old, v1.STRADDLE = v1.STRADDLE, straddle
     try:
@@ -421,7 +421,7 @@ def _straddle_run(pen, k_star, half, straddle, target, cap=60):
         v1.STRADDLE = old
 
 
-#: Offsets swept, as a fraction of the bracket. `v1_bracket.STRADDLE` is 0.02.
+#: Offsets swept, as a fraction of the bracket. `bracket.STRADDLE` is 0.02.
 _STRADDLES = (0.001, 0.002, 0.005, 0.01, 0.02, 0.04, 0.08, 0.15)
 
 
@@ -438,7 +438,7 @@ def _prediction_errors(pen, levels, half, w_min=1e-4):
     and hands the bracket to the refiner, which works in `lam`. Including that regime would
     measure the stall rather than the prediction.
     """
-    import v1_bracket as v1
+    import chladni.mps.bracket as v1
 
     out = []
     for k_star in levels:
@@ -469,7 +469,7 @@ def _prediction_errors(pen, levels, half, w_min=1e-4):
 
 def fig_straddle():
     """Sampling AT the prediction leaves one flank fixed; a small offset contracts both."""
-    import v1_bracket as v1
+    import chladni.mps.bracket as v1
     from rect_suite import PHI, pencil_for
     from chladni.reference import rect_spectrum
 

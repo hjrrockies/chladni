@@ -16,7 +16,7 @@ import pytest
 import bracket_controls as bc
 import bracket_score as bs
 from baselines import BASELINES
-from objective import Objective
+from chladni.mps.objective import Objective
 
 #: A window with an isolated level, a resolvable pair and a wide-open gap. Real rectangle
 #: values: 5*pi**2 is the (2,1)/(1,2) degeneracy, split here by a controlled amount.

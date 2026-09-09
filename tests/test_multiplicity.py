@@ -16,12 +16,12 @@ import bracket_score as bs
 import level_controls as lc
 import level_score as ls
 import rect_suite as rs
-import v1_multiplicity as M
+import chladni.mps.multiplicity as M
 from chladni.geometry import rect
 from chladni.helmholtz import PlaneWave
 from chladni.mps import MPSPencil
 from chladni.reference import rect_eig
-from v1_bracket import v1_brackets
+from candidates_v1 import v1_brackets
 
 
 PAIR = 5 * np.pi**2
@@ -166,8 +166,8 @@ def test_the_reach_must_clear_the_LOCATED_ROOTS_OWN_ERROR():
     the isolated stage-3 tests could not see it because they read at SAMPLED points.
     """
     import hard_roster as hr
-    from v1_bracket import bracket_interval
-    from v1_refine import refine
+    from chladni.mps.bracket import bracket_interval
+    from chladni.mps.refine import refine
 
     case = hr.ROSTER["disk"]()
     obj = bs.objective_for(case, 1e-8)

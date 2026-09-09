@@ -15,9 +15,10 @@ import pytest
 
 import bracket_score as bs
 import surrogate_cases as sc
-import v1_bracket as V
-from objective import Objective
-from v1_bracket import bracket_interval, v1_brackets
+import chladni.mps.bracket as V
+from chladni.mps.objective import Objective
+from candidates_v1 import v1_brackets
+from chladni.mps.bracket import bracket_interval
 
 LADDER = bs.PREC_LADDER
 

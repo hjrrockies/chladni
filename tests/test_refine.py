@@ -13,8 +13,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from objective import Objective
-from v1_refine import _vertex, _xatol, refine
+from chladni.mps.objective import Objective
+from chladni.mps.refine import _vertex, _xatol, refine
 
 EPS, C_K, PLATEAU = 1e-13, 0.27, 0.2
 
@@ -207,7 +207,7 @@ def test_delta_res_IS_the_resolution_limit_eps_over_c(eps):
     COEFFICIENT, which is `c**2` rather than `2*c**2`. Getting the second wrong is a silent
     sqrt(2), which is exactly how it was caught.
     """
-    from v1_refine import DELTA_SAFETY
+    from chladni.mps.refine import DELTA_SAFETY
 
     r = refine(cone(LAM, eps=eps), LAM - 1e-3, LAM + 1e-3, prec=1e-16)
     c_lam = C_K / (2.0 * np.sqrt(LAM))
@@ -261,7 +261,7 @@ def test_ABLATION_the_machine_epsilon_formula_contains_NOTHING():
     `sqrt(eps_mach / eps)`, and the shortfall GROWS as the floor rises. `search.md` section 3
     had already recorded the assumption as wrong; the consequence had never been applied here.
     """
-    from v1_refine import DELTA_SAFETY
+    from chladni.mps.refine import DELTA_SAFETY
 
     missed = 0
     total = 0
@@ -305,7 +305,7 @@ def test_a_genuine_minimum_OFF_CENTRE_in_its_bracket_is_accepted():
     """
     import bracket_score as bscore
     import rect_suite as rs
-    from v1_bracket import bracket_interval
+    from chladni.mps.bracket import bracket_interval
 
     (case,) = [c for c in rs.family_D() if "mult=3" in c.label]
     true = float(np.unique(case.truth)[0])
@@ -337,8 +337,8 @@ def test_the_start_point_is_the_DEEPEST_SAMPLE_not_the_midpoint():
     """
     import bracket_score as bscore
     import rect_suite as rs
-    from v1_bracket import bracket_interval
-    from v1_refine import _deepest_inside
+    from chladni.mps.bracket import bracket_interval
+    from chladni.mps.refine import _deepest_inside
 
     (case,) = [c for c in rs.family_D() if "mult=3" in c.label]
     true = float(np.unique(case.truth)[0])

@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from objective import Declined, Objective
+from chladni.mps.objective import Declined, Objective
 
 
 def cone(k, at=3.0, eps=1e-9, c=0.27):

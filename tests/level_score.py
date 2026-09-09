@@ -198,7 +198,7 @@ class LevelScore:
 def _unpack(item):
     """`(lam, mult, declared_width)` from a plain tuple or from anything with those attributes.
 
-    A level may DECLARE that it stands for a span wider than `prec*lam` -- `v1_solve` does this
+    A level may DECLARE that it stands for a span wider than `prec*lam` -- `chladni.mps.search.solve` does this
     when a neighbourhood's internal grouping is arbitrary, collapsing it and reporting the
     total, which is the quantity that was never in doubt. A scorer that ignored the declaration
     would mark the level impure for a width it announced, and would be penalising the honest

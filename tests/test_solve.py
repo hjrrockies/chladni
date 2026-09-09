@@ -14,9 +14,10 @@ import pytest
 import bracket_score as bs
 import level_score as ls
 import rect_suite as rs
-import v1_multiplicity as M
-from objective import Declined, Objective
-from v1_solve import solve, v1_solve
+import chladni.mps.multiplicity as M
+from chladni.mps.objective import Declined, Objective
+from candidates_v1 import v1_solve
+from chladni.mps.search import solve
 
 
 

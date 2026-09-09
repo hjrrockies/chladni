@@ -36,8 +36,8 @@ import pytest
 
 import bracket_score as bs
 import rect_suite as rs
-from v1_bracket import v1_brackets
-from v1_refine import refine
+from candidates_v1 import v1_brackets
+from chladni.mps.refine import refine
 
 pytestmark = [pytest.mark.gate]
 

@@ -18,8 +18,9 @@ import bracket_score as bs
 import hard_roster as hr
 from chladni import asymp
 from harness import weyl_audit
-from v1_bracket import bracket_interval, v1_brackets
-from v1_refine import refine
+from candidates_v1 import v1_brackets
+from chladni.mps.bracket import bracket_interval
+from chladni.mps.refine import refine
 
 pytestmark = [pytest.mark.slow]
 

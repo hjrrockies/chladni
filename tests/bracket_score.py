@@ -475,7 +475,7 @@ def objective_for(case, prec):
     SIZING ONLY. A case without a domain -- the surrogate tier -- gets none, and a search that
     needs a count has to measure one for itself.
     """
-    from objective import Objective
+    from chladni.mps.objective import Objective
 
     expected = None
     dom = getattr(case, "domain", None)

@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from objective import Declined
+from chladni.mps.objective import Declined
 
 __all__ = ["truth_in", "whole_window", "grid_partition_unevaluated", "evaluated_fine_grid",
            "oracle_minus_one", "oracle_two_merged", "brackets_in_the_gaps",

@@ -51,7 +51,7 @@ width depends on the well's own `eps`, and `CHLADNI_V1.md` section 3.1 measured 
 
 # V1's acceptance rule is immune, and that is not a coincidence
 
-`v1_refine._accept` asks the same question a different way: strictly interior, and below
+`chladni.mps.refine._accept` asks the same question a different way: strictly interior, and below
 the tension at BOTH SAMPLED ENDPOINTS of the bracket. It keeps 3 of 3 at every `floor_frac`,
 including the default where the fixed-step probe keeps none.
 
@@ -178,7 +178,7 @@ def test_the_default_floor_frac_drops_EVERY_level():
 def test_V1s_ENDPOINT_rule_keeps_all_three_at_every_floor_frac(floor_frac):
     """The same question asked against SAMPLED points instead of a constant step.
 
-    `v1_refine._accept`: strictly interior, and below the tension at both endpoints of
+    `chladni.mps.refine._accept`: strictly interior, and below the tension at both endpoints of
     the bracket -- which are points the search actually evaluated, so the test cannot be fooled
     by how accurate the located root happens to be. It keeps 3 of 3 everywhere, including where
     the fixed-step probe keeps 0.

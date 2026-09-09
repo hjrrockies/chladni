@@ -675,7 +675,7 @@ def multiplicity_undecided(case, prec, *, reach=2.0, tol=0.02):
     `1 < diameter/(prec*lam) < reach`. Such a cluster is too wide to be one level of `S(prec)`,
     and its members sit closer together than the flanks a multiplicity read needs, so there is
     no window that is outside the level and inside the gap to the next one. Measured on the
-    multiplicity-3 cluster at `50*pi^2`, with `v1_multiplicity.WIDE_FACTOR = 2`:
+    multiplicity-3 cluster at `50*pi^2`, with `chladni.mps.multiplicity.WIDE_FACTOR = 2`:
 
         diameter/licence   0.40   1.00   1.60   2.60   4.00   6.00
         verdict            pass   FAIL   FAIL   pass   pass   pass
