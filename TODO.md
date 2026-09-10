@@ -29,6 +29,19 @@ with multiplicities come out. `tests/candidates_v1.py` holds the two adapters th
 What is left here is not construction. It is the multiplicity contract, the `modes(x)` widening
 Phase D needs, and the constants still inherited from one rectangle family.
 
+**Two items in this file are `[blocking]` and Phase D goes first**, ahead of basis planning in
+section 3. Phase D is a CORRECTNESS defect and the planner is a CAPABILITY gap: today
+`solve_interval` can report one eigenvalue where a window holds four, so anything built on it
+inherits a count that is a lower bound -- including a planner, whose entire job is to judge a
+basis by results the solver may be miscounting. And for `douse` the ordering is not close: a
+shape objective goes non-smooth exactly where levels collide, which is exactly where the count
+is currently unreliable.
+
+Do the `modes(x)` widening as its OWN step before the angle. It is a seam change across
+`Objective`, the pencil and the candidate interface; the angle is a rule. Landing them together
+is two kinds of work in one session, which is what made the previous promotion attempt
+illegible.
+
 * **[blocking]** Phase D's Gram angle. **A collapsed cluster DROPS members**, so the reported
   total is a lower bound rather than a count, and `search.md` section 2.4a stage 3 had to be
   corrected because it claimed otherwise. Measured over `bracket_score.PREC_LADDER` on the real
@@ -62,10 +75,11 @@ Phase D needs, and the constants still inherited from one rectangle family.
   `1 < diameter/(prec*lam) < WIDE_FACTOR` and the prominence bound needs `f > sqrt(3)`, so
   there is little room; the collapse makes it a cost question rather than a correctness one,
   since a collapsed level is coarser than `prec` asked for. Low priority for that reason.
-* **[next]** Widen the candidate interface from `tensions(x)` to also carry `modes(x)` -- the
-  candidate eigenfunctions on a fixed shared point set. Phase D's collapse-versus-merge is
-  decided by the interior Gram angle, which `tensions(x)` cannot supply, so everything about
-  multiplicity is un-benchmarkable until this lands.
+* **[blocking]** Widen the candidate interface from `tensions(x)` to also carry `modes(x)` --
+  the candidate eigenfunctions on a fixed shared point set. **This is the first thing to do**:
+  Phase D's collapse-versus-merge is decided by the interior Gram angle, which `tensions(x)`
+  cannot supply, so everything about multiplicity is un-benchmarkable until it lands. A seam
+  change, so it wants its own step and its own commit, with the angle following separately.
   `notes/solver_features.md` section 4 argues the widening over post-processing; section 5
   ranks it second.
 * **[next]** Carry the in-loop stride correction past the seed. The bracketing stage now has
@@ -131,6 +145,19 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   output should include a contract: the `eps` and dip width a search can tolerate. Deferred in
   `docs/design/mps.md` and `docs/design/particular_solutions.md`;
   `src/chladni/helmholtz/sources.py:271` defers the taper decision to it.
+
+  **Second, after Phase D** -- see section 1's ordering note: a planner judges a basis by the
+  solver's results, and those results are currently a lower bound on a cluster.
+
+  It is better equipped than it was, by two measurements made while promoting the search.
+  **The target now has a closed form.** `delta_res = DELTA_SAFETY * eps/c`, so
+  `delta_res <= prec*lam` means `eps <= prec*lam*c/DELTA_SAFETY` -- a floor to hit, where
+  `search.md` section 2.5 previously said no closed form was available. And **it must not
+  hill-climb on column count**: on the L-shape, corner Fourier-Bessel buys thirteen orders over
+  plane waves alone (3.8e-01 -> 4.3e-14) and then REGRESSES 10x from 40 terms per corner to 80,
+  while on the disk plane-wave enrichment from 0.6x to 2.5x `n_useful` moves the floor not at
+  all because the rank saturates. More is better until it is not, and where the turn happens is
+  a property of the family.
 * **[next]** **Boundary integrals, and Rellich orthonormalization.**
   `docs/design/boundary_integrals.md` is a seven-line scope note and the layer is unwritten.
   `Quadrature` already carries the weights for it (`src/chladni/mps/pencil.py:31`). It blocks
@@ -212,6 +239,11 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 5. Test-suite hygiene
 
+* **[next]** The suite takes 11:47, up from 6:29, and `tests/test_precision_ladder.py` is 5:13
+  of that -- 30 cases x 6 precisions, one full solve each. It earns its place (it is what found
+  the cluster-collapse defect and it is the only thing driving the pipeline across the whole
+  ladder), but `family_B` contributes fourteen near-duplicate separations where five would
+  cover the same ground. Trimming the grid, not the ladder: every precision must stay.
 * **[next]** `tests/bracketers.py` is orphaned. No `test_*.py` imports it, and it is the only
   importer of `tests/searches.py`. Wire both in or delete both -- and note that
   `tests/baselines.py` now supplies the honest-baseline role on the current seam, so the case
