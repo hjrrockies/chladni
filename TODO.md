@@ -180,6 +180,16 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
+* **[next]** A starved basis DROPS the levels it resolves worst, silently. On the disk over
+  `[8, 60]` at `prec = 1e-12`, plane waves at `pad = 0.35` (22 columns) return 2 of 6 levels and
+  `pad = 0.45` (28 columns) 5 of 6, with no decline, no warning, and nothing in `unmet` for the
+  lost ones -- the levels that ARE found meet the request. `search.md` section 2.4 clause (3)
+  says the completeness diagnostics fire whenever clause (1) fails; here none does, and
+  `Eigensolver.solve(n)` answers a short return by widening the window. Pinned as a strict
+  xfail, `tests/test_solve_interval.py::test_a_starved_basis_does_not_DROP_levels_silently`.
+  The Weyl deficit is the obvious candidate alarm; over a window this narrow it is a
+  plus-or-minus-one estimator (`notes/landscape_findings.md` section 33.1), so measure it first.
+
 * **[next]** `MPSEigensolver`'s `rng=None` default should become a fixed constant. Unseeded, an
   interior fill gives a 110x run-to-run spread in the located eigenvalue, and that goes into a
   shape objective as noise. The docstring at `src/chladni/mps/solver.py:44` already says the

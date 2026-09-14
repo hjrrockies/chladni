@@ -182,7 +182,11 @@ def l_shape_case(a=5.0, b=26.0, n_fb=80):
     """
     lam = np.asarray(L_shape_eigs(12), dtype=float)
     inside = lam[(lam >= a) & (lam <= b)]
-    return make_case("L_shape", L_shape(), a, b, inside, complete=False, n_fb=n_fb)
+    case = make_case("L_shape", L_shape(), a, b, inside, complete=False, n_fb=n_fb)
+    # The table's own accuracy, which `basis_sufficiency` reads: a 14-digit table cannot
+    # referee a request past 1e-13, whatever the basis does.
+    case.digits = float(L_shape_eigs.digits)
+    return case
 
 
 def disk_case(a=5.0, b=60.0, r=1.0):

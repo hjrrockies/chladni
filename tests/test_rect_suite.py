@@ -201,3 +201,60 @@ def test_the_floor_precondition_holds_on_a_representative_case():
     ok, rows = rs.assert_floor(case)
     worst = max(r["sigma_mu"] for r in rows)
     assert ok, f"worst sigma_mu {worst:.2e} over {len(rows)} levels"
+
+
+# --- complete, unsnapped truth for the pipeline ladder ------------------------------------------
+
+def _window(L, H, a, b):
+    from types import SimpleNamespace
+    return SimpleNamespace(dims=(L, H), a=a, b=b)
+
+
+@pytest.mark.parametrize("L, H, a, b", [(1.0, 1.0 / rs.PHI, 5.0, 300.0), (1.0 + 1e-3, 1.0, 10.0, 88.0),
+                                        (1.0, 1.0, 10.0, 520.0), (1.0 + 1e-2, 1.0, 470.0, 520.0)])
+def test_complete_truth_has_the_same_COUNT_as_rect_spectrum(L, H, a, b):
+    """`rect_spectrum` is complete by construction; the unsnapped enumeration must agree on how
+    many eigenvalues the window holds, or one of the two is dropping modes."""
+    from chladni.reference import rect_spectrum
+
+    got = rs.complete_truth(_window(L, H, a, b))
+    assert got.size == len(rect_spectrum(a, b, L, H))
+
+
+def test_complete_truth_does_NOT_merge_what_rect_spectrum_snaps():
+    """On `rect(1 + 3e-14, 1)` the (2,1)/(1,2) pair is 1.8e-12 apart. `rect_spectrum` snaps it to
+    one value; the ladder's truth must not, or a correct split scores as a wrong multiplicity."""
+    from chladni.reference import rect_spectrum
+
+    L = 1.0 + 3e-14
+    snapped = np.asarray(rect_spectrum(10.0, 88.0, L, 1.0), dtype=float)
+    got = rs.complete_truth(_window(L, 1.0, 10.0, 88.0))
+    pair_snapped = snapped[(snapped > 49.0) & (snapped < 50.0)]
+    pair = got[(got > 49.0) & (got < 50.0)]
+    assert np.unique(pair_snapped).size == 1, "the premise: snap merges this pair"
+    assert np.unique(pair).size == 2 and np.ptp(pair) > 1e-12
+
+
+# --- the smoothness precondition must certify what the SEARCHER samples -------------------------
+
+@pytest.mark.slow
+@pytest.mark.parametrize("prec", [1e-8, 1e-14])
+def test_assert_smooth_reads_the_SEARCHERS_own_seed(prec):
+    """`assert_smooth` decides which gate cells are skipped as having no slope bound. It seeded
+    its own 16-point grid with 4 doublings while the searcher seeds from Weyl with up to 6, so a
+    cell could pass the precondition and still decline in the search, or the reverse -- the
+    precondition certified a curve the searcher never looked at. It must be the searcher's own
+    bootstrap, on the same objective and view.
+
+    On the WIDE window, not the pair window: there Weyl expects about 4 eigenvalues and the
+    searcher seeds `max(16, ceil(1.5*4)) = 16` points -- exactly `assert_smooth`'s 16 -- so the two
+    grids coincide and a test on that window passes whatever the precondition does."""
+    import bracket_score as bs
+    from chladni.mps.bracket import _KView, _seed
+
+    (case,) = rs.crossover_cases(prec, window="wide", bands=(1.3,))
+    ok, hist = rs.assert_smooth(case, prec)
+    view = _KView(bs.objective_for(case, prec))
+    _, _, seed_hist, settled = _seed(view, view.lo, view.hi, 0.5 * prec)
+    assert ok == settled
+    assert hist == tuple(seed_hist), f"precondition saw {hist}, the searcher saw {seed_hist}"

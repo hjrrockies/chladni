@@ -54,7 +54,7 @@ __all__ = ["Counter", "pencil_for", "make_case", "diagnostics", "assert_floor",
            "CROSSOVER_WINDOWS", "WIDE_WINDOW",
            "FLOOR_TARGET", "PHI",
            "family_A", "family_B", "family_C", "family_D", "family_stress",
-           "all_families"]
+           "all_families", "complete_truth"]
 
 PI2 = np.pi**2
 PHI = (1.0 + 5.0**0.5) / 2.0
@@ -232,7 +232,36 @@ def make_case(label, L, H, a, b, *, seed=0, modes=None, variable="lam", pad=1.6)
                 domain=rect(L, H), complete=True, variable=variable, modes=modes_fn)
     case.pencil = p                      # for diagnostics; the search never sees it
     case.spectrum = spec
+    case.dims = (float(L), float(H))
     return case
+
+
+def complete_truth(case):
+    """EVERY eigenvalue of the case's rectangle in `[a, b]`, from `rect_eig` and never snapped.
+
+    `case.truth` is restricted to a family's own modes -- `family_C` lists only the cluster --
+    so scoring a solve against it calls a genuine neighbour spurious. `rect_spectrum` is
+    complete but returns `snap(...)`, which merges values within `1e-13*lam`: on
+    `rect(1 + 3e-14, 1)` it reports the (2,1)/(1,2) pair as an EXACT double while `rect_eig`
+    puts it 1.8e-12 apart. Scored against the snapped value, a solver that split that pair
+    correctly at `prec = 1e-14` read as a wrong multiplicity -- which is what the ladder
+    benchmark reported, and blamed on the solver.
+    """
+    L, H = case.dims
+    a, b = float(case.a), float(case.b)
+    out = []
+    m = 1
+    while PI2 * (m / L) ** 2 <= b:
+        n = 1
+        while True:
+            lam = rect_eig(m, n, L, H)
+            if lam > b:
+                break
+            if lam >= a:
+                out.append(lam)
+            n += 1
+        m += 1
+    return np.sort(np.asarray(out, dtype=float))
 
 
 FLOOR_TARGET = 1e-14        #: sigma_mu must sit at or below this at every true eigenvalue
@@ -283,7 +312,7 @@ def assert_floor(case, target=FLOOR_TARGET, finest_prec=1e-14, margin=3.0, h_fra
     return ok, rows
 
 
-def assert_smooth(case, prec, *, n_seed=16, doublings=4, settle=0.10):
+def assert_smooth(case, prec):
     """PRECONDITION: does this objective admit a Lipschitz bound at the scales the search needs?
 
     The companion to `assert_floor`, and it checks the OTHER premise. `assert_floor` asks
@@ -294,7 +323,15 @@ def assert_smooth(case, prec, *, n_seed=16, doublings=4, settle=0.10):
 
     The test is the searcher's own bootstrap: seed uniformly, double, and see whether the
     largest observed secant STOPS GROWING. That is not a proxy for the premise, it is the
-    premise.
+    premise -- and it is literally the searcher's: `bracket._seed` on the same `_KView` of the
+    same objective, with the same `prec_u = prec/2`.
+
+    **It used to be a copy, and the copy diverged.** It seeded its own 16 points with 4
+    doublings while the searcher sizes its seed from Weyl -- 52 points on the wide gate window --
+    with up to 6. On that window the precondition read secants 0.618 -> 0.781 -> 0.807 where the
+    searcher read 0.847 -> 0.855, so a cell could pass the precondition and decline in the
+    search, or be skipped as rough when the searcher would have settled. On the pair and cluster
+    windows Weyl asks for 16 anyway, which is why nothing caught it.
 
     **Why this is needed.** The gate found the multiplicity-4 split cases at `65*pi^2` reporting
     `slope never settled` with the largest secant running 0.64 -> 61 -> 261 across doublings,
@@ -313,27 +350,12 @@ def assert_smooth(case, prec, *, n_seed=16, doublings=4, settle=0.10):
 
     Returns `(ok, history)`.
     """
-    p = case.pencil
-    lo, hi = float(case.a), float(case.b)
-    k_lo, k_hi = np.sqrt(lo), np.sqrt(hi)
-    ks = list(np.linspace(k_lo, k_hi, n_seed))
-    vals = {k: p.tension(k * k) for k in ks}
-    hist, previous = [], 0.0
-    for _ in range(doublings):
-        arr = np.array(sorted(vals))
-        v = np.array([vals[k] for k in arr])
-        dk = np.diff(arr)
-        keep = dk > 1e-9 * (k_hi - k_lo)
-        raw = float(np.max(np.abs(np.diff(v)[keep] / dk[keep]), initial=0.0))
-        hist.append(raw)
-        if previous > 0.0 and raw <= (1.0 + settle) * previous:
-            return True, tuple(hist)
-        previous = raw
-        for a, b in zip(ks[:-1], ks[1:]):
-            m = 0.5 * (a + b)
-            vals.setdefault(m, p.tension(m * m))
-        ks = sorted(vals)
-    return False, tuple(hist)
+    import bracket_score as bs
+    from chladni.mps.bracket import _KView, _seed
+
+    view = _KView(bs.objective_for(case, prec))
+    _, _, hist, settled = _seed(view, view.lo, view.hi, 0.5 * prec)
+    return bool(settled), tuple(hist)
 
 
 def diagnostics(case, h_frac=0.02):
