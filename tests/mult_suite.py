@@ -64,7 +64,8 @@ from chladni.mps.refine import refine
 
 __all__ = ["MultCase", "MultScore", "ladder_cases", "degenerate_cases",
            "as_built_cases", "asymmetric_cases", "score_estimator",
-           "regimes", "REGIMES", "PREC_LADDER", "GAP_LADDER", "gap_rule"]
+           "regimes", "REGIMES", "PREC_LADDER", "GAP_LADDER", "gap_rule", "floor_rule",
+           "reach_rule", "slope_outside"]
 
 #: The precision ladder, matching the bracketing tests so the two are comparable.
 PREC_LADDER = (1e-6, 1e-8, 1e-10, 1e-12, 1e-14)
@@ -420,7 +421,44 @@ def gap_rule(case):
                           prec=case.prec)
     if wb is None:
         return 1
-    return multiplicity(case.tensions, case.lam_star, wide_bracket=wb, prec=case.prec).mu
+    return multiplicity(case.tensions, case.lam_star, wide_bracket=wb, prec=case.prec,
+                        rule="gap").mu
+
+
+def floor_rule(case):
+    """The floor-coincidence rule, on this instrument. Right about COINCIDENCE only."""
+    from chladni.mps.multiplicity import multiplicity
+
+    return multiplicity(case.tensions, case.lam_star, prec=case.prec, rule="floor").mu
+
+
+def reach_rule(case):
+    """The candidate rule: `mu*(B)` from `sigma_j/c` against the bracket, side resolved."""
+    from chladni.mps.multiplicity import multiplicity
+
+    c = slope_outside(case)
+    if not (c > 0):
+        return None
+    m = multiplicity(case.tensions, case.lam_star, bracket=(case.lo, case.hi), c=c,
+                     prec=case.prec, rule="reach")
+    return None if m.ambiguous else m.mu
+
+
+def slope_outside(case, standoff=None):
+    """The wall slope from points OUTSIDE the bracket, cancellation-free.
+
+    Outside is not a detail. Inside a bracket holding more than one eigenvalue the other members
+    depress `sigma_1` at the flanks, so `c` comes out too small and every distance `sigma_j/c`
+    too large -- measured, that inflated `d/reach` on a 0.3-licence pair from a true 0.6 to
+    1.156, which reads as "outside the bracket" and under-counts.
+    """
+    from chladni.mps.multiplicity import SLOPE_STANDOFF
+
+    h = (SLOPE_STANDOFF if standoff is None else standoff) * case.width
+    lo, hi = case.lam_star - h, case.lam_star + h
+    v_lo = float(np.atleast_1d(case.tensions(lo))[0])
+    v_hi = float(np.atleast_1d(case.tensions(hi))[0])
+    return (v_lo + v_hi) / (hi - lo) if hi > lo else 0.0
 
 
 def _slope(case, frac=0.25):

@@ -172,8 +172,13 @@ def test_the_uneven_cluster_really_is_unevenly_spaced():
 
 @pytest.mark.slow
 def test_the_MULTIPLICITY_precondition_holds_at_both_ends_of_the_ladder():
-    """None of the wrong cells is a case measuring its own basis: `20*eps/c/lam` sits below every
-    precision in the grid. The bracketing criterion would be the wrong bound here."""
+    """`20*eps/c/lam`, the resolution at which the basis can tell a pair apart, sits below every
+    precision in the grid -- but at 1e-14 only by a factor of 1.3 to 2, which is not the same as
+    every CELL being resolvable. What decides a cell is the members' separation against that
+    resolution, not `prec`: at 1e-14, band 0.5, the partners are 0.47 licences apart, about
+    5e-15 relative, BELOW it -- which is why the reach rule reads that pair as one eigenvalue
+    without a flag, and why a benchmark excuses it through `basis_sufficiency`. The bracketing
+    criterion would be the wrong bound here either way."""
     worst = 0.0
     for N, m in (EVEN, UNEVEN):
         for prec in (1e-6, 1e-14):

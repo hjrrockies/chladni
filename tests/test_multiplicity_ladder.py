@@ -1,8 +1,8 @@
 """The multiplicity ladder: gap x precision x multiplicity, scoring `mu*(B)` and nothing else.
 
-Ported from `wip/v1-promotion-and-multiplicity` (plan Phase 3a). The floor- and reach-rule tests
-arrive with Phase 3b's `rule=` seam; what is here is the instrument, its controls, the shipped
-rule localised, and the census of what the search really emits.
+Ported from `wip/v1-promotion-and-multiplicity` (plan Phases 3a and 3b): the instrument, its
+controls, the shipped rule localised, the floor and reach rules scored on it, and the census of
+what the search really emits.
 
 `mult_suite` is the instrument and its docstring is the specification. This file is the ladder
 run over it, plus the controls that decide whether the instrument may be believed at all.
@@ -125,6 +125,66 @@ def test_the_SHIPPED_rule_fails_only_in_the_unresolved_regime(cases):
         "strict xfails in test_cluster_totals.py want revisiting together")
 
 
+def test_the_FLOOR_rule_is_right_about_COINCIDENCE_and_blind_to_the_rest(cases):
+    """It answers `bracket_search`'s question, correctly, and that question is not `mu*(B)`.
+
+    Coincident brackets: every one right. Unresolved brackets: every one WRONG, and under rather
+    than over -- the members are not at the floor together, so a floor test cannot see them. That
+    is the cleanest possible demonstration that coincidence and `mu*(B)` are different questions.
+    """
+    sc = ms.score_estimator(ms.floor_rule, cases, "floor")
+    print(f"\n  {sc}")
+    assert sc.by_regime["coincident"]["correct"] == sc.by_regime["coincident"]["scored"]
+    assert sc.by_regime["simple"]["correct"] == sc.by_regime["simple"]["scored"]
+    u = sc.by_regime["unresolved"]
+    assert u["correct"] == 0, f"floor rule should see none of the unresolved regime: {sc}"
+    assert u["under"] == u["scored"], "and its errors are all UNDER-counts"
+
+
+# --- the rule that answers the question ---------------------------------------------------------
+
+def test_the_REACH_rule_is_correct_on_every_bracket_it_ACCEPTS(cases):
+    """The whole specification, in one assertion: no bracket receives a wrong count silently.
+
+    `mu = #{ j : sigma_j/c <= reach(B) }` compares a DISTANCE to a distance, which is the
+    comparison `mu*(B)` actually calls for and the one no ratio test can make. Measured over the
+    full ladder -- 143 brackets, `prec` 1e-6 to 1e-14, multiplicities 1 to 4 -- it is correct on
+    every bracket it accepts and declines 2.1%.
+    """
+    sc = ms.score_estimator(ms.reach_rule, cases, "reach")
+    print(f"\n  {sc}")
+    assert sc.silent_wrong == 0, f"a wrong count was returned rather than declined: {sc}"
+    assert sc.decline_rate < 0.10, f"declining too much to be useful: {sc}"
+
+
+def test_the_REACH_rule_sees_the_regime_the_others_cannot(cases):
+    """`unresolved` is the regime that motivated the whole exercise. The shipped rule gets 31 of
+    51 and the floor rule 3 of 51; both fail structurally rather than by a bad constant."""
+    reach = ms.score_estimator(ms.reach_rule, cases, "reach")
+    gap = ms.score_estimator(ms.gap_rule, cases, "gap")
+    r, g = reach.by_regime["unresolved"], gap.by_regime["unresolved"]
+    assert r["correct"] == r["scored"], f"reach must be clean on unresolved: {reach}"
+    assert r["correct"] > g["correct"], (
+        f"reach {r['correct']} vs shipped {g['correct']} on unresolved")
+
+
+def test_the_SLOPE_must_be_estimated_from_OUTSIDE_the_bracket(cases):
+    """The largest single effect in the rule's construction, and it is not a tuning choice.
+
+    Inside a bracket holding more than one eigenvalue the other members depress `sigma_1` at the
+    flanks, so `c` reads too small and every distance `sigma_j/c` too large -- an eigenvalue that
+    is inside `B` then reads as outside, and the count goes under. Measured on the ladder, taking
+    the flanks outside moved the rule from 82.5% to 96.5% before any decline band existed.
+    """
+    clustered = [c for c in cases if c.mu_true > 1 and c.regime == "unresolved"]
+    assert clustered, "no clustered cases to compare on"
+    worse = sum(1 for c in clustered
+                if ms.slope_outside(c) > ms._slope(c) * 1.05)
+    assert worse > 0.5 * len(clustered), (
+        "the inside-flank slope should be systematically SMALLER on clustered brackets; if it "
+        "is not, this rule's calibration was measured on a different situation")
+
+
 # --- the bridge: what the SEARCH actually hands the estimator ---------------------------------
 
 def test_the_search_resolves_almost_everything_into_SIMPLE_brackets():
@@ -145,7 +205,9 @@ def test_the_search_resolves_almost_everything_into_SIMPLE_brackets():
     assert r["simple"] > 0.8 * len(cases), (
         f"the search has stopped resolving into simple brackets: {r}. The multiplicity rule "
         f"matters far more than when this was measured.")
-    print(f"\n  {len(cases)} as-built  {r}\n  {ms.score_estimator(ms.gap_rule, cases, 'gap')}")
+    sc = ms.score_estimator(ms.reach_rule, cases, "reach on as-built")
+    print(f"\n  {len(cases)} as-built  {r}\n  {sc}")
+    assert sc.silent_wrong == 0, str(sc)
 
 
 def test_asymmetric_brackets_really_are_asymmetric():
@@ -155,3 +217,37 @@ def test_asymmetric_brackets_really_are_asymmetric():
     assert asym, "no asymmetric brackets were produced"
     off = [(c.lam_star - c.lo) / c.width for c in asym]
     assert max(off) > 0.6 or min(off) < 0.4, f"root sits at {off} of the width"
+
+
+def test_the_reach_rule_is_clean_on_ASYMMETRIC_brackets_too():
+    """The bracket a search emits is not centred on its root, and that difference hid a defect.
+
+    `ladder_cases` builds `[lam* - w, lam* + w]`, so it reaches equally far both ways and
+    `min(...) == max(...)`. An emitted bracket does not: the refiner puts `lam*` at the minimum,
+    not the middle. The reach rule compared distances against the SHORTER side, which rejects an
+    eigenvalue lying inside the bracket on the longer one -- and every symmetric case scored it
+    50/50 while the pipeline was under-counting that same regime.
+
+    Three corrections came out of this, each caught by a different part of the harness: `min`
+    under-counted, `max` over-counted, and probe-then-reject over-declined at 2 of 3. What
+    survives resolves the SIDE by probing and then bounds the distance with the measured bias
+    range, which makes all three outcomes decidable.
+    """
+    asym = ms.asymmetric_cases()
+    assert asym, "no asymmetric brackets were produced"
+    off = [(c.lam_star - c.lo) / c.width for c in asym]
+    assert max(off) > 0.6 or min(off) < 0.4, (
+        f"these brackets are not actually asymmetric: root at {off} of the width")
+    sc = ms.score_estimator(ms.reach_rule, asym, "reach on asymmetric")
+    print(f"\n  {sc}")
+    assert sc.silent_wrong == 0, str(sc)
+
+
+def test_capability_is_reported_with_the_decline_rate(cases):
+    """`SUCCESS.md`: a capability claim must quote the decline rate beside the pass rate over the
+    same case set. Printed rather than asserted -- this is the reporting contract, not a bound."""
+    print(f"\n  {len(cases)} brackets  {ms.regimes(cases)}")
+    for name, fn in (("oracle", ms.oracle), ("gap (shipped)", ms.gap_rule),
+                     ("floor", ms.floor_rule), ("reach", ms.reach_rule)):
+        print(f"  {ms.score_estimator(fn, cases, name)}")
+    assert True

@@ -51,7 +51,7 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 
 from .bracket import bracket_interval
-from .multiplicity import WIDE_FACTOR, multiplicity, wide_bracket_for
+from .multiplicity import SLOPE_STANDOFF, WIDE_FACTOR, multiplicity, wide_bracket_for
 from .refine import refine
 
 __all__ = ["Level", "SolveResult", "SolveDiagnostics", "solve"]
@@ -218,6 +218,28 @@ def _slope_from_cache(lams, vs, lam):
     return (v_lo + v_hi) / (hi - lo) if hi > lo else 0.0
 
 
+def _slope_outside(lams, vs, lam, min_dist):
+    """`c` from the nearest cached samples at least `min_dist` away on each side, or `None`.
+
+    The wall slope is a property of the OUTER cone and has to be measured there. Inside a bracket
+    holding more than one eigenvalue the other members depress `sigma_1` at the flanks, so `c`
+    reads too small and every distance `sigma_j/c` too large -- an eigenvalue inside the bracket
+    then reads as outside and the count goes under. Measured on the wip branch on a pair 0.3
+    licences apart: `d/reach` inflated from a true 0.6 to 1.156.
+
+    Cancellation-free as `_slope_from_cache` is. `None` when the cache has nothing far enough
+    out, which a caller must read as "cannot estimate", never as zero.
+    """
+    left = lams < lam - min_dist
+    right = lams > lam + min_dist
+    if not np.any(left) or not np.any(right):
+        return None
+    i, j = int(np.argmax(lams[left])), int(np.argmin(lams[right]))
+    lo, hi = float(lams[left][i]), float(lams[right][j])
+    v_lo, v_hi = float(vs[left][i]), float(vs[right][j])
+    return (v_lo + v_hi) / (hi - lo) if hi > lo else None
+
+
 def _spanning_bracket(lams, roots, reach):
     """Cached samples at least `reach` outside the whole span of `roots`, or `None`."""
     lo_t, hi_t = min(roots) - reach, max(roots) + reach
@@ -227,7 +249,7 @@ def _spanning_bracket(lams, roots, reach):
     return float(left.max()), float(right.min())
 
 
-def _collapse_ambiguous(obj, lams, levels, prec, reach_factor):
+def _collapse_ambiguous(obj, lams, levels, prec, reach_factor, rule="gap"):
     """Cross-check each neighbourhood's total, and collapse the ones whose grouping is arbitrary.
 
     # The failure this exists for
@@ -302,8 +324,14 @@ def _collapse_ambiguous(obj, lams, levels, prec, reach_factor):
         if wb is None:
             out.extend(members)
             continue
+        # The spanning read keeps the rule this component was designed with when the caller asks
+        # for `reach`: `reach` compares a distance against the bracket that was EMITTED, and this
+        # reads over one the cross-check synthesised -- a different interval, so a different
+        # question. The wip seam twice failed to thread `rule` here at all; it is threaded, and
+        # this is the one deliberate exception.
         total = multiplicity(lambda z: obj.tensions(obj.from_lam(z)), deepest.lam,
-                             wide_bracket=wb, prec=prec).mu
+                             wide_bracket=wb, prec=prec,
+                             rule="gap" if rule == "reach" else rule).mu
         if total == sum(x.mult for x in members):
             out.extend(members)             # self-consistent: the fine grouping stands
             continue
@@ -379,7 +407,7 @@ def _samples(obj):
     return (np.array([obj.in_lam(x) for x in xs]) if xs.size else xs), vs
 
 
-def solve(obj, *, prec=None, collapse=True):
+def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap"):
     """Locate every eigenvalue in the objective's window, with its multiplicity.
 
     All three stages share one `Objective`, so the cost is the union of what they sampled and
@@ -389,7 +417,18 @@ def solve(obj, *, prec=None, collapse=True):
     option: without it the total is wrong wherever a neighbourhood's grouping is arbitrary --
     4 or 6 declared where 3 exist -- and a wrong total moves an index. It exists so the guard
     can be shown to be load-bearing, and so a figure can state the before as well as the after.
+
+    `merge` decides which located roots are folded into one level: "licence" folds every pair
+    within `prec*lam`, which this stage has always done; "attained" folds only roots that agree to
+    within the accuracy the refinement actually reached, capped at the licence -- the search never
+    merges deliberately, only what it could not resolve. `rule` picks the multiplicity count:
+    "gap" (C1)+(C2) over a wide bracket, "floor" coincidence with `sigma_1`, "reach" the number of
+    eigenvalues INSIDE the emitted bracket. Defaults are the shipped behaviour.
     """
+    if merge not in ("licence", "attained"):
+        raise ValueError(f"merge must be 'licence' or 'attained', got {merge!r}")
+    if rule not in ("gap", "floor", "reach"):
+        raise ValueError(f"rule must be 'gap', 'floor' or 'reach', got {rule!r}")
     prec = obj.prec if prec is None else float(prec)
 
     mark = obj.n_evals
@@ -446,9 +485,20 @@ def solve(obj, *, prec=None, collapse=True):
     # reads at ONE representative, the partner's branch is minimal at the partner, so (C2)
     # refuses it and the level reads 1 where it is 2. So the number of roots folded is carried
     # on the level, and `_flag_uncertain_counts` flags the contradiction.
+    # Compared against the group's FIRST member, never its predecessor: `S(prec)` groups by
+    # diameter, and chaining is a mistake `bracket_search/SUCCESS.md` records as made twice.
+    def _same_point(first, r):
+        licence = prec * max(abs(r.lam), 1.0)
+        if merge == "licence":
+            return abs(r.lam - first.lam) <= licence
+        tol = max(first.delta_res if np.isfinite(first.delta_res) else 0.0,
+                  r.delta_res if np.isfinite(r.delta_res) else 0.0,
+                  4.0 * np.spacing(abs(r.lam)))
+        return abs(r.lam - first.lam) <= min(tol, licence)
+
     groups = []
     for r, bracket in sorted(located, key=lambda p: p[0].lam):
-        if groups and abs(r.lam - groups[-1][0][0].lam) <= prec * max(abs(r.lam), 1.0):
+        if groups and _same_point(groups[-1][0][0], r):
             groups[-1].append((r, bracket))
         else:
             groups.append([(r, bracket)])
@@ -468,22 +518,45 @@ def solve(obj, *, prec=None, collapse=True):
         s2 = obj.sigma(obj.from_lam(r.lam), 1)
         nb = (s2 / c) if (c > 0 and np.isfinite(s2)) else None
         wb = wide_bracket_for(lams, r.lam, r.sigma, c, prec=prec, neighbour=nb)
-        if wb is None:
+        tens = (lambda z: obj.tensions(obj.from_lam(z)))
+        if rule == "reach":
+            # `mu*(B)` needs the EMITTED bracket and a slope from outside it; the wide bracket plays
+            # no part in the count and is carried only as the record of what "gap" would have seen.
+            width = abs(bracket[1] - bracket[0])
+            c_out = _slope_outside(lams, svals, r.lam, SLOPE_STANDOFF * width)
+            if c_out is None or not (c_out > 0):
+                levels.append(Level(
+                    lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res, bracket=bracket,
+                    wide_bracket=wb or (), n_roots=n_roots, count_uncertain=True,
+                    uncertain_reason="the reach rule needs a wall slope measured outside the "
+                                     "bracket, and the cache holds no sample far enough out"))
+                continue
+            m = multiplicity(tens, r.lam, bracket=bracket, c=c_out, prec=prec, rule="reach")
+        elif wb is None:
             levels.append(Level(lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res,
                                 bracket=bracket, n_roots=n_roots))
             continue
-        m = multiplicity(lambda z: obj.tensions(obj.from_lam(z)), r.lam,
-                         wide_bracket=wb, prec=prec)
+        else:
+            m = multiplicity(tens, r.lam, wide_bracket=wb, prec=prec, rule=rule)
         levels.append(Level(lam=r.lam, mult=m.mu, sigma=r.sigma, delta_res=r.delta_res,
-                            bracket=bracket, wide_bracket=wb, gap_ratio=m.gap_ratio,
-                            c2_rejected=m.c2_rejected, n_roots=n_roots))
+                            bracket=bracket, wide_bracket=wb or (), gap_ratio=m.gap_ratio,
+                            c2_rejected=m.c2_rejected, n_roots=n_roots,
+                            # The estimator's own DECLINE, carried through. Dropping it made every
+                            # wrong total under the reach rule silent on the wip branch -- 0 of 15
+                            # flagged -- which was a wiring omission, not a property of the rule.
+                            count_uncertain=bool(m.ambiguous),
+                            uncertain_reason=(
+                                "the multiplicity estimator declined: a branch's estimated "
+                                "distance landed where the inside and outside populations "
+                                "overlap, so the evidence does not decide whether that "
+                                "eigenvalue is in this bracket" if m.ambiguous else "")))
 
     levels.sort(key=lambda x: x.lam)
 
     # The grouping cross-check. Reads only cached points, so it is charged to stage 3's window
     # and must leave it at zero.
     if collapse:
-        levels, n_amb = _collapse_ambiguous(obj, lams, levels, prec, WIDE_FACTOR)
+        levels, n_amb = _collapse_ambiguous(obj, lams, levels, prec, WIDE_FACTOR, rule)
     else:
         n_amb = 0
 
