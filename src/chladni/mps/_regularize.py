@@ -29,11 +29,13 @@ transformation only one of them computed.
 """
 from __future__ import annotations
 
+import os
 import warnings
 from typing import Callable, NamedTuple, Optional
 
 import numpy as np
 import scipy.linalg as la
+from scipy.linalg import lapack
 
 __all__ = ["RegularizedPencil", "regularize", "choose_rank"]
 
@@ -42,6 +44,56 @@ __all__ = ["RegularizedPencil", "regularize", "choose_rank"]
 #: continuity argument for a fixed index does not apply -- the one configuration where this
 #: design has nothing to offer, so it says so rather than pretending.
 _DEGENERACY_ATOL = 1e-8
+
+
+def _lapack_is_accelerate():
+    try:
+        import scipy
+        name = scipy.show_config(mode="dicts")["Build Dependencies"]["lapack"]["name"]
+        return str(name).lower() == "accelerate"
+    except Exception:
+        return False
+
+
+#: Route the stack's QR around Accelerate's blocked `dgeqrf`. Set
+#: `CHLADNI_ACCELERATE_GEQRF=1` to call it anyway -- to re-test once Apple ships a fix.
+_AVOID_GEQRF = _lapack_is_accelerate() and os.environ.get("CHLADNI_ACCELERATE_GEQRF") != "1"
+
+
+def _qr_economic(a):
+    """Economic `(Q, R)` of `a`: `la.qr`, except on Accelerate, where it is `dgeqrt`.
+
+    Accelerate's blocked Householder QR `dgeqrf` corrupts the process heap, intermittently, on
+    macOS 26.5 / M4 (scipy 1.18.1, numpy 2.5.2). Measured on a random 548 x 274 matrix -- the
+    size of the rectangle suite's 170*pi^2 stack -- with no chladni code involved: raw
+    `dgeqrf$NEWLAPACK` via ctypes kills most processes within 3000 calls, and so do
+    `scipy.linalg.qr` and `numpy.linalg.qr`. A canary found no write within 65536 elements of
+    A, TAU or WORK, so the damage is inside Accelerate, and it surfaces LATER, wherever the
+    heap is next touched: a dict insert, `abc.__instancecheck__`, garbage collection at
+    shutdown. Tensions computed before the crash were also wrong -- levels moved from run to
+    run. It is not threading (`BLASSetThreading` single-threaded still crashes) and not
+    the workspace size (8x `lwork` still crashes). Unblocked `dgeqr2`, `dorgqr`, `dgeqrt` +
+    `dgemqrt`, square `gesdd`, the GSVD, and `dgemm`/`dtrmm` at `dlarfb`'s shapes all
+    survive. scipy/scipy#26145 reports the same class of fault for Accelerate's `dpotrf`.
+
+    `dgeqrt` is the same Householder QR in compact-WY form, through scipy's public LAPACK
+    wrappers, at no measurable cost (4.06 ms against 3.99 ms on the 548 x 274 stack). Every
+    other LAPACK keeps `la.qr` and its bits.
+    """
+    if not _AVOID_GEQRF:
+        return la.qr(a, mode="economic")
+    a = np.asarray_chkfinite(np.asarray(a, dtype=float))
+    m, n = a.shape
+    k = min(m, n)
+    if k == 0:
+        return la.qr(a, mode="economic")
+    f, t, info = lapack.dgeqrt(min(32, k), a)
+    if info != 0:
+        raise np.linalg.LinAlgError(f"dgeqrt failed (info={info})")
+    q, info = lapack.dgemqrt(f[:, :k], t, np.eye(m, k, order="F"))
+    if info != 0:
+        raise np.linalg.LinAlgError(f"dgemqrt failed (info={info})")
+    return q, np.triu(f[:k])
 
 
 class RegularizedPencil(NamedTuple):
@@ -167,7 +219,7 @@ def regularize(A_B, A_I, reg="svd", rank=None, rtol=np.finfo(float).eps):
     stack = np.vstack([A_B, A_I])
 
     if reg == "svd":
-        Q, R = la.qr(stack, mode="economic")
+        Q, R = _qr_economic(stack)
         Z, s, Yt = _svd_gesdd_then_gesvd(R)
         r = _rank_from(s, rank, rtol)
         _warn_if_degenerate(s, r)

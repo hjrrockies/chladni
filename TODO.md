@@ -236,6 +236,17 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   eigensolver to test them with. They are the `mps` layer's first tests. Includes the L-shape
   Fourier-Bessel enrichment regression: 1e-12 to 1e-13 with the corner terms against ~1e-5
   without.
+* **[next]** Accelerate's blocked `dgeqrf` corrupts the heap on macOS 26.5 / M4, and only the
+  hot path is routed around it. `regularize`'s svd-mode QR now uses `dgeqrt`
+  (`src/chladni/mps/_regularize.py`, `_qr_economic`), which took the rectangle suite's
+  `170*pi^2` cluster from exit 139 on every run to 3 of 3 clean with identical levels. Still
+  on Accelerate's `dgeqrf` or unmeasured: `choose_rank` and `rank_diagnostics` (`svdvals` of
+  the TALL stack, and `gesdd` QR-factors first when `m >= ~1.8n`), the `"qrp"` mode
+  (`dgeqp3`), and the GSVD's internal `dggsvp3` at shapes other than the one probed. The
+  standalone reproducer is `numpy.linalg.qr` of a random 548 x 274 matrix in a loop. Re-test
+  each macOS release with `CHLADNI_ACCELERATE_GEQRF=1` and delete the workaround when it
+  passes; scipy/scipy#26145 is the upstream report of the same fault class (`dpotrf`).
+  Regression: `tests/test_regularization.py`, the slow `170_pi2` subprocess test.
 
 ## 5. Test-suite hygiene
 
