@@ -257,6 +257,70 @@ def test_a_HANDED_IN_bracket_end_is_not_accepted_as_an_interior_minimum():
         f"the minimum lies {(lam0 - end) / lam0:.1e} relative outside the bracket")
 
 
+@pytest.mark.parametrize("ulps_inside", [6, 40, 400])
+def test_a_phantom_a_FEW_ULPS_INSIDE_the_end_is_judged_by_its_reach_not_by_the_ulp_tie(ulps_inside):
+    """Found on the fresh 125*pi^2 grid, prec 1e-8, band 1.6: a bracket narrower than `_xatol`
+    handed in with its best sample 4 ulps INSIDE the upper end -- just past the 4-ulp tie, so
+    "at an end" never fired -- sigma 6.6e-8 against 1e-10 at the real roots, on the wall of the
+    neighbour 4.6e-9 relative outside. Accepted as a fifth level of a four-member cluster, silently.
+    What makes a point "at an end" is whether its OWN resolution radius `sigma/c` reaches past it."""
+    lam0 = 493.48022005446785
+    end = lam0 * (1 - 5e-9)                        # the true minimum lies 5e-9 relative OUTSIDE
+    lo = end - 3e-9 * lam0                         # narrower than `_xatol` at prec 1e-8
+    hint = end - ulps_inside * np.spacing(end)
+    obj = _stepped_wall(end, lam_star=lam0)
+    wlo, whi = lo - 4 * np.spacing(lo), end + 4 * np.spacing(end)
+    r = refine(obj, wlo, whi, prec=1e-8, lam_hint=hint, interior=(lo, end))
+    assert not r.accepted, (
+        f"accepted {r.reason} at {(r.lam - end) / np.spacing(end):+.1f} ulp from the search's end "
+        f"with sigma {r.sigma:.1e}; the minimum lies {(lam0 - end) / lam0:.1e} relative outside")
+
+
+def test_a_phantom_whose_bracket_straddles_a_HUMP_is_still_rejected():
+    """The same 125*pi^2 phantom, which survived the reach-based end test: its bracket runs from
+    member 3's wall over the hump to member 4's wall, so the far end reads 7.09e-8 against the
+    phantom's 6.60e-8 -- NOT on one monotone wall, as the far-end secant assumed. That secant
+    read a slope 18x too shallow, the probe overshot member 4 and read its far wall at 1.15e-6,
+    and the phantom passed. The mid sample, 1.11e-7 on the hump, gives the true slope. Two cones
+    with the measured slope and offsets, and the measured rounding: the widened end, 4 ulps past
+    `ihi`, read 6.6168e-8 against 6.6053e-8 AT `ihi` -- higher, though nearer member 4 -- which is
+    what let the phantom beat both ends. Without it "below both ends" rejects the phantom and the
+    probe is never reached."""
+    c = 0.0112
+    lo, ihi = 1233.7005328727676, 1233.7005407052122
+    m3, m4 = lo - 6.33e-6, ihi + 5.90e-6            # members OUTSIDE both ends
+
+    def tensions(x):
+        x = float(x)
+        s = max(min(c * abs(x - m3), c * abs(x - m4)), 1e-15)
+        return [s * (1 + 1.7e-3) if x > ihi else s, 10.0]
+
+    obj = Objective(tensions, 1.0, 1e4, variable="lam", prec=1e-8)
+    wlo, whi = lo - 4 * np.spacing(lo), ihi + 4 * np.spacing(ihi)
+    r = refine(obj, wlo, whi, prec=1e-8, lam_hint=ihi, interior=(lo, ihi))
+    assert not r.accepted, (
+        f"accepted {r.reason} at {(r.lam - ihi) / np.spacing(ihi):+.1f} ulp from the search's end "
+        f"with sigma {r.sigma:.2e}; member 4 lies {(m4 - ihi) / ihi:.1e} relative outside")
+
+
+@pytest.mark.parametrize("frac", [0.02, 0.2])
+def test_a_COARSELY_located_genuine_root_near_the_end_is_still_accepted(frac):
+    """The other side of widening the end test to the reach: a real minimum inside the bracket,
+    close to its end, located only to `_xatol` at prec 1e-8, has a reach that also crosses the
+    end. The probe then lands ON the minimum and reads low -- but the minimum it predicts is INSIDE
+    the bracket, and that is what decides it."""
+    lam0 = 493.48022005446785
+    width = 3e-9 * lam0
+    end = lam0 + frac * width                      # the root sits `frac` of a width inside the end
+    lo = end - width
+    obj = Objective(lambda x: [np.sqrt(1e-30 + (0.011 * (float(x) - lam0)) ** 2), 10.0],
+                    1.0, 1e3, variable="lam", prec=1e-8)
+    wlo, whi = lo - 4 * np.spacing(lo), end + 4 * np.spacing(end)
+    r = refine(obj, wlo, whi, prec=1e-8, lam_hint=lo + 0.5 * width, interior=(lo, end))
+    assert r.accepted, r.reason
+    assert abs(r.lam - lam0) <= r.delta_res + 4 * np.spacing(lam0)
+
+
 def test_the_widening_still_saves_a_minimum_that_rounds_just_OUTSIDE_the_search_bracket():
     """What the 4-ulp widening is for, and what the fix must not undo: the exact square of a
     bracket end that correctly fenced `k*` can miss `lam*` by an ulp. A minimum the REFINER
