@@ -114,8 +114,10 @@ class Level:
         return abs(self.delta_res) / abs(self.lam)
 
     def met(self, prec):
+        """Clause (2) is an OR -- within `prec`, or the bound reached is REPORTED. A level with
+        no finite bound has done neither, so it is unmet and lands in `diagnostics.unmet`."""
         a = self.attained_prec
-        return bool(np.isnan(a) or a <= prec)
+        return bool(np.isfinite(a) and a <= prec)
 
     def __iter__(self):
         return iter((self.lam, self.mult))
@@ -335,7 +337,7 @@ def solve(obj, *, prec=None, collapse=True):
     mark = obj.n_evals
     located, rejected = [], 0
     for b in res.brackets:
-        lo, hi = obj.in_lam(b.lo), obj.in_lam(b.hi)
+        lo, hi = obj.in_lam_bracket(b.lo, b.hi)
         hint = obj.in_lam(b.k_hint) if np.isfinite(b.k_hint) else None
         r = refine(obj, lo, hi, prec=prec, lam_hint=hint)
         if r.accepted:

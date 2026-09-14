@@ -342,3 +342,14 @@ def test_the_cost_stays_near_thirty_per_eigenvalue_end_to_end():
         res = solve(obj, prec=1e-8)
         per = res.diagnostics.evaluations / len(case.truth)
         assert per < bs.COST_CAP_PER_EIG, f"{case.label}: {per:.1f} per eigenvalue"
+
+
+def test_a_level_with_NO_attained_bound_has_NOT_met_the_request():
+    """Clause (2) is an OR: within `prec`, or REPORT the bound reached. A level whose `delta_res`
+    could not be computed -- no closing parabola, so NaN -- has done neither, and counting it
+    as met put it outside `diagnostics.unmet` where no caller would see it."""
+    from chladni.mps.search import Level
+
+    assert not Level(lam=5.0, mult=1).met(1e-8), "NaN is not a bound"
+    assert not Level(lam=5.0, mult=1, delta_res=5.0e-7).met(1e-8)
+    assert Level(lam=5.0, mult=1, delta_res=5.0e-9).met(1e-8)

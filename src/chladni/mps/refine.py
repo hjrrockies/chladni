@@ -52,6 +52,11 @@ _ENDPOINT_STEPS = 4
 #: vertex formula's `dx` is rounding rather than geometry.
 _SAME_POINT = 4.0
 
+#: Consecutive vertices landing on already-sampled points, away from the best one, before the
+#: refinement is declared `stalled`. Confirming the best point is handled by fencing and never
+#: counts here, so a repeat is noise in the vertex, and three in a row is not going to clear.
+_REPEATS = 3
+
 #: Margin on the reported `delta_res`. The located error is `eps/c` to a measured ratio of 0.99
 #: to 1.27 over 12 levels, three domains and two basis families -- so `eps/c` is the right
 #: SCALE but not an upper bound, and a quantity that clause (2) compares against `prec*lam` has
@@ -67,11 +72,14 @@ class RefineResult:
     lam: float                  # the located minimum
     sigma: float                # sigma_1 there
     accepted: bool
-    reason: str                 # converged | no_parabola | flat | budget
+    reason: str                 # converged | stalled | flat | no_parabola | endpoint | budget
     evaluations: int            # what the harness charges for this bracket
     bracket: tuple = ()         # the interval it was handed
     delta_res: float = float("nan")   # attained bound, from the parabola fit
     steps: int = 0
+    #: Width of the final straddling triple. `converged` is a claim that this is at most
+    #: `_xatol`; `stalled` is the admission that it is not and could not be narrowed.
+    width: float = float("nan")
 
     @property
     def rejected(self):
@@ -118,13 +126,24 @@ def _vertex(x, y):
     denom = d01 * d12 * d20
     if denom == 0.0:
         return None
-    # Standard three-point quadratic coefficients; `c2` is the curvature.
+    # `c2` is the curvature, the parabola's leading coefficient, from differences only.
     c2 = -(d12 * y0 + d20 * y1 + d01 * y2) / denom
-    c1 = ((x1 * x1 - x2 * x2) * y0 + (x2 * x2 - x0 * x0) * y1
-          + (x0 * x0 - x1 * x1) * y2) / denom
-    if c2 <= 0.0 or not np.isfinite(c2) or not np.isfinite(c1):
+    if c2 <= 0.0 or not np.isfinite(c2):
         return None
-    return -0.5 * c1 / c2, c2
+    # The vertex CENTRED on the middle point, from offsets and never from `x**2`. The monomial
+    # form `-c1/(2*c2)` squares each `x` about the origin while the samples sit near `lam`, so
+    # every square carries its own `ulp(lam**2)` and the vertex is off by about
+    # `ulp(lam**2)/h` for triple spacing `h` -- 2e-7 relative at `h = 1e-10*lam`. It stalls at
+    # `h ~ lam*sqrt(eps)`, which put the refiner's "converged" at 1e-11 to 1e-9 on pencils
+    # whose floor is 1e-15. Centred, the error is a few ulps of `lam` at every spacing.
+    a, b = x1 - x0, x1 - x2
+    den = a * (y1 - y2) - b * (y1 - y0)
+    if den == 0.0:
+        return None
+    step = 0.5 * (a * a * (y1 - y2) - b * b * (y1 - y0)) / den
+    if not np.isfinite(step):
+        return None
+    return x1 - step, c2
 
 
 def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
@@ -189,6 +208,7 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
     steps = 0
     progressed = False
     reason = "budget"
+    repeats = 0
     curvature = float("nan")
 
     def triple():
@@ -226,6 +246,10 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
         # Guard 4: keep the step inside the interval, and nudge it off a duplicate point --
         # clamped, so the nudge cannot leave the bracket it is supposed to be searching.
         x_star = float(np.clip(x_star, lo, hi))
+        # The vertex BEFORE guard 4's nudge. A vertex landing on the best point is the answer,
+        # and the nudge would move it to the midpoint toward a neighbour -- which, evaluated,
+        # halves the distance per step and never settles: 18 evaluations from an exact start.
+        raw = x_star
         for p in pts:
             if abs(x_star - p[0]) <= _SAME_POINT * np.spacing(abs(p[0]) + (hi - lo)):
                 near = min((q for q in pts if q[0] != p[0]),
@@ -234,9 +258,65 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
                 x_star = float(np.clip(target, lo, hi))
                 break
 
+        # The vertex is within tolerance of the best point: the LOCATION is settled, and what
+        # remains is to certify the WIDTH. Iterated vertices approach from one side -- the far
+        # flank of the triple never moves, which is `bracket._locator_step`'s observation -- so
+        # waiting for the triple to narrow on its own costs a halving per step and can exhaust
+        # the budget. Fence the best point at the tolerance on each side not already fenced:
+        # two evaluations at most, and a unimodal minimum is then bounded by the triple.
+        tol = _xatol(best[0], prec)
+        if abs(raw - best[0]) <= tol:
+            # A side is already fenced when it holds a sample within HALF the tolerance of the
+            # best point; then a pass that evaluates nothing leaves a triple at most `0.9*tol`
+            # wide, which converges below. Using the full tolerance there left triples up to
+            # `1.8*tol` wide with nothing to evaluate, and the loop recomputed the same vertex
+            # without spending a step -- forever.
+            fenced = 0
+            for side in (-1.0, 1.0):
+                fence = float(np.clip(best[0] + side * 0.45 * tol, lo, hi))
+                if any(0.0 <= side * (q[0] - best[0]) <= 0.45 * tol and q[0] != best[0]
+                       for q in hist) or any(fence == q[0] for q in hist):
+                    continue
+                new = f(fence)
+                hist.append(new)
+                steps += 1
+                fenced += 1
+                if new[1] < best[1]:
+                    best = new
+                    progressed = True
+            pts = triple()
+            if pts[-1][0] - pts[0][0] <= _xatol(best[0], prec):
+                reason = "converged"
+                progressed = True
+                break
+            if not fenced:
+                # Termination must not rest on the argument above: nothing new was learned, so
+                # stepping again would compute the same vertex.
+                reason = "stalled" if progressed else "flat"
+                break
+            continue
+
         if any(x_star == p[0] for p in hist):
-            reason = "converged" if progressed else "flat"
-            break
+            # Landing on a sampled point that is NOT the best one is noise in the vertex, and it
+            # says nothing about the width of the triple. With the old monomial vertex this was
+            # reported `converged` at 1e-11 to 1e-9 on pencils whose floor is 1e-15. Split the
+            # wider gap instead, and a vertex that keeps repeating is `stalled`, never converged.
+            pts = triple()
+            if pts[-1][0] - pts[0][0] <= tol:
+                reason = "converged" if progressed else "flat"
+                break
+            repeats += 1
+            gap_left, gap_right = pts[1][0] - pts[0][0], pts[2][0] - pts[1][0]
+            if gap_left >= gap_right:
+                x_star = 0.5 * (pts[0][0] + pts[1][0])
+            else:
+                x_star = 0.5 * (pts[1][0] + pts[2][0])
+            x_star = float(np.clip(x_star, lo, hi))
+            if repeats > _REPEATS or any(x_star == p[0] for p in hist):
+                reason = "stalled" if progressed else "flat"
+                break
+        else:
+            repeats = 0
 
         new = f(x_star)
         hist.append(new)
@@ -287,15 +367,31 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
     eps_floor = max(best[2], np.finfo(float).eps)
     delta_res = float(DELTA_SAFETY * eps_floor / np.sqrt(curvature)) if (
         np.isfinite(curvature) and curvature > 0) else float("nan")
+    # No location is better than the arithmetic. On a floor of 1e-15 at `lam = 1e5` the model
+    # reads 4.7e-12 while the located point is 2 ulps -- 2.9e-11 -- from the minimum, so a bar
+    # below a few ulps under-reports. The same floor `_xatol` stops at.
+    if np.isfinite(delta_res):
+        delta_res = max(delta_res, 4.0 * np.spacing(abs(best[0])))
+
+    # The triple the minimum sits in bounds the error whatever the fit said. A `stalled`
+    # refinement could not narrow it, so the bar must cover it; one that ended with no closing
+    # parabola -- collapsed onto the floor -- has no other bound in hand. Either way a NaN bar
+    # would now read as unmet (`search.Level.met`), which is right only if it is really unknown.
+    pts = triple()
+    width = float(pts[-1][0] - pts[0][0])
+    if reason == "stalled":
+        delta_res = max(delta_res, width) if np.isfinite(delta_res) else width
+    elif not np.isfinite(delta_res):
+        delta_res = width
 
     ends = (hist[0][2], hist[2][2])      # sigma_1 at the handed-in endpoints; already paid for
     accepted = _accept(best, lo, hi, prec, ends) if reason != "no_parabola" else False
-    if not accepted and reason in ("converged", "flat"):
+    if not accepted and reason in ("converged", "flat", "stalled"):
         reason = "not_a_minimum"
 
     return RefineResult(lam=best[0], sigma=best[2], accepted=bool(accepted), reason=reason,
                         evaluations=obj.n_evals - start, bracket=(lo, hi),
-                        delta_res=delta_res, steps=steps)
+                        delta_res=delta_res, steps=steps, width=width)
 
 
 def _accept(best, lo, hi, prec, ends):

@@ -165,3 +165,27 @@ def test_a_decline_is_falsey_and_keeps_its_partial_brackets():
 def test_a_decline_with_no_partial_brackets_is_still_a_decline():
     d = Declined("no progress")
     assert not d and len(d) == 0 and d.reason == "no progress"
+
+
+# --- a bracket converted to `lam` must still fence the eigenvalue ---------------------------
+
+@pytest.mark.parametrize("variable", ["k", "lam"])
+def test_a_converted_bracket_covers_every_point_it_stood_for(variable):
+    """Squaring is not exact, so `[a*a, b*b]` computed in float64 can miss `lam* = k*^2` by an
+    ulp even when `[a, b]` correctly fenced `k*`. `bracket.py` documents a 4-ulp widening for
+    exactly this and assigns it to the harness; `solve` hands the refiner the squared bracket
+    unwidened. The conversion has to carry the widening itself."""
+    rng = np.random.default_rng(7)
+    obj = Objective(cone, 1.0, 400.0, variable=variable)
+    for _ in range(200):
+        a = float(rng.uniform(1.0, 400.0))
+        b = float(np.nextafter(a, np.inf)) if rng.random() < 0.5 else a * (1 + 1e-12)
+        lo, hi = obj.in_lam_bracket(a, b)
+        for x in (a, b, 0.5 * (a + b)):
+            assert lo <= obj.in_lam(x) <= hi
+        from fractions import Fraction
+        if variable == "k":
+            assert Fraction(lo) <= Fraction(a) ** 2 and Fraction(b) ** 2 <= Fraction(hi), (
+                "the EXACT square of each end must be inside, not only its rounding")
+        assert hi - lo <= (obj.in_lam(b) - obj.in_lam(a)) + 16 * np.spacing(abs(hi)), (
+            "a few ulps, not a fraction of the width")

@@ -215,6 +215,18 @@ class Objective:
         """`x` as a `lam`, whichever variable this objective is parameterized by."""
         return float(x) ** 2 if self.variable == "k" else float(x)
 
+    def in_lam_bracket(self, lo, hi):
+        """A bracket in this objective's variable as a `lam` bracket that still fences it.
+
+        Squaring is not exact: `[a*a, b*b]` in float64 can miss `lam* = k*^2` by an ulp even
+        when `[a, b]` correctly fenced `k*`, and a refiner handed that bracket clips onto the
+        endpoint and rejects a real eigenvalue. So each end moves outward by 4 ulps -- the
+        widening `bracket.py`'s module docstring promises -- here, where every caller that
+        converts a bracket passes, rather than at each call site.
+        """
+        a, b = self.in_lam(lo), self.in_lam(hi)
+        return a - 4.0 * np.spacing(abs(a)), b + 4.0 * np.spacing(abs(b))
+
     def from_lam(self, lam):
         """A `lam` as an `x` in this objective's variable."""
         return float(lam) ** 0.5 if self.variable == "k" else float(lam)
