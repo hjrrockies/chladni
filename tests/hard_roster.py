@@ -27,14 +27,24 @@ the basis. From the recipes that reproduce `chladni.reference`'s own tables:
 
     domain      basis                        tension range        finest prec
     L_shape     80 pure FB at the corner     2.1e-15 .. 2.1e-14   ~1e-14
+    eq_tri      90 plane waves               8.1e-16 .. 1.3e-15   1.5e-15   (2026-09-14)
+    disk        84 plane waves               7.2e-16 .. 1.7e-15   1.2e-15   (2026-09-14)
     mushroom    240 mixed                    2.4e-11 .. 3.4e-11   ~1e-10
     GWW1        320 mixed                    6.3e-12 .. 2.7e-11   ~1e-10
     H_shape     320 mixed                    6.1e-13 .. 5.2e-10   ~1e-9
     chevron     160 mixed                    1.4e-10 .. 2.0e-09   ~1e-8
 
-So the L-shape can be swept to the bottom of the `prec` ladder and the others cannot. The
-roster is therefore L-shape plus the two smooth domains, and every case carries the finest
-`prec` it supports -- checked, not assumed, by `finest_prec` below. Scoring a domain past that
+So the L-shape, eq_tri and the disk can be swept to the bottom of the `prec` ladder and the
+tabulated multi-corner domains cannot.
+
+**Every pencil here carries `SUITE_RTOL`.** Built at the default `prec` the rank cutoff was
+`sqrt(1e-8 * eps) = 1.5e-12`, which moved with the request and held eq_tri at 2.4e-12 -- read
+for a long time as "plane waves stop short on eq_tri". They do not: the same 90 columns at
+`SUITE_RTOL` reach 1.3e-15. The disk and the L-shape did not move, because their bases were
+already the binding term.
+
+The roster is the L-shape plus the two smooth domains, and every case carries the finest `prec`
+it supports -- checked, not assumed, by `finest_prec` below. Scoring a domain past that
 point measures the basis.
 
 **The generic basis is not good enough here.** `basis_for`-style plane waves plus a fixed
@@ -51,6 +61,7 @@ from chladni.mps import MPSEigensolver, MPSPencil
 from chladni.reference import L_shape_eigs, disk_spectrum, eq_tri_spectrum
 
 from harness import Case
+from rect_suite import SUITE_RTOL
 
 __all__ = ["nonanalytic", "recipe_basis", "pencil_for", "solver_for", "make_case",
            "finest_prec",
@@ -103,7 +114,7 @@ def pencil_for(dom, lam_hi, *, label="", n_fb=80, pad=1.3, seed=0):
     # 1.2x/1x, so the extra points cost 1.5x for nothing.
     p = MPSPencil.from_basis(
         basis, dom.bdry_quad(3 * n),
-        dom.interior_pts(n, rng=np.random.default_rng(seed)))
+        dom.interior_pts(n, rng=np.random.default_rng(seed)), rtol=SUITE_RTOL)
     _PENCILS[key] = p
     return p
 
@@ -131,7 +142,7 @@ def solver_for(dom, lam_hi, *, label="", n_fb=80, pad=1.3, seed=0, prec=None):
         basis = PlaneWave.uniform(nw, radius=dom.diameter)
     n = len(basis)
     s = MPSEigensolver(dom, basis=basis, n_bdry=3 * n, n_int=n,
-                       rng=np.random.default_rng(seed),
+                       rng=np.random.default_rng(seed), rtol=SUITE_RTOL,
                        **({} if prec is None else {"prec": prec}))
     _PENCILS[key] = s
     return s

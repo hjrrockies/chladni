@@ -77,14 +77,11 @@ KNOWN = {
     ("C", 6, 1e-4): (
         "Phase 3: the collapse defect. The four members at 65*pi^2 span 1.94e-04 relative and "
         "solve returns one level of multiplicity 1 -- three dropped. At 1e-06 all four return."),
-    ("roster", "eq_tri", 1e-14): (
-        "Phase 2: the basis serves accuracy only to 2.5e-12 on an rtol derived from prec, and "
-        "4 of 6 levels are dropped WITHOUT a warning -- TODO section 4, the silent-drop item."),
 }
 
-#: Cases not yet on a frozen basis. `hard_roster` builds its pencils at the default `prec`, so
-#: their `rtol` moves with it. Plan Phase 2 freezes them.
-UNFROZEN = {("roster", k) for k in hr.ROSTER}
+#: Cases not yet on a frozen basis. Empty: `hard_roster` pencils carry `SUITE_RTOL` since plan
+#: Phase 2, which took eq_tri's floor from 2.4e-12 to 1.3e-15 and its 1e-14 cell off `KNOWN`.
+UNFROZEN = set()
 
 _CODES = {"pass": ".", "declined": "D", "b-excused": "b", "b-fail": "B", "shortfall-silent": "!",
           "bar-violated": "?", "spurious": "S", "missed": "M", "wrong-total": "T",

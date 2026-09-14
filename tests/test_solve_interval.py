@@ -109,7 +109,7 @@ def test_a_tighter_request_costs_more_and_says_what_it_could_not_reach():
 
 def test_a_request_the_basis_cannot_serve_is_REPORTED_not_met_silently():
     """Clause (3) at the point it bites. A deliberately STARVED plane-wave basis on the disk --
-    22 columns, `pad = 0.35`, at the test's own `prec` so its `rtol` is 1.5e-14 -- cannot serve
+    22 columns, `pad = 0.35`, on the roster's fixed `SUITE_RTOL` -- cannot serve
     `prec = 1e-12` at every level it locates, and the caller must be told rather than handed a
     confident wrong answer.
 
