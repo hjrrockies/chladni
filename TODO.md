@@ -42,19 +42,17 @@ Do the `modes(x)` widening as its OWN step before the angle. It is a seam change
 is two kinds of work in one session, which is what made the previous promotion attempt
 illegible.
 
-* **[blocking]** Phase D's Gram angle. **A collapsed cluster DROPS members**, so the reported
-  total is a lower bound rather than a count, and `search.md` section 2.4a stage 3 had to be
-  corrected because it claimed otherwise. Measured over `bracket_score.PREC_LADDER` on the real
-  cases: `B:d=1.8e-03` at `prec = 1e-04` reports 3 eigenvalues where the window holds 4,
-  `C:m=3,s=9.5e-02` reports 1 of 3, `C:m=4,s=1.2e-01` reports 1 of 4. The mechanism is the one
-  commit `e2ac06c` named -- the recount reads at ONE representative, the partner's branch is
-  minimal at the partner rather than there, (C2) refuses it, and multiplicity 2 reads 1. The
-  contrast that makes it sharp: `B:d=1.8e-12` at `prec = 1e-08` collapses and recounts to 2
-  CORRECTLY, so collapse-and-recount is sound for a duplicate and unsound for two distinct
-  eigenvalues inside the merge licence -- which distance cannot tell apart, and the angle can.
-  It is detected (`n_ambiguous`) and warned about, so it is not silent; it is still wrong.
-  Needs the `modes(x)` widening below. An earlier version of this item said nothing in the
-  roster exercised it; `tests/test_precision_ladder.py` now does, at every precision.
+* **[blocking]** Cluster totals are wrong, and now LOUD. On main, measured 2026-09-14 across
+  bands 0.3 to 6 licences and `prec` 1e-6 to 1e-14, 33 cells declare fewer eigenvalues than the
+  cluster holds -- 8 on the evenly spaced triple at `50*pi^2`, 25 on the uneven quadruple at
+  `65*pi^2` -- and 32 of them are flagged by `_flag_uncertain_counts` (a level declaring fewer
+  than the accepted roots folded into it, or `_collapse_ambiguous`'s two counts disagreeing), so
+  `solve_interval` raises instead of returning a short array. One is still silent: the even
+  cluster at 1e-14, band 0.5. The search resolves these clusters into separate brackets; the
+  total is lost downstream, in the licence merge and the collapse cross-check, whose radius places
+  the failing band. Fix: plan Phase 3b -- fold only within attained accuracy, count per bracket
+  by the reach rule, retire the cross-check. Pinned as strict xfails in
+  `tests/test_cluster_totals.py`, which XPASS when it lands.
 * **[next]** The old Phase D note, for the case distance cannot settle. `chladni.mps.search`
   implements Phase D's DISTANCE PREFILTER and gets the collapse branch for free -- reading
   multiplicity once per merged group RECOUNTS by construction, which `search.md` says is the
@@ -62,19 +60,11 @@ illegible.
   really for: two roots at the SAME separation where one pair is a duplicate and the other is
   not. Needs the `modes(x)` widening below. Nothing in the roster exercises it, which is a
   measurement on one roster and not an argument.
-* **[next]** State the multiplicity contract. `v1_solve` now DETECTS the regime where a
-  cluster's grouping is arbitrary and collapses it, so the total is right at every span
-  measured -- but nothing is written down about when the GROUPING is guaranteed. The condition
-  is that a level be clear of its neighbours by more than its own spread, and it belongs beside
-  `search.md` section 2.2's basis contract, since it is the same kind of statement about the
-  request rather than the pencil. Measure the UNEVENLY spaced case first: everything so far is
-  on evenly spaced triples, because that is how `crossover_cases` dials them, and an uneven
-  cluster may have a non-degenerate window -- which would make the contract weaker and more
-  useful. `surrogate_cases.cluster`'s 1 : 2.2 : 1 spacing is the case to try.
-* **[later]** Whether a smaller `WIDE_FACTOR` narrows the ambiguous band. The band is
-  `1 < diameter/(prec*lam) < WIDE_FACTOR` and the prominence bound needs `f > sqrt(3)`, so
-  there is little room; the collapse makes it a cost question rather than a correctness one,
-  since a collapsed level is coarser than `prec` asked for. Low priority for that reason.
+* **[next]** State the multiplicity contract, after Phase 3b. The uneven case it asked for first
+  is measured (`tests/test_cluster_totals.py`): the failing band is not spacing-specific, it is
+  about one to eight merge licences of cluster width on both spacings, and it moves with
+  `WIDE_FACTOR` -- so the contract is a statement about the rule that replaces the cross-check,
+  not about the cross-check.
 * **[blocking]** Widen the candidate interface from `tensions(x)` to also carry `modes(x)` --
   the candidate eigenfunctions on a fixed shared point set. **This is the first thing to do**:
   Phase D's collapse-versus-merge is decided by the interior Gram angle, which `tensions(x)`

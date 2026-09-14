@@ -237,6 +237,18 @@ class MPSEigensolver(Eigensolver, Frozen):
         """
         res = self.search_interval(a, b)
         d = res.diagnostics
+        if d.n_uncertain:
+            # An uncertain COUNT raises, where a precision shortfall only warns: the value is
+            # located to `prec`, what is in doubt is how many eigenvalues sit at it, and an array
+            # with multiplicity repeated cannot say "and possibly one more here". A short array
+            # is worse than an exception, because `Eigensolver.solve` widens and refills.
+            lam0, mult0, alt0, why0 = d.uncertain[0]
+            raise RuntimeError(
+                f"the multiplicity of {d.n_uncertain} level(s) in [{float(a):.6g}, "
+                f"{float(b):.6g}] could not be certified. First at lam = {lam0:.10g}: read "
+                f"{mult0}, alternative reading {alt0} -- {why0}. Ways on: call search_interval "
+                f"to inspect the levels; move prec (tighter resolves the cluster into separate "
+                f"levels, looser merges it); or improve the basis.")
         if d.declined:
             raise RuntimeError(
                 f"the search declined on lam in [{float(a):.6g}, {float(b):.6g}]: "

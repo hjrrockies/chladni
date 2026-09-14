@@ -46,7 +46,7 @@ the one that does not contain it -- but that is a measurement on one roster, not
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -72,6 +72,14 @@ class Level:
     wide_bracket: tuple = ()
     gap_ratio: float = float("nan")
     c2_rejected: bool = False
+    #: Accepted, refined minima folded into this level. More than `mult` is the solver
+    #: contradicting its own locator, and `_flag_uncertain_counts` says so.
+    n_roots: int = 1
+    #: True when two readings of this level's multiplicity disagree. The count is NOT certified:
+    #: `count_alt` is the other reading and `uncertain_reason` says which two disagreed.
+    count_uncertain: bool = False
+    count_alt: int = 0
+    uncertain_reason: str = ""
     #: True when this level is the COLLAPSE of a neighbourhood whose internal grouping was
     #: arbitrary. The count is trustworthy; the sub-structure is coarser than `prec` asked for,
     #: so the level is deliberately wider than the merge licence. See `_collapse_ambiguous`.
@@ -136,6 +144,8 @@ class SolveDiagnostics:
     n_rejected: int = 0              # brackets the refiner threw away as empty
     n_merged: int = 0                # located roots folded into a neighbour within `prec`
     n_ambiguous: int = 0             # levels collapsed because their grouping was arbitrary
+    n_uncertain: int = 0             # levels whose multiplicity is not certified
+    uncertain: tuple = ()            # (lam, mult, count_alt, reason) per uncertain level
     search_evals: int = 0
     refine_evals: int = 0
     multiplicity_evals: int = 0      # must be zero: stage 3 reads the cache
@@ -148,7 +158,15 @@ class SolveDiagnostics:
 
     @property
     def met_request(self):
+        """Did every level reach the requested PRECISION? Says nothing about the counts --
+        `certified_counts` is that question, and both were True in every wrong cell of
+        `tests/test_cluster_totals.py` because only this one was being asked."""
         return not self.unmet
+
+    @property
+    def certified_counts(self):
+        """Is every level's MULTIPLICITY certified? The other half of the honesty clause."""
+        return self.n_uncertain == 0
 
     @property
     def per_eigenvalue(self):
@@ -290,12 +308,65 @@ def _collapse_ambiguous(obj, lams, levels, prec, reach_factor):
             out.extend(members)             # self-consistent: the fine grouping stands
             continue
         gaps = tuple(float(b.lam - a.lam) for a, b in zip(members[:-1], members[1:]))
+        fine = sum(x.mult for x in members)
+        # The disagreement is REPORTED, and the value does not move. The spanning count is not
+        # the safe reading -- on the `65*pi^2` cluster at bands 1.3 to 2.0 the fine grouping is
+        # the truth and the spanning read folds four levels into two -- but `fine` is not safe
+        # either: 6 and 4 against 3 on the evenly spaced triple. No choice between them is right
+        # on both families, so the level is flagged and carries the other reading.
         out.append(Level(lam=deepest.lam, mult=total, sigma=deepest.sigma,
                          delta_res=deepest.delta_res, bracket=deepest.bracket,
                          wide_bracket=wb, gap_ratio=deepest.gap_ratio,
+                         n_roots=sum(x.n_roots for x in members),
+                         count_uncertain=True, count_alt=min(total, fine),
+                         uncertain_reason=(
+                             f"a neighbourhood of {len(members)} located levels: the individual "
+                             f"counts sum to {fine} and one count over the whole neighbourhood "
+                             f"reads {total}. The grouping is arbitrary at this prec and the two "
+                             f"readings disagree, so neither is certified"),
                          grouping_ambiguous=True, spacings=gaps))
         collapsed += 1
     return out, collapsed
+
+
+def _flag_uncertain_counts(levels):
+    """Mark every level whose multiplicity two independent readings disagree about.
+
+    **It decides nothing; it refuses to.** Recounting at one representative under-reads two
+    genuine eigenvalues inside the merge licence, summing over-counts one eigenvalue found twice,
+    and distance cannot tell those apart -- that is Phase D's Gram angle, not a rule. Until it
+    exists the honest output is a level that says its count is in doubt.
+
+        mult < n_roots   the level declares fewer eigenvalues than the ACCEPTED, refined,
+                         certificate-carrying minima folded into it
+
+    Every such root passed `refine._accept`, so each is positive evidence of a minimum. It is not
+    proof of error -- two roots can be one eigenvalue found twice -- which is why the level is
+    flagged and not corrected: raising the count would trade a silent under-count for a silent
+    over-count.
+
+    Levels `_collapse_ambiguous` already flagged pass through and are COUNTED. Skipping them made
+    the branch that detects a disagreement by construction the one whose levels never reached
+    `n_uncertain` -- 14% recall on the wip branch, against 93% once they were counted.
+    """
+    out, flagged = [], []
+    for x in levels:
+        if x.count_uncertain:
+            out.append(x)
+            flagged.append(x)
+            continue
+        if x.mult >= x.n_roots:
+            out.append(x)
+            continue
+        y = replace(x, count_uncertain=True, count_alt=x.n_roots,
+                    uncertain_reason=(
+                        f"{x.n_roots} accepted minima were folded into this level and the "
+                        f"multiplicity read at the deepest of them is {x.mult}: either "
+                        f"{x.n_roots} eigenvalues within prec*lam of each other, or one located "
+                        f"{x.n_roots} times, and distance cannot tell those apart"))
+        out.append(y)
+        flagged.append(y)
+    return out, flagged
 
 
 def _samples(obj):
@@ -368,7 +439,13 @@ def solve(obj, *, prec=None, collapse=True):
     #
     # What is still missing is the case Phase D's angle is really for: two roots at the same
     # separation where one is a duplicate and one is not. Distance cannot tell them apart, and
-    # neither can this -- but recounting is the safe branch of the two.
+    # neither can this.
+    #
+    # **"Recounting is the safe branch of the two" was written here, and it is false.** It is
+    # right for a duplicate and wrong for two genuine eigenvalues inside the licence: the recount
+    # reads at ONE representative, the partner's branch is minimal at the partner, so (C2)
+    # refuses it and the level reads 1 where it is 2. So the number of roots folded is carried
+    # on the level, and `_flag_uncertain_counts` flags the contradiction.
     groups = []
     for r, bracket in sorted(located, key=lambda p: p[0].lam):
         if groups and abs(r.lam - groups[-1][0][0].lam) <= prec * max(abs(r.lam), 1.0):
@@ -376,14 +453,14 @@ def solve(obj, *, prec=None, collapse=True):
         else:
             groups.append([(r, bracket)])
     # One representative per group: the deepest, which is the best-located member.
-    located = [min(g, key=lambda p: p[0].sigma) for g in groups]
+    located = [(min(g, key=lambda p: p[0].sigma), len(g)) for g in groups]
     merged = sum(len(g) - 1 for g in groups)
 
     # Stage 3. From the cache, and it must cost nothing.
     mark = obj.n_evals
     lams, svals = _samples(obj)
     levels = []
-    for r, bracket in located:
+    for (r, bracket), n_roots in located:
         c = _slope_from_cache(lams, svals, r.lam)
         # The distance to the next eigenvalue, from the free `sigma_2` the search already has.
         # It bounds the wide bracket from ABOVE, so the flanks cannot reach a neighbour and
@@ -393,13 +470,13 @@ def solve(obj, *, prec=None, collapse=True):
         wb = wide_bracket_for(lams, r.lam, r.sigma, c, prec=prec, neighbour=nb)
         if wb is None:
             levels.append(Level(lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res,
-                                bracket=bracket))
+                                bracket=bracket, n_roots=n_roots))
             continue
         m = multiplicity(lambda z: obj.tensions(obj.from_lam(z)), r.lam,
                          wide_bracket=wb, prec=prec)
         levels.append(Level(lam=r.lam, mult=m.mu, sigma=r.sigma, delta_res=r.delta_res,
                             bracket=bracket, wide_bracket=wb, gap_ratio=m.gap_ratio,
-                            c2_rejected=m.c2_rejected))
+                            c2_rejected=m.c2_rejected, n_roots=n_roots))
 
     levels.sort(key=lambda x: x.lam)
 
@@ -409,6 +486,10 @@ def solve(obj, *, prec=None, collapse=True):
         levels, n_amb = _collapse_ambiguous(obj, lams, levels, prec, WIDE_FACTOR)
     else:
         n_amb = 0
+
+    # The count consistency check. Free -- it compares numbers the pipeline already has -- and
+    # last, so it sees the levels a caller will actually receive.
+    levels, uncertain = _flag_uncertain_counts(levels)
     mult_evals = obj.n_evals - mark
 
     unmet = tuple(x.lam for x in levels if not x.met(prec))
@@ -419,4 +500,6 @@ def solve(obj, *, prec=None, collapse=True):
         search=sd, n_brackets=len(res.brackets), n_rejected=rejected, n_merged=merged,
         search_evals=search_evals, refine_evals=refine_evals,
         multiplicity_evals=mult_evals, evaluations=obj.n_evals, n_ambiguous=n_amb,
+        n_uncertain=len(uncertain),
+        uncertain=tuple((x.lam, x.mult, x.count_alt, x.uncertain_reason) for x in uncertain),
         prec_requested=prec, attained_prec=float(attained), unmet=unmet))
