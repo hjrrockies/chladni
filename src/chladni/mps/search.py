@@ -531,6 +531,7 @@ def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap",
         nb = (s2 / c) if (c > 0 and np.isfinite(s2)) else None
         wb = wide_bracket_for(lams, r.lam, r.sigma, c, prec=prec, neighbour=nb)
         tens = (lambda z: obj.tensions(obj.from_lam(z)))
+        extra, uncertain = [], None
         if rule == "reach":
             # `mu*(B)` needs the EMITTED bracket and a slope from outside it; the wide bracket plays
             # no part in the count and is carried only as the record of what "gap" would have seen.
@@ -551,6 +552,49 @@ def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap",
                       (COUNT_BELOW_CACHE, REJECT_ABOVE_CACHE, BIAS_LO_CACHE, BIAS_HI_CACHE))
             m = multiplicity(tens, r.lam, bracket=bracket, c=c_out, prec=prec, rule="reach",
                              reach_bounds=bounds)
+            if m.ambiguous:
+                # The rule could not place a branch inside the bracket or out. Every wrong total it
+                # left on the cluster grid was this: one bracket holding two DISTINCT eigenvalues,
+                # the partner at the bracket edge. Merging is permitted and never required, so the
+                # partner need not be counted at all -- LOCATE it. Refine the bracket either side
+                # of the root, outside half the branch's estimated distance so the sub-bracket's
+                # inner end is off the root's own wall. A root found is its own level.
+                #
+                # A side is RESOLVED when it is searched and firmly rejected, or when it is too
+                # short to hold the branch at all: the calibrated bias puts the eigenvalue at least
+                # `BIAS_LO_CACHE * d` away, and a side shorter than `d/2` is shorter than that.
+                # Requiring both sides SEARCHED kept a correct count flagged -- the uneven cluster
+                # at 1e-8, band 0.3, where the declined branch belonged to a member 0.96 licences
+                # out, located as its own level, with this bracket reaching 0.27 on that side. Only
+                # an inconclusive search, or no distance to search at, leaves the level flagged.
+                t_here = np.atleast_1d(np.asarray(tens(r.lam), dtype=float))
+                j = min(int(m.mu), t_here.size - 1)
+                half = 0.5 * float(t_here[j]) / c_out if j > 0 else float("inf")
+                # Not `r` itself: each sub-bracket excludes `r +- half` by construction, so a root
+                # found there is not `r`, and `r`'s own bar can be as wide as the partner's
+                # distance -- 125*pi^2, prec 1e-10, band 0.5, bar 5.6e-8, partner 5.5e-8 away,
+                # found and then discarded as "already located", leaving the total one short and
+                # unflagged. A find that is really `r`'s own wall is a phantom at the inner end,
+                # which the refiner's end probe rejects.
+                taken = [p[0][0] for p in located if p[0][0] is not r]
+                found, inconclusive = 0, not np.isfinite(half)
+                for a, b2 in ((bracket[0], r.lam - half), (r.lam + half, bracket[1])):
+                    if not (np.isfinite(half) and a < b2):
+                        continue                    # too short to hold the branch: resolved
+                    r2 = refine(obj, a, b2, prec=prec, interior=(a, b2))
+                    if not r2.accepted:
+                        inconclusive |= r2.reason in ("budget", "stalled")
+                        continue
+                    if any(abs(r2.lam - q.lam) <= max(
+                            r2.delta_res if np.isfinite(r2.delta_res) else 0.0,
+                            q.delta_res if np.isfinite(q.delta_res) else 0.0,
+                            4.0 * np.spacing(abs(r2.lam))) for q in taken):
+                        continue                    # already a located root, from its own bracket
+                    taken.append(r2)
+                    found += 1
+                    extra.append(Level(lam=r2.lam, mult=1, sigma=r2.sigma,
+                                       delta_res=r2.delta_res, bracket=(a, b2), n_roots=1))
+                uncertain = inconclusive and found == 0
         elif wb is None:
             levels.append(Level(lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res,
                                 bracket=bracket, n_roots=n_roots))
@@ -563,12 +607,15 @@ def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap",
                             # The estimator's own DECLINE, carried through. Dropping it made every
                             # wrong total under the reach rule silent on the wip branch -- 0 of 15
                             # flagged -- which was a wiring omission, not a property of the rule.
-                            count_uncertain=bool(m.ambiguous),
+                            count_uncertain=(bool(m.ambiguous) if uncertain is None
+                                             else uncertain),
                             uncertain_reason=(
                                 "the multiplicity estimator declined: a branch's estimated "
                                 "distance landed where the inside and outside populations "
                                 "overlap, so the evidence does not decide whether that "
-                                "eigenvalue is in this bracket" if m.ambiguous else "")))
+                                "eigenvalue is in this bracket"
+                                if (m.ambiguous if uncertain is None else uncertain) else "")))
+        levels.extend(extra)
 
     levels.sort(key=lambda x: x.lam)
 
