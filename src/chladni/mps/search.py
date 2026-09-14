@@ -449,7 +449,8 @@ def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap"):
     for b in res.brackets:
         lo, hi = obj.in_lam_bracket(b.lo, b.hi)
         hint = obj.in_lam(b.k_hint) if np.isfinite(b.k_hint) else None
-        r = refine(obj, lo, hi, prec=prec, lam_hint=hint)
+        r = refine(obj, lo, hi, prec=prec, lam_hint=hint,
+                   interior=(obj.in_lam(b.lo), obj.in_lam(b.hi)))
         if r.accepted:
             located.append((r, (lo, hi)))
         else:

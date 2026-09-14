@@ -63,6 +63,14 @@ _REPEATS = 3
 #: carried into the bar, so the choice changes cost and never honesty.
 _SETTLE = 0.05
 
+#: A handed-in bracket END is rejected as a root when a probe one search-bracket width further out
+#: reads below this fraction of its `sigma`. A phantom sits on the wall of a neighbour's well, so the
+#: curve keeps falling past it -- 7.0e-10 at the end, about 2.7e-10 one width out, measured at
+#: 130*pi^2 -- while a genuine eigenvalue AT the end sits at the floor and the probe climbs the cone.
+#: The two differ by orders, so the factor only has to sit between them; it is `bracket.DIP_RATIO`'s
+#: value for the same question asked of a region.
+_DESCENT_RATIO = 0.5
+
 #: Margin on the reported `delta_res`. The located error is `eps/c` to a measured ratio of 0.99
 #: to 1.27 over 12 levels, three domains and two basis families -- so `eps/c` is the right
 #: SCALE but not an upper bound, and a quantity that clause (2) compares against `prec*lam` has
@@ -152,7 +160,7 @@ def _vertex(x, y):
     return x1 - step, c2
 
 
-def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
+def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None, interior=None):
     """Locate the minimum of `sigma_1**2` in `[lo, hi]`. Both endpoints in `lam`.
 
     `obj` is an `Objective`; it may be parameterized by `k`, in which case the conversion
@@ -399,7 +407,61 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
         delta_res = width
 
     ends = (hist[0][2], hist[2][2])      # sigma_1 at the handed-in endpoints; already paid for
-    accepted = _accept(best, lo, hi, prec, ends) if reason != "no_parabola" else False
+    if reason == "no_parabola":
+        accepted = False
+    elif interior is None:
+        accepted = _accept(best, lo, hi, prec, ends)
+    else:
+        # `[lo, hi]` was WIDENED from the search's bracket `interior` so that a minimum whose exact
+        # square rounds just outside it is not lost. That makes the ends artificial, so "interior"
+        # has to be judged by where the best point came from:
+        #
+        #   well inside   the search's bracket: strictly inside the widened one is enough. The
+        #                 4-ulp margin against widened ends is what defeated the widening -- a
+        #                 minimum one ulp outside the search's end sits three inside the widened one.
+        #   at an end     within a few ulps of the search's end, or beyond it: judged by the curve
+        #                 past the end. The search's deepest sample can BE its bracket end, and 4
+        #                 ulps of widening against a 4-ulp margin let exactly that sample -- on the
+        #                 wall of a NEIGHBOUR's well, 0.48 licences from the eigenvalue -- through as
+        #                 a root, below the widened end by rounding alone.
+        ilo, ihi = (float(v) for v in interior)
+        x_best, _, s_best = best
+        tie = _SAME_POINT * np.spacing(abs(x_best))
+        at_end = not (ilo + tie < x_best < ihi - tie)
+        if not at_end:
+            inside = lo < x_best < hi
+        else:
+            # The best point is ON an end of the search's bracket, or in the sliver the widening
+            # added. Neither position nor provenance can say which case this is: the phantom and a
+            # genuine eigenvalue exactly at the search's end (the evenly spaced cluster at 1e-14,
+            # band 2.0) both arrive there, and the first version of this test -- keyed on the
+            # point being bit-identical to a HANDED one -- was defeated by a vertex step landing a
+            # tenth of an ulp away. What differs is the curve BEYOND the end, so look one
+            # search-bracket width further out: still falling means the minimum lies outside and
+            # belongs to a neighbour's bracket. One evaluation, spent only when this fires.
+            side = 1.0 if abs(x_best - ihi) <= abs(x_best - ilo) else -1.0
+            # Aimed at where the cone puts the minimum: `sigma/c` outward. A FIXED reach cannot
+            # serve both phantoms measured -- one bracket width landed on the well 0.48 licences
+            # out at 130*pi^2 and OVERSHOT the one 0.255 licences out at 25*pi^2, reading the far
+            # wall and passing it. On a genuine root at the end `sigma` IS the floor and the reach
+            # is a few ulps, where the probe reads the same.
+            #
+            # `c` is the SECANT from the best point to the bracket's far end. A phantom's bracket
+            # holds no eigenvalue, so that end is on the same monotone wall: measured 1.14e-2
+            # against a true 1.17e-2 at 130*pi^2. Not the fitted curvature: the last triple sits in
+            # the ulp-scale noise pressed against the end, and its curvature read a slope 25x too
+            # large -- the probe fell back onto the phantom's own wall and passed it.
+            far_x, _, far_s = hist[0] if side > 0 else hist[2]
+            c_wall = abs(far_s - s_best) / max(abs(far_x - x_best), np.spacing(abs(x_best)))
+            reach = s_best / c_wall if c_wall > 0 else (ihi - ilo)
+            probe = x_best + side * max(reach, 4.0 * np.spacing(abs(x_best)))
+            # Straight through the objective, NOT through `f`: `f` clamps into the bracket, and the
+            # whole point of this probe is to look outside it. The first version called `f` and
+            # the probe landed back on the widened end, four ulps away, where it read the same as
+            # the phantom and passed it.
+            s_probe = obj.tension(obj.from_lam(probe))
+            inside = (lo < x_best < hi) and not (s_probe < _DESCENT_RATIO * s_best)
+        accepted = bool(inside and s_best < min(ends))
     if not accepted and reason in ("converged", "flat", "stalled"):
         reason = "not_a_minimum"
 

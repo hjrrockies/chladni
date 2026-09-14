@@ -223,3 +223,92 @@ def test_a_bracket_NARROWER_than_xatol_is_still_located_and_its_bar_holds(lam0, 
     assert abs(r.lam - lam0) <= r.delta_res, (
         f"located {abs(r.lam - lam0) / lam0:.2e} relative from the root with a bar of "
         f"{r.delta_res / lam0:.2e}; the root sits at {frac} of the bracket")
+
+
+# --- a handed-in bracket END is not evidence of an interior minimum ------------------------------
+
+def _stepped_wall(end, lam_star, slope=1.0):
+    """`sigma` falling toward a minimum OUTSIDE the bracket, with the ulp-scale rounding the real
+    pencil showed: the value just past the search's end reads 1e-4 relative HIGHER than the end
+    itself, so a strict "below both ends" comparison passes on noise."""
+    def tensions(lam):
+        lam = float(lam)
+        s = slope * abs(lam - lam_star) + 1e-15
+        return [s * (1 + 1e-4) if lam > end else s, 10.0]
+    return Objective(tensions, 1.0, 1e3, variable="lam", prec=1e-10)
+
+
+def test_a_HANDED_IN_bracket_end_is_not_accepted_as_an_interior_minimum():
+    """Found recalibrating the reach rule. The search's deepest sample in a bracket can BE its
+    upper end, and it is handed to the refiner as the hint. `in_lam_bracket` widens the bracket by
+    4 ulps, `_accept`'s interior margin is 4 ulps, so that sample sat exactly on the margin and
+    counted as interior; rounding made it read below the widened end; and a point on the wall of a
+    NEIGHBOUR's well -- 0.48 licences from the eigenvalue, outside the bracket -- was accepted with
+    a bar of 0.25 licences. Measured at 130*pi^2, prec 1e-10, band 3.0, and at 25*pi^2, band 0.3.
+    Licence merge folded it into the real root; attained merge reported it as a second level."""
+    lam0 = 493.48022005446785
+    end = lam0 * (1 - 5e-10)                      # the search bracket's upper end, and the hint
+    lo = lam0 * (1 - 1.2e-9)
+    obj = _stepped_wall(end, lam_star=lam0)       # the true minimum is 5e-10 relative OUTSIDE
+    wlo, whi = lo - 4 * np.spacing(lo), end + 4 * np.spacing(end)
+    r = refine(obj, wlo, whi, prec=1e-10, lam_hint=end, interior=(lo, end))
+    assert not r.accepted, (
+        f"accepted {r.reason} at {(r.lam - end) / np.spacing(end):+.1f} ulp from the search's end; "
+        f"the minimum lies {(lam0 - end) / lam0:.1e} relative outside the bracket")
+
+
+def test_the_widening_still_saves_a_minimum_that_rounds_just_OUTSIDE_the_search_bracket():
+    """What the 4-ulp widening is for, and what the fix must not undo: the exact square of a
+    bracket end that correctly fenced `k*` can miss `lam*` by an ulp. A minimum the REFINER
+    locates in that sliver is a minimum, and is accepted."""
+    lam0 = 493.48022005446785
+    end = lam0 - np.spacing(lam0)                 # the true minimum sits one ulp outside `end`
+    lo = lam0 * (1 - 1e-12)
+    k0 = np.sqrt(lam0)
+    obj = Objective(lambda k: [np.sqrt(1e-30 + (0.27 * (float(k) - k0)) ** 2), 10.0],
+                    1.0, 1e3, variable="k", prec=1e-14)
+    wlo, whi = lo - 4 * np.spacing(lo), end + 4 * np.spacing(end)
+    r = refine(obj, wlo, whi, prec=1e-14, interior=(lo, end))
+    assert r.accepted, r.reason
+    assert abs(r.lam - lam0) <= 4 * np.spacing(lam0)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("N, m, band", [(130, 4, 3.0), (25, 2, 0.3)])
+def test_no_reported_level_sits_OUTSIDE_the_bracket_of_its_own_eigenvalue(N, m, band):
+    """The pipeline form of the phantom: under attained merge, where nothing folds it away.
+
+    It asserts WHERE levels are, not how many. Attained merge under the default gap rule
+    double-counts a resolved pair -- each root's wide bracket spans both, so each reads 2 -- which
+    is the recorded reason attained merge pairs only with the reach rule, and belongs to the
+    cluster grid rather than to this test."""
+    import bracket_score as bs
+    import rect_suite as rs
+    from chladni.mps.search import solve
+
+    (case,) = rs.split_degeneracy_cases(1e-10, bands=(band,), levels={N: m})
+    truth = rs.complete_truth(case)
+    res = solve(bs.objective_for(case, 1e-10), prec=1e-10, merge="attained", collapse=False)
+    bad = []
+    for L in res.levels:
+        y = truth[int(np.argmin(np.abs(truth - L.lam)))]
+        if not (L.bracket[0] <= y <= L.bracket[1]):
+            bad.append((L.lam, y))
+    assert not bad, f"levels whose eigenvalue is outside their own bracket: {bad}"
+
+
+def test_a_GENUINE_minimum_exactly_AT_the_search_end_handed_in_is_still_accepted():
+    """The other half, and the one the first form of the fix broke. At prec 1e-14 on the evenly
+    spaced cluster the third member sits EXACTLY at a search bracket's lower end, the search's
+    deepest sample is that end, and sigma there is the floor. "A handed-in point must be strictly
+    inside the unwidened bracket" rejected it and the member was dropped -- the cluster slice went
+    from 3 of 3 to 1 of 3. A handed end is a phantom only when the curve keeps FALLING past it."""
+    lam0 = 493.48022005446785
+    k0 = np.sqrt(lam0)
+    obj = Objective(lambda k: [np.sqrt(1e-30 + (0.27 * (float(k) - k0)) ** 2), 10.0],
+                    1.0, 1e3, variable="k", prec=1e-14)
+    lo, end = lam0 * (1 - 5e-14), lam0            # the true minimum IS the search's upper end
+    wlo, whi = lo - 4 * np.spacing(lo), end + 4 * np.spacing(end)
+    r = refine(obj, wlo, whi, prec=1e-14, lam_hint=end, interior=(lo, end))
+    assert r.accepted, r.reason
+    assert abs(r.lam - lam0) <= 4 * np.spacing(lam0)
