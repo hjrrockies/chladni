@@ -51,7 +51,9 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 
 from .bracket import bracket_interval
-from .multiplicity import SLOPE_STANDOFF, WIDE_FACTOR, multiplicity, wide_bracket_for
+from .multiplicity import (BIAS_HI_CACHE, BIAS_LO_CACHE, COUNT_BELOW_CACHE,
+                           REJECT_ABOVE_CACHE, SLOPE_STANDOFF, WIDE_FACTOR, multiplicity,
+                           wide_bracket_for)
 from .refine import refine
 
 __all__ = ["Level", "SolveResult", "SolveDiagnostics", "solve"]
@@ -407,7 +409,8 @@ def _samples(obj):
     return (np.array([obj.in_lam(x) for x in xs]) if xs.size else xs), vs
 
 
-def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap"):
+def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap",
+          reach_slope="outside"):
     """Locate every eigenvalue in the objective's window, with its multiplicity.
 
     All three stages share one `Objective`, so the cost is the union of what they sampled and
@@ -424,11 +427,19 @@ def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap"):
     merges deliberately, only what it could not resolve. `rule` picks the multiplicity count:
     "gap" (C1)+(C2) over a wide bracket, "floor" coincidence with `sigma_1`, "reach" the number of
     eigenvalues INSIDE the emitted bracket. Defaults are the shipped behaviour.
+
+    `reach_slope` is where "reach" reads the wall slope `c` in `sigma_j/c`: "outside", three
+    bracket widths out, which is what the rule was calibrated on; or "cache", the nearest cached
+    samples either side of the root. On a cluster wider than the standoff the outside samples sit
+    in other members' wells and `c` reads low -- measured 1.86x on the distance where "cache" read
+    1.02 -- so "cache" is the candidate being recalibrated.
     """
     if merge not in ("licence", "attained"):
         raise ValueError(f"merge must be 'licence' or 'attained', got {merge!r}")
     if rule not in ("gap", "floor", "reach"):
         raise ValueError(f"rule must be 'gap', 'floor' or 'reach', got {rule!r}")
+    if reach_slope not in ("outside", "cache"):
+        raise ValueError(f"reach_slope must be 'outside' or 'cache', got {reach_slope!r}")
     prec = obj.prec if prec is None else float(prec)
 
     mark = obj.n_evals
@@ -524,15 +535,22 @@ def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap"):
             # `mu*(B)` needs the EMITTED bracket and a slope from outside it; the wide bracket plays
             # no part in the count and is carried only as the record of what "gap" would have seen.
             width = abs(bracket[1] - bracket[0])
-            c_out = _slope_outside(lams, svals, r.lam, SLOPE_STANDOFF * width)
+            c_out = (_slope_outside(lams, svals, r.lam, SLOPE_STANDOFF * width)
+                     if reach_slope == "outside" else c)
             if c_out is None or not (c_out > 0):
                 levels.append(Level(
                     lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res, bracket=bracket,
                     wide_bracket=wb or (), n_roots=n_roots, count_uncertain=True,
-                    uncertain_reason="the reach rule needs a wall slope measured outside the "
-                                     "bracket, and the cache holds no sample far enough out"))
+                    uncertain_reason=f"the reach rule could not read a wall slope "
+                                     f"({reach_slope}) from the cache at this root"))
                 continue
-            m = multiplicity(tens, r.lam, bracket=bracket, c=c_out, prec=prec, rule="reach")
+            # Each slope carries the bounds measured for IT; the outside-slope set is the wip
+            # branch's, the cache-slope set is recalibrated on a held-out set -- see
+            # `multiplicity.COUNT_BELOW_CACHE`.
+            bounds = (None if reach_slope == "outside" else
+                      (COUNT_BELOW_CACHE, REJECT_ABOVE_CACHE, BIAS_LO_CACHE, BIAS_HI_CACHE))
+            m = multiplicity(tens, r.lam, bracket=bracket, c=c_out, prec=prec, rule="reach",
+                             reach_bounds=bounds)
         elif wb is None:
             levels.append(Level(lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res,
                                 bracket=bracket, n_roots=n_roots))

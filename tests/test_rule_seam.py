@@ -64,3 +64,17 @@ def test_floor_counts_COINCIDENCE_only():
     the floor together -- reads 1. The floor rule answers a different question than `mu*(B)`."""
     assert multiplicity(cones(10.0, 10.0), 10.0, rule="floor").mu == 2
     assert multiplicity(cones(10.0, 10.001), 10.0, rule="floor").mu == 1
+
+
+def test_the_reach_slope_is_a_choice_and_OUTSIDE_is_still_the_default():
+    """`reach_slope` picks where the reach rule reads its wall slope. "outside" -- three bracket
+    widths out -- is what the rule was calibrated on and stays the default until a recalibration
+    clears acceptance. "cache" reads the nearest cached samples either side of the root, which
+    measured within 7% of the true distance on the cells where "outside" read 1.86x: on a cluster
+    wider than the standoff, the outside samples sit in other members' wells."""
+    p = inspect.signature(solve).parameters
+    assert p["reach_slope"].default == "outside"
+    with pytest.raises(ValueError, match="reach_slope"):
+        from chladni.mps.objective import Objective
+        solve(Objective(lambda k: [0.2, 0.3], 3.0, 4.0, variable="k", prec=1e-8),
+              rule="reach", reach_slope="sideways")

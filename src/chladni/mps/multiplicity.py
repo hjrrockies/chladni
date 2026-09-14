@@ -69,7 +69,8 @@ import numpy as np
 __all__ = ["multiplicity", "reach_multiplicity", "floor_multiplicity", "wide_bracket_for",
            "Multiplicity", "GAP_RATIO", "PROMINENCE", "WIDE_FACTOR", "MAX_BRANCHES",
            "FLOOR_RATIO", "FLOOR_BAND", "COUNT_BELOW", "REJECT_ABOVE", "SLOPE_STANDOFF",
-           "BIAS_LO", "BIAS_HI"]
+           "BIAS_LO", "BIAS_HI", "COUNT_BELOW_CACHE", "REJECT_ABOVE_CACHE", "BIAS_LO_CACHE",
+           "BIAS_HI_CACHE"]
 
 #: (C1). The ratio `sigma_{j+1}/sigma_j` that separates "still inside the multiplet" from
 #: "across the gap". Measured 1.0-1.7 within a multiplet against 1e11-1e15 across it, so the
@@ -203,6 +204,25 @@ BIAS_HI = 1.63
 #: outside took the rule from 82.5% to 96.5% on the ladder, which is the largest single effect
 #: measured in its construction.
 SLOPE_STANDOFF = 3.0
+
+#: (REACH RULE, cache slope) The same four bounds, measured for `c` read from the NEAREST cached
+#: samples either side of the root rather than three bracket widths out. Measured 2026-09-14 on a
+#: CALIBRATION set held out from `tests/test_cluster_totals.py` -- square levels 25, 85 and 130, not
+#: 50 or 65 -- dialled over bands 0.1 to 3.0 and `prec` 1e-6 to 1e-14 through the real search:
+#:
+#:     beta = (sigma_j/c) / true distance, 962 (branch, eigenvalue) pairs
+#:     cache slope     min 0.642  p05 0.839  median 1.000  p95 1.175  max 2.098
+#:     outside slope   min 0.835  p05 0.911  median 1.526  p95 5.554  max 14.853
+#:
+#: The outside slope is off by up to 15x once a cluster is wider than the standoff, because its
+#: samples then sit in other members' wells. Each bound is the measured extreme widened by 5%:
+#: `COUNT_BELOW` under every observed beta, so a count never takes an eigenvalue outside, and
+#: `REJECT_ABOVE` over every one, so a rejection never drops one inside. Replayed on the same
+#: pairs: 893 correct, 0 wrong, 69 declined -- against 3 wrong with the outside-slope bounds.
+COUNT_BELOW_CACHE = 0.61
+REJECT_ABOVE_CACHE = 2.21
+BIAS_LO_CACHE = 0.61
+BIAS_HI_CACHE = 2.21
 
 #: Branches read. The low spectrum only -- a multiplet of interest is small, and reading deep
 #: into the vector costs nothing but invites a spurious gap far above anything physical.
@@ -355,7 +375,8 @@ def floor_multiplicity(t, ratio=FLOOR_RATIO, band=FLOOR_BAND, max_branches=MAX_B
 
 
 def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
-                       reject_above=REJECT_ABOVE, max_branches=MAX_BRANCHES, counter=None):
+                       reject_above=REJECT_ABOVE, bias_lo=BIAS_LO, bias_hi=BIAS_HI,
+                       max_branches=MAX_BRANCHES, counter=None):
     """How many eigenvalues lie inside `[lo, hi]`. `(mu, declined, spent)`.
 
     **The question is `mu*(B)`** and this answers it by comparing A DISTANCE TO A DISTANCE, which
@@ -417,10 +438,10 @@ def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
         r_side = (x - lo) if below else (hi - x)
         # The probe fixes the SIDE; the bias bounds fix how far. `d_est = beta * d_true`, so the
         # true distance is in `[d/BIAS_HI, d/BIAS_LO]` and the three cases are decidable:
-        if d / BIAS_LO <= r_side:
+        if d / bias_lo <= r_side:
             mu += 1                                   # inside even at its furthest possible
             continue
-        if d / BIAS_HI > r_side:
+        if d / bias_hi > r_side:
             break                                     # outside even at its nearest possible
         # Undetermined: the eigenvalue may or may not be inside, and nothing cheap decides it.
         # This is the bracket-edge case -- measured at `65*pi^2`, `prec = 1e-10`, where the
@@ -433,7 +454,7 @@ def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
 
 def multiplicity(tensions, x, *, wide_bracket=None, prec=None, G=GAP_RATIO, P=PROMINENCE,
                  max_branches=MAX_BRANCHES, counter=None, rule="gap", bracket=None,
-                 c=None):
+                 c=None, reach_bounds=None):
     """How many eigenvalues sit at `x`. Reads the cache; spends nothing.
 
     `rule="reach"` counts branches whose estimated distance `sigma_j/c` falls inside the
@@ -457,8 +478,11 @@ def multiplicity(tensions, x, *, wide_bracket=None, prec=None, G=GAP_RATIO, P=PR
         if bracket is None or c is None:
             raise ValueError('rule="reach" needs `bracket` and `c`')
         lo, hi = (float(v) for v in bracket)
+        kw = {} if reach_bounds is None else dict(
+            count_below=reach_bounds[0], reject_above=reach_bounds[1],
+            bias_lo=reach_bounds[2], bias_hi=reach_bounds[3])
         mu, declined, spent = reach_multiplicity(tensions, x, lo, hi, float(c),
-                                                 max_branches=max_branches, counter=counter)
+                                                 max_branches=max_branches, counter=counter, **kw)
         t = np.atleast_1d(np.asarray(tensions(x), dtype=float))
         n = min(t.size, max_branches)
         gap = float(t[mu] / t[mu - 1]) if mu < n and t[mu - 1] > 0 else float("inf")
