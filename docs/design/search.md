@@ -368,7 +368,7 @@ Derived from `prec`, because they carry units of `lam` or express accuracy:
 
     tol_merge          prec
     accuracy target    prec * lam
-    refinement stop    max(prec * lam, delta_res)
+    refinement stop    straddling triple <= max(prec * lam, 4 ulp), else `stalled`
     planner target     the `eps` that makes the MEASURED delta_res <= prec * lam
 
 The planner target now has a closed form, because `delta_res` does: `delta_res <= prec*lam`
@@ -379,8 +379,13 @@ form was wrong, not the idea of a formula. See the As-built note.
 
 ## 2.6 Not more work than asked
 
-* Refinement stops at `max(prec * lam, delta_res)`. At loose `prec` the first term binds and
-  Brent stops early even though the floor would permit more.
+* Refinement stops when the straddling triple is at most `_xatol = max(prec * lam, 4*ulp(lam))`
+  wide -- `converged` is a claim about WIDTH -- fencing the best point at the tolerance once the
+  vertex settles on it, or reports `stalled` with a bar that covers the triple. At loose `prec`
+  the width binds early even though the floor would permit more. An earlier version of this
+  line said the stop was `max(prec * lam, delta_res)`; the code never compared against
+  `delta_res`, and a repeated-point exit with no width check stopped at 1e-11 to 1e-9 on pencils
+  good to 1e-15 while reporting `converged` (`tests/test_refine_regression.py`).
 * The scan stride comes from Weyl -- about six samples per eigenvalue gap, since dips occupy
   roughly half the spacing on every domain measured. **Completeness is not a precision
   question** and the stride does not tighten with `prec`.
