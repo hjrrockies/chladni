@@ -57,6 +57,12 @@ _SAME_POINT = 4.0
 #: counts here, so a repeat is noise in the vertex, and three in a row is not going to clear.
 _REPEATS = 3
 
+#: Fraction of `_xatol` within which the vertex must agree with the best point before the best
+#: point is fenced. A fraction rather than the whole tolerance, so the point handed on has been
+#: LOCATED by a vertex and not merely found inside the width rule; the residual disagreement is
+#: carried into the bar, so the choice changes cost and never honesty.
+_SETTLE = 0.05
+
 #: Margin on the reported `delta_res`. The located error is `eps/c` to a measured ratio of 0.99
 #: to 1.27 over 12 levels, three domains and two basis families -- so `eps/c` is the right
 #: SCALE but not an upper bound, and a quantity that clause (2) compares against `prec*lam` has
@@ -209,6 +215,7 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
     progressed = False
     reason = "budget"
     repeats = 0
+    settle = 0.0      # the vertex's last disagreement with the fenced best point
     curvature = float("nan")
 
     def triple():
@@ -265,7 +272,14 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
         # the budget. Fence the best point at the tolerance on each side not already fenced:
         # two evaluations at most, and a unimodal minimum is then bounded by the triple.
         tol = _xatol(best[0], prec)
-        if abs(raw - best[0]) <= tol:
+        # Fence only a best point that is INTERIOR and that the vertex CONFIRMS. Triggering on
+        # `|raw - best| <= tol` alone fired before any vertex was evaluated whenever the handed-in
+        # bracket was already inside the tolerance -- the routine case, since stage 1 stops on
+        # purity at about `prec*lam` -- and the fence pass then settled on whichever of the three
+        # starting points was lowest. With the root nearer an end that was an ENDPOINT, `_accept`
+        # refused it, and the eigenvalue was dropped. Short of both conditions, take the step.
+        if lo < best[0] < hi and abs(raw - best[0]) <= _SETTLE * tol:
+            settle = max(settle, abs(raw - best[0]))
             # A side is already fenced when it holds a sample within HALF the tolerance of the
             # best point; then a pass that evaluates nothing leaves a triple at most `0.9*tol`
             # wide, which converges below. Using the full tolerance there left triples up to
@@ -371,7 +385,7 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
     # reads 4.7e-12 while the located point is 2 ulps -- 2.9e-11 -- from the minimum, so a bar
     # below a few ulps under-reports. The same floor `_xatol` stops at.
     if np.isfinite(delta_res):
-        delta_res = max(delta_res, 4.0 * np.spacing(abs(best[0])))
+        delta_res = max(delta_res, 4.0 * np.spacing(abs(best[0])), 2.0 * settle)
 
     # The triple the minimum sits in bounds the error whatever the fit said. A `stalled`
     # refinement could not narrow it, so the bar must cover it; one that ended with no closing

@@ -188,3 +188,38 @@ def test_it_reaches_the_floor_on_a_real_pencil_from_asymmetric_brackets(prec):
             assert _converged_means_narrow(r, prec)
             worst.append(abs(r.lam - lam0) / lam0)
     assert max(worst) <= max(prec, 1e-14), f"worst relative error {max(worst):.2e}"
+
+
+# --- a bracket already narrower than the tolerance must still be LOCATED -------------------------
+
+@pytest.mark.parametrize("lam0", [49.348022005446786, 493.48022005446785])
+@pytest.mark.parametrize("prec", [1e-8, 1e-12])
+@pytest.mark.parametrize("frac", [0.2, 0.35, 0.75])
+def test_a_bracket_NARROWER_than_xatol_is_still_located_and_its_bar_holds(lam0, prec, frac):
+    """Found porting the multiplicity instrument. A bracket two licences wide is inside `_xatol`
+    already, so the first vertex is trivially "within tolerance", both fences clip onto the ends,
+    and the refiner reported `converged` at its MIDPOINT without evaluating a vertex -- the root
+    sat at 0.5 of the width where it truly sat at 0.75. Within `prec`, so no accuracy check sees
+    it; but the bar was the model's `2*eps/c`, orders below the half-bracket error, which is
+    clause (3) broken silently -- and the multiplicity stage reads distances from that point.
+
+    Measured on the exact cone: with the root nearer an END than the midpoint (0.2, 0.75) the
+    lowest of the three starting points is an endpoint, the fence pass "converges" on it, and
+    `_accept` REJECTS the bracket -- the eigenvalue is dropped. With the root nearer the middle
+    (0.35) it was already located correctly, and that case stays here as the guard that the fix
+    does not trade one position for the other. The pipeline escaped only because it hands the
+    refiner the deepest sample as a hint; the multiplicity instrument hands it none.
+
+    The pre-Phase-0 refiner always took vertex steps before any width check. This pins that it
+    still locates: the bar contains the error, whatever the width rule allowed."""
+    # 0.9 of `_xatol = prec*lam` wide, so the whole bracket is inside the tolerance. Two
+    # licences wide was wider than the tolerance and located normally, which is why the first
+    # version of this test passed without reproducing anything.
+    lo = lam0 * (1 - 0.9 * prec * frac)
+    hi = lam0 * (1 + 0.9 * prec * (1 - frac))
+    r = refine(cone(lam0), lo, hi, prec=prec)
+    assert r.accepted, r.reason
+    assert _converged_means_narrow(r, prec)
+    assert abs(r.lam - lam0) <= r.delta_res, (
+        f"located {abs(r.lam - lam0) / lam0:.2e} relative from the root with a bar of "
+        f"{r.delta_res / lam0:.2e}; the root sits at {frac} of the bracket")
