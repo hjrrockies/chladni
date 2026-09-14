@@ -12,6 +12,7 @@ whether a shortfall, a merge or a wrong total is excused.
 
     accuracy      3 * (eps/c) / lam  <=  prec    at every level, eps = sigma_1 there
     multiplicity  20 * (sigma_mu/c) / lam <= prec   at every level, sigma_mu at its multiplicity
+                  AND no two DISTINCT true eigenvalues closer than that resolution
     truth         digits >= -log10(prec) + 1    a table good to d digits is not a reference
                                                  for prec = 10**-d itself; limits both excuses
 
@@ -43,6 +44,11 @@ MULTIPLICITY_MARGIN = 20.0
 #: Offset for the wall-slope probe, relative to `lam`. `rect_suite.assert_floor` measured it
 #: stable from 5e-3 down to 2e-4; at 2e-2 the probe reaches the saturated part of the curve.
 H_FRAC = 0.005
+#: Relative gap at or below which two true values are the SAME eigenvalue for the separation rule.
+#: Float rounding in a genuine double reaches 4.4e-16 (`rect(sqrt(2), 1)`, `reference.md`); the
+#: separations the rule exists for are 3e-15 and up. Not the reference's 1e-13 snap floor, which
+#: would call exactly those separations coincident.
+COINCIDENT_REL = 8.0 * np.finfo(float).eps
 #: Closed forms report 15.6 digits (`chladni.reference`); a case without a `digits` attribute
 #: is assumed to carry closed-form truth.
 DEFAULT_DIGITS = 15.6
@@ -111,6 +117,17 @@ def sufficient(case, prec):
     multiplicity = mp <= prec
     if not multiplicity:
         reasons.append(f"basis: multiplicity needs prec >= {mp:.2e} (20*sigma_mu/c/lam)")
+    # The resolution is a statement about SEPARATIONS, and comparing it with `prec` alone misses a
+    # cluster tighter than the basis whatever was requested: at 1e-14 the evenly spaced cluster
+    # had members 3.0e-15 and 4.7e-15 apart against a resolution of 6.5e-15, and read as one.
+    distinct = np.unique(np.asarray(case.truth, dtype=float))
+    if distinct.size > 1:
+        gaps = np.diff(distinct) / np.abs(distinct[1:])
+        gaps = gaps[gaps > COINCIDENT_REL]
+        if gaps.size and float(gaps.min()) < mp:
+            multiplicity = False
+            reasons.append(f"basis: separation -- two distinct eigenvalues {gaps.min():.2e} apart, "
+                           f"below the multiplicity resolution {mp:.2e}")
     if digits < need:
         accuracy = multiplicity = False
         reasons.append(f"truth: {digits:.1f} digits, prec {prec:.0e} needs {need:.1f}")

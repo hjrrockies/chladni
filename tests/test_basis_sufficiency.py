@@ -115,3 +115,29 @@ def test_an_rtol_DERIVED_from_prec_is_flagged_and_never_excuses_anything():
     assert s.accuracy and s.multiplicity, "flagging is not excusing"
     assert any("rtol" in r for r in s.reasons)
     assert sufficient(FakeCase({LAM: (1e-15,)}), 1e-14).frozen
+
+
+# --- the multiplicity excuse is about SEPARATION, not only about prec ------------------------------
+
+def test_two_levels_closer_than_the_resolution_are_excused_on_multiplicity_at_any_prec():
+    """Found validating the reach rule: the evenly spaced cluster at prec 1e-14, bands 0.3 and
+    0.5, has members 3.0e-15 and 4.7e-15 apart against a resolution of 6.5e-15 to 6.8e-15 -- the
+    basis cannot show them as two -- and the solver read one. Comparing the resolution against
+    `prec` alone (6.5e-15 < 1e-14) called the basis sufficient and the cell an unexcused wrong
+    total. Two DISTINCT eigenvalues closer than the resolution mean the basis CANNOT serve the
+    count at any prec -- `multiplicity` is False, which is what grants the excuse."""
+    # A floor of 1e-13, so the resolution (4e-14) and the separation (2e-14) both sit clear of
+    # float coincidence. At 1e-15 the pair was 2e-16 apart -- below 8 ulps, one eigenvalue.
+    floor, c = 1e-13, 1.0
+    res = 20 * floor / c / LAM                       # the multiplicity resolution at LAM
+    case = FakeCase({LAM: (floor,), LAM * (1 + 0.5 * res): (floor,)}, c=c)
+    assert not sufficient(case, 1e-8).multiplicity
+    assert sufficient(case, 1e-8).accuracy, "the location is still servable"
+    assert any("separation" in r for r in sufficient(case, 1e-8).reasons)
+
+
+def test_an_EXACT_degeneracy_is_not_excused_by_the_separation_rule():
+    """Separation zero is coincidence, which the floor shows directly and the solver counts --
+    the exact degeneracies pass at every precision. The rule is about distinct members only."""
+    case = FakeCase({LAM: (1e-15, 1e-15)})
+    assert sufficient(case, 1e-8).multiplicity
