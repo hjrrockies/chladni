@@ -111,11 +111,13 @@ def test_reach_keeps_looking_past_a_branch_OUTSIDE_the_short_side():
                      "side once and the long side held two members -- 7 of 8, certified. Searching "
                      "on after a find double-counted members the read had already counted inside; "
                      "reconciling the two is its own change, TODO.md."))),
-    pytest.param(170, 4, 0.3, 1e-8, "a bracket holding two members rejected on no_parabola",
+    pytest.param(170, 4, 0.3, 1e-8, "a member counted inside by the read AND located by the side search",
                  marks=pytest.mark.xfail(strict=True, reason=(
-                     "the refiner returns no_parabola on a bracket holding two members, and solve "
-                     "treats every rejected bracket as empty -- both lost, 6 of 8. The refiner "
-                     "fallback is the next change; TODO.md."))),
+                     "the refiner fallback and inward walk fixed the loss here (the bracket was "
+                     "rejected, 6 of 8), and exposed the attribution defect: the read at member 2 "
+                     "counts member 1 inside, the side search then locates member 1 as its own "
+                     "level, and it is counted twice -- 9 of 8, certified. The reconciliation "
+                     "item in TODO.md."))),
     (65, 4, 0.3, 1e-8, "a hump top kept as a level beside the two members found either side"),
 ])
 def test_the_promoted_defaults_leave_no_SILENT_wrong_total(N, m, band, prec, cause):
@@ -212,6 +214,8 @@ def test_the_fresh_125_grid_has_no_SILENT_wrong_total(prec, band, cause):
                         "the n_roots > mult flag read a duplicate as a possible hidden pair"),
     (125, 4, 0.8, 1e-8, "a side search read the wall of a member already located 4.5e-6 away, "
                         "outside a one-width window, and called the dip unexplained"),
+    (65, 4, 1.0, 1e-10, "a side sub-bracket on the hump top between two located members, accepted "
+                        "once the refiner's fallback found a parabola there -- 5 of 4"),
 ])
 def test_the_hump_and_side_guards_do_not_break_a_CORRECT_count(N, m, band, prec, cause):
     """The two ways the guards for the silent cells overreached, measured on the 50/65 grid. A

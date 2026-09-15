@@ -34,7 +34,7 @@ wants `lam` above the `mps` seam anyway, and here the measurement agrees with th
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -56,6 +56,11 @@ _SAME_POINT = 4.0
 #: refinement is declared `stalled`. Confirming the best point is handled by fencing and never
 #: counts here, so a repeat is noise in the vertex, and three in a row is not going to clear.
 _REPEATS = 3
+
+#: Bisection steps a refinement may take when its starting triple has no parabola, before it gives
+#: up with `no_parabola`. One sufficed on the two-member bracket that motivated it; the endpoint
+#: guard already refuses an empty bracket within `_ENDPOINT_STEPS`, so this only caps a pathology.
+_FALLBACK_STEPS = 4
 
 #: Fraction of `_xatol` within which the vertex must agree with the best point before the best
 #: point is fenced. A fraction rather than the whole tolerance, so the point handed on has been
@@ -165,7 +170,8 @@ def _vertex(x, y):
     return x1 - step, c2
 
 
-def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None, interior=None):
+def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None, interior=None,
+           _walk=True):
     """Locate the minimum of `sigma_1**2` in `[lo, hi]`. Both endpoints in `lam`.
 
     `obj` is an `Objective`; it may be parameterized by `k`, in which case the conversion
@@ -228,6 +234,7 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None, interi
     progressed = False
     reason = "budget"
     repeats = 0
+    fallback = 0      # bisection steps taken because the START had no parabola
     settle = 0.0      # the vertex's last disagreement with the fenced best point
     curvature = float("nan")
 
@@ -259,8 +266,42 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None, interi
             # well-separated eigenvalues where the fit is across a W -- and at the END of a
             # good refinement, once the three points have collapsed onto the floor and the
             # curvature is gone. Treating the second as failure discards correct answers.
-            reason = "flat" if progressed else "no_parabola"
-            break
+            if progressed:
+                reason = "flat"
+                break
+            # With no progress yet, a concave triple is a bad START, not a verdict. It is what a
+            # bracket holding two members looks like when the search's deepest sample sits on the
+            # hump between them: 170*pi^2, prec 1e-8, band 0.3, returned `no_parabola` at once,
+            # `solve` read the rejection as an empty bracket, and two eigenvalues vanished with the
+            # count certified. Bisect the wider gap beside the lowest sample instead -- toward a
+            # well if there is one -- and try the parabola again. A lower sample found this way is
+            # NOT progress: guard 2 must still tell a collapsed refinement from one that never
+            # closed, and an empty bracket still walks to an endpoint and is refused there.
+            b = best
+            left = [p for p in hist if p[0] < b[0]]
+            right = [p for p in hist if p[0] > b[0]]
+            gaps = []
+            if left:
+                q = max(left, key=lambda p: p[0])
+                gaps.append((b[0] - q[0], 0.5 * (b[0] + q[0])))
+            if right:
+                q = min(right, key=lambda p: p[0])
+                gaps.append((q[0] - b[0], 0.5 * (b[0] + q[0])))
+            x_new = float(np.clip(max(gaps)[1], lo, hi)) if gaps else None
+            if (fallback >= _FALLBACK_STEPS or x_new is None
+                    or any(x_new == p[0] for p in hist)):
+                reason = "no_parabola"
+                break
+            new = f(x_new)
+            hist.append(new)
+            steps += 1
+            fallback += 1
+            if new[1] < best[1]:
+                best = new
+            if steps >= _ENDPOINT_STEPS and (best[0] <= lo or best[0] >= hi):
+                reason = "endpoint"
+                break
+            continue
 
         x_star, curvature = v
         # Guard 4: keep the step inside the interval, and nudge it off a duplicate point --
@@ -500,6 +541,30 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None, interi
                     phantom = side * (probe - end) > max(tie, 0.5 * step)
                     break
             inside = (lo < x_best < hi) and not phantom
+            if not phantom and _walk:
+                # No outward probe fell, so the minimum is NOT outside -- it is inside, about the
+                # same reach in, and nothing sampled it. That is what a start one ulp from an end
+                # produces: on a bracket nested in another, the deepest cached sample is the outer
+                # bracket's end, the triple collapses there and the width rule calls it converged.
+                # 50*pi^2, prec 1e-8, band 0.8 refused a side sub-bracket holding a member 1.58e-7
+                # in (`not_a_minimum`, certified one short); 170*pi^2, band 0.3 accepted a root ON
+                # its end 1.95e-7 from the member. Probe inward at the same steps; the first point
+                # lower than the end starts one nested refinement over the rest of the bracket.
+                # Nothing lower means the end IS the minimum, which the logic above already judges.
+                for frac in _PROBE_STEPS:
+                    step = max(frac * reach, 4.0 * np.spacing(abs(x_best)))
+                    z = float(np.clip(x_best - side * step, lo, hi))
+                    if z == x_best:
+                        continue
+                    if obj.tension(obj.from_lam(z)) < s_best:
+                        far = lo if side > 0 else hi
+                        a_in, b_in = sorted((x_best, far))
+                        inner = refine(obj, a_in, b_in, prec=prec, max_evals=max_evals,
+                                       lam_hint=z, interior=(a_in, b_in), _walk=False)
+                        if inner.accepted:
+                            return replace(inner, evaluations=obj.n_evals - start,
+                                           bracket=(lo, hi), steps=steps + inner.steps)
+                        break
         accepted = bool(inside and s_best < min(ends))
     if not accepted and reason in ("converged", "flat", "stalled"):
         reason = "not_a_minimum"

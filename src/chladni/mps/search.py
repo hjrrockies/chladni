@@ -638,6 +638,16 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                             q.delta_res if np.isfinite(q.delta_res) else 0.0,
                             4.0 * np.spacing(abs(r2.lam))) for q in taken):
                         continue                    # already a located root, from its own bracket
+                    # Found AGAIN, by distance. A find's own reading says how far the nearest
+                    # eigenvalue can be -- `sigma/c`, at the calibrated bound -- and a root already
+                    # located within that reach IS that eigenvalue. The bars above are not enough:
+                    # at 65*pi^2, prec 1e-10, band 1.0 a side sub-bracket 2.2e-9 wide sat on the
+                    # hump top between two located members, the refiner's fallback fitted a parabola
+                    # to rounding there and reported a bar of 7.2e-12, and the point (sigma 4.8e-10,
+                    # 3.2e-8 from both members) became a fifth level of four.
+                    reach_find = (r2.sigma / c_out) / BIAS_LO_CACHE
+                    if any(abs(r2.lam - q.lam) <= reach_find for q in taken):
+                        continue
                     taken.append(r2)
                     found += 1
                     extra.append(Level(lam=r2.lam, mult=1, sigma=r2.sigma,

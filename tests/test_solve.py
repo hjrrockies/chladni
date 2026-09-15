@@ -299,18 +299,9 @@ def test_the_pipeline_on_an_exact_degeneracy(mult):
     assert max(x.mult for x in res.levels) == mult
 
 
-_LOUD_SHORT = (
-    "even triple at 50*pi^2, prec 1e-8, band 0.8: 2 of 3, FLAGGED. The reach rule declines, and the "
-    "side search cannot locate the lower member 0.3e-9 relative inside its sub-bracket's end -- the "
-    "refiner returns no_parabola there and gives up. Loud, not silent (test_rule_seam pins that); "
-    "TODO.md records the refiner fallback that would locate it.")
-
-
 @pytest.mark.slow
-@pytest.mark.parametrize("window, band", [
-    pytest.param(w, b, marks=[pytest.mark.xfail(strict=True, reason=_LOUD_SHORT)]
-                 if (w, b) == ("cluster", 0.8) else [])
-    for w in ("pair", "cluster") for b in (0.5, 0.8, 1.3, 3.0)])
+@pytest.mark.parametrize("band", [0.5, 0.8, 1.3, 3.0])
+@pytest.mark.parametrize("window", ["pair", "cluster"])
 def test_the_pipeline_across_the_crossover(window, band):
     """Both sides of the merge licence. A method that always merges and one that always splits
     both look correct on a sweep that stays on one side."""

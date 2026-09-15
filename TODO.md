@@ -31,7 +31,7 @@ Phase D needs, and the constants still inherited from one rectangle family.
 
 **Phase D still goes before basis planning in section 3**, though for a narrower reason than it
 did. Since Phase 3b promoted attained merge and the reach rule, a cluster's total is certified or
-flagged on every grid measured, with two known exceptions below; what Phase D alone can settle is
+flagged on every grid measured, with the known exceptions below; what Phase D alone can settle is
 two roots at the same separation where one is a duplicate and the other is not. For `douse` the
 ordering still holds: a shape objective goes non-smooth exactly where levels collide.
 
@@ -40,25 +40,24 @@ Do the `modes(x)` widening as its OWN step before the angle. It is a seam change
 is two kinds of work in one session, which is what made the previous promotion attempt
 illegible.
 
-* **[next]** Refiner fallback for `no_parabola`. `refine` returns at once when its triple has no
-  positive curvature, and `solve` treats every rejected bracket as empty. On a bracket holding TWO
-  members that loses both, silently: `170*pi^2`, prec 1e-8, band 0.3, 6 of 8 (1 of 42 main-stage
-  brackets in that scan). The same gap leaves the even triple at `50*pi^2`, prec 1e-8, band 0.8
-  at 2 of 3, flagged, because the side search cannot locate a member 0.3e-9 relative inside its
-  sub-bracket's end. Fix: step toward the lowest sample instead of returning, and distinguish
-  `no_parabola` from `not_a_minimum` wherever a rejection is read as "empty". Touches every
-  refine, so it is its own measured change. Pinned: `tests/test_rule_seam.py` (strict xfail) and
-  `tests/test_solve.py::test_the_pipeline_across_the_crossover[cluster-0.8]`.
-* **[next]** Reconcile the reach count with the side search. When the count declines, `solve`
-  refines each side of the root ONCE, so a side holding two members yields one: `170*pi^2`, prec
-  1e-12, band 0.3, 7 of 8, certified (strict xfail in `tests/test_rule_seam.py`). Searching on
-  after a find was measured and reverted: the read had already counted some members inside, and
-  the search located them again -- 4 of 3 at `50*pi^2`, 1e-12, band 0.3 -- while capping the
-  root's count at what the search could not reach lost a member the search then failed to find,
-  2 of 3 at 1e-6. With both in place the grids read 170: 37 right, 2 silent (1e-8, the refiner
-  item above; 1e-14, basis-excused); 50/65: 1 silent. The fix is attribution: each branch the
-  read counts inside is owned ONCE, by a located level near where `sigma_j/c` puts it, or else by
-  the root.
+* **[next]** Reconcile the reach count with the side search. When the count declines, the side
+  search locates members as their own levels, and nothing reconciles what it locates with what the
+  read already counted inside. Both silent cells left at `170*pi^2`, band 0.3, are this, in opposite
+  directions (strict xfails in `tests/test_rule_seam.py`):
+  - prec 1e-8, 9 of 8: the read at member 2 counts member 1 inside, and the side search then
+    locates member 1 as its own level -- counted twice. Hidden until the refiner's `no_parabola`
+    fallback and inward walk let the side search locate it.
+  - prec 1e-12, 7 of 8: each side is refined ONCE, and the long side held two members.
+
+  Searching on after a find was measured and reverted: it double-counted members the read had
+  counted (4 of 3 at `50*pi^2`, 1e-12, band 0.3), and capping the root's count at what the search
+  could not reach lost a member the search then failed to find (2 of 3 at 1e-6). The fix is
+  attribution: each branch the read counts inside is owned ONCE, by a located level near where
+  `sigma_j/c` puts it, or else by the root.
+* **[later]** `solve` still reads every refiner rejection as an empty bracket. Since the
+  `no_parabola` fallback, a rescan of the `170*pi^2` band-0.3 row and three other cluster cells
+  found no main-stage bracket holding eigenvalues rejected (42 of 42 accepted), so this is latent,
+  not live; a rejection other than `not_a_minimum` or `endpoint` should still not certify a count.
 * **[next]** Declines at `145*pi^2`. 24 of 45 cells decline under the promoted defaults against 21
   under the previous ones, far over the 5% the robustness plan set; the count is not where it
   starts, so look upstream at the bracketer's decline reasons first.

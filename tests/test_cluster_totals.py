@@ -9,38 +9,35 @@ A wrong total is the error that moves an index: `lam_3` becomes a different eige
 solver reports an accurate but non-consecutive spectrum. So the total is what is asserted, and
 the grouping -- which is genuinely arbitrary in part of this range -- is not.
 
-# The grid under the promoted defaults, measured 2026-09-14
+# The grid under the promoted defaults, measured 2026-09-15
 
-Attained merge, the reach rule on the cache slope, the side search, no cross-check. Declared
-total; `L` wrong and flagged uncertain, `S` wrong and SILENT, `f` right but flagged, `D` a
-reasoned decline:
+Attained merge, the reach rule on the cache slope, the side search, no cross-check, and the
+refiner's `no_parabola` fallback and inward walk. Declared total; `L` wrong and flagged uncertain,
+`S` wrong and SILENT, `f` right but flagged, `D` a reasoned decline:
 
     N = 50, EVENLY spaced, truth 3
     prec     0.3  0.5  0.8  1.0  1.3  1.6  2.0  2.6  3.0  4.0  6.0
     1e-06     3    3    3    3    3    3    3    3    3    3    3
-    1e-08     3    3   2L    3    3    3    3    3    3    3    3
+    1e-08     3    3    3    3    3    3    3    3    3    3    3
     1e-10     3    3    3    3    3    3    3    3    3    3    3
     1e-12     3    3    3    3    3    3    3    3    3    3    3
     1e-14     3    3    3    3    3    3    3   3f    3    3    3
 
     N = 65, UNEVENLY spaced (1 : 2.2 : 1), truth 4
     prec     0.3  0.5  0.8  1.0  1.3  1.6  2.0  2.6  3.0  4.0  6.0
-    1e-06     4    4   4f    4    D    D    4    4    4    4    4
+    1e-06     4    4    4    4    D    D    4    4    4    4    4
     1e-08     4    D    4    4    4    4    D    4    4    4    4
     1e-10     4    4    4    4    D    4    4    4    4    4    4
     1e-12     4    4    4    4    4    4    4    4    4    4    4
     1e-14     4    4    4    4    4    4    4    4    4    D    4
 
-One wrong cell, flagged, and none silent -- against 33 wrong (32 flagged, 1 silent) under the
-previous defaults, which failed wherever a cluster's width fell between about one and eight merge
-licences. That band belonged to the licence merge folding roots already resolved into separate
-brackets and to `_collapse_ambiguous` recounting over a synthesised bracket whose radius placed
-it; both are out of the defaults now, and `test_the_cross_check_LOSES_a_correct_answer...` below
-keeps the evidence under the configuration it describes.
-
-The wrong cell, the even cluster at 1e-8, band 0.8, is 2 of 3: the reach rule declines and the
-side search cannot locate the lower member 0.3e-9 relative inside its sub-bracket's end, where the
-refiner returns `no_parabola` and gives up. `TODO.md` records the refiner fallback.
+No wrong cell -- against 33 wrong (32 flagged, 1 silent) under the previous defaults, which failed
+wherever a cluster's width fell between about one and eight merge licences. That band belonged to
+the licence merge folding roots already resolved into separate brackets and to
+`_collapse_ambiguous` recounting over a synthesised bracket whose radius placed it; both are out of
+the defaults now, and `test_the_cross_check_LOSES_a_correct_answer...` below keeps the evidence
+under the configuration it describes. The last wrong cell, the even cluster at 1e-8, band 0.8, was
+2 of 3 until the refiner stopped giving up on a start with no parabola.
 
 # Tiers
 
@@ -63,15 +60,15 @@ BANDS = (0.3, 0.5, 0.8, 1.0, 1.3, 1.6, 2.0, 2.6, 3.0, 4.0, 6.0)
 PRECS = (1e-6, 1e-8, 1e-10, 1e-12, 1e-14)
 EVEN, UNEVEN = (50, 3), (65, 4)
 
-#: Wrong totals under the promoted defaults, keyed `(N, prec, band)`.
-WRONG = {(50, 1e-8, 0.8)}
+#: Wrong totals under the promoted defaults, keyed `(N, prec, band)`. None on this grid; a cell
+#: that goes wrong is added here as a strict xfail, with its cause in `_WHY`.
+WRONG = set()
 #: Wrong totals that nothing flags. None on this grid.
 SILENT = set()
 
 SLOW_PRECS, SLOW_BANDS = (1e-8, 1e-14), (0.5, 0.8, 1.3, 2.0, 3.0)
 
-_WHY = ("the reach rule declines and the side search cannot locate a member 0.3e-9 relative inside "
-        "its sub-bracket's end: the refiner returns no_parabola there. TODO.md, refiner fallback")
+_WHY = "a wrong total on the cluster grid; record its cause here when one is added to WRONG"
 
 
 def cluster(N, m, band, prec):
