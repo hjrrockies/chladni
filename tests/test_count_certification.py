@@ -76,3 +76,17 @@ def test_solve_interval_RAISES_on_an_uncertain_count(monkeypatch):
     monkeypatch.setattr(type(s), "search_interval", lambda self, a, b, **kw: bad)
     with pytest.raises(RuntimeError, match="could not be certified"):
         s.solve_interval(40.0, 60.0)
+
+
+def test_under_ATTAINED_merge_and_the_reach_rule_a_fold_is_a_duplicate_and_is_not_flagged():
+    """Attained merge folds only roots that agree to within the accuracy they reached, so a fold is
+    the same point found twice, and a partner that close is the reach rule's own count. Measured
+    at 50*pi^2, prec 1e-14, band 0.8: two brackets refined to one member 4 ulps apart, the count
+    was right, and flagging it made `solve_interval` raise. A level flagged UPSTREAM still passes
+    through flagged -- this removes one reason to doubt a count, not the others."""
+    dup = Level(lam=X, mult=1, n_roots=2)
+    out, flagged = _flag_uncertain_counts([dup], folds_are_duplicates=True)
+    assert not flagged and not out[0].count_uncertain
+    upstream = Level(lam=X, mult=1, n_roots=2, count_uncertain=True, uncertain_reason="declined")
+    out, flagged = _flag_uncertain_counts([upstream], folds_are_duplicates=True)
+    assert flagged and out[0].count_uncertain

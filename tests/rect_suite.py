@@ -50,7 +50,7 @@ __all__ = ["Counter", "pencil_for", "make_case", "diagnostics", "assert_floor",
            "SUITE_RTOL", "FINEST_PREC",
            "modes_in_window", "splitting_rates", "tightest_pair", "delta_for",
            "crossover_cases", "split_degeneracy_cases", "gate_cases",
-           "cluster_diameter_ratio", "multiplicity_undecided",
+           "cluster_diameter_ratio",
            "CROSSOVER_WINDOWS", "WIDE_WINDOW",
            "FLOOR_TARGET", "PHI",
            "family_A", "family_B", "family_C", "family_D", "family_stress",
@@ -688,39 +688,6 @@ def cluster_diameter_ratio(case, prec):
     if t.size < 2:
         return 0.0
     return float((t[-1] - t[0]) / (prec * max(abs(t[-1]), 1.0)))
-
-
-def multiplicity_undecided(case, prec, *, reach=2.0, tol=0.02):
-    """Is this cluster's MULTIPLICITY undetermined at this precision, whatever the method?
-
-    Yes when its diameter lies between the merge licence and the wide bracket's reach --
-    `1 < diameter/(prec*lam) < reach`. Such a cluster is too wide to be one level of `S(prec)`,
-    and its members sit closer together than the flanks a multiplicity read needs, so there is
-    no window that is outside the level and inside the gap to the next one. Measured on the
-    multiplicity-3 cluster at `50*pi^2`, with `chladni.mps.multiplicity.WIDE_FACTOR = 2`:
-
-        diameter/licence   0.40   1.00   1.60   2.60   4.00   6.00
-        verdict            pass   FAIL   FAIL   pass   pass   pass
-
-    The band is bounded by the reach on one side and the licence on the other, exactly as the
-    argument predicts, so this is a property of the configuration rather than a tuning failure.
-    Below the licence the cluster is one level and the reach spans it; above the reach its
-    members are further apart than the flanks and each is read alone.
-
-    **How these cases come to sit there is worth recording.** `crossover_cases` dials the
-    MINIMUM ADJACENT GAP to a multiple of `prec`, because that is what decides whether two
-    neighbours must be told apart -- but `S(prec)` groups by DIAMETER, and for an `m`-member
-    cluster the diameter is about `(m-1)` times the dialled gap. So dialling the gap does not
-    control the licence, and at `m = 3, band = 0.5` the diameter lands on it exactly, to four
-    figures. That is `CHLADNI_V1.md` section 5.4's trap in a form the document does not name:
-    it warns that the tightest PAIR is not the one you are dialling, and for a cluster the
-    DIAMETER is not the thing you are dialling either.
-    """
-    # `tol` on the lower edge because a case dialled ONTO the licence lands a hair either
-    # side of it: at `m = 3, band = 0.5` the ratio comes out at 0.99999999999, and a strict
-    # `>= 1` would score the most ambiguous case in the set as if it were decided.
-    r = cluster_diameter_ratio(case, prec)
-    return (1.0 - tol) <= r <= float(reach)
 
 
 def gate_cases(prec, seed=0):

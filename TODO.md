@@ -29,30 +29,39 @@ with multiplicities come out. `tests/candidates_v1.py` holds the two adapters th
 What is left here is not construction. It is the multiplicity contract, the `modes(x)` widening
 Phase D needs, and the constants still inherited from one rectangle family.
 
-**Two items in this file are `[blocking]` and Phase D goes first**, ahead of basis planning in
-section 3. Phase D is a CORRECTNESS defect and the planner is a CAPABILITY gap: today
-`solve_interval` can report one eigenvalue where a window holds four, so anything built on it
-inherits a count that is a lower bound -- including a planner, whose entire job is to judge a
-basis by results the solver may be miscounting. And for `douse` the ordering is not close: a
-shape objective goes non-smooth exactly where levels collide, which is exactly where the count
-is currently unreliable.
+**Phase D still goes before basis planning in section 3**, though for a narrower reason than it
+did. Since Phase 3b promoted attained merge and the reach rule, a cluster's total is certified or
+flagged on every grid measured, with two known exceptions below; what Phase D alone can settle is
+two roots at the same separation where one is a duplicate and the other is not. For `douse` the
+ordering still holds: a shape objective goes non-smooth exactly where levels collide.
 
 Do the `modes(x)` widening as its OWN step before the angle. It is a seam change across
 `Objective`, the pencil and the candidate interface; the angle is a rule. Landing them together
 is two kinds of work in one session, which is what made the previous promotion attempt
 illegible.
 
-* **[blocking]** Cluster totals are wrong, and now LOUD. On main, measured 2026-09-14 across
-  bands 0.3 to 6 licences and `prec` 1e-6 to 1e-14, 33 cells declare fewer eigenvalues than the
-  cluster holds -- 8 on the evenly spaced triple at `50*pi^2`, 25 on the uneven quadruple at
-  `65*pi^2` -- and 32 of them are flagged by `_flag_uncertain_counts` (a level declaring fewer
-  than the accepted roots folded into it, or `_collapse_ambiguous`'s two counts disagreeing), so
-  `solve_interval` raises instead of returning a short array. One is still silent: the even
-  cluster at 1e-14, band 0.5. The search resolves these clusters into separate brackets; the
-  total is lost downstream, in the licence merge and the collapse cross-check, whose radius places
-  the failing band. Fix: plan Phase 3b -- fold only within attained accuracy, count per bracket
-  by the reach rule, retire the cross-check. Pinned as strict xfails in
-  `tests/test_cluster_totals.py`, which XPASS when it lands.
+* **[next]** Refiner fallback for `no_parabola`. `refine` returns at once when its triple has no
+  positive curvature, and `solve` treats every rejected bracket as empty. On a bracket holding TWO
+  members that loses both, silently: `170*pi^2`, prec 1e-8, band 0.3, 6 of 8 (1 of 42 main-stage
+  brackets in that scan). The same gap leaves the even triple at `50*pi^2`, prec 1e-8, band 0.8
+  at 2 of 3, flagged, because the side search cannot locate a member 0.3e-9 relative inside its
+  sub-bracket's end. Fix: step toward the lowest sample instead of returning, and distinguish
+  `no_parabola` from `not_a_minimum` wherever a rejection is read as "empty". Touches every
+  refine, so it is its own measured change. Pinned: `tests/test_rule_seam.py` (strict xfail) and
+  `tests/test_solve.py::test_the_pipeline_across_the_crossover[cluster-0.8]`.
+* **[next]** Reconcile the reach count with the side search. When the count declines, `solve`
+  refines each side of the root ONCE, so a side holding two members yields one: `170*pi^2`, prec
+  1e-12, band 0.3, 7 of 8, certified (strict xfail in `tests/test_rule_seam.py`). Searching on
+  after a find was measured and reverted: the read had already counted some members inside, and
+  the search located them again -- 4 of 3 at `50*pi^2`, 1e-12, band 0.3 -- while capping the
+  root's count at what the search could not reach lost a member the search then failed to find,
+  2 of 3 at 1e-6. With both in place the grids read 170: 37 right, 2 silent (1e-8, the refiner
+  item above; 1e-14, basis-excused); 50/65: 1 silent. The fix is attribution: each branch the
+  read counts inside is owned ONCE, by a located level near where `sigma_j/c` puts it, or else by
+  the root.
+* **[next]** Declines at `145*pi^2`. 24 of 45 cells decline under the promoted defaults against 21
+  under the previous ones, far over the 5% the robustness plan set; the count is not where it
+  starts, so look upstream at the bracketer's decline reasons first.
 * **[next]** The old Phase D note, for the case distance cannot settle. `chladni.mps.search`
   implements Phase D's DISTANCE PREFILTER and gets the collapse branch for free -- reading
   multiplicity once per merged group RECOUNTS by construction, which `search.md` says is the
@@ -60,11 +69,11 @@ illegible.
   really for: two roots at the SAME separation where one pair is a duplicate and the other is
   not. Needs the `modes(x)` widening below. Nothing in the roster exercises it, which is a
   measurement on one roster and not an argument.
-* **[next]** State the multiplicity contract, after Phase 3b. The uneven case it asked for first
-  is measured (`tests/test_cluster_totals.py`): the failing band is not spacing-specific, it is
-  about one to eight merge licences of cluster width on both spacings, and it moves with
-  `WIDE_FACTOR` -- so the contract is a statement about the rule that replaces the cross-check,
-  not about the cross-check.
+* **[next]** State the multiplicity contract for the promoted pipeline: attained merge, the reach
+  rule on the cache slope, the side search that locates what the count declines. The old failing
+  band of one to eight licences belonged to the cross-check, which is retired from the defaults
+  (`tests/test_cluster_totals.py` records the grid); the contract is a statement about the rule
+  that replaced it, including when a count declines and what the side search may add.
 * **[blocking]** Widen the candidate interface from `tensions(x)` to also carry `modes(x)` --
   the candidate eigenfunctions on a fixed shared point set. **This is the first thing to do**:
   Phase D's collapse-versus-merge is decided by the interior Gram angle, which `tensions(x)`
@@ -171,9 +180,11 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 ## 4. Known gaps in what is built
 
 * **[next]** A starved basis DROPS the levels it resolves worst, silently. On the disk over
-  `[8, 60]` at `prec = 1e-12`, plane waves at `pad = 0.35` (22 columns) return 2 of 6 levels and
-  `pad = 0.45` (28 columns) 5 of 6, with no decline, no warning, and nothing in `unmet` for the
-  lost ones -- the levels that ARE found meet the request. `search.md` section 2.4 clause (3)
+  `[8, 60]` at `prec = 1e-12`, plane waves at `pad = 0.45` (28 columns) return 5 of 6 levels,
+  with no decline, no warning, and nothing in `unmet` for the lost one -- the levels that ARE
+  found meet the request. At `pad = 0.35` (22 columns) the previous defaults returned 2 of 6 the
+  same way; the promoted defaults leave a count the reach rule cannot certify there, and
+  `solve_interval` refuses, which is loud but not a completeness diagnostic. `search.md` section 2.4 clause (3)
   says the completeness diagnostics fire whenever clause (1) fails; here none does, and
   `Eigensolver.solve(n)` answers a short return by widening the window. Pinned as a strict
   xfail, `tests/test_solve_interval.py::test_a_starved_basis_does_not_DROP_levels_silently`.

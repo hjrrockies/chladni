@@ -69,15 +69,10 @@ CASES = [(f, i) for f, n in _SIZES.items() for i in range(n)] + [("roster", k) f
 
 #: Cells known to fail, keyed `(family, index, prec)`, each with the evidence. Strict: when one
 #: starts passing the suite goes red until its entry comes off, so a fix cannot land silently.
-KNOWN = {
-    ("C", 2, 1e-4): (
-        "Phase 3: the collapse defect. The three members at 50*pi^2 span 1.92e-04 relative, wider "
-        "than the licence, and solve returns ONE level of multiplicity 1 flagged "
-        "grouping_ambiguous -- two members dropped. At 1e-06 all three come back."),
-    ("C", 6, 1e-4): (
-        "Phase 3: the collapse defect. The four members at 65*pi^2 span 1.94e-04 relative and "
-        "solve returns one level of multiplicity 1 -- three dropped. At 1e-06 all four return."),
-}
+#: Empty since Phase 3b promoted attained merge and the reach rule. Its last two entries were the
+#: collapse defect at 1e-4 -- C2 (three members at 50*pi^2) and C6 (four at 65*pi^2) returned as
+#: one level of multiplicity 1 -- and both cells now pass.
+KNOWN = {}
 
 #: Cases not yet on a frozen basis. Empty: `hard_roster` pencils carry `SUITE_RTOL` since plan
 #: Phase 2, which took eq_tri's floor from 2.4e-12 to 1.3e-15 and its 1e-14 cell off `KNOWN`.

@@ -35,9 +35,13 @@ def cones(*centres):
 
 
 def test_the_defaults_are_the_shipped_behaviour():
+    """`solve` ships attained merge, the reach rule on the cache slope, and no cross-check --
+    promoted on the held-out 145*pi^2 grid. `multiplicity` keeps "gap" as its own default: it is
+    the low-level call, and "reach" there needs a bracket and a slope that only `solve` has."""
     assert inspect.signature(multiplicity).parameters["rule"].default == "gap"
     p = inspect.signature(solve).parameters
-    assert p["rule"].default == "gap" and p["merge"].default == "licence"
+    assert (p["merge"].default, p["rule"].default, p["reach_slope"].default,
+            p["collapse"].default) == ("attained", "reach", "cache", False)
 
 
 def test_reach_needs_the_bracket_and_the_slope():
@@ -59,6 +63,71 @@ def test_reach_resolves_the_SIDE_on_an_asymmetric_bracket():
     assert m.mu == 2
 
 
+def test_reach_does_not_resolve_a_side_when_BOTH_sides_hold_an_eigenvalue():
+    """Found promoting the reach rule: the even cluster at 50*pi^2, prec 1e-8, band 0.8. The root
+    is the middle member, with partners 8.0e-9 away on BOTH sides; the bracket reaches past the
+    lower one and not the upper. A sigma_1 probe measures the nearest eigenvalue on its side, so
+    both probes read low (0.121 and 0.109 of sigma_j), the "lower" one was the short side by
+    noise, the branch was judged outside, and the loop stopped -- mu 1, not declined. A side that
+    holds no branch reads the root's own wall, ~1.0 of sigma_j (measured 0.993). Two sides holding
+    one leave the side undetermined, and that must decline rather than count."""
+    t = cones(10.0, 10.0 - 1.05, 10.0 + 1.0)       # upper partner nearer, lower one inside
+    m = multiplicity(t, 10.0, rule="reach", bracket=(10.0 - 1.1, 10.0 + 0.14), c=C,
+                     reach_bounds=(0.61, 2.21, 0.61, 2.21))
+    assert m.ambiguous or m.mu == 2, f"read {m.mu}, not declined"
+
+
+def test_reach_always_counts_the_located_root_s_OWN_branch():
+    """Found on the held-out grid at 170*pi^2, prec 1e-12, band 0.3. The refiner put the root at
+    its bracket's upper edge with its eigenvalue 1.7e-14 relative beyond it, so branch 0's distance
+    landed in the undecided band, the side probe read it OUTSIDE on the short side, and the loop
+    stopped -- the partner 3.1e-13 inside the long side was never examined, mult 1, not declined.
+    Branch 0 is the level's own eigenvalue; the level exists because it was located."""
+    t = cones(10.0 + 3e-6, 10.0 - 0.3)        # own eigenvalue just past the upper edge; partner inside
+    m = multiplicity(t, 10.0, rule="reach", bracket=(9.0, 10.0 + 1e-7), c=C,
+                     reach_bounds=(0.61, 2.21, 0.61, 2.21))
+    assert m.mu == 2 or m.ambiguous, f"read {m.mu}, not declined"
+
+
+
+def test_reach_keeps_looking_past_a_branch_OUTSIDE_the_short_side():
+    """Found on the held-out grid at 170*pi^2, prec 1e-12, band 0.3, once branch 0 was always
+    counted. The root sat at its bracket's upper edge; branch 1 was the partner just above, correctly
+    rejected on the short side -- and the loop BROKE, so branch 2, a member inside the long side,
+    was never examined. Ascending branches justify stopping only when a branch is outside BOTH ways;
+    one outside the short side says nothing about the next one on the long side."""
+    t = cones(10.0, 11.0, 10.0 - 1.8)          # partner outside above; member inside below
+    m = multiplicity(t, 10.0, rule="reach", bracket=(8.0, 10.01), c=C,
+                     reach_bounds=(0.61, 2.21, 0.61, 2.21))
+    assert m.mu == 2 or m.ambiguous, f"read {m.mu}, not declined"
+
+@pytest.mark.slow
+@pytest.mark.parametrize("N, m, band, prec, cause", [
+    (50, 3, 0.8, 1e-8, "both sides hold a partner, and the side probe picked one"),
+    pytest.param(170, 4, 0.3, 1e-12, "a side holding two members, of which the search locates one",
+                 marks=pytest.mark.xfail(strict=True, reason=(
+                     "the two reach-rule defects here are fixed (branch 0 counted; no stop after a "
+                     "short-side reject) and the count now declines, but the side search refines each "
+                     "side once and the long side held two members -- 7 of 8, certified. Searching "
+                     "on after a find double-counted members the read had already counted inside; "
+                     "reconciling the two is its own change, TODO.md."))),
+    pytest.param(170, 4, 0.3, 1e-8, "a bracket holding two members rejected on no_parabola",
+                 marks=pytest.mark.xfail(strict=True, reason=(
+                     "the refiner returns no_parabola on a bracket holding two members, and solve "
+                     "treats every rejected bracket as empty -- both lost, 6 of 8. The refiner "
+                     "fallback is the next change; TODO.md."))),
+    (65, 4, 0.3, 1e-8, "a hump top kept as a level beside the two members found either side"),
+])
+def test_the_promoted_defaults_leave_no_SILENT_wrong_total(N, m, band, prec, cause):
+    """The silent wrong totals that appeared once the crash fix (the QR route around Accelerate's
+    dgeqrf) moved the objective. At 65*pi^2, band 0.3, one bracket narrower than the licence held
+    two members, the refiner accepted the hump between them (sigma 1.35e-8), the side search found
+    both members -- and the hump stayed as a third level beside them."""
+    total, truth, d = _cluster_total(N, m, band, prec)
+    assert total == truth or not d.certified_counts, (
+        f"declared {total} of {truth} with certified counts -- a silent wrong total ({cause})")
+
+
 def test_floor_counts_COINCIDENCE_only():
     """An exact double reads 2; a pair 1e-3 apart -- inside any sensible bracket but nowhere near
     the floor together -- reads 1. The floor rule answers a different question than `mu*(B)`."""
@@ -66,14 +135,14 @@ def test_floor_counts_COINCIDENCE_only():
     assert multiplicity(cones(10.0, 10.001), 10.0, rule="floor").mu == 1
 
 
-def test_the_reach_slope_is_a_choice_and_OUTSIDE_is_still_the_default():
-    """`reach_slope` picks where the reach rule reads its wall slope. "outside" -- three bracket
-    widths out -- is what the rule was calibrated on and stays the default until a recalibration
-    clears acceptance. "cache" reads the nearest cached samples either side of the root, which
-    measured within 7% of the true distance on the cells where "outside" read 1.86x: on a cluster
-    wider than the standoff, the outside samples sit in other members' wells."""
+def test_the_reach_slope_is_a_choice_and_CACHE_is_the_default():
+    """`reach_slope` picks where the reach rule reads its wall slope. "cache" reads the nearest
+    cached samples either side of the root, which measured within 7% of the true distance on the
+    cells where "outside" -- three bracket widths out, what the rule was first calibrated on --
+    read 1.86x: on a cluster wider than the standoff, the outside samples sit in other members'
+    wells. "cache" became the default once its recalibrated bounds cleared the held-out grid."""
     p = inspect.signature(solve).parameters
-    assert p["reach_slope"].default == "outside"
+    assert p["reach_slope"].default == "cache"
     with pytest.raises(ValueError, match="reach_slope"):
         from chladni.mps.objective import Objective
         solve(Objective(lambda k: [0.2, 0.3], 3.0, 4.0, variable="k", prec=1e-8),
@@ -92,8 +161,12 @@ def _cluster_total(N, m, band, prec):
     (case,) = rs.split_degeneracy_cases(prec, bands=(band,), levels={N: m})
     truth = rs.complete_truth(case)
     res = solve(bs.objective_for(case, prec), prec=prec, **_REACH)
-    near = [L for L in res.levels if abs(L.lam - N * rs.PI2) < 0.02 * N * rs.PI2]
-    return sum(L.mult for L in near), m, res.diagnostics
+    lam0, window = N * rs.PI2, 0.02 * N * rs.PI2
+    near = [L for L in res.levels if abs(L.lam - lam0) < window]
+    # The truth in the SAME window, not `m`: at 170*pi^2 the window also holds the pairs at
+    # 1667.96 and 1707.44, so it holds 8 where the cluster has 4.
+    want = int(np.sum(np.abs(truth - lam0) < window))
+    return sum(L.mult for L in near), want, res.diagnostics
 
 
 @pytest.mark.slow
@@ -129,6 +202,24 @@ def test_the_fresh_125_grid_has_no_SILENT_wrong_total(prec, band, cause):
     assert total == truth or not d.certified_counts, (
         f"declared {total} of {truth} with certified counts -- a silent wrong total ({cause})")
     assert total == truth, f"declared {total} of {truth}, flagged ({cause})"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("N, m, band, prec, cause", [
+    (50, 3, 0.3, 1e-6, "a coarsely located member dropped as a hump: its cell held an unlocated "
+                       "member's well, so the cell refine read not_a_minimum -- 1 of 3"),
+    (50, 3, 0.8, 1e-14, "two brackets refined to the SAME member, attained merge folded them, and "
+                        "the n_roots > mult flag read a duplicate as a possible hidden pair"),
+    (125, 4, 0.8, 1e-8, "a side search read the wall of a member already located 4.5e-6 away, "
+                        "outside a one-width window, and called the dip unexplained"),
+])
+def test_the_hump_and_side_guards_do_not_break_a_CORRECT_count(N, m, band, prec, cause):
+    """The two ways the guards for the silent cells overreached, measured on the 50/65 grid. A
+    guard that turns a correct certified count into a wrong one, or into a flagged one, costs more
+    than the silent cell it was written for: `solve_interval` raises on a flag."""
+    total, truth, d = _cluster_total(N, m, band, prec)
+    assert total == truth, f"declared {total} of {truth} ({cause})"
+    assert d.certified_counts, f"a correct count came back flagged ({cause}): {d.uncertain}"
 
 
 @pytest.mark.slow

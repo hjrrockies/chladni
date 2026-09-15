@@ -136,9 +136,20 @@ def test_a_request_the_basis_cannot_serve_is_REPORTED_not_met_silently():
     truth = np.unique(disk_spectrum(a, b, 1.0))
     s = solver_for(disk(1.0), b, label="disk-starved", pad=0.35, prec=1e-12)
 
-    with pytest.warns(PrecisionWarning, match="short of the requested"):
-        spec = s.solve_interval(a, b)
-
+    # Two ways to TELL the caller, and either is acceptable; a confident answer is not. Under the
+    # promoted defaults the starved basis leaves a count the reach rule cannot certify, and
+    # `solve_interval` refuses with that reason -- measured 2026-09-14 -- where the previous
+    # defaults returned the levels with a shortfall warning.
+    import warnings
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            spec = s.solve_interval(a, b)
+        except RuntimeError as exc:
+            assert "could not be certified" in str(exc), f"refused, but not for a stated reason: {exc}"
+            return
+    assert any(issubclass(w.category, PrecisionWarning) and "short of the requested" in str(w.message)
+               for w in caught), "returned without warning that the request was not met"
     assert spec.unmet.any(), "a request beyond the basis must be reported as unmet"
     assert not spec.achieved
     err = np.array([np.min(np.abs(truth - x)) for x in spec.lam])
@@ -180,11 +191,13 @@ def test_solve_interval_returns_a_Spectrum_and_solve_returns_an_array():
     assert isinstance(s.solve(4), np.ndarray)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "measured 2026-09-14: on a starved disk basis solve_interval returns 2 of 6 levels at "
-    "pad=0.35 and 5 of 6 at pad=0.45, with no decline, no unmet level for the lost ones and no "
-    "warning. Clause (1)'s completeness diagnostics do not fire. TODO.md records it."))
-@pytest.mark.parametrize("pad", [0.35, 0.45])
+@pytest.mark.parametrize("pad", [
+    0.35,     # under the promoted defaults the uncertified count makes solve_interval refuse
+    pytest.param(0.45, marks=pytest.mark.xfail(strict=True, reason=(
+        "measured 2026-09-14: on a starved disk basis solve_interval returns 5 of 6 levels at "
+        "pad=0.45 with no decline, no unmet level for the lost one and no warning. Clause (1)'s "
+        "completeness diagnostics do not fire. TODO.md records it."))),
+])
 def test_a_starved_basis_does_not_DROP_levels_silently(pad):
     """`search.md` section 2.4 clause (3): the completeness diagnostics fire whenever clause (1)
     fails. A basis too poor to locate a level must say so -- a short count with no warning is

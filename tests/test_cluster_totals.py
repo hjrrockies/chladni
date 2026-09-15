@@ -9,45 +9,44 @@ A wrong total is the error that moves an index: `lam_3` becomes a different eige
 solver reports an accurate but non-consecutive spectrum. So the total is what is asserted, and
 the grouping -- which is genuinely arbitrary in part of this range -- is not.
 
-# The grid, measured 2026-09-14 on main
+# The grid under the promoted defaults, measured 2026-09-14
 
-Declared total; `L` wrong and flagged uncertain, `S` wrong and SILENT, `f` right but flagged,
-`D` a reasoned decline:
+Attained merge, the reach rule on the cache slope, the side search, no cross-check. Declared
+total; `L` wrong and flagged uncertain, `S` wrong and SILENT, `f` right but flagged, `D` a
+reasoned decline:
 
     N = 50, EVENLY spaced, truth 3
     prec     0.3  0.5  0.8  1.0  1.3  1.6  2.0  2.6  3.0  4.0  6.0
-    1e-06     3    3    3   3f    3   2L   2L    3    3    3    3
-    1e-08     3   3f   2L   3f    3    3    3    3    3    3    3
-    1e-10     3    3   3f   3f    3    3    3    3    3    3    3
-    1e-12     3    3   3f   2L    3    3   2L    3    3    3    3
-    1e-14     3   2S   3f   3f   2L   2L    3    3    3    3    3
+    1e-06     3    3    3    3    3    3    3    3    3    3    3
+    1e-08     3    3   2L    3    3    3    3    3    3    3    3
+    1e-10     3    3    3    3    3    3    3    3    3    3    3
+    1e-12     3    3    3    3    3    3    3    3    3    3    3
+    1e-14     3    3    3    3    3    3    3   3f    3    3    3
 
     N = 65, UNEVENLY spaced (1 : 2.2 : 1), truth 4
     prec     0.3  0.5  0.8  1.0  1.3  1.6  2.0  2.6  3.0  4.0  6.0
-    1e-06     D    D   2L   2L   2L   2L   2L    D    4    4    4
-    1e-08    4f   4f   2L   2L   2L   2L   2L    4    4    4    4
-    1e-10     4   2L   2L   2L    D   2L   3L    4    4    4    4
-    1e-12    2L   2L   2L    D   2L   2L    4    4    4    4    4
-    1e-14    4f   2L   2L   2L   2L   2L    4    4    4    4    4
+    1e-06     4    4   4f    4    D    D    4    4    4    4    4
+    1e-08     4    D    4    4    4    4    D    4    4    4    4
+    1e-10     4    4    4    4    D    4    4    4    4    4    4
+    1e-12     4    4    4    4    4    4    4    4    4    4    4
+    1e-14     4    4    4    4    4    4    4    4    4    D    4
 
-**The total is unreliable wherever a cluster's width falls between about one and eight merge
-licences**, on both spacings and at every precision. Of 33 wrong cells, 32 are now flagged by
-`_flag_uncertain_counts` and the one at 1e-14, band 0.5 on the even cluster is still silent.
+One wrong cell, flagged, and none silent -- against 33 wrong (32 flagged, 1 silent) under the
+previous defaults, which failed wherever a cluster's width fell between about one and eight merge
+licences. That band belonged to the licence merge folding roots already resolved into separate
+brackets and to `_collapse_ambiguous` recounting over a synthesised bracket whose radius placed
+it; both are out of the defaults now, and `test_the_cross_check_LOSES_a_correct_answer...` below
+keeps the evidence under the configuration it describes.
 
-# The mechanism, which is why Phase 3b replaces rather than tunes
-
-The search resolves these clusters into separate brackets -- the census in
-`test_multiplicity_ladder.py` -- and the total is lost DOWNSTREAM: the merge prefilter folds roots
-within the licence and reads multiplicity once, and `_collapse_ambiguous` recounts over a
-synthesised bracket whose radius places the failing band. Ablating the cross-check here gives the
-right total and the right grouping; enabling it loses two members. And no wide-bracket reach
-reads the right total at one representative, so the defect is not a missing cap.
+The wrong cell, the even cluster at 1e-8, band 0.8, is 2 of 3: the reach rule declines and the
+side search cannot locate the lower member 0.3e-9 relative inside its sub-bracket's end, where the
+refiner returns `no_parabola` and gives up. `TODO.md` records the refiner fallback.
 
 # Tiers
 
 The slow tier carries a 20-cell slice across both sides of the licence at 1e-8 and 1e-14; the
 `robust` tier carries the whole grid. Every wrong cell is a STRICT xfail: the body runs, and when
-Phase 3b makes one pass the suite goes red until its entry comes off.
+a fix makes one pass the suite goes red until its entry comes off.
 """
 from __future__ import annotations
 
@@ -64,21 +63,15 @@ BANDS = (0.3, 0.5, 0.8, 1.0, 1.3, 1.6, 2.0, 2.6, 3.0, 4.0, 6.0)
 PRECS = (1e-6, 1e-8, 1e-10, 1e-12, 1e-14)
 EVEN, UNEVEN = (50, 3), (65, 4)
 
-#: Wrong totals, keyed `(N, prec, band)`.
-WRONG = ({(50, p, b) for p, b in [(1e-6, 1.6), (1e-6, 2.0), (1e-8, 0.8), (1e-12, 1.0),
-                                   (1e-12, 2.0), (1e-14, 0.5), (1e-14, 1.3), (1e-14, 1.6)]}
-         | {(65, p, b) for p, bands in {1e-6: (0.8, 1.0, 1.3, 1.6, 2.0),
-                                        1e-8: (0.8, 1.0, 1.3, 1.6, 2.0),
-                                        1e-10: (0.5, 0.8, 1.0, 1.6, 2.0),
-                                        1e-12: (0.3, 0.5, 0.8, 1.3, 1.6),
-                                        1e-14: (0.5, 0.8, 1.0, 1.3, 1.6)}.items() for b in bands})
-#: The wrong cell that nothing flags.
-SILENT = {(50, 1e-14, 0.5)}
+#: Wrong totals under the promoted defaults, keyed `(N, prec, band)`.
+WRONG = {(50, 1e-8, 0.8)}
+#: Wrong totals that nothing flags. None on this grid.
+SILENT = set()
 
 SLOW_PRECS, SLOW_BANDS = (1e-8, 1e-14), (0.5, 0.8, 1.3, 2.0, 3.0)
 
-_WHY = ("Phase 3b: the merge prefilter folds roots within the licence and reads multiplicity "
-        "once, and _collapse_ambiguous recounts over a synthesised bracket -- members dropped")
+_WHY = ("the reach rule declines and the side search cannot locate a member 0.3e-9 relative inside "
+        "its sub-bracket's end: the refiner returns no_parabola there. TODO.md, refiner fallback")
 
 
 def cluster(N, m, band, prec):
@@ -188,14 +181,21 @@ def test_the_MULTIPLICITY_precondition_holds_at_both_ends_of_the_ladder():
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("band", [1.3, 1.6, 2.0])
+@pytest.mark.parametrize("band", [
+    1.3, 1.6,
+    pytest.param(2.0, marks=pytest.mark.xfail(strict=True, reason=(
+        "the previous configuration now DECLINES here at stage 1, cross-check on or off -- 'the "
+        "slope estimate never settled' -- since the QR route around Accelerate's dgeqrf moved the "
+        "objective; the promoted defaults read this cell right (4 of 4)"))),
+])
 def test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster(band):
     """Measured on main at 1e-8: ablated, four levels of multiplicity one and the right total;
     enabled, the total reads 2 and both levels are flagged. The guard is load-bearing on the even
     triple (`test_solve.py`) and net-negative here, which is why it is retired rather than tuned."""
     case = cluster(*UNEVEN, band, 1e-8)
-    off = solve(bs.objective_for(case, 1e-8), prec=1e-8, collapse=False)
-    on = solve(bs.objective_for(case, 1e-8), prec=1e-8)
+    old = dict(merge="licence", rule="gap", reach_slope="outside")   # the previous defaults
+    off = solve(bs.objective_for(case, 1e-8), prec=1e-8, collapse=False, **old)
+    on = solve(bs.objective_for(case, 1e-8), prec=1e-8, collapse=True, **old)
     assert [x.mult for x in off.levels] == [1, 1, 1, 1]
     assert sum(x.mult for x in on.levels) < 4
     assert on.diagnostics.n_uncertain > 0, "and it says so"

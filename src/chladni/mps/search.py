@@ -52,7 +52,7 @@ import numpy as np
 
 from .bracket import bracket_interval
 from .multiplicity import (BIAS_HI_CACHE, BIAS_LO_CACHE, COUNT_BELOW_CACHE,
-                           REJECT_ABOVE_CACHE, SLOPE_STANDOFF, WIDE_FACTOR, multiplicity,
+                           REJECT_ABOVE_CACHE, SIDE_RATIO, SLOPE_STANDOFF, WIDE_FACTOR, multiplicity,
                            wide_bracket_for)
 from .refine import refine
 
@@ -61,6 +61,13 @@ __all__ = ["Level", "SolveResult", "SolveDiagnostics", "solve"]
 #: Relative offset used to estimate the wall slope `c` at a located root. Small enough to stay
 #: on the straight flank, large enough not to sit in the rounded bottom.
 _SLOPE_FRAC = 0.005
+
+#: A located root is a HUMP -- the local maximum between two members' wells -- when sigma_1, probed
+#: three quarters of the way toward the nearest root on EACH side, reads below this fraction of its
+#: own sigma both ways. On a hump the probe sits a quarter of the distance up the neighbour's wall
+#: while the hump sits about the whole distance up it, so both read near 1/4; a genuine root, even
+#: one located coarsely, climbs its own wall toward at least one neighbour.
+_HUMP_RATIO = 0.5
 
 
 @dataclass(frozen=True)
@@ -359,7 +366,7 @@ def _collapse_ambiguous(obj, lams, levels, prec, reach_factor, rule="gap"):
     return out, collapsed
 
 
-def _flag_uncertain_counts(levels):
+def _flag_uncertain_counts(levels, folds_are_duplicates=False):
     """Mark every level whose multiplicity two independent readings disagree about.
 
     **It decides nothing; it refuses to.** Recounting at one representative under-reads two
@@ -378,6 +385,14 @@ def _flag_uncertain_counts(levels):
     Levels `_collapse_ambiguous` already flagged pass through and are COUNTED. Skipping them made
     the branch that detects a disagreement by construction the one whose levels never reached
     `n_uncertain` -- 14% recall on the wip branch, against 93% once they were counted.
+
+    `folds_are_duplicates` is `solve`'s attained merge under the reach rule, and there the check
+    has nothing left to catch. Attained merge folds only roots that agree to within the accuracy
+    they reached, so a fold IS the same point found twice; and whether a second eigenvalue sits
+    that close is the reach rule's own question -- a partner within attained accuracy is at the
+    floor with `sigma_2` and counted directly. Measured at 50*pi^2, prec 1e-14, band 0.8: two
+    brackets refined to one member 4 ulps apart, the count was right, and the flag made
+    `solve_interval` raise on it.
     """
     out, flagged = [], []
     for x in levels:
@@ -385,7 +400,7 @@ def _flag_uncertain_counts(levels):
             out.append(x)
             flagged.append(x)
             continue
-        if x.mult >= x.n_roots:
+        if folds_are_duplicates or x.mult >= x.n_roots:
             out.append(x)
             continue
         y = replace(x, count_uncertain=True, count_alt=x.n_roots,
@@ -409,30 +424,42 @@ def _samples(obj):
     return (np.array([obj.in_lam(x) for x in xs]) if xs.size else xs), vs
 
 
-def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap",
-          reach_slope="outside"):
+def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
+          reach_slope="cache"):
     """Locate every eigenvalue in the objective's window, with its multiplicity.
 
     All three stages share one `Objective`, so the cost is the union of what they sampled and
     not the sum -- stage 3 in particular spends nothing, and that is asserted rather than hoped.
 
-    `collapse=False` disables the grouping cross-check, which is an ABLATION rather than an
-    option: without it the total is wrong wherever a neighbourhood's grouping is arbitrary --
-    4 or 6 declared where 3 exist -- and a wrong total moves an index. It exists so the guard
-    can be shown to be load-bearing, and so a figure can state the before as well as the after.
+    **The defaults are attained merge, the reach rule on the cache slope, and no cross-check.**
+    Promoted on held-out cluster grids against the previous defaults (licence merge, the gap
+    rule, the cross-check on):
 
-    `merge` decides which located roots are folded into one level: "licence" folds every pair
-    within `prec*lam`, which this stage has always done; "attained" folds only roots that agree to
-    within the accuracy the refinement actually reached, capped at the licence -- the search never
-    merges deliberately, only what it could not resolve. `rule` picks the multiplicity count:
-    "gap" (C1)+(C2) over a wide bracket, "floor" coincidence with `sigma_1`, "reach" the number of
-    eigenvalues INSIDE the emitted bracket. Defaults are the shipped behaviour.
+        grid                        these defaults                 previous defaults
+        145*pi^2 (held out, 45)     24 right, 0 wrong, 21 declined  11 right, 13 wrong, 21 declined
+        125*pi^2 (45)               45 right (1 flagged), 0 wrong   26 right, 19 wrong (1 silent)
+        50/65*pi^2 (110)            103 right, 2 basis-excused      72 right, 33 wrong (1 silent)
+        precision ladder            every cell acceptable           2 wrong totals at 1e-4
 
-    `reach_slope` is where "reach" reads the wall slope `c` in `sigma_j/c`: "outside", three
-    bracket widths out, which is what the rule was calibrated on; or "cache", the nearest cached
-    samples either side of the root. On a cluster wider than the standoff the outside samples sit
-    in other members' wells and `c` reads low -- measured 1.86x on the distance where "cache" read
-    1.02 -- so "cache" is the candidate being recalibrated.
+    The previous configuration stays reachable, as the ABLATION that shows what this replaced.
+
+    `merge` decides which located roots are folded into one level: "attained" folds only roots
+    that agree to within the accuracy the refinement actually reached, capped at the licence --
+    the search never merges deliberately, only what it could not resolve; "licence" folds every
+    pair within `prec*lam`. `rule` picks the multiplicity count: "reach" the number of eigenvalues
+    INSIDE the emitted bracket, "gap" (C1)+(C2) over a wide bracket, "floor" coincidence with
+    `sigma_1`. Attained merge must be paired with "reach": under "gap" each root of a resolved
+    pair reads the pair from its own wide bracket and the total double-counts.
+
+    `collapse=True` restores the grouping cross-check, `_collapse_ambiguous`, which recounts over
+    a synthesised bracket of radius `WIDE_FACTOR`. Its radius is what placed the failing band of
+    wrong totals at 1-8 merge licences, so it is off by default.
+
+    `reach_slope` is where "reach" reads the wall slope `c` in `sigma_j/c`: "cache", the nearest
+    cached samples either side of the root, with bounds recalibrated on a held-out set; or
+    "outside", three bracket widths out, what the rule was first calibrated on. On a cluster wider
+    than the standoff the outside samples sit in other members' wells and `c` reads low --
+    measured 1.86x on the distance where "cache" read 1.02.
     """
     if merge not in ("licence", "attained"):
         raise ValueError(f"merge must be 'licence' or 'attained', got {merge!r}")
@@ -531,7 +558,7 @@ def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap",
         nb = (s2 / c) if (c > 0 and np.isfinite(s2)) else None
         wb = wide_bracket_for(lams, r.lam, r.sigma, c, prec=prec, neighbour=nb)
         tens = (lambda z: obj.tensions(obj.from_lam(z)))
-        extra, uncertain = [], None
+        extra, uncertain, drop = [], None, False
         if rule == "reach":
             # `mu*(B)` needs the EMITTED bracket and a slope from outside it; the wide bracket plays
             # no part in the count and is carried only as the record of what "gap" would have seen.
@@ -583,7 +610,28 @@ def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap",
                         continue                    # too short to hold the branch: resolved
                     r2 = refine(obj, a, b2, prec=prec, interior=(a, b2))
                     if not r2.accepted:
-                        inconclusive |= r2.reason in ("budget", "stalled")
+                        # A side is resolved by a firm rejection, by a root ALREADY located there --
+                        # the branch is that root -- or by a curve that never dips toward a well.
+                        # Only an unexplained dip leaves it undetermined: 50*pi^2, prec 1e-8, band
+                        # 0.8, a partner 0.3e-9 relative inside the sub-bracket's end gave
+                        # `no_parabola` at sigma 2.9e-9 against sigma_j 6.9e-8, and reading that as
+                        # resolved left the total one short and certified. Flagging every
+                        # `no_parabola` instead flagged 15 correct counts on the 50/65 grid, most of
+                        # them sub-brackets a few ulps wide beside a partner already located.
+                        # Explained means a root already located lies within the distance the
+                        # side's own reading implies: `sigma/c`, at the calibrated bound on how far
+                        # the true distance can exceed that estimate. A window of one sub-bracket
+                        # width missed exactly that at 125*pi^2, prec 1e-8, band 0.8: the side read
+                        # 5.1e-8 on the wall of a member located 4.5e-6 away, outside the bracket,
+                        # and a correct count came back flagged -- ten such on the 50/65 grid.
+                        # Plus two sub-bracket widths, for the ulp scale: at 1e-14 the side's best
+                        # reading is rounding (50*pi^2, band 0.8: 7x the floor) and its implied
+                        # reach fell a hair short of a member located 12 ulps away.
+                        reach_side = (r2.sigma / c_out) / BIAS_LO_CACHE + 2.0 * (b2 - a)
+                        explained = any(abs(q.lam - r2.lam) <= reach_side
+                                        for q in taken if q is not r)
+                        inconclusive |= (r2.reason != "not_a_minimum" and not explained
+                                         and r2.sigma < SIDE_RATIO * float(t_here[j]))
                         continue
                     if any(abs(r2.lam - q.lam) <= max(
                             r2.delta_res if np.isfinite(r2.delta_res) else 0.0,
@@ -595,26 +643,45 @@ def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap",
                     extra.append(Level(lam=r2.lam, mult=1, sigma=r2.sigma,
                                        delta_res=r2.delta_res, bracket=(a, b2), n_roots=1))
                 uncertain = inconclusive and found == 0
+                # Is `r` itself a minimum, or the HUMP between two members? 65*pi^2, prec 1e-8,
+                # band 0.3: a bracket narrower than the licence held two members, the refiner
+                # accepted the hump between them (sigma 1.35e-8 against 1e-12 at the members), the
+                # side search found both -- and the hump stayed as a third level, 5 of 4, certified.
+                # A hump needs a well on BOTH sides, so it is only asked where roots lie both ways
+                # inside the bracket; and sigma_1 falls toward both. Refining `r`'s own cell instead
+                # dropped a GENUINE coarse member at 50*pi^2, prec 1e-6, band 0.3, whose cell held a
+                # third member never located, and turned 3 of 3 into 1 of 3.
+                if found:
+                    near = [q.lam for q in taken
+                            if q is not r and bracket[0] <= q.lam <= bracket[1]]
+                    below = [q for q in near if q < r.lam]
+                    above = [q for q in near if q > r.lam]
+                    if below and above:
+                        towards = (r.lam + 0.75 * (max(below) - r.lam),
+                                   r.lam + 0.75 * (min(above) - r.lam))
+                        reads = [float(np.atleast_1d(tens(z))[0]) for z in towards]
+                        drop = max(reads) < _HUMP_RATIO * r.sigma
         elif wb is None:
             levels.append(Level(lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res,
                                 bracket=bracket, n_roots=n_roots))
             continue
         else:
             m = multiplicity(tens, r.lam, wide_bracket=wb, prec=prec, rule=rule)
-        levels.append(Level(lam=r.lam, mult=m.mu, sigma=r.sigma, delta_res=r.delta_res,
-                            bracket=bracket, wide_bracket=wb or (), gap_ratio=m.gap_ratio,
-                            c2_rejected=m.c2_rejected, n_roots=n_roots,
-                            # The estimator's own DECLINE, carried through. Dropping it made every
-                            # wrong total under the reach rule silent on the wip branch -- 0 of 15
-                            # flagged -- which was a wiring omission, not a property of the rule.
-                            count_uncertain=(bool(m.ambiguous) if uncertain is None
-                                             else uncertain),
-                            uncertain_reason=(
-                                "the multiplicity estimator declined: a branch's estimated "
-                                "distance landed where the inside and outside populations "
-                                "overlap, so the evidence does not decide whether that "
-                                "eigenvalue is in this bracket"
-                                if (m.ambiguous if uncertain is None else uncertain) else "")))
+        if not drop:
+            levels.append(Level(lam=r.lam, mult=m.mu, sigma=r.sigma, delta_res=r.delta_res,
+                                bracket=bracket, wide_bracket=wb or (), gap_ratio=m.gap_ratio,
+                                c2_rejected=m.c2_rejected, n_roots=n_roots,
+                                # The estimator's own DECLINE, carried through. Dropping it made every
+                                # wrong total under the reach rule silent on the wip branch -- 0 of 15
+                                # flagged -- which was a wiring omission, not a property of the rule.
+                                count_uncertain=(bool(m.ambiguous) if uncertain is None
+                                                 else uncertain),
+                                uncertain_reason=(
+                                    "the multiplicity estimator declined: a branch's estimated "
+                                    "distance landed where the inside and outside populations "
+                                    "overlap, so the evidence does not decide whether that "
+                                    "eigenvalue is in this bracket"
+                                    if (m.ambiguous if uncertain is None else uncertain) else "")))
         levels.extend(extra)
 
     levels.sort(key=lambda x: x.lam)
@@ -628,7 +695,8 @@ def solve(obj, *, prec=None, collapse=True, merge="licence", rule="gap",
 
     # The count consistency check. Free -- it compares numbers the pipeline already has -- and
     # last, so it sees the levels a caller will actually receive.
-    levels, uncertain = _flag_uncertain_counts(levels)
+    levels, uncertain = _flag_uncertain_counts(
+        levels, folds_are_duplicates=(merge == "attained" and rule == "reach"))
     mult_evals = obj.n_evals - mark
 
     unmet = tuple(x.lam for x in levels if not x.met(prec))

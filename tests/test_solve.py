@@ -129,10 +129,16 @@ def test_reading_once_per_group_gets_the_COLLAPSE_branch_without_the_gram_angle(
 
 # --- merge on an ambiguous grouping, for the sake of the total ---------------------------------
 
+#: The PREVIOUS defaults: licence merge, the gap rule, and the grouping cross-check. `solve` ships
+#: attained merge and the reach rule with the cross-check off; the tests in this section pin what
+#: `_collapse_ambiguous` itself does, so they name the configuration it belongs to.
+_CROSS_CHECK = dict(merge="licence", rule="gap", reach_slope="outside", collapse=True)
+_CROSS_CHECK_OFF = {**_CROSS_CHECK, "collapse": False}
+
 @pytest.mark.slow
 @pytest.mark.parametrize("band, ratio", [
     (0.5, 1.0),
-    pytest.param(0.8, 1.6, marks=pytest.mark.xfail(strict=True, reason="refine 623d0b6 moved this cell: the even cluster at prec 1e-8, band 0.8 now declares 2 of 3, FLAGGED uncertain -- tests/test_cluster_totals.py grid. Phase 3b replaces the cross-check.")),
+    pytest.param(0.8, 1.6, marks=pytest.mark.xfail(strict=True, reason="refine 623d0b6 moved this cell: the even cluster at prec 1e-8, band 0.8 now declares 2 of 3, FLAGGED uncertain -- tests/test_cluster_totals.py grid. The cross-check is retired from the defaults; this pins its own behaviour.")),
     (1.0, 2.0)])
 def test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives(band, ratio):
     """The regime where the grouping has no answer but the total does.
@@ -149,7 +155,7 @@ def test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives(band, ratio):
     """
     (case,) = rs.crossover_cases(1e-8, window="cluster", bands=(band,))
     assert rs.cluster_diameter_ratio(case, 1e-8) == pytest.approx(ratio, rel=0.05)
-    res = solve(bs.objective_for(case, 1e-8), prec=1e-8)
+    res = solve(bs.objective_for(case, 1e-8), prec=1e-8, **_CROSS_CHECK)
 
     assert sum(x.mult for x in res.levels) == len(case.truth), "the total is right"
     assert res.diagnostics.n_ambiguous == 1, "and it says the grouping was arbitrary"
@@ -162,7 +168,7 @@ def test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives(band, ratio):
 @pytest.mark.slow
 @pytest.mark.parametrize("band, wrong", [
     (0.5, 6),
-    pytest.param(0.8, 4, marks=pytest.mark.xfail(strict=True, reason="refine 623d0b6 moved this cell: the even cluster at prec 1e-8, band 0.8 now declares 2 of 3, FLAGGED uncertain -- tests/test_cluster_totals.py grid. Phase 3b replaces the cross-check.")),
+    pytest.param(0.8, 4, marks=pytest.mark.xfail(strict=True, reason="refine 623d0b6 moved this cell: the even cluster at prec 1e-8, band 0.8 now declares 2 of 3, FLAGGED uncertain -- tests/test_cluster_totals.py grid. The cross-check is retired from the defaults; this pins its own behaviour.")),
     (1.0, 4)])
 def test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong(band, wrong):
     """The guard shown to be load-bearing. V1 section 7.3: if disabling it breaks nothing, it
@@ -170,11 +176,11 @@ def test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong(band, wrong):
     wrong total is what moves an index."""
     (case,) = rs.crossover_cases(1e-8, window="cluster", bands=(band,))
     obj = bs.objective_for(case, 1e-8)
-    off = solve(obj, prec=1e-8, collapse=False)
+    off = solve(obj, prec=1e-8, **_CROSS_CHECK_OFF)
     assert sum(x.mult for x in off.levels) == wrong, "the failure the guard prevents"
     assert sum(x.mult for x in off.levels) != len(case.truth)
 
-    on = solve(bs.objective_for(case, 1e-8), prec=1e-8)
+    on = solve(bs.objective_for(case, 1e-8), prec=1e-8, **_CROSS_CHECK)
     assert sum(x.mult for x in on.levels) == len(case.truth), "and with it, the total is right"
 
 
@@ -186,7 +192,7 @@ def test_a_SELF_CONSISTENT_fine_grouping_is_kept(band):
     them and throw away a correct fine answer -- but their individual counts agree with the
     total, so they stand."""
     (case,) = rs.crossover_cases(1e-8, window="cluster", bands=(band,))
-    res = solve(bs.objective_for(case, 1e-8), prec=1e-8)
+    res = solve(bs.objective_for(case, 1e-8), prec=1e-8, **_CROSS_CHECK)
     assert res.diagnostics.n_ambiguous == 0
     assert len(res.levels) == 3 and all(x.mult == 1 for x in res.levels)
     assert sum(x.mult for x in res.levels) == len(case.truth)
@@ -200,16 +206,19 @@ def test_the_collapse_does_not_fire_where_nothing_is_ambiguous():
 
     for case in (hr.ROSTER["disk"](), hr.ROSTER["eq_tri"](), hr.ROSTER["L_shape"](),
                  *rs.family_D(), *rs.family_A()):
-        res = solve(bs.objective_for(case, 1e-8), prec=1e-8)
+        res = solve(bs.objective_for(case, 1e-8), prec=1e-8, **_CROSS_CHECK)
         assert res.diagnostics.n_ambiguous == 0, case.label
         assert not any(x.grouping_ambiguous for x in res.levels), case.label
 
 
 @pytest.mark.slow
 def test_the_cross_check_reads_only_CACHED_points():
-    """It costs nothing: the spanning count is taken over samples the search already paid for."""
-    (case,) = rs.crossover_cases(1e-8, window="cluster", bands=(0.8,))
-    res = solve(bs.objective_for(case, 1e-8), prec=1e-8)
+    """It costs nothing: the spanning count is taken over samples the search already paid for.
+
+    At band 0.5, where the cross-check still fires. Band 0.8 was this test's cell until the QR route
+    around Accelerate's `dgeqrf` moved it, as it moved the two band-0.8 cells marked above."""
+    (case,) = rs.crossover_cases(1e-8, window="cluster", bands=(0.5,))
+    res = solve(bs.objective_for(case, 1e-8), prec=1e-8, **_CROSS_CHECK)
     assert res.diagnostics.n_ambiguous == 1
     assert res.diagnostics.multiplicity_evals == 0
 
@@ -226,14 +235,14 @@ def test_the_escape_from_the_band_works_in_BOTH_directions():
     tighter, looser = 0.4 * d / lam, 1.5 * d / lam
 
     for prec in (tighter, looser):
-        res = solve(bs.objective_for(case, prec), prec=prec)
+        res = solve(bs.objective_for(case, prec), prec=prec, **_CROSS_CHECK)
         assert not res.declined
         assert sum(x.mult for x in res.levels) == len(case.truth), (
             f"prec={prec:.2e} must give a correct total")
         assert res.diagnostics.n_ambiguous == 0, f"prec={prec:.2e} escapes the band"
     # and the two escapes disagree about the GROUPING, which is the thing that was arbitrary
-    fine = solve(bs.objective_for(case, tighter), prec=tighter)
-    coarse = solve(bs.objective_for(case, looser), prec=looser)
+    fine = solve(bs.objective_for(case, tighter), prec=tighter, **_CROSS_CHECK)
+    coarse = solve(bs.objective_for(case, looser), prec=looser, **_CROSS_CHECK)
     assert len(fine.levels) > len(coarse.levels)
 
 
@@ -290,9 +299,18 @@ def test_the_pipeline_on_an_exact_degeneracy(mult):
     assert max(x.mult for x in res.levels) == mult
 
 
+_LOUD_SHORT = (
+    "even triple at 50*pi^2, prec 1e-8, band 0.8: 2 of 3, FLAGGED. The reach rule declines, and the "
+    "side search cannot locate the lower member 0.3e-9 relative inside its sub-bracket's end -- the "
+    "refiner returns no_parabola there and gives up. Loud, not silent (test_rule_seam pins that); "
+    "TODO.md records the refiner fallback that would locate it.")
+
+
 @pytest.mark.slow
-@pytest.mark.parametrize("band", [0.5, 0.8, 1.3, 3.0])
-@pytest.mark.parametrize("window", ["pair", "cluster"])
+@pytest.mark.parametrize("window, band", [
+    pytest.param(w, b, marks=[pytest.mark.xfail(strict=True, reason=_LOUD_SHORT)]
+                 if (w, b) == ("cluster", 0.8) else [])
+    for w in ("pair", "cluster") for b in (0.5, 0.8, 1.3, 3.0)])
 def test_the_pipeline_across_the_crossover(window, band):
     """Both sides of the merge licence. A method that always merges and one that always splits
     both look correct on a sweep that stays on one side."""
@@ -300,41 +318,11 @@ def test_the_pipeline_across_the_crossover(window, band):
     if not cs:
         pytest.skip("not representable at this band")
     case = cs[0]
-    if rs.multiplicity_undecided(case, 1e-8):
-        pytest.skip(f"UNDECIDED by construction: the cluster's diameter is "
-                    f"{rs.cluster_diameter_ratio(case, 1e-8):.3f} of the licence, inside the "
-                    f"band [1, {M.WIDE_FACTOR}] where no flank placement is both outside the "
-                    f"level and inside the gap to the next one")
     obj = bs.objective_for(case, 1e-8)
     res = solve(obj, prec=1e-8)
     assert not res.declined, res.diagnostics.decline_reason
     s = ls.score_levels(list(res), case.truth, 1e-8, label=case.label)
     assert s.ok, f"{s.verdict}: {s.n_mult_right}/{s.n_matched} multiplicities"
-
-
-@pytest.mark.slow
-def test_the_multiplicity_undecided_band_is_bounded_by_the_REACH():
-    """Not a tuning failure but a property of the configuration: a cluster whose diameter sits
-    between the merge licence and the wide bracket's reach is too wide to be one level, and its
-    members are closer together than the flanks a read needs.
-
-        diameter/licence   0.40   1.00   1.60   2.60   6.00
-        verdict            pass   FAIL   FAIL   pass   pass
-
-    Below the licence the cluster is one level and the reach spans it; above the reach the
-    members are further apart than the flanks and each is read alone.
-    """
-    ratios = {}
-    for band in (0.2, 0.5, 0.8, 1.3, 3.0):
-        cs = rs.crossover_cases(1e-8, window="cluster", bands=(band,))
-        if cs:
-            ratios[band] = rs.cluster_diameter_ratio(cs[0], 1e-8)
-    assert ratios[0.2] < 1.0 and not rs.multiplicity_undecided(
-        rs.crossover_cases(1e-8, window="cluster", bands=(0.2,))[0], 1e-8)
-    assert ratios[1.3] > M.WIDE_FACTOR, "and above the reach it is decided again"
-    for band in (0.5, 0.8):
-        case = rs.crossover_cases(1e-8, window="cluster", bands=(band,))[0]
-        assert rs.multiplicity_undecided(case, 1e-8), f"band {band} is inside the band"
 
 
 @pytest.mark.slow

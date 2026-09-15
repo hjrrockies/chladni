@@ -194,6 +194,13 @@ REJECT_ABOVE = 1.6
 #: which is a decline rather than a guess.
 BIAS_LO = 0.89
 BIAS_HI = 1.63
+#: A side probe at `x -+ d` HOLDS branch `j` when it reads below this fraction of `sigma_j`. A
+#: sigma_1 probe reads the NEAREST eigenvalue on its side: a side holding nothing reads the
+#: root's own wall, about `sigma_j` (measured 0.993), and a side holding the branch reads the
+#: gap between estimate and truth (measured 0.096 to 0.121). The calibrated bias bounds put the
+#: second at most `|1 - 1/beta|`, 0.64 at their extremes. A slope error that carries either
+#: reading across the bar lands in "both sides" or "neither", which declines -- the safe way.
+SIDE_RATIO = 0.5
 
 #: Multiples of the bracket width at which the wall slope is estimated, and it must be OUTSIDE.
 #:
@@ -376,6 +383,7 @@ def floor_multiplicity(t, ratio=FLOOR_RATIO, band=FLOOR_BAND, max_branches=MAX_B
 
 def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
                        reject_above=REJECT_ABOVE, bias_lo=BIAS_LO, bias_hi=BIAS_HI,
+                       side_ratio=SIDE_RATIO,
                        max_branches=MAX_BRANCHES, counter=None):
     """How many eigenvalues lie inside `[lo, hi]`. `(mu, declined, spent)`.
 
@@ -420,29 +428,49 @@ def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
     if not (far > 0):
         return 1, False, 0
 
-    mu, declined = 0, False
-    for d in t / c:
+    # Branch 0 is the level's OWN eigenvalue -- the level exists because it was located -- so it
+    # is counted and never tested. Testing it lost a partner at 170*pi^2, prec 1e-12, band 0.3: the
+    # root sat at its bracket's edge with its eigenvalue 1.7e-14 relative beyond, branch 0 landed in
+    # the band, the probe read it outside on the short side, and the loop stopped before branch 1.
+    mu, declined = 1, False
+    for d in t[1:] / c:
         if d <= near * count_below:
             mu += 1                                   # inside whichever side it lies
             continue
         if d >= far * reject_above:
             break                                     # outside both ways; branches ascend
-        # In the band: the answer depends on the side, so measure the side.
+        # In the band: the answer depends on the side, so measure the side. Each side is judged on
+        # its own: does it HOLD an eigenvalue near `d`? (`d*c` is `sigma_j`.)
         v_lo = float(np.atleast_1d(tensions(x - d))[0])
         v_hi = float(np.atleast_1d(tensions(x + d))[0])
-        if v_lo == v_hi:
-            declined = True
-            break
-        below = v_lo < v_hi
-        # How far the bracket runs on the side the probe chose.
-        r_side = (x - lo) if below else (hi - x)
-        # The probe fixes the SIDE; the bias bounds fix how far. `d_est = beta * d_true`, so the
-        # true distance is in `[d/BIAS_HI, d/BIAS_LO]` and the three cases are decidable:
-        if d / bias_lo <= r_side:
-            mu += 1                                   # inside even at its furthest possible
-            continue
-        if d / bias_hi > r_side:
-            break                                     # outside even at its nearest possible
+        bar = side_ratio * d * c
+        has_lo, has_hi = v_lo < bar, v_hi < bar
+        if has_lo != has_hi:
+            # How far the bracket runs on the one side that holds the branch.
+            r_side = (x - lo) if has_lo else (hi - x)
+            # The probe fixes the SIDE; the bias bounds fix how far. `d_est = beta * d_true`, so
+            # the true distance is in `[d/BIAS_HI, d/BIAS_LO]` and the three cases are decidable:
+            if d / bias_lo <= r_side:
+                mu += 1                               # inside even at its furthest possible
+                continue
+            if d / bias_hi > r_side:
+                # Outside on THIS side only, so this branch is not counted -- and the loop goes on,
+                # since the next branch may lie on the other side, which reaches further. Breaking
+                # here lost a member at 170*pi^2, prec 1e-12, band 0.3: branch 1 was outside the
+                # short side, branch 2 inside the long one. Only "outside both ways" ends the loop.
+                continue
+        else:
+            # BOTH sides hold an eigenvalue near `d`, or neither reads as holding one: the side is
+            # not determined, and taking the lower probe was noise. 50*pi^2, prec 1e-8, band 0.8:
+            # partners 8.0e-9 away either side read 0.121 and 0.109 of sigma_j, the "lower" was
+            # the SHORT side, the branch was judged outside and the loop stopped, and the partner
+            # inside the long side went uncounted -- 2 of 3, not declined. Only a verdict that
+            # holds on EITHER side stands.
+            if d / bias_lo <= near:
+                mu += 1                               # inside whichever side it lies
+                continue
+            if d / bias_hi > far:
+                break                                 # outside whichever side it lies
         # Undetermined: the eigenvalue may or may not be inside, and nothing cheap decides it.
         # This is the bracket-edge case -- measured at `65*pi^2`, `prec = 1e-10`, where the
         # partner sits exactly `near` away and `d_est` overshoots it by 55%.
