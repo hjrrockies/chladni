@@ -214,6 +214,11 @@ def test_delta_res_IS_the_resolution_limit_eps_over_c(eps):
     assert r.delta_res == pytest.approx(DELTA_SAFETY * eps / c_lam, rel=1e-3)
 
 
+#: Errors at or below this many ulps are rounding: any bar contains them, so they cannot show a
+#: bar to be loose or an old formula to be short. Measured: 0 and 1 ulp at two disk levels.
+_ROUNDING = 4.0
+
+
 def _disk_levels(prec=1e-10):
     """The disk over `[8, 60]` through the REAL pipeline, against exact truth.
 
@@ -248,7 +253,12 @@ def test_delta_res_CONTAINS_the_true_error_on_a_real_pencil():
         err = abs(L.lam - lam0)
         assert err <= L.delta_res, (
             f"lam={lam0:.6f}: error {err:.3e} EXCEEDS the reported bound {L.delta_res:.3e}")
-        slack.append(L.delta_res / err)
+        if err > _ROUNDING * np.spacing(lam0):
+            slack.append(L.delta_res / err)
+    # A level located to within rounding says nothing about looseness: any bar contains it. Since
+    # the QR route around Accelerate's `dgeqrf`, two of six disk levels land 0 and 1 ulp from the
+    # truth, and a slack of `delta_res/0` read as infinitely loose.
+    assert len(slack) >= 3, f"only {len(slack)} levels above rounding: the test measures nothing"
     assert max(slack) < 10, f"loose by {max(slack):.1f}x: a scale with margin, not a guess"
 
 
@@ -266,12 +276,15 @@ def test_ABLATION_the_machine_epsilon_formula_contains_NOTHING():
     missed = 0
     total = 0
     for lam0, L in _disk_levels():
+        if abs(L.lam - lam0) <= _ROUNDING * np.spacing(lam0):
+            continue                     # located to rounding: every bar contains it
         total += 1
         old = L.delta_res * np.sqrt(np.spacing(1.0) / L.sigma) / DELTA_SAFETY
         missed += abs(L.lam - lam0) > old
+    assert total >= 3, f"only {total} levels above rounding: the ablation measures nothing"
     assert missed == total, (
-        f"the old formula contained the error at {total - missed} of {total} levels; it was "
-        f"supposed to fail at every one")
+        f"the old formula contained the error at {total - missed} of {total} levels above "
+        f"rounding; it was supposed to fail at every one")
 
 
 # --- termination -----------------------------------------------------------------------------

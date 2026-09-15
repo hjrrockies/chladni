@@ -75,7 +75,13 @@ PREC_LADDER = (1e-6, 1e-8, 1e-10, 1e-12, 1e-14)
 #: inside the bracket and must be COUNTED, above 1 they are outside and must be REJECTED. That
 #: crossing is the whole discrimination, and a ladder that stays on one side of it cannot see a
 #: method that always merges or always splits.
-GAP_LADDER = (0.05, 0.1, 0.3, 0.5, 0.8, 1.3, 2.0, 3.0, 6.0)
+#:
+#: 0.4 is there for the edge itself. At 0.5 a three-member cluster centred on its middle member has
+#: the outer two EXACTLY on the bracket's edges, all at the floor, so which sample is deepest is
+#: rounding -- and when the QR route around Accelerate's `dgeqrf` moved that rounding, the refiner
+#: picked an edge, rejected the bracket, and every span above 0.6 left the ladder. 0.4 puts a span
+#: of 0.8 strictly inside.
+GAP_LADDER = (0.05, 0.1, 0.3, 0.4, 0.5, 0.8, 1.3, 2.0, 3.0, 6.0)
 
 REGIMES = ("coincident", "unresolved", "simple")
 
