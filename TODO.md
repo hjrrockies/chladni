@@ -190,11 +190,6 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   The Weyl deficit is the obvious candidate alarm; over a window this narrow it is a
   plus-or-minus-one estimator (`notes/landscape_findings.md` section 33.1), so measure it first.
 
-* **[next]** `MPSEigensolver`'s `rng=None` default should become a fixed constant. Unseeded, an
-  interior fill gives a 110x run-to-run spread in the located eigenvalue, and that goes into a
-  shape objective as noise. The docstring at `src/chladni/mps/solver.py:44` already says the
-  argument "is not optional in spirit"; the default has not followed.
-  `search.md` As built; `notes/landscape_findings.md` section 17.
 * **[next]** Nothing on the solve path calls `MPSEigensolver.findability`
   (`src/chladni/mps/solver.py:128`). The check is built, exported and tested
   (`src/chladni/mps/calibrate.py`), it costs ~40 evaluations, and it

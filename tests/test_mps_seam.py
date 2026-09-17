@@ -24,6 +24,7 @@ The one function here that still takes `k` is `assemble`, because it calls into 
 where `k` is what a basis function is made of rather than a parametrisation choice.
 """
 import concurrent.futures as cf
+import inspect
 
 import numpy as np
 import pytest
@@ -31,8 +32,8 @@ import pytest
 from chladni.eigensolver import Eigensolver
 from chladni.geometry import Polygon
 from chladni.helmholtz import FourierBessel, Fundamental
-from chladni.mps import (MPSEigensolver, MPSPencil, PrecisionWarning, assemble, coef,
-                         regularize, tensions)
+from chladni.mps import (DEFAULT_RNG, MPSEigensolver, MPSPencil, PrecisionWarning,
+                         assemble, coef, regularize, tensions)
 
 from conftest import EXACT, L_SHAPE
 
@@ -260,6 +261,33 @@ def test_interior_points_are_seeded(poly, basis):
     b = MPSEigensolver(poly, basis=basis, n_bdry=200, n_int=80,
                        rng=np.random.default_rng(3), lam_ref=LAM)
     assert np.array_equal(a.tensions(LAM), b.tensions(LAM))
+
+
+def test_the_DEFAULT_interior_fill_is_seeded_too(poly, basis):
+    """The test above passes a seed, so it could never have caught the default being `None`.
+
+    `rng=None` reached `np.random.default_rng(None)`, i.e. fresh OS entropy, and the docstring
+    already said the argument "is not optional in spirit" while the signature said otherwise.
+    Measured cost of that gap (`notes/landscape_findings.md` section 17): a 110x run-to-run
+    spread in the located eigenvalue, which reaches a `douse` shape objective as noise.
+
+    Asserted as REPRODUCIBILITY rather than as a value -- two solvers built the same way are the
+    same solver -- because the seed itself is arbitrary and `test_..._is_the_documented_constant`
+    below is what pins the number.
+    """
+    a = MPSEigensolver(poly, basis=basis, n_bdry=200, n_int=80, lam_ref=LAM)
+    b = MPSEigensolver(poly, basis=basis, n_bdry=200, n_int=80, lam_ref=LAM)
+    assert np.array_equal(a.tensions(LAM), b.tensions(LAM))
+
+
+def test_the_default_seed_is_the_documented_constant(poly, basis):
+    """`DEFAULT_RNG` is exported so a caller can say which draw it got, and so that omitting
+    `rng` and passing it explicitly are the same solve rather than merely both reproducible."""
+    default = MPSEigensolver(poly, basis=basis, n_bdry=200, n_int=80, lam_ref=LAM)
+    explicit = MPSEigensolver(poly, basis=basis, n_bdry=200, n_int=80,
+                              rng=DEFAULT_RNG, lam_ref=LAM)
+    assert np.array_equal(default.tensions(LAM), explicit.tensions(LAM))
+    assert inspect.signature(MPSEigensolver).parameters["rng"].default == DEFAULT_RNG
 
 
 def test_the_basis_is_required_while_planning_is_deferred(poly):

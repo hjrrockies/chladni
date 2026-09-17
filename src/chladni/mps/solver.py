@@ -27,12 +27,32 @@ from .._core import Frozen, PrecisionWarning, _set, check_prec
 from ..eigensolver import Eigensolver, Spectrum, lam_to_k, weyl_window
 from .pencil import MPSPencil
 
-__all__ = ["MPSEigensolver"]
+__all__ = ["MPSEigensolver", "DEFAULT_RNG"]
 
 #: How many eigenvalues the default reference window is sized for, when `lam_ref` is not
 #: given. Only sets where the rank is chosen, so it wants to be a typical scan rather than a
 #: precise one.
 _REF_MODES = 10
+
+#: Seed for the interior fill when the caller names none. A FIXED CONSTANT, not `None`.
+#:
+#: `np.random.default_rng(None)` draws fresh OS entropy, so the default made the located
+#: eigenvalue depend on an unnamed global. Measured on the isolated (1,1) mode of `rect(1.01, 1)`
+#: over 12 seeds (`notes/landscape_findings.md` section 17): relative error median 2.91e-10, min
+#: 1.79e-11, max 1.97e-09 -- a **110x run-to-run spread**, against 1.38e-12 for a deterministic
+#: grid fill. That spread goes into a `douse` shape objective as noise, and a shape optimization
+#: cannot descend on an objective that moves when nothing moved.
+#:
+#: The value is arbitrary and must stay arbitrary-looking: `calibrate.py` records that changing
+#: only the seed moved `sigma_base` by 14x at fixed basis and that "the DEFAULT seed was the lucky
+#: one on the shape that happened to solve", so a seed chosen because it scored well would be
+#: tuning. 0 is chosen because every suite in `tests/` already passes 0 explicitly.
+#:
+#: This fixes DETERMINISM and nothing else. Section 17's own recommendation is to switch the fill
+#: to a deterministic low-discrepancy set, which is a different change: it was measured on one
+#: domain, and section 17 names the L-shape's thin-protrusion rejection case as the test to run
+#: before the METHOD changes. `method="random"` therefore stands.
+DEFAULT_RNG = 0
 
 
 class MPSEigensolver(Eigensolver, Frozen):
@@ -43,14 +63,16 @@ class MPSEigensolver(Eigensolver, Frozen):
     pencil; the first is for bespoke work and the second is what a planner will eventually
     fill in.
 
-    `rng` seeds the interior points. It is not optional in spirit: lappy's unseeded default
-    made `iso_right_tri` span 2.5 to 5.8 certified digits across draws, and a solver whose
-    answer depends on an unnamed global is not reproducible.
+    `rng` seeds the interior points, and defaults to `DEFAULT_RNG` rather than to `None`. It was
+    not optional in spirit and is no longer optional in fact: lappy's unseeded default made
+    `iso_right_tri` span 2.5 to 5.8 certified digits across draws, here it spread the located
+    eigenvalue 110x, and a solver whose answer depends on an unnamed global is not reproducible.
+    Pass `rng=` to choose a draw; pass a `Generator` to supply one.
     """
 
     def __init__(self, domain, *, basis, bdry_quad=None, int_pts=None, n_bdry=None,
                  n_int=None, reg="svd", rank=None, rtol=None, lam_ref=None, prec=None,
-                 rng=None):
+                 rng=DEFAULT_RNG):
         super().__init__(domain, prec=prec)
 
         if bdry_quad is None:
