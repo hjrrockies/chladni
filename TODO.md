@@ -260,22 +260,12 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 5. Test-suite hygiene
 
-* **[next]** The suite takes 11:47, up from 6:29, and `tests/test_precision_ladder.py` is 5:13
-  of that -- 30 cases x 6 precisions, one full solve each. It earns its place (it is what found
-  the cluster-collapse defect and it is the only thing driving the pipeline across the whole
-  ladder), but `family_B` contributes fourteen near-duplicate separations where five would
-  cover the same ground. Trimming the grid, not the ladder: every precision must stay.
-* **[next]** `tests/bracketers.py` is orphaned. No `test_*.py` imports it, and it is the only
-  importer of `tests/searches.py`. Wire both in or delete both -- and note that
-  `tests/baselines.py` now supplies the honest-baseline role on the current seam, so the case
-  for keeping `bracketers.py` is only that it holds the older generation for comparison.
-* **[next]** Delete `lipschitz_search`. `notes/handoff_minimization.md` section 1 gave it two
-  fates -- rebuild against `search.md` sections 4-5, or delete, explicitly and without
-  patching. **The rebuild happened**: `chladni.mps.bracket` is that structure done properly,
-  and it passes the gate where `lipschitz_search` scored 7/12. Nothing now depends on the old
-  one.
-* **[later]** No direct `test_searches.py` covering the older searches; they are exercised
-  only through `bracketers.py`, which is itself orphaned.
+* **[later]** No direct `test_searches.py` covering the older public searches. `test_searches.py`
+  reaches only three private helpers (`_spacing`, `_descend`, `_local_minima`); `lappy_search`,
+  `lappy_repaired_search` and `swing_direct_search` are exercised only through
+  `tests/bracketers.py`, which is `notes/`-runner tooling rather than a test module. That is now
+  stated in `bracketers.py`'s own docstring, so the arrangement is deliberate rather than
+  undiscovered -- but the searches themselves are still uncovered by anything the suite runs.
 
 ## 6. Small deferred measurements
 

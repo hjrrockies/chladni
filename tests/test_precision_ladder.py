@@ -59,13 +59,24 @@ from chladni.mps.objective import Objective
 from chladni.mps.search import SolveResult, solve
 from prec_score import score_cell
 
-pytestmark = pytest.mark.slow
+#: NOT a module-level `pytestmark`. Family S is `robust` rather than `slow`, and a mark applied
+#: to the whole module cannot be subtracted from one test -- `-m slow` selects anything carrying
+#: `slow`, so a cell marked both would still be paid for by the slow tier. Every test below
+#: therefore carries its own tier.
+_SLOW = pytest.mark.slow
 
 _FAMILIES = {"A": rs.family_A, "B": rs.family_B, "C": rs.family_C, "D": rs.family_D,
              "S": rs.family_stress}
 _SIZES = {"A": 1, "B": len(rs.B_DELTAS), "C": len(rs._C_LEVELS) * len(rs.C_DELTAS),
-          "D": len(rs._D_LEVELS), "S": 1}
+          "D": len(rs._D_LEVELS)}
 CASES = [(f, i) for f, n in _SIZES.items() for i in range(n)] + [("roster", k) for k in hr.ROSTER]
+
+#: Family S is swept on the `robust` tier, not with `CASES`. `rect_suite.family_stress` says why
+#: in its own docstring -- "NOT part of the swept families: 352 columns and 1.45 s per evaluation,
+#: against 6-82 ms for everything else" -- and `_SIZES` carried it into the slow tier anyway, six
+#: cells at ~100x the cost of every other cell in the file. It is a stress case and it keeps its
+#: full ladder; what moves is which tier pays for it.
+ROBUST_CASES = [("S", 0)]
 
 #: Cells known to fail, keyed `(family, index, prec)`, each with the evidence. Strict: when one
 #: starts passing the suite goes red until its entry comes off, so a fix cannot land silently.
@@ -142,16 +153,15 @@ def _write_log(f, i, prec, path=None):
             fh.write(json.dumps(_record(f, i, prec)) + "\n")
 
 
-def _params():
-    for f, i in CASES:
+def _params(cases=None, extra=()):
+    for f, i in (CASES if cases is None else cases):
         for prec in PREC_LADDER:
             why = KNOWN.get((f, i, prec))
-            marks = [pytest.mark.xfail(strict=True, reason=why)] if why else []
+            marks = list(extra) + ([pytest.mark.xfail(strict=True, reason=why)] if why else [])
             yield pytest.param(f, i, prec, marks=marks, id=f"{f}{i}-{prec:.0e}")
 
 
-@pytest.mark.parametrize("f, i, prec", list(_params()))
-def test_the_cell_is_acceptable(f, i, prec):
+def _assert_cell(f, i, prec):
     case, truth, suff, score, _, _ = _cell(f, i, prec)
     _write_log(f, i, prec)
     assert score.acceptable, (
@@ -160,15 +170,33 @@ def test_the_cell_is_acceptable(f, i, prec):
         f"multiplicity={suff.multiplicity}; {'; '.join(suff.reasons)}]")
 
 
+@pytest.mark.parametrize("f, i, prec", list(_params(extra=[_SLOW])))
+def test_the_cell_is_acceptable(f, i, prec):
+    _assert_cell(f, i, prec)
+
+
+@pytest.mark.parametrize("f, i, prec",
+                         list(_params(ROBUST_CASES, extra=[pytest.mark.robust])))
+def test_the_STRESS_cell_is_acceptable(f, i, prec):
+    """Family S on the `robust` tier: the same scoring, at 352 columns and ~1.45 s per
+    evaluation. Split out of `CASES` so the slow tier is not paying ~100x per cell for it."""
+    _assert_cell(f, i, prec)
+
+
 @pytest.mark.parametrize("f, i", [
-    pytest.param(f, i, marks=[pytest.mark.xfail(strict=True, reason="plan Phase 2")]
-                 if (f, i) in UNFROZEN else [], id=f"{f}{i}") for f, i in CASES])
+    pytest.param(f, i,
+                 marks=([pytest.mark.xfail(strict=True, reason="plan Phase 2")]
+                        if (f, i) in UNFROZEN else [])
+                       + [pytest.mark.robust if (f, i) in ROBUST_CASES else _SLOW],
+                 id=f"{f}{i}")
+    for f, i in CASES + ROBUST_CASES])
 def test_every_case_is_scored_on_a_FROZEN_basis(f, i):
     """A pencil whose rank cutoff moves with `prec` is a different objective on every rung, so a
     cell measures the rank policy together with the search."""
     assert sufficient(_case(f, i), PREC_LADDER[0]).frozen
 
 
+@_SLOW
 def test_the_cost_rises_with_the_request_and_stays_in_budget():
     """`search.md` section 2.6, not more work than asked, stated the right way round. Tighter
     requests may cost more and must not cost less, and no cell may exceed the per-eigenvalue
@@ -189,6 +217,7 @@ def test_the_cost_rises_with_the_request_and_stays_in_budget():
     assert not over, f"over the per-eigenvalue budget: {over}"
 
 
+@_SLOW
 def test_the_ladder_report(capsys):
     """Not an assertion -- the grid, printed with `-s`. A standing report nobody regenerated is
     how both the false floor and the snapped truth stayed invisible."""
@@ -205,6 +234,7 @@ def test_the_ladder_report(capsys):
             for p in PREC_LADDER))
 
 
+@_SLOW
 def test_the_log_is_one_parseable_record_per_call(tmp_path):
     """The report the grid summarizes has to be readable by something other than a person."""
     path = tmp_path / "ladder.jsonl"

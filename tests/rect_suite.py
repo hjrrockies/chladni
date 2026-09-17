@@ -398,18 +398,37 @@ def family_A(seed=0):
 #: (2,1) and (1,2) on rect(1+delta, 1), degenerate at 5*pi^2 and splitting like 6*pi^2*delta.
 _B_MODES = ((2, 1), (1, 2))
 #: Chosen so the ladder STRADDLES each `prec`, not merely spans decades. A case only
-#: exercises `prec` if the pair must be separated at that `prec` and merged at the looser one:
+#: exercises `prec` if the pair must be separated at that `prec` and merged at the looser one,
+#: so what a delta is worth is its VERDICT ROW over `bracket_score.PREC_LADDER` -- and two
+#: deltas with the same row measure the same thing twice. Re-measured against the real six-rung
+#: ladder (`S` split, `m` merge):
 #:
-#:     delta      d/lam      1e-4    1e-8    1e-11   1e-14
-#:     1e-4     1.20e-04    SPLIT   SPLIT   SPLIT   SPLIT
-#:     1e-6     1.20e-06    merge   SPLIT   SPLIT   SPLIT   <- distinguishes 1e-4 from 1e-8
-#:     1e-8     1.20e-08    merge   SPLIT   SPLIT   SPLIT
-#:     3e-10    3.60e-10    merge   merge   SPLIT   SPLIT   <- distinguishes 1e-8 from 1e-11
-#:     1e-11    1.20e-11    merge   merge   SPLIT   SPLIT
-#:     1e-13    1.20e-13    merge   merge   merge   SPLIT   <- NOT USABLE, see below
+#:     delta      d/lam     1e-4 1e-6 1e-8 1e-10 1e-12 1e-14   row
+#:     1e-2     1.19e-02     S    S    S    S     S     S      SSSSSS
+#:     3e-3     3.59e-03     S    S    S    S     S     S      SSSSSS
+#:     1e-3     1.20e-03     S    S    S    S     S     S      SSSSSS
+#:     3e-4     3.60e-04     S    S    S    S     S     S      SSSSSS
+#:     1e-4     1.20e-04     S    S    S    S     S     S      SSSSSS   <- KEPT
+#:     3e-5     3.60e-05     m    S    S    S     S     S      mSSSSS
+#:     1e-5     1.20e-05     m    S    S    S     S     S      mSSSSS
+#:     3e-6     3.60e-06     m    S    S    S     S     S      mSSSSS
+#:     1e-6     1.20e-06     m    S    S    S     S     S      mSSSSS   <- KEPT
+#:     1e-8     1.20e-08     m    m    S    S     S     S      mmSSSS   <- KEPT, alone
+#:     3e-10    3.60e-10     m    m    m    S     S     S      mmmSSS   <- KEPT, alone
+#:     1e-11    1.20e-11     m    m    m    m     S     S      mmmmSS   <- KEPT, alone
+#:     1e-13    1.20e-13     m    m    m    m     m     S      mmmmmS   <- KEPT
+#:     3e-14    3.60e-14     m    m    m    m     m     S      mmmmmS
 #:
-#:     1e-13    1.20e-13    merge   merge   merge   SPLIT   <- distinguishes 1e-11 from 1e-14
-#:     3e-14    3.60e-14    merge   merge   merge   SPLIT
+#: Six rows, so six deltas. Where a row has several members the SMALLEST is kept, because it
+#: sits nearest its own crossover and is the hardest cell in the row; the wider ones still
+#: split at every rung, so nothing about the easy direction is lost with them. That took the
+#: family from 14 cases to 6 and the precision ladder from 180 cells to 132 -- **every
+#: precision stays**, and the trim is of duplicate verdict rows rather than of ladder rungs.
+#:
+#: **An earlier version of this table had four columns, not six** -- 1e-4, 1e-8, 1e-11, 1e-14 --
+#: and reading the trim off it would have dropped `1e-11`, which that table showed sharing a row
+#: with `3e-10`. On the real ladder `1e-11` is the SOLE case exercising `prec = 1e-12`. The
+#: verdict row is a property of the ladder the cases are swept at, and nothing else.
 #:
 #: `1e-13` and `3e-14` ARE admissible, and an earlier version of this comment wrongly said
 #: they were not. The reasoning was that `snap` merges within `1e-13 * lam = 4.9e-12` and
@@ -417,9 +436,9 @@ _B_MODES = ((2, 1), (1, 2))
 #: takes the pair values from `rect_eig` directly, precisely so a controlled separation is not
 #: at the mercy of a merge policy. Measured: `rect_eig` puts the two 833 ulps apart at
 #: `delta = 1e-13` and 250 apart at `3e-14`, and the pencil has `d/(eps/c) = 138` of headroom
-#: at the first. So `prec = 1e-14` CAN be exercised as a requirement here.
-B_DELTAS = (1e-2, 3e-3, 1e-3, 3e-4, 1e-4, 3e-5, 1e-5, 3e-6, 1e-6, 1e-8, 3e-10,
-            1e-11, 1e-13, 3e-14)
+#: at the first. So `prec = 1e-14` CAN be exercised as a requirement here, and `1e-13` is the
+#: member of that row this suite carries.
+B_DELTAS = (1e-4, 1e-6, 1e-8, 3e-10, 1e-11, 1e-13)
 
 
 def family_B(deltas=B_DELTAS, seed=0):
