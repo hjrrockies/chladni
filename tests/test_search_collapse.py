@@ -423,6 +423,56 @@ def test_a_collapse_whose_members_DISAGREE_is_flagged():
     assert out[0].count_uncertain and out[0].count_alt == 1
 
 
+def _levels_n(lams, mults):
+    """Hand-built levels inside one licence, deepest first in `sigma` so ties are decidable."""
+    return [Level(lam=x, mult=m, sigma=1e-13 * (i + 1), delta_res=1e-12, n_roots=1)
+            for i, (x, m) in enumerate(zip(lams, mults))]
+
+
+def _obj_with_dirs(lams, dirs):
+    table = {round(float(x), 12): np.asarray(d, dtype=float) / np.linalg.norm(d)
+             for x, d in zip(lams, dirs)}
+    return Objective(lambda x: np.array([1e-13]), 1.0, 1000.0, variable="lam",
+                     modes=lambda x: table[round(float(x), 12)])
+
+
+def test_THREE_samples_of_one_well_become_ONE_class():
+    """Groups are not always pairs, and every other test here builds exactly two levels.
+
+    Recovered from `wip/v1-promotion-and-multiplicity`, whose `tests/test_modes.py` had this case
+    and which was never merged. The classing is greedy against each class's own representative,
+    so three roots of one well must all land together rather than chaining into a line -- and the
+    measurement that licenses it is that the duplicate arm sits at 0.948 and above, so three
+    samples of one well are MUTUALLY parallel and not merely adjacent-parallel.
+    """
+    prec = 1e-8
+    a = 50.0
+    lams = [a, a + 0.25 * prec * a, a + 0.45 * prec * a]
+    e1, e2 = np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0])
+    dirs = [e1 + f * e2 for f in (0.0, 0.05, 0.10)]      # mutually parallel well past TAU_GRAM
+    out, pairs, coll, summed = _gram_group(_obj_with_dirs(lams, dirs),
+                                           _levels_n(lams, [1, 1, 1]), prec)
+    assert pairs == 2, "a group of three is two pairs of evidence"
+    assert (coll, summed) == (1, 0)
+    assert len(out) == 1 and out[0].mult == 1, [(x.lam, x.mult) for x in out]
+    assert out[0].n_roots == 3, "all three roots are accounted for by the level that absorbed them"
+
+
+def test_a_group_of_three_can_hold_TWO_classes():
+    """The other side of it: a duplicate pair beside an independent third. The recount applies
+    within each class and the SUM across them, which a pair alone cannot exercise."""
+    prec = 1e-8
+    a = 50.0
+    lams = [a, a + 0.25 * prec * a, a + 0.45 * prec * a]
+    e1, e2 = [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]
+    out, pairs, coll, summed = _gram_group(_obj_with_dirs(lams, [e1, e1, e2]),
+                                           _levels_n(lams, [1, 1, 1]), prec)
+    assert (coll, summed) == (0, 1)
+    assert len(out) == 1
+    assert out[0].mult == 2, "two classes: the duplicate pair counts once, the third adds one"
+    assert out[0].n_roots == 3
+
+
 def test_a_summed_level_carries_the_span_in_its_BAR():
     """Clause (2) honesty. A level standing for eigenvalues either side of its reported `lam`
     must have a bar that reaches them, and the span is bounded by the licence so this can never
