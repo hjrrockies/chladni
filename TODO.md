@@ -84,11 +84,24 @@ illegible.
   **This is the SHIPPED default**, not a test artifact: `MPSEigensolver` takes no `lam_ref` and
   `rank_at` re-derives per `lam`, justified as "the only rule that cannot pick an unsafe rank" --
   an argument about picking a rank too HIGH, silent on the objective being discontinuous in `lam`.
-  So this is the same open question as `_UNSAFE_RATIO` vs `SUITE_RTOL` below, from the other side:
-  the frozen path is unsafe at cuts the threshold path tolerates, the threshold path is
-  discontinuous where the frozen path is smooth, and **which one a SEARCH can work on has never
-  been measured**. Decide that before changing a default. Not every decline is this: `65*pi^2`'s
-  six are unaffected, and the roster pencils are threshold-rank too but untested for it.
+  Not every decline is this: `65*pi^2`'s six are unaffected, and the roster pencils are
+  threshold-rank too but untested for it.
+
+  **And freezing is not the answer either**, which section 35 measures and section 34 did not:
+  its 2% figure came from a 6%-wide window. Over `[5, 300]` on `rect(1, 1/phi)` one frozen rank
+  inflates the floor up to **2.0e11x** -- `choose_rank` returns 29 where the lowest eigenvalue
+  needs 39 and the highest 61 -- at a steady 2 to 3 retained directions per decade of floor. The
+  asymmetry is what makes `choose_rank`'s MINIMUM the wrong end: short is fatal, long costs 264
+  spurious minima and no floor at all.
+
+  What separates the two regimes is the WINDOW WIDTH -- the threshold rank is constant below
+  about 10% -- so **this is one decision the code lets three places make separately**: the window
+  (`weyl_window` or a caller), the rank (`choose_rank` or the threshold rule) and the floor
+  (`rtol`). A planner chooses a `(window, rank, floor)` TRIPLE. Section 35 also records the third
+  option that dissolves the dichotomy -- a smooth spectral filter in place of the hard cut, since
+  a matrix function is continuous where a rank projector is not -- with its three costs, and the
+  cheapest thing that needs no new numerics: size the sub-window from the rank, freeze within it,
+  and the jumps land on boundaries the search restarts at.
 
   Two remedies are measured NOT to work and are in section 9. The decline rate is now a scored
   quantity (`test_cluster_totals.MAX_DECLINE_RATE`, 5.7% over 106 exercisable cells); the "5% the

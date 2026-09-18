@@ -2625,3 +2625,122 @@ Note this is the same mechanism as section 6's narrow plateau spikes, where the 
 "flips 85 <-> 86 on a one-ulp change in `lam` and each flip moves `sigma_1` by 2.3x" -- recorded
 there as an oddity affecting one gate cell. Here it is the dominant effect and it costs 30 of 55
 cells outright.
+
+---
+
+# 35. The rank policy is not a choice between two evils, and it is not a choice on its own
+
+2026-09-18. Section 34 showed the threshold rank makes the tension curve discontinuous and
+costs 30 of 55 cells at `145*pi^2`, and that freezing the rank removes every flip there for 2%
+of floor. **That 2% was measured on a 6%-wide window and generalizes to nothing**, which is what
+this section corrects. `notes/rank_policy.py` reproduces both tables.
+
+## The other horn, measured: freezing across a wide window is FATAL
+
+`rect(1, 1/phi)` over `[5, 300]`, 126 columns, 11 distinct eigenvalues. One rank frozen over the
+whole window, against the threshold rank, tension at each true eigenvalue:
+
+           lam  rank  short by    THRESHOLD       FROZEN    inflation  ranks/decade
+       35.7086    39        10    7.739e-16    4.773e-11     6.17e+04          2.09
+       65.3174    45        16    1.002e-15    4.335e-08     4.32e+07          2.10
+      113.2254    49        20    1.023e-15    1.072e-07     1.05e+08          2.49
+      114.6654    51        22    1.569e-15    3.326e-08     2.12e+07          3.00
+      142.8343    53        24    9.155e-16    1.189e-06     1.30e+09          2.63
+      183.7526    55        26    1.337e-15    6.831e-05     5.11e+10          2.43
+      192.1823    57        28    1.112e-15    5.882e-05     5.29e+10          2.61
+      242.4202    59        30    1.559e-15    1.191e-04     7.64e+10          2.76
+      261.2695    61        32    1.152e-15    2.259e-04     1.96e+11          2.83
+      272.0291    61        32    1.380e-15    1.896e-04     1.37e+11          2.87
+      272.5791    61        32    1.275e-15    2.704e-05     2.12e+10          3.10
+
+`choose_rank` returns **29**, while the LOWEST eigenvalue in the window already needs 39 and the
+highest needs 61. The floor inflates up to **2.0e11x** -- 1.2e-15 becomes 2.3e-4 -- and at that
+floor the eigenvalue is not merely inaccurate, it is unfindable. The rate is steady and worth
+having: **about 2 to 3 retained directions per decade of floor.**
+
+## The asymmetry, and why `choose_rank`'s MINIMUM is the wrong end
+
+Being SHORT is fatal, per the table above. Being LONG is expensive but survivable: at
+`rtol = 1e-16` on this same domain over `[5, 120]` the floor did not move at all (1.1e-15) and
+the cost was **264 spurious local minima** in a window holding four eigenvalues (the `SUITE_RTOL`
+comment records this). A refiner rejects an empty bracket in 2 to 7 evaluations, so spurious
+minima are a bill; a blown floor is a lost eigenvalue.
+
+`choose_rank` takes the MINIMUM over its nine probe parameters -- i.e. it optimizes against the
+cheap failure and accepts the fatal one. That is the right rule for its stated purpose ("the only
+rule that cannot pick an unsafe rank", where unsafe means too HIGH) and the wrong rule for a
+window wider than a few percent.
+
+## The axis that separates the two regimes is the WINDOW WIDTH
+
+Same pencil, how far the threshold rank moves as a function of window width:
+
+     centre lam   width   rank lo..hi  d(rank)
+             50     1%     43..43            0
+             50     3%     42..43            1
+             50    10%     41..43            2
+             50    30%     41..43            2
+             50   100%     37..45            8
+            150     1%     53..53            0
+            150     3%     53..53            0
+            150    10%     53..53            0
+            150    30%     51..55            4
+            150   100%     45..59           14
+            280     1%     61..61            0
+            280     3%     61..61            0
+            280    10%     61..62            1
+
+**Below about 10% the threshold rank is constant or moves by one or two.** So on a narrow window
+freezing costs almost nothing and buys a continuous curve outright -- section 34's `145*pi^2`
+case, 6% wide, 1.02x -- while over the 60x span of `[5, 300]` it is hopeless. The dilemma is not
+global. It is a statement about how wide a window one rank is asked to serve, and neither horn
+is a property of the method.
+
+## A third option that dissolves it rather than picking a side
+
+The discontinuity is not inherent to truncation. It is inherent to a HARD cut.
+
+The rank-`r` projector is a discontinuous function of the matrix. A smooth spectral filter is
+not: weight direction `j` by `f(s_j/s_0)` with `f` a smooth sigmoid from 1 to 0 across the
+threshold, and the operator is a MATRIX FUNCTION of the stacked Gram, which is continuous in the
+matrix whenever `f` is continuous. A newly admitted direction then enters with weight about one
+half and grows smoothly, instead of appearing at full strength, so `sigma_1` moves continuously
+in `lam` while the effective rank is still right everywhere. This is exactly the step from TSVD
+to Tikhonov filter factors in discrete ill-posed problems, and it is the standard answer there
+to the standard version of this complaint.
+
+What it would cost, none of it measured:
+
+* **The floor rises to about the filter width.** That may be no loss: Betcke's relation is
+  already measured here -- `eps ~ max(eps_basis, rtol)`, log-log slope 1.13 with `eps/rtol` about
+  1.15 (`tests/test_floor.py`) -- so the floor already tracks the threshold. The trade is a known
+  discontinuity for a known smooth floor.
+* **The GSVD grows.** Weighting keeps all `n` columns where truncation reduces to `r`: 126
+  against 29-61 here, so several times the cost per evaluation, on the hot path. Mitigable by
+  hard-cutting only the genuinely null directions and filtering across the band that matters,
+  which is a second parameter and wants its own measurement.
+* **It is a seam change, not a parameter.** `rank_at`, `coef(lam, mult)`, `choose_rank`,
+  `RankDiagnostics` and `n_useful` all assume an integer rank, and `Objective.sigma` reads the
+  vector LENGTH as the rank.
+
+## What this means for the planner
+
+The reason this is recorded rather than acted on: **it is one decision, and the code currently
+lets three places make it independently.** The window comes from `weyl_window` or a caller, the
+rank from `choose_rank` or the threshold rule, and the floor falls out of `rtol` -- and the
+tables above say those three are a single constraint. A planner is not choosing a rank. It is
+choosing a `(window, rank, floor)` triple, and any two of them determine roughly what the third
+can be.
+
+The cheapest thing that follows, and it needs no new numerics: **size the sub-window from the
+rank.** Hold `d(rank)` to one or two and the window may be ten percent wide; freeze the rank
+there and the curve is continuous within it, correct at both ends, and the search never has to
+bound a slope across a jump because the jumps are now at known sub-window boundaries the search
+is restarted at. The bill is one seed per sub-window, which is what wants measuring before
+anyone believes it -- `[5, 300]` would be roughly forty sub-windows at ten percent each.
+
+Untested, and it is the load-bearing gap: everything here is `rect(1, 1/phi)`. Whether the roster
+pencils carry the same rank drift, and whether a corner-adapted basis's rank grows the same way
+as plane waves do, is not known. `PlaneWave.n_useful_at(k)` predicts the growth for one family
+and `Basis` has no composite counterpart, which is the same hole section 3 of `TODO.md` records
+from the other side.
