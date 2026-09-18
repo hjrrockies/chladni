@@ -2936,3 +2936,91 @@ The proposed rule was derived from a plausible story -- "a refiner that gave up 
 might have given up on something real" -- checked against a sample chosen because it was already
 suspicious. The reason distribution over the whole population inverts it. A rule about which
 FAILURES matter cannot be calibrated on the failures one happened to be looking at.
+
+---
+
+# 38. Nothing cheap detects a starved basis, and the two candidates fail differently
+
+2026-09-18. `TODO.md` section 4 carried the silent-drop defect -- on the disk over `[8, 60]` at
+`prec = 1e-12`, a starved plane-wave basis returns 5 of 6 levels with no decline, nothing in
+`unmet` and no warning -- and named the Weyl deficit as "the obvious candidate alarm". It is not
+one. Neither is `findability`. `notes/starved_basis_alarm.py` reproduces both tables.
+
+## First, a trap that invalidated the first attempt at this measurement
+
+`asymp.weyl_count_poly` counts eigenvalues WITH MULTIPLICITY. The disk's spectrum over this
+window is 6 distinct levels and 11 eigenvalues. Auditing one entry per LEVEL against it reports
+
+    weyl_deficit(true spectrum, unfolded)        +0.91
+    weyl_deficit(true spectrum, levels only)     +4.70
+
+and the +4.70 is pure bookkeeping. The first run of this measurement made exactly that error and
+produced a story -- "the deficit reads highest on the correct answer, it is anti-correlated" --
+that was entirely an artifact. `SolveResult.unfolded` exists for this. Recorded because the trap
+is invisible on the L-shape, which has no degeneracies, and `tests/test_hard_roster.py` audits
+the L-shape.
+
+## The Weyl deficit is INSENSITIVE, not inverted
+
+Starving the basis from 84 columns to 18, spectrum unfolded:
+
+    pad   cols   levels   unfolded   MISSING    deficit
+    0.30    18        1          8         3        nan
+    0.35    22        2          3         8       1.27
+    0.40    26        3          5         6       0.87
+    0.45    28        5          9         2       0.91
+    1.30    84        6         11         0       0.91   <- correct
+
+0.91 with nothing missing, 0.91 with two missing, 0.87 with SIX missing -- every reading inside
+the +-1 noise of its own baseline, which section 33.1 already recorded for narrow windows. Three
+structural reasons, and they compound:
+
+* **The cuts are derived from the data being audited.** A cut sits between adjacent RETURNED
+  levels. When levels go missing you lose the cut that would have straddled them AND the values
+  below it, so the comparison sheds evidence from both sides at once and the difference barely
+  moves.
+* **Every cut lies below the top returned level**, which `weyl_deficit`'s own docstring states.
+  A starved basis loses the levels it resolves WORST, and those are typically the highest in the
+  window -- exactly where no cut can be placed.
+* **It degrades to `nan` when things are worst.** At `pad = 0.30` the solver returns a single
+  level (claiming multiplicity 8) and there is nowhere to cut at all. The audit goes blind in the
+  case it most needs to catch.
+
+## `findability` is flat here, and that is CORRECT rather than blind
+
+    pad   cols   MISSING   sigma_base   achieved   shortfall
+    0.30    18         3    3.141e-01       True        0.06
+    0.35    22         8    3.188e-01       True        0.06
+    0.45    28         2    3.142e-01       True        0.06
+    1.30    84         0    2.987e-01       True        0.07
+
+It is measuring a different failure and says so. Its criterion is whether a dip's visible
+catchment is at least one scan step wide, `w_k = 2*q*sigma_base/C_k >= dk`, which depends on the
+PLATEAU and the wall slope. Starving a basis raises the FLOOR -- the bottom of the clipped V --
+and leaves the plateau where it was (0.31 -> 0.29 across a 4.7x change in columns). So the
+catchment genuinely did not narrow, and a flat reading is the right answer to the question it
+asks.
+
+**An earlier note in this session read the flat readings as evidence that `findability` is not
+worth wiring. That inference was wrong** and is withdrawn. Its own failure -- the perimeter-4
+triangle at 21.9/25.0/133.1 degrees returning `(lam_1, lam_3, lam_4, lam_7)`, every value
+accurate to 1e-14 and the set not consecutive -- is a genuine missed-level failure that no floor
+check and no counting test catches, and it came from a shape optimization, which is the setting
+`chladni` exists to serve. What the disk ladder shows is only that basis starvation is a
+DIFFERENT mechanism from narrow catchment.
+
+## Why both fail, and where this belongs
+
+A search cannot tell "there is no eigenvalue here" from "there is one my basis cannot resolve".
+Both instruments above are computed from what the search RETURNED, and the missing levels are
+missing from the evidence as well as from the answer. The quantity that does separate the rows is
+the tension floor AT THE LEVELS -- 4.0e-03, 1.1e-05, 1.6e-08, 3.7e-10 down the ladder -- and
+reading it requires knowing where the levels are, which is circular for the ones that were lost.
+
+So this is not an honesty gap in the search, and no diagnostic added to `solve` will close it. It
+is the basis planner's: `eps` is the planner's published output, and the contract
+`search.md` asks it for -- the `eps` and dip width a search can tolerate -- is exactly the
+statement that would let a caller know the basis was too poor BEFORE the solve rather than after.
+
+Third time this session a proposed diagnostic was measured to key on the wrong signal, after the
+refiner-rejection alarm (section 37) and the seed hand-over (section 34).

@@ -235,18 +235,30 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
-* **[next]** A starved basis DROPS the levels it resolves worst, silently. On the disk over
-  `[8, 60]` at `prec = 1e-12`, plane waves at `pad = 0.45` (28 columns) return 5 of 6 levels,
-  with no decline, no warning, and nothing in `unmet` for the lost one -- the levels that ARE
-  found meet the request. At `pad = 0.35` (22 columns) the previous defaults returned 2 of 6 the
-  same way; the promoted defaults leave a count the reach rule cannot certify there, and
-  `solve_interval` refuses, which is loud but not a completeness diagnostic. `search.md` section 2.4 clause (3)
-  says the completeness diagnostics fire whenever clause (1) fails; here none does, and
-  `Eigensolver.solve(n)` answers a short return by widening the window. Pinned as a strict
-  xfail, `tests/test_solve_interval.py::test_a_starved_basis_does_not_DROP_levels_silently`.
-  The Weyl deficit is the obvious candidate alarm; over a window this narrow it is a
-  plus-or-minus-one estimator (`notes/landscape_findings.md` section 33.1), so measure it first.
+* **[later]** A starved basis DROPS the levels it resolves worst, silently, and **no diagnostic
+  added to `solve` can catch it** -- `notes/landscape_findings.md` section 38. RECLASSIFIED to
+  basis planning (section 3) rather than an honesty gap in the search. On the disk over `[8, 60]`
+  at `prec = 1e-12`, plane waves at `pad = 0.45` return 5 of 6 levels with no decline, nothing in
+  `unmet` and no warning; pinned as a strict xfail in `tests/test_solve_interval.py`.
 
+  Both candidate alarms are measured to fail, and differently. The **Weyl deficit** is
+  INSENSITIVE, not inverted: 0.91 with nothing missing, 0.91 with two missing, 0.87 with six,
+  every reading inside its own +-1 baseline. Its cuts are derived from the data being audited, so
+  a missing level removes the cut AND the values below it; every cut lies below the top returned
+  level, which is where a starved basis loses them; and it returns `nan` at the worst pad, where
+  one level comes back claiming multiplicity 8. **`findability` is flat, and correctly so** -- it
+  keys on the PLATEAU and the catchment width, which starvation does not move, while starvation
+  raises the FLOOR.
+
+  The quantity that does separate the ladder is the tension floor AT THE LEVELS (4.0e-03 down to
+  3.7e-10), and reading it requires knowing where the levels are -- circular for the ones lost. A
+  search cannot distinguish "no eigenvalue here" from "one my basis cannot resolve". That is the
+  planner's contract to publish, not the searcher's to detect.
+
+  (Beware the multiplicity trap when re-measuring: `weyl_count_poly` counts WITH multiplicity, so
+  audit `SolveResult.unfolded`. Auditing distinct levels reports +4.70 on the TRUE spectrum and
+  invalidated the first attempt at this. Invisible on the L-shape, which has no degeneracies and
+  is what `test_hard_roster.py` audits.)
 * **[next]** Nothing on the solve path calls `MPSEigensolver.findability`
   (`src/chladni/mps/solver.py:128`). The check is built, exported and tested
   (`src/chladni/mps/calibrate.py`), it costs ~40 evaluations, and it
