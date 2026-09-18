@@ -62,8 +62,12 @@ illegible.
   `no_parabola` fallback, a rescan of the `170*pi^2` band-0.3 row and three other cluster cells
   found no main-stage bracket holding eigenvalues rejected (42 of 42 accepted), so this is latent,
   not live; a rejection other than `not_a_minimum` or `endpoint` should still not certify a count.
-* **[blocking-ish]** **The threshold rank makes the objective piecewise, and a search cannot
-  bound a slope across a jump.** `notes/landscape_findings.md` section 34. At `145*pi^2` **30 of
+* **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
+  slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
+  planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner
+  is where the two halves of the `_UNSAFE_RATIO` question get decided together rather than one at
+  a time. Recorded here in full so the planner inherits the measurement rather than rediscovering
+  it. `notes/landscape_findings.md` section 34. At `145*pi^2` **30 of
   55 cells decline**, every one of them `_seed`'s "the slope estimate never settled", and the
   rising secants that cause it are RANK FLIPS: at every seed density the largest secant sits
   exactly on a `107 -> 108` boundary with `sigma_1` halving across it, so the secant grows like
