@@ -26,38 +26,13 @@ The search SHIPS. `chladni.mps.{bracket,refine,multiplicity,search}` are the fou
 with multiplicities come out. `tests/candidates_v1.py` holds the two adapters that keep V1 on
 `candidates.md`'s scored seam, so a fourth candidate is still measured on the same instrument.
 
-What is left here is not construction. It is the multiplicity contract, the `modes(x)` widening
-Phase D needs, and the constants still inherited from one rectangle family.
+What is left here is not construction, and since 2026-09-18 it is not Phase D either. The
+`modes(x)` widening landed, the interior Gram angle is built behind `phase_d=` and measured, and
+the multiplicity contract is stated in `docs/design/search.md`'s As-built section. **There are no
+known wrong totals and no known lost eigenvalues on any measured grid.** What is left is the
+constants still inherited from one rectangle family, the rank policy that belongs to the planner,
+and deciding whether Phase D's angle earns its keep.
 
-**Phase D still goes before basis planning in section 3**, though for a narrower reason than it
-did. Since Phase 3b promoted attained merge and the reach rule, a cluster's total is certified or
-flagged on every grid measured, with the known exceptions below; what Phase D alone can settle is
-two roots at the same separation where one is a duplicate and the other is not. For `douse` the
-ordering still holds: a shape objective goes non-smooth exactly where levels collide.
-
-Do the `modes(x)` widening as its OWN step before the angle. It is a seam change across
-`Objective`, the pencil and the candidate interface; the angle is a rule. Landing them together
-is two kinds of work in one session, which is what made the previous promotion attempt
-illegible.
-
-* **[next]** The side search's residual can start ON its find's wall, and the refiner then
-  returns that endpoint. This is the one cause behind every wrong total the cluster grids still
-  carry, and it is a REFINER interaction rather than a counting one. When the side search finds a
-  member and searches on past it, the residual begins one exclusion radius out; that radius is
-  `(sigma/c)/bias_lo`, which is right for the dedup it was borrowed from and wrong here, because
-  at a CONVERGED find `sigma` is the tension floor rather than a distance to anything. A standoff
-  of a fraction of the remaining span was added and fixes one of the two measured cells
-  (`search._SIDE_STANDOFF`, flat over 0.05 to 0.2, so the value is not tuned). What it does not
-  fix is the case where the refiner lands on the residual's inner end anyway:
-
-  - `170*pi^2`, band 0.3, prec 1e-12, 7 of 8 (strict xfail in `tests/test_rule_seam.py`). The
-    residual `(1677.8327481833226, 1677.832748183896)` provably holds the missing member --
-    `sigma_1` dips to 2.18e-13 at 1677.8327481833942 -- and the refiner returns the upper end at
-    2.47e-13, `not_a_minimum`. Standing the exclusion off by 2x or more recovers it; 1.0 and 1.5
-    do not. That factor is measured on one cell and wants the whole grid before it ships.
-
-  Belongs with the refiner-rejection item below: both are `solve` reading a refiner verdict on a
-  sub-interval that is not empty.
 * **[later]** The `125*pi^2` rejection in `notes/landscape_findings.md` section 37 is still a
   bracket that held an eigenvalue and was refused -- it costs nothing today, the eigenvalue being
   accounted for elsewhere, but it is the same residual/refiner shape and nothing guarantees it
@@ -107,18 +82,6 @@ illegible.
   quantity (`test_cluster_totals.MAX_DECLINE_RATE`, 5.7% over 106 exercisable cells); the "5% the
   robustness plan set" cited here before came from a plan not in this repository, and the "24 of
   45" beside it contradicted `search.solve`'s own table, where 24 is the number RIGHT.
-* **[next]** The old Phase D note, for the case distance cannot settle. `chladni.mps.search`
-  implements Phase D's DISTANCE PREFILTER and gets the collapse branch for free -- reading
-  multiplicity once per merged group RECOUNTS by construction, which `search.md` says is the
-  right move and warns against replacing with a sum. What remains is the case the angle is
-  really for: two roots at the SAME separation where one pair is a duplicate and the other is
-  not. Needs the `modes(x)` widening below. Nothing in the roster exercises it, which is a
-  measurement on one roster and not an argument.
-* **[next]** State the multiplicity contract for the promoted pipeline: attained merge, the reach
-  rule on the cache slope, the side search that locates what the count declines. The old failing
-  band of one to eight licences belonged to the cross-check, which is retired from the defaults
-  (`tests/test_cluster_totals.py` records the grid); the contract is a statement about the rule
-  that replaced it, including when a count declines and what the side search may add.
 * **[later]** Promote Phase D's angle, or retire it. It is BUILT --
   `solve(..., phase_d="angle")`, `search._gram_group`, `multiplicity.TAU_GRAM` -- and off by
   default because it **changes nothing measurable**. Over five cluster grids and the roster it is

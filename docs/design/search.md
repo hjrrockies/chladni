@@ -849,6 +849,74 @@ it is stepping across. One whose reach is set by a CONSTANT cannot know that, an
 accurate the point it steps from is either. `tests/test_searches.py` is the tracked measurement;
 `tests/searches.py` had no test file at all before it.
 
+## THE MULTIPLICITY CONTRACT, as shipped
+
+What `solve` promises about a COUNT, and what it refuses to promise. Section 2.4 clause (1) says
+`S_hat` must match `S(prec)` as a multiset; this is how the shipped pipeline delivers that, and
+where it stops.
+
+### What produces a count
+
+    merge="attained"    two located roots are ONE level when they agree to within the accuracy
+                        the refinement actually REACHED, capped at the licence `prec*lam`. The
+                        search never merges deliberately, only what it could not resolve.
+    rule="reach"        the count is `mu*(B)`: how many eigenvalues lie inside the EMITTED
+                        bracket, by comparing a distance `sigma_j/c` against the bracket's reach.
+                        Not a ratio on `sigma`, which measures in units of the floor while the
+                        bracket is in units of `prec*lam`.
+    attribution         each branch the read counts inside is owned ONCE -- by a located level
+                        near where `sigma_j/c` puts it, or else by the root. Only a COUNTED
+                        branch with `index >= 1` is claimable, so `mult >= 1` holds by
+                        construction and nothing the read did not put in can be taken out.
+    side search         when the read declines, the partner is LOCATED instead of guessed at,
+                        searching outward past each find. What it adds is exactly what no branch
+                        owns.
+    phase_d="distance"  roots inside one licence are read ONCE per group, which recounts by
+                        construction rather than summing.
+
+### What is guaranteed
+
+**Nothing is silently wrong about a count that is certified.** Every disagreement the pipeline
+can detect between two readings of a multiplicity reaches `SolveDiagnostics.n_uncertain`, and
+`solve_interval` RAISES on it rather than returning a short array -- because a short array is
+indistinguishable from "there are none", and `Eigensolver.solve` answers a short return by
+widening the window.
+
+Measured over five split-degeneracy grids (`50`, `65`, `125`, `145`, `170` x `pi^2`) at five
+precisions and eleven bands, unexercisable cells excluded: **216 right, 0 wrong, 35 declined.**
+The roster (disk, eq_tri, L-shape) is certified at every precision on the ladder.
+
+### What is NOT guaranteed, stated as plainly
+
+* **A decline is not a failure and not an answer.** 35 of 251 cells decline, all of them stage 1
+  refusing to bound a slope. At `145*pi^2` that is 23 of 45, and
+  `notes/landscape_findings.md` section 34 shows every one is the threshold rank making the
+  objective piecewise -- the bracketer is right to refuse. The decline rate is scored beside the
+  pass rate (`test_cluster_totals.MAX_DECLINE_RATE`), per `candidates.md` section 5.
+* **A basis too poor to resolve a level loses it silently, and no diagnostic in `solve` can
+  catch that.** Section 38: the Weyl deficit is insensitive to it and `findability` measures a
+  different failure. A search cannot distinguish "no eigenvalue here" from "one my basis cannot
+  resolve"; that is the planner's contract to publish, not the searcher's to detect.
+* **The grouping inside a licence may be coarser than `prec` asked for.** The TOTAL over a clear
+  window is what is defended; which of two readings a level carries, when they disagree, is
+  flagged rather than chosen.
+* **`L` is not a certificate.** Coverage is conditional on the Lipschitz bound, which is a
+  largest observed secant inflated by `SAFETY` -- a LOWER bound with no formal status. Every run
+  reports `L`, its history, and how often it grew after exclusions relied on it.
+* **Phase D's angle is off.** With `phase_d="angle"` the interior Gram angle decides
+  collapse-versus-merge on evidence; it is measured to agree with the distance rule on all 115
+  pairs it was asked about, so it is not the default. Its one known unsound arm is recorded: a
+  degenerate eigenspace located twice has both members reading the full multiplicity, and the sum
+  doubles it -- flagged, never guessed.
+
+### The three constants this rests on that were measured elsewhere
+
+`STRADDLE`, `SAFETY` and `MARGIN` still carry `RECALIBRATE` comments naming the
+`(1+delta) x 1` rectangle. `MARGIN` is the one with correctness at stake: it gates stopping at
+isolation, which `CHLADNI_V1.md` section 8 calls the claim most in need of confirmation off the
+rectangle, and its own comment records two coverage failures. The contract above is conditional
+on that gate.
+
 ## The attic was not built, because nothing is pruned
 
 Phase A specifies a reversible prune: certify an interval free, move it to an ATTIC tagged with
