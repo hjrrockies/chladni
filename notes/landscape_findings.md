@@ -2917,7 +2917,18 @@ carry; the `125*pi^2` one costs nothing, the eigenvalue being accounted for else
 
 So there is no separate honesty defect to build here. **Fixing the residual standoff fixes both
 losses at the source**, and an alarm keyed on rejection reasons would meanwhile refuse 24 correct
-solves. The item is rewritten rather than implemented.
+solves. The item was rewritten rather than implemented -- and then the standoff was swept on the
+whole grid and taken from 0.1 to 0.3, which closes the `170*pi^2` cell and leaves **zero wrong
+cells on all five grids**:
+
+    standoff   right   wrong   declined
+    0.1          215       1         35
+    0.3          216       0         35
+    0.5          216       0         35
+
+0.3 and 0.5 are identical, so it is a plateau rather than a fitted value, and the declines do not
+move. With that, the two rejections above are the last lost eigenvalues the grids contained and
+neither survives.
 
 ## The general lesson, and it is section 7's again
 

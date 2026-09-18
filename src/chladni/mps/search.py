@@ -121,7 +121,23 @@ _SIDE_SEARCH_MAX = MAX_BRANCHES
 #: A fraction of the remaining span rather than an absolute distance, for the reason `STRADDLE`
 #: is one: it is dimensionless, and the scale that matters is the interval still to be searched.
 #: The floor stays, so a find that is NOT converged still excludes its own resolution.
-_SIDE_STANDOFF = 0.1
+#:
+#: **0.1 was not enough, and the whole grid says so.** One cell was swept for the value above;
+#: over five cluster grids at five precisions and eleven bands, unexercisable cells excluded:
+#:
+#:     standoff   right   wrong   declined
+#:     0.1          215       1         35      <- 170*pi^2, prec 1e-12, band 0.3: 7 of 8
+#:     0.3          216       0         35
+#:     0.5          216       0         35
+#:
+#: 0.3 closes the last wrong cell on every grid and moves nothing else -- the declines do not
+#: budge, and 0.3 and 0.5 are identical, so this is a plateau and not a fitted value. It is the
+#: smaller of the two that work, which leaves more of the residual still searchable.
+#:
+#: That wrong cell was the LAST source of a lost eigenvalue anywhere in the grids: section 37
+#: labelled all 179 refiner rejections by whether the bracket held a true eigenvalue, and the
+#: only two that did were this defect, at `170*pi^2` and `125*pi^2`.
+_SIDE_STANDOFF = 0.3
 
 
 @dataclass(frozen=True)

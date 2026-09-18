@@ -58,27 +58,10 @@ illegible.
 
   Belongs with the refiner-rejection item below: both are `solve` reading a refiner verdict on a
   sub-interval that is not empty.
-* **[next]** Fix the side search's residual standoff -- it is the ONLY source of lost
-  eigenvalues the grids show, and fixing it closes the last wrong cell. The previous item here
-  proposed flagging refiner rejections whose reason was not `not_a_minimum` or `endpoint`;
-  **that is measured to be exactly backwards** (`notes/landscape_findings.md` section 37). Over
-  179 rejections on every grid and the roster:
-
-      reason           bracket EMPTY   bracket HELD one
-      endpoint                     3                  0
-      no_parabola                 21                  0
-      not_a_minimum              153                  2
-
-  The proposed flag fires on all 24 correctly-empty `no_parabola`/`endpoint` rejections and
-  catches neither real loss, both of which are `not_a_minimum` -- the reason it exempts. Since
-  the flag makes `solve_interval` refuse, that is 24 refused correct solves for nothing.
-
-  Both real losses are the same defect, to the digit: the residual sub-bracket begins one
-  exclusion radius past a find, where the find's own wall is the lowest point in the interval, so
-  the refiner returns that endpoint. `_SIDE_STANDOFF` fixed the `50*pi^2` instance; `170*pi^2`
-  prec 1e-12 band 0.3 and `125*pi^2` survive it. A standoff of 2x or more recovers the first
-  (1.0 and 1.5 do not), but that factor is measured on one cell and wants the five grids before
-  it ships.
+* **[later]** The `125*pi^2` rejection in `notes/landscape_findings.md` section 37 is still a
+  bracket that held an eigenvalue and was refused -- it costs nothing today, the eigenvalue being
+  accounted for elsewhere, but it is the same residual/refiner shape and nothing guarantees it
+  stays harmless. The standoff at 0.3 closed its sibling at `170*pi^2`; this one it did not.
 * **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
   slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
   planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner
@@ -316,7 +299,13 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   Fourier-Bessel enrichment regression: 1e-12 to 1e-13 with the corner terms against ~1e-5
   without.
 * **[next]** Accelerate's blocked `dgeqrf` corrupts the heap on macOS 26.5 / M4, and only the
-  hot path is routed around it. `regularize`'s svd-mode QR now uses `dgeqrt`
+  hot path is routed around it. **Its own regression test is intermittent for the same
+  reason**: `test_the_geqrt_route_is_an_economic_qr[shape0]` compares the safe route against
+  `la.qr` on a 548 x 274 matrix -- which IS the standalone reproducer -- so the guard calls
+  the faulty path to check itself. Observed failing once in about ten default-tier runs on
+  2026-09-18, passing five for five immediately after. The comparison needs a shape that is
+  not the reproducer, or the stock call needs skipping when `_AVOID_GEQRF` is detected
+  rather than forced. `regularize`'s svd-mode QR now uses `dgeqrt`
   (`src/chladni/mps/_regularize.py`, `_qr_economic`), which took the rectangle suite's
   `170*pi^2` cluster from exit 139 on every run to 3 of 3 clean with identical levels. Still
   on Accelerate's `dgeqrf` or unmeasured: `choose_rank` and `rank_diagnostics` (`svdvals` of

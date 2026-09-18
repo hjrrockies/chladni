@@ -207,22 +207,8 @@ def test_the_multiplicity_READ_spends_nothing_even_where_the_count_DECLINES(N, m
 @pytest.mark.slow
 @pytest.mark.parametrize("N, m, band, prec, cause", [
     (50, 3, 0.8, 1e-8, "both sides hold a partner, and the side probe picked one"),
-    pytest.param(170, 4, 0.3, 1e-12, "a residual sub-bracket abutting an exclusion, where the "
-                                     "refiner lands on the excluded member's wall",
-                 marks=pytest.mark.xfail(strict=True, reason=(
-                     "NOT the attribution defect any more, and not the single-refine one either -- "
-                     "both are fixed, and the side search now DOES search on. Measured after: the "
-                     "root at 1677.83274818468 declines, the low side finds 1677.83274818396, and "
-                     "the residual (1677.8327481833226, 1677.832748183896) provably HOLDS the "
-                     "missing member: sigma_1 dips to 2.18e-13 at 1677.8327481833942 against "
-                     "9.0e-13 at the lower end. The refiner returns the UPPER end instead, at "
-                     "sigma 2.47e-13, and rejects it `not_a_minimum` -- that end sits on the "
-                     "excluded member's wall, one exclusion radius out, where the wall still reads "
-                     "sigma_r2/bias_lo = 1.64x its own floor and so competes with a genuine "
-                     "member's. 7 of 8, certified. Standing the exclusion off further recovers it "
-                     "-- factors 1.0 and 1.5 fail, 2.0, 3.0, 4.0 and 6.0 all find it -- but that "
-                     "factor is a constant measured on ONE cell, and it belongs with the refiner "
-                     "rejection work rather than here. TODO.md."))),
+    (170, 4, 0.3, 1e-12, "a residual sub-bracket abutting an exclusion, where the refiner "
+                         "landed on the excluded member's wall until the standoff reached 0.3"),
     (65, 4, 0.3, 1e-8, "a hump top kept as a level beside the two members found either side"),
 ])
 def test_the_promoted_defaults_leave_no_SILENT_wrong_total(N, m, band, prec, cause):
