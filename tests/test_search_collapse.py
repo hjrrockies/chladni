@@ -46,13 +46,12 @@ import pytest
 
 import hard_roster as hr
 import rect_suite as rs
+# The verdict boundary, imported rather than restated. It lived in this file while nothing read
+# it -- an unused package constant is what `search._SLOPE_FRAC` became -- and moved into the
+# package with the rule; `test_TAU_GRAM_lives_in_the_PACKAGE...` below pins that it stayed.
+from chladni.mps.multiplicity import TAU_GRAM
 
 pytestmark = pytest.mark.slow
-
-#: The verdict boundary, imported rather than restated. It lived in this file while nothing read
-#: it -- an unused package constant is what `search._SLOPE_FRAC` became -- and moved into the
-#: package with the rule. `test_TAU_GRAM_moved_into_the_package_with_the_rule` pins the move.
-from chladni.mps.multiplicity import TAU_GRAM
 
 ROSTER = ("L_shape", "disk", "eq_tri")
 
