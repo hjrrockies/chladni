@@ -63,6 +63,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .refine import _vertex
+
 
 __all__ = ["Bracket", "SearchDiagnostics", "SearchResult", "bracket_interval",
            "live_regions", "wall_ladder_ratio", "width_is_pure", "descent_certificate",
@@ -484,15 +486,10 @@ def _locator_step(ks, vs, lo, hi, prec_u):
         return None
     x = np.array([a, mid, b])
     y = np.array([vs[k - 1], vs[k], vs[k + 1]]) ** 2
-    d01, d12, d20 = x[0] - x[1], x[1] - x[2], x[2] - x[0]
-    denom = d01 * d12 * d20
-    pred = None
-    if denom != 0.0:
-        c2 = -(d12 * y[0] + d20 * y[1] + d01 * y[2]) / denom
-        c1 = ((x[1] ** 2 - x[2] ** 2) * y[0] + (x[2] ** 2 - x[0] ** 2) * y[1]
-              + (x[0] ** 2 - x[1] ** 2) * y[2]) / denom
-        if c2 > 0 and np.isfinite(c1):
-            pred = float(np.clip(-0.5 * c1 / c2, x[0], x[2]))
+    # The refiner's vertex, which is centred on the middle point. The monomial form this used
+    # to open-code loses digits as the triple closes; see `refine._vertex`.
+    v = _vertex(x, y)
+    pred = None if v is None else float(np.clip(v[0], x[0], x[2]))
     if pred is None:
         # The fit says this is not a single minimum. Bisect the wider side rather than nudge:
         # the straddle is an offset from a prediction, and with no prediction a 2% step shrinks

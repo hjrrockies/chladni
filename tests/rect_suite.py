@@ -50,11 +50,11 @@ __all__ = ["Counter", "pencil_for", "make_case", "diagnostics", "assert_floor",
            "SUITE_RTOL", "FINEST_PREC",
            "modes_in_window", "splitting_rates", "tightest_pair", "delta_for",
            "crossover_cases", "split_degeneracy_cases", "gate_cases",
-           "cluster_diameter_ratio", "multiplicity_undecided",
+           "cluster_diameter_ratio",
            "CROSSOVER_WINDOWS", "WIDE_WINDOW",
            "FLOOR_TARGET", "PHI",
            "family_A", "family_B", "family_C", "family_D", "family_stress",
-           "all_families"]
+           "all_families", "complete_truth"]
 
 PI2 = np.pi**2
 PHI = (1.0 + 5.0**0.5) / 2.0
@@ -213,7 +213,14 @@ def _truth_in_window(L, H, a, b, modes=None):
 
 
 def make_case(label, L, H, a, b, *, seed=0, modes=None, variable="lam", pad=1.6):
-    """One scored case: a shared pencil, counted access, and complete closed-form truth."""
+    """One scored case: a shared pencil, counted access, and complete closed-form truth.
+
+    **`modes` here is a list of `(m, n)` TRUTH INDICES, and it is not `Case.modes`.** The two
+    collide by name and are different things: this one says which analytic modes truth should be
+    built from, while `Case.modes` is the `modes_fn` below -- the candidate eigenFUNCTION on a
+    fixed shared point set, which is what the seam means by the word. Neither is renamed, because
+    each is right in its own layer; this note is here so the next reader does not conflate them.
+    """
     p = pencil_for(L, H, a, b, seed=seed, pad=pad)
     truth, spec = _truth_in_window(L, H, a, b, modes)
     c = Counter()
@@ -223,16 +230,46 @@ def make_case(label, L, H, a, b, *, seed=0, modes=None, variable="lam", pad=1.6)
         return p.tensions(float(x))
 
     def modes_fn(x):
+        # `MPSPencil.interior_image` is this, promoted -- the shape rules (a coefficient width
+        # that moves with `lam`, and `coef`'s frozen-rank exception) belong where the shapes are
+        # known. Kept as a call rather than reimplemented so the two cannot drift.
         c.calls += 1
-        _, I = p.pencil(float(x))
-        u = I @ p.coef(float(x), 1)[:, 0]
-        return u / np.linalg.norm(u)
+        return p.interior_image(float(x))
 
     case = Case(label=label, tensions=tensions, a=a, b=b, truth=truth, counter=c,
                 domain=rect(L, H), complete=True, variable=variable, modes=modes_fn)
     case.pencil = p                      # for diagnostics; the search never sees it
     case.spectrum = spec
+    case.dims = (float(L), float(H))
     return case
+
+
+def complete_truth(case):
+    """EVERY eigenvalue of the case's rectangle in `[a, b]`, from `rect_eig` and never snapped.
+
+    `case.truth` is restricted to a family's own modes -- `family_C` lists only the cluster --
+    so scoring a solve against it calls a genuine neighbour spurious. `rect_spectrum` is
+    complete but returns `snap(...)`, which merges values within `1e-13*lam`: on
+    `rect(1 + 3e-14, 1)` it reports the (2,1)/(1,2) pair as an EXACT double while `rect_eig`
+    puts it 1.8e-12 apart. Scored against the snapped value, a solver that split that pair
+    correctly at `prec = 1e-14` read as a wrong multiplicity -- which is what the ladder
+    benchmark reported, and blamed on the solver.
+    """
+    L, H = case.dims
+    a, b = float(case.a), float(case.b)
+    out = []
+    m = 1
+    while PI2 * (m / L) ** 2 <= b:
+        n = 1
+        while True:
+            lam = rect_eig(m, n, L, H)
+            if lam > b:
+                break
+            if lam >= a:
+                out.append(lam)
+            n += 1
+        m += 1
+    return np.sort(np.asarray(out, dtype=float))
 
 
 FLOOR_TARGET = 1e-14        #: sigma_mu must sit at or below this at every true eigenvalue
@@ -283,7 +320,7 @@ def assert_floor(case, target=FLOOR_TARGET, finest_prec=1e-14, margin=3.0, h_fra
     return ok, rows
 
 
-def assert_smooth(case, prec, *, n_seed=16, doublings=4, settle=0.10):
+def assert_smooth(case, prec):
     """PRECONDITION: does this objective admit a Lipschitz bound at the scales the search needs?
 
     The companion to `assert_floor`, and it checks the OTHER premise. `assert_floor` asks
@@ -294,7 +331,15 @@ def assert_smooth(case, prec, *, n_seed=16, doublings=4, settle=0.10):
 
     The test is the searcher's own bootstrap: seed uniformly, double, and see whether the
     largest observed secant STOPS GROWING. That is not a proxy for the premise, it is the
-    premise.
+    premise -- and it is literally the searcher's: `bracket._seed` on the same `_KView` of the
+    same objective, with the same `prec_u = prec/2`.
+
+    **It used to be a copy, and the copy diverged.** It seeded its own 16 points with 4
+    doublings while the searcher sizes its seed from Weyl -- 52 points on the wide gate window --
+    with up to 6. On that window the precondition read secants 0.618 -> 0.781 -> 0.807 where the
+    searcher read 0.847 -> 0.855, so a cell could pass the precondition and decline in the
+    search, or be skipped as rough when the searcher would have settled. On the pair and cluster
+    windows Weyl asks for 16 anyway, which is why nothing caught it.
 
     **Why this is needed.** The gate found the multiplicity-4 split cases at `65*pi^2` reporting
     `slope never settled` with the largest secant running 0.64 -> 61 -> 261 across doublings,
@@ -313,27 +358,12 @@ def assert_smooth(case, prec, *, n_seed=16, doublings=4, settle=0.10):
 
     Returns `(ok, history)`.
     """
-    p = case.pencil
-    lo, hi = float(case.a), float(case.b)
-    k_lo, k_hi = np.sqrt(lo), np.sqrt(hi)
-    ks = list(np.linspace(k_lo, k_hi, n_seed))
-    vals = {k: p.tension(k * k) for k in ks}
-    hist, previous = [], 0.0
-    for _ in range(doublings):
-        arr = np.array(sorted(vals))
-        v = np.array([vals[k] for k in arr])
-        dk = np.diff(arr)
-        keep = dk > 1e-9 * (k_hi - k_lo)
-        raw = float(np.max(np.abs(np.diff(v)[keep] / dk[keep]), initial=0.0))
-        hist.append(raw)
-        if previous > 0.0 and raw <= (1.0 + settle) * previous:
-            return True, tuple(hist)
-        previous = raw
-        for a, b in zip(ks[:-1], ks[1:]):
-            m = 0.5 * (a + b)
-            vals.setdefault(m, p.tension(m * m))
-        ks = sorted(vals)
-    return False, tuple(hist)
+    import bracket_score as bs
+    from chladni.mps.bracket import _KView, _seed
+
+    view = _KView(bs.objective_for(case, prec))
+    _, _, hist, settled = _seed(view, view.lo, view.hi, 0.5 * prec)
+    return bool(settled), tuple(hist)
 
 
 def diagnostics(case, h_frac=0.02):
@@ -376,18 +406,37 @@ def family_A(seed=0):
 #: (2,1) and (1,2) on rect(1+delta, 1), degenerate at 5*pi^2 and splitting like 6*pi^2*delta.
 _B_MODES = ((2, 1), (1, 2))
 #: Chosen so the ladder STRADDLES each `prec`, not merely spans decades. A case only
-#: exercises `prec` if the pair must be separated at that `prec` and merged at the looser one:
+#: exercises `prec` if the pair must be separated at that `prec` and merged at the looser one,
+#: so what a delta is worth is its VERDICT ROW over `bracket_score.PREC_LADDER` -- and two
+#: deltas with the same row measure the same thing twice. Re-measured against the real six-rung
+#: ladder (`S` split, `m` merge):
 #:
-#:     delta      d/lam      1e-4    1e-8    1e-11   1e-14
-#:     1e-4     1.20e-04    SPLIT   SPLIT   SPLIT   SPLIT
-#:     1e-6     1.20e-06    merge   SPLIT   SPLIT   SPLIT   <- distinguishes 1e-4 from 1e-8
-#:     1e-8     1.20e-08    merge   SPLIT   SPLIT   SPLIT
-#:     3e-10    3.60e-10    merge   merge   SPLIT   SPLIT   <- distinguishes 1e-8 from 1e-11
-#:     1e-11    1.20e-11    merge   merge   SPLIT   SPLIT
-#:     1e-13    1.20e-13    merge   merge   merge   SPLIT   <- NOT USABLE, see below
+#:     delta      d/lam     1e-4 1e-6 1e-8 1e-10 1e-12 1e-14   row
+#:     1e-2     1.19e-02     S    S    S    S     S     S      SSSSSS
+#:     3e-3     3.59e-03     S    S    S    S     S     S      SSSSSS
+#:     1e-3     1.20e-03     S    S    S    S     S     S      SSSSSS
+#:     3e-4     3.60e-04     S    S    S    S     S     S      SSSSSS
+#:     1e-4     1.20e-04     S    S    S    S     S     S      SSSSSS   <- KEPT
+#:     3e-5     3.60e-05     m    S    S    S     S     S      mSSSSS
+#:     1e-5     1.20e-05     m    S    S    S     S     S      mSSSSS
+#:     3e-6     3.60e-06     m    S    S    S     S     S      mSSSSS
+#:     1e-6     1.20e-06     m    S    S    S     S     S      mSSSSS   <- KEPT
+#:     1e-8     1.20e-08     m    m    S    S     S     S      mmSSSS   <- KEPT, alone
+#:     3e-10    3.60e-10     m    m    m    S     S     S      mmmSSS   <- KEPT, alone
+#:     1e-11    1.20e-11     m    m    m    m     S     S      mmmmSS   <- KEPT, alone
+#:     1e-13    1.20e-13     m    m    m    m     m     S      mmmmmS   <- KEPT
+#:     3e-14    3.60e-14     m    m    m    m     m     S      mmmmmS
 #:
-#:     1e-13    1.20e-13    merge   merge   merge   SPLIT   <- distinguishes 1e-11 from 1e-14
-#:     3e-14    3.60e-14    merge   merge   merge   SPLIT
+#: Six rows, so six deltas. Where a row has several members the SMALLEST is kept, because it
+#: sits nearest its own crossover and is the hardest cell in the row; the wider ones still
+#: split at every rung, so nothing about the easy direction is lost with them. That took the
+#: family from 14 cases to 6 and the precision ladder from 180 cells to 132 -- **every
+#: precision stays**, and the trim is of duplicate verdict rows rather than of ladder rungs.
+#:
+#: **An earlier version of this table had four columns, not six** -- 1e-4, 1e-8, 1e-11, 1e-14 --
+#: and reading the trim off it would have dropped `1e-11`, which that table showed sharing a row
+#: with `3e-10`. On the real ladder `1e-11` is the SOLE case exercising `prec = 1e-12`. The
+#: verdict row is a property of the ladder the cases are swept at, and nothing else.
 #:
 #: `1e-13` and `3e-14` ARE admissible, and an earlier version of this comment wrongly said
 #: they were not. The reasoning was that `snap` merges within `1e-13 * lam = 4.9e-12` and
@@ -395,9 +444,9 @@ _B_MODES = ((2, 1), (1, 2))
 #: takes the pair values from `rect_eig` directly, precisely so a controlled separation is not
 #: at the mercy of a merge policy. Measured: `rect_eig` puts the two 833 ulps apart at
 #: `delta = 1e-13` and 250 apart at `3e-14`, and the pencil has `d/(eps/c) = 138` of headroom
-#: at the first. So `prec = 1e-14` CAN be exercised as a requirement here.
-B_DELTAS = (1e-2, 3e-3, 1e-3, 3e-4, 1e-4, 3e-5, 1e-5, 3e-6, 1e-6, 1e-8, 3e-10,
-            1e-11, 1e-13, 3e-14)
+#: at the first. So `prec = 1e-14` CAN be exercised as a requirement here, and `1e-13` is the
+#: member of that row this suite carries.
+B_DELTAS = (1e-4, 1e-6, 1e-8, 3e-10, 1e-11, 1e-13)
 
 
 def family_B(deltas=B_DELTAS, seed=0):
@@ -666,39 +715,6 @@ def cluster_diameter_ratio(case, prec):
     if t.size < 2:
         return 0.0
     return float((t[-1] - t[0]) / (prec * max(abs(t[-1]), 1.0)))
-
-
-def multiplicity_undecided(case, prec, *, reach=2.0, tol=0.02):
-    """Is this cluster's MULTIPLICITY undetermined at this precision, whatever the method?
-
-    Yes when its diameter lies between the merge licence and the wide bracket's reach --
-    `1 < diameter/(prec*lam) < reach`. Such a cluster is too wide to be one level of `S(prec)`,
-    and its members sit closer together than the flanks a multiplicity read needs, so there is
-    no window that is outside the level and inside the gap to the next one. Measured on the
-    multiplicity-3 cluster at `50*pi^2`, with `chladni.mps.multiplicity.WIDE_FACTOR = 2`:
-
-        diameter/licence   0.40   1.00   1.60   2.60   4.00   6.00
-        verdict            pass   FAIL   FAIL   pass   pass   pass
-
-    The band is bounded by the reach on one side and the licence on the other, exactly as the
-    argument predicts, so this is a property of the configuration rather than a tuning failure.
-    Below the licence the cluster is one level and the reach spans it; above the reach its
-    members are further apart than the flanks and each is read alone.
-
-    **How these cases come to sit there is worth recording.** `crossover_cases` dials the
-    MINIMUM ADJACENT GAP to a multiple of `prec`, because that is what decides whether two
-    neighbours must be told apart -- but `S(prec)` groups by DIAMETER, and for an `m`-member
-    cluster the diameter is about `(m-1)` times the dialled gap. So dialling the gap does not
-    control the licence, and at `m = 3, band = 0.5` the diameter lands on it exactly, to four
-    figures. That is `CHLADNI_V1.md` section 5.4's trap in a form the document does not name:
-    it warns that the tightest PAIR is not the one you are dialling, and for a cluster the
-    DIAMETER is not the thing you are dialling either.
-    """
-    # `tol` on the lower edge because a case dialled ONTO the licence lands a hair either
-    # side of it: at `m = 3, band = 0.5` the ratio comes out at 0.99999999999, and a strict
-    # `>= 1` would score the most ambiguous case in the set as if it were decided.
-    r = cluster_diameter_ratio(case, prec)
-    return (1.0 - tol) <= r <= float(reach)
 
 
 def gate_cases(prec, seed=0):

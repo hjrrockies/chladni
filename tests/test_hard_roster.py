@@ -6,8 +6,9 @@ remaining speedup, and the only item that could invalidate the design rather tha
 
 Every case is gated on the precision its BASIS can support, measured per domain. Asking a
 domain for more than that measures the basis, and the roster's whole point is that the answer
-differs per domain: the L-shape with pure Fourier-Bessel at its reentrant corner reaches
-7.1e-15, while the equilateral triangle with plane waves stops at 2.5e-12.
+differs per domain. On a fixed `SUITE_RTOL` the L-shape with pure Fourier-Bessel at its
+reentrant corner reaches 7.1e-15 and the equilateral triangle with plane waves 1.5e-15; the
+2.5e-12 once recorded for eq_tri was a rank cutoff derived from the default `prec`.
 """
 from __future__ import annotations
 
@@ -46,8 +47,10 @@ def test_each_domain_reports_the_precision_its_basis_supports():
         "pure Fourier-Bessel at the reentrant corner must reach the bottom of the ladder; "
         f"got {got['L_shape']:.2e}")
     assert got["disk"] < 1e-14
-    # And the one that cannot, stated rather than discovered as a failure later.
-    assert got["eq_tri"] > 1e-13, "plane waves on eq_tri stop well short of 1e-14"
+    assert got["eq_tri"] < 1e-14, (
+        "plane waves on eq_tri reach the bottom of the ladder once the rank cutoff is fixed; an "
+        f"earlier version of this line asserted the opposite, on a prec-derived rtol. Got "
+        f"{got['eq_tri']:.2e}")
 
 
 def test_the_l_shape_really_has_a_reentrant_corner():
@@ -190,3 +193,15 @@ def test_the_l_shapes_FLOOR_SPREAD_IS_A_BASIS_ARTIFACT():
     i = int(np.argmin(np.abs(lv - 31.9126)))
     assert abs(lv[i] - 31.9126) < 1e-3
     assert floors[i] < 1e-13, f"k = 5.649 reads {floors[i]:.2e}, not 5.5e-08"
+
+
+@pytest.mark.parametrize("name", ["disk", "eq_tri", "L_shape"])
+def test_every_roster_pencil_carries_the_SUITE_rtol(name):
+    """The rank cutoff must not move with the request. Built at the default `prec` the cutoff was
+    `sqrt(1e-8 * eps) = 1.5e-12`, which held eq_tri's floor at 2.4e-12 and made its 1e-14 cells
+    unexercisable; at `SUITE_RTOL` the same 90 columns reach 1.3e-15."""
+    from rect_suite import SUITE_RTOL
+
+    case = hr.ROSTER[name]()
+    assert case.pencil.rtol == SUITE_RTOL
+    assert hr.solver_for(case.domain, case.b, label=name, prec=1e-12).pencil.rtol == SUITE_RTOL

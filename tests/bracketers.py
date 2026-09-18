@@ -1,6 +1,13 @@
 """The BRACKETING phase of each candidate search, exposed on its own.
 
-TEST SUPPORT ONLY.
+TEST SUPPORT ONLY, and specifically `notes/`-RUNNER TOOLING: no `test_*.py` imports this module,
+and the only importers are `notes/run_bracket_controls.py` and `notes/run_bracket_filter.py`.
+That is deliberate rather than rot. `tests/baselines.py` supplies the honest-baseline role on the
+current seam and is what the test suite reaches for; this file holds the older GENERATION of
+searches so a candidate can still be scored against what it replaced. `TODO.md` once called it
+orphaned along with `tests/searches.py`, which was wrong on both counts -- `searches.py` is
+imported here and by `tests/test_searches.py`, which covers `_spacing`, `_descend` and
+`_local_minima`.
 
 A bracketer is
 

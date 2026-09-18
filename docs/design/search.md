@@ -368,7 +368,7 @@ Derived from `prec`, because they carry units of `lam` or express accuracy:
 
     tol_merge          prec
     accuracy target    prec * lam
-    refinement stop    max(prec * lam, delta_res)
+    refinement stop    straddling triple <= max(prec * lam, 4 ulp), else `stalled`
     planner target     the `eps` that makes the MEASURED delta_res <= prec * lam
 
 The planner target now has a closed form, because `delta_res` does: `delta_res <= prec*lam`
@@ -379,8 +379,13 @@ form was wrong, not the idea of a formula. See the As-built note.
 
 ## 2.6 Not more work than asked
 
-* Refinement stops at `max(prec * lam, delta_res)`. At loose `prec` the first term binds and
-  Brent stops early even though the floor would permit more.
+* Refinement stops when the straddling triple is at most `_xatol = max(prec * lam, 4*ulp(lam))`
+  wide -- `converged` is a claim about WIDTH -- fencing the best point at the tolerance once the
+  vertex settles on it, or reports `stalled` with a bar that covers the triple. At loose `prec`
+  the width binds early even though the floor would permit more. An earlier version of this
+  line said the stop was `max(prec * lam, delta_res)`; the code never compared against
+  `delta_res`, and a repeated-point exit with no width check stopped at 1e-11 to 1e-9 on pencils
+  good to 1e-15 while reporting `converged` (`tests/test_refine_regression.py`).
 * The scan stride comes from Weyl -- about six samples per eigenvalue gap, since dips occupy
   roughly half the spacing on every domain measured. **Completeness is not a precision
   question** and the stride does not tighten with `prec`.
@@ -509,6 +514,13 @@ ATTIC tagged with the `s_hat` that justified pruning, never discard it. Whenever
 re-test the attic and revive anything no longer certified. Pruning is the only irreversible
 act in the algorithm and the attic is what makes it reversible.
 
+> **AS BUILT: there is no attic, and nothing is ever pruned.** `chladni.mps.bracket` reaches the
+> same reversibility by never creating the state that would need reverting -- `live_regions(ks,
+> vs, L)` recomputes the whole exclusion from the sample set and the CURRENT `L` at the top of
+> every cover pass. `L` appears in `_envelope_min` with a negative sign, so a larger `L` lowers
+> every bound, fewer pairs clear the test, and territory excluded under the old `L` is live again
+> on the next pass without anything being revived. See the As-built note below.
+
 **Subdivision depth -- specified.** An interval becomes a candidate when
 
     h < max( beta * d_est , h_floor )      and      h < alpha * S / L
@@ -621,8 +633,10 @@ The completeness claim is conditional and must be reported as such:
 > No `x` in `[a, b]` with `sigma_1(x) <= tau_scan` exists outside the returned set, GIVEN the
 > Lipschitz constant `L`.
 
-Every run reports `L`, the largest observed secant slope, the ratio between them, the number
-of attic revivals, and the number of evaluations. A large margin means the scan was
+Every run reports `L`, the largest observed secant slope, the ratio between them, how often
+`L` GREW after exclusions had already relied on it, and the number of evaluations. That growth
+count is this design's analogue of the attic-revival count: `SearchDiagnostics.L_growth_after_use`,
+beside `L`, `L_history`, `max_secant` and the `margin` property. A large margin means the scan was
 conservative; a small one means the constant was being pushed and the run deserves a rerun
 with a larger `gamma`.
 
@@ -654,7 +668,7 @@ Written before the implementation, against the surrogate and against real pencil
 
 | file | what it defends |
 |---|---|
-| `tests/test_search_scan.py` | Phase A: the envelope never prunes an interval containing a root when `L` is a true bound; the attic revives on a raised `L`; the subdivision depth reaches `beta*d_est` on a pair and stops at `h_floor` on a degeneracy |
+| `tests/test_search_scan.py` | Phase A: the envelope never prunes an interval containing a root when `L` is a true bound; a region excluded under a smaller `L` is LIVE AGAIN once `L` grows (the shipped analogue of the attic revival -- there is no attic, see As built); the subdivision depth reaches `beta*d_est` on a pair and stops at `h_floor` on a degeneracy |
 | `tests/test_search_refine.py` | Phase B: the apex case (root on a shared endpoint) is recovered to the floor; a wall point adjacent to a deep root is rejected; symmetric sampling still finds the well; stagnation terminates |
 | `tests/test_search_multiplicity.py` | Phase C: 9 for 9 on disk and eq_tri; (C2) rejects the `d <~ eps/c` double-count; a roughness minimum fails prominence `P` and a true well passes it by orders; the wide bracket is wide enough |
 | `tests/test_search_collapse.py` | Phase D: the Gram angle reads `<= 0.10` on a resolved pair of `rect(1+delta, 1)` and `>= 0.948` on one well sampled twice; within one `lam` it is 0 to machine precision and must not be consulted; a true double found twice gives multiplicity 2 under BOTH verdicts |
@@ -834,6 +848,115 @@ wrong version of the same probe: a probe whose reach is set by the bracket width
 it is stepping across. One whose reach is set by a CONSTANT cannot know that, and cannot know how
 accurate the point it steps from is either. `tests/test_searches.py` is the tracked measurement;
 `tests/searches.py` had no test file at all before it.
+
+## THE MULTIPLICITY CONTRACT, as shipped
+
+What `solve` promises about a COUNT, and what it refuses to promise. Section 2.4 clause (1) says
+`S_hat` must match `S(prec)` as a multiset; this is how the shipped pipeline delivers that, and
+where it stops.
+
+### What produces a count
+
+    merge="attained"    two located roots are ONE level when they agree to within the accuracy
+                        the refinement actually REACHED, capped at the licence `prec*lam`. The
+                        search never merges deliberately, only what it could not resolve.
+    rule="reach"        the count is `mu*(B)`: how many eigenvalues lie inside the EMITTED
+                        bracket, by comparing a distance `sigma_j/c` against the bracket's reach.
+                        Not a ratio on `sigma`, which measures in units of the floor while the
+                        bracket is in units of `prec*lam`.
+    attribution         each branch the read counts inside is owned ONCE -- by a located level
+                        near where `sigma_j/c` puts it, or else by the root. Only a COUNTED
+                        branch with `index >= 1` is claimable, so `mult >= 1` holds by
+                        construction and nothing the read did not put in can be taken out.
+    side search         when the read declines, the partner is LOCATED instead of guessed at,
+                        searching outward past each find. What it adds is exactly what no branch
+                        owns.
+    phase_d="distance"  roots inside one licence are read ONCE per group, which recounts by
+                        construction rather than summing.
+
+### What is guaranteed
+
+**Nothing is silently wrong about a count that is certified.** Every disagreement the pipeline
+can detect between two readings of a multiplicity reaches `SolveDiagnostics.n_uncertain`, and
+`solve_interval` RAISES on it rather than returning a short array -- because a short array is
+indistinguishable from "there are none", and `Eigensolver.solve` answers a short return by
+widening the window.
+
+Measured over five split-degeneracy grids (`50`, `65`, `125`, `145`, `170` x `pi^2`) at five
+precisions and eleven bands, unexercisable cells excluded: **216 right, 0 wrong, 35 declined.**
+The roster (disk, eq_tri, L-shape) is certified at every precision on the ladder.
+
+### What is NOT guaranteed, stated as plainly
+
+* **A decline is not a failure and not an answer.** 35 of 251 cells decline, all of them stage 1
+  refusing to bound a slope. At `145*pi^2` that is 23 of 45, and
+  `notes/landscape_findings.md` section 34 shows every one is the threshold rank making the
+  objective piecewise -- the bracketer is right to refuse. The decline rate is scored beside the
+  pass rate (`test_cluster_totals.MAX_DECLINE_RATE`), per `candidates.md` section 5.
+* **A basis too poor to resolve a level loses it silently, and no diagnostic in `solve` can
+  catch that.** Section 38: the Weyl deficit is insensitive to it and `findability` measures a
+  different failure. A search cannot distinguish "no eigenvalue here" from "one my basis cannot
+  resolve"; that is the planner's contract to publish, not the searcher's to detect.
+* **The grouping inside a licence may be coarser than `prec` asked for.** The TOTAL over a clear
+  window is what is defended; which of two readings a level carries, when they disagree, is
+  flagged rather than chosen.
+* **`L` is not a certificate.** Coverage is conditional on the Lipschitz bound, which is a
+  largest observed secant inflated by `SAFETY` -- a LOWER bound with no formal status. Every run
+  reports `L`, its history, and how often it grew after exclusions relied on it.
+* **Phase D's angle is off.** With `phase_d="angle"` the interior Gram angle decides
+  collapse-versus-merge on evidence; it is measured to agree with the distance rule on all 115
+  pairs it was asked about, so it is not the default. Its one known unsound arm is recorded: a
+  degenerate eigenspace located twice has both members reading the full multiplicity, and the sum
+  doubles it -- flagged, never guessed.
+
+### The three constants this rests on that were measured elsewhere
+
+`STRADDLE`, `SAFETY` and `MARGIN` still carry `RECALIBRATE` comments naming the
+`(1+delta) x 1` rectangle. `MARGIN` is the one with correctness at stake: it gates stopping at
+isolation, which `CHLADNI_V1.md` section 8 calls the claim most in need of confirmation off the
+rectangle, and its own comment records two coverage failures. The contract above is conditional
+on that gate.
+
+## The attic was not built, because nothing is pruned
+
+Phase A specifies a reversible prune: certify an interval free, move it to an ATTIC tagged with
+the `s_hat` that justified it, and re-test the attic whenever `L` grows. The spec is explicit
+about why -- "pruning is the only irreversible act in the algorithm and the attic is what makes
+it reversible."
+
+`chladni.mps.bracket` has no attic and performs no prune. Exclusion is not STATE; it is a pure
+function of the samples and the current `L`, recomputed from scratch at the top of every cover
+pass:
+
+    while True:
+        regions = live_regions(ks, vs, L)      # every pass, over every sample
+        ...
+        if SAFETY * raw > L:                   # L may grow at the end of the pass
+            L = SAFETY * raw
+
+`_envelope_min` is `0.5*(v_i + v_{i+1}) - 0.5*L*(k_{i+1} - k_i)`, and a pair is excluded when it
+is `>= 0`. `L` carries a negative sign, so a LARGER `L` lowers every bound, fewer pairs clear
+the test, and a region excluded under the old `L` is simply live again next pass. The revival
+the attic exists to perform happens in the arithmetic, and there is no bookkeeping to get stale,
+no tag to go out of date, and no way for an interval to be pruned and then forgotten.
+
+What the design gives up is the attic's ability to say WHICH intervals came back, which is why
+the diagnostic in section 6 is the growth count rather than a revival count. What it gains is
+that the reversibility is structural rather than maintained: the failure mode the attic guards
+against -- an interval pruned under an `L` that later proves too small, and never re-tested --
+is not reachable, because nothing is ever in a pruned state to begin with.
+
+The cost is real and is accounted for as cost. Every growth invalidates evaluations already
+spent excluding territory that is now live again, which is exactly why `TODO.md` records "no
+treating slope growth as an error" as a measured dead end: `MAX_GROWTHS = 16` is a budget guard,
+not a correctness one, and at 4 it wrongly declined a solvable case -- the multiplicity-3
+cluster needs 7 growths to reach the right `L`.
+
+Note what is NOT claimed, here or anywhere: `L` bounding the slope is an assumption, not a
+certificate. `_envelope_min`'s own docstring says the exclusion holds "conditional on `L` really
+bounding the slope, which is the assumption the whole method rests on and which `_slope` refuses
+to dress up as a certificate." Recomputation makes the method robust to `L` being revised
+UPWARD; it cannot make it robust to `L` being wrong and never revised.
 
 ## Refine in `lam`, not `k`
 

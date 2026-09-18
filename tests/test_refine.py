@@ -214,6 +214,11 @@ def test_delta_res_IS_the_resolution_limit_eps_over_c(eps):
     assert r.delta_res == pytest.approx(DELTA_SAFETY * eps / c_lam, rel=1e-3)
 
 
+#: Errors at or below this many ulps are rounding: any bar contains them, so they cannot show a
+#: bar to be loose or an old formula to be short. Measured: 0 and 1 ulp at two disk levels.
+_ROUNDING = 4.0
+
+
 def _disk_levels(prec=1e-10):
     """The disk over `[8, 60]` through the REAL pipeline, against exact truth.
 
@@ -248,7 +253,12 @@ def test_delta_res_CONTAINS_the_true_error_on_a_real_pencil():
         err = abs(L.lam - lam0)
         assert err <= L.delta_res, (
             f"lam={lam0:.6f}: error {err:.3e} EXCEEDS the reported bound {L.delta_res:.3e}")
-        slack.append(L.delta_res / err)
+        if err > _ROUNDING * np.spacing(lam0):
+            slack.append(L.delta_res / err)
+    # A level located to within rounding says nothing about looseness: any bar contains it. Since
+    # the QR route around Accelerate's `dgeqrf`, two of six disk levels land 0 and 1 ulp from the
+    # truth, and a slack of `delta_res/0` read as infinitely loose.
+    assert len(slack) >= 3, f"only {len(slack)} levels above rounding: the test measures nothing"
     assert max(slack) < 10, f"loose by {max(slack):.1f}x: a scale with margin, not a guess"
 
 
@@ -266,12 +276,15 @@ def test_ABLATION_the_machine_epsilon_formula_contains_NOTHING():
     missed = 0
     total = 0
     for lam0, L in _disk_levels():
+        if abs(L.lam - lam0) <= _ROUNDING * np.spacing(lam0):
+            continue                     # located to rounding: every bar contains it
         total += 1
         old = L.delta_res * np.sqrt(np.spacing(1.0) / L.sigma) / DELTA_SAFETY
         missed += abs(L.lam - lam0) > old
+    assert total >= 3, f"only {total} levels above rounding: the ablation measures nothing"
     assert missed == total, (
-        f"the old formula contained the error at {total - missed} of {total} levels; it was "
-        f"supposed to fail at every one")
+        f"the old formula contained the error at {total - missed} of {total} levels above "
+        f"rounding; it was supposed to fail at every one")
 
 
 # --- termination -----------------------------------------------------------------------------
@@ -392,3 +405,80 @@ def test_it_rejects_an_empty_bracket_on_a_real_pencil_cheaply():
     r = refine(obj, mid - 0.05, mid + 0.05, prec=1e-14)
     assert not r.accepted, f"accepted a bracket in a gap at sigma = {r.sigma:.2e}"
     assert r.evaluations <= 10
+
+
+# --- a start with no parabola is a start, not a verdict ---------------------------------------
+
+def _two_wells(m1, m2, c=0.0095, floor=1e-12):
+    """Two cones in `lam` at `m1` and `m2`, slope `c`: sigma_1 is the lower wall."""
+    def tensions(lam):
+        d = np.sort(np.abs(np.array([m1, m2]) - float(lam)))
+        return np.minimum(np.sqrt(floor**2 + (c * d) ** 2), 10.0)
+    return Objective(tensions, 1600.0, 1700.0, variable="lam", prec=1e-8)
+
+
+def test_a_bracket_holding_TWO_members_started_on_the_HUMP_locates_one():
+    """Found on the held-out grid at 170*pi^2, prec 1e-8, band 0.3, as a SILENT loss of two
+    eigenvalues. The bracket held members 3.0e-9 relative apart, the search's deepest sample sat
+    on the hump between them, and the starting triple -- end, hump, end -- was concave. `refine`
+    returned `no_parabola` at once, `solve` read every rejected bracket as empty, and 6 of 8 came
+    back certified. One bisection toward the lowest sample makes the triple convex; the vertex
+    then closes on a member. Measured bracket, members and slope."""
+    m1, m2 = 1677.8327304631, 1677.8327354965
+    lo, hi = 1677.832726366564, 1677.832735691503
+    obj = _two_wells(m1, m2)
+    r = refine(obj, lo, hi, prec=1e-8, lam_hint=0.5 * (m1 + m2), interior=(lo, hi))
+    assert r.accepted, f"refused a bracket holding two eigenvalues: {r.reason}"
+    assert min(abs(r.lam - m1), abs(r.lam - m2)) <= r.delta_res + 4 * np.spacing(m1), (
+        f"landed at {r.lam!r}, not on a member")
+
+
+def test_a_hump_start_on_an_EMPTY_bracket_is_still_refused_cheaply():
+    """The fallback must not turn a concave start into an acceptance: walls just OUTSIDE both
+    ends, the start on the hump between them, nothing inside. Still refused, still cheap."""
+    lo, hi = 1677.832726366564, 1677.832735691503
+    obj = _two_wells(lo - 2e-7, hi + 2e-7)
+    r = refine(obj, lo, hi, prec=1e-8, lam_hint=0.5 * (lo + hi), interior=(lo, hi))
+    assert not r.accepted, f"accepted {r.lam!r} ({r.reason}) in a bracket holding nothing"
+    assert r.evaluations <= 10, f"rejecting cost {r.evaluations} evaluations"
+
+
+@pytest.mark.parametrize("style", ["side", "main"])
+def test_a_best_sample_ON_the_end_with_the_well_just_INSIDE_is_walked_to_the_well(style):
+    """Found with the fallback, and it needs the START the pipeline gives. The refiner starts from
+    the deepest sample already cached inside its bracket, and on a bracket nested in another that
+    sample is the outer bracket's end -- one ulp from this one's. The triple then collapses onto
+    the end, the width rule calls it converged, and the three outward end-probes all read HIGHER:
+    the minimum lies inside, and is never sampled.
+
+    side  50*pi^2, prec 1e-8, band 0.8: a side sub-bracket 2.36e-6 wide, the member 1.58e-7 inside
+          its lower end. The end is not strictly inside, so `not_a_minimum` -- a firm "empty" --
+          and the count came back certified one short.
+    main  170*pi^2, prec 1e-8, band 0.3: the hint was the unwidened upper end, the member 1.95e-7
+          inside it; the end is inside the WIDENED bracket, so it was accepted ON the end.
+
+    Measured offsets, widths and slope; the cached sample is placed exactly as the pipeline had it."""
+    c = 0.0198
+    if style == "side":
+        m = 493.4802119942911
+        lo = m - 1.58e-7
+        hi = lo + 2.36e-6
+    else:
+        m = 493.4802119942911
+        hi = m + 1.95e-7
+        lo = hi - 9.325e-6
+    obj = Objective(lambda lam: [np.sqrt(1e-22 + (c * (float(lam) - m)) ** 2), 10.0],
+                    400.0, 600.0, variable="lam", prec=1e-8)
+    if style == "side":
+        obj.tension(obj.from_lam(lo + np.spacing(lo)))       # the outer bracket's end, one ulp in
+        r = refine(obj, lo, hi, prec=1e-8, interior=(lo, hi))
+    else:
+        wlo, whi = lo - 4 * np.spacing(lo), hi + 4 * np.spacing(hi)
+        obj.tension(obj.from_lam(hi))                        # the search's deepest sample
+        r = refine(obj, wlo, whi, prec=1e-8, lam_hint=hi, interior=(lo, hi))
+    assert r.accepted, f"refused a bracket holding the member: {r.reason} at {r.lam!r}"
+    end = lo if style == "side" else hi
+    assert abs(r.lam - m) < 0.5 * abs(end - m), (
+        f"stayed on the end: {(r.lam - m) / m:+.2e} relative from the member, which is "
+        f"{(end - m) / m:+.2e} from the end")
+    assert abs(r.lam - m) <= max(r.delta_res, 4 * np.spacing(m)), "and the bar contains the error"

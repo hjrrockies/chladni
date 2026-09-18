@@ -69,11 +69,14 @@ def test_a_tighter_request_costs_more_and_says_what_it_could_not_reach():
     """`search.md` section 2.6 and clause (2), which is an OR and has to be tested as one.
 
     Clause (2): each level within `prec`, **or** the solver reports that it was not. Asserting
-    only the first half would demand the basis serve any request, which is not the contract and
-    is not true -- this disk pencil floors at about 2e-10 relative however tightly it is asked,
-    so at `prec = 1e-10` one level is genuinely out of reach. What must never happen is
-    reaching it silently, and clause (3) is the assertion for that: the reported bar contains
-    the error whether or not the request was met.
+    only the first half would demand the basis serve any request, which is not the contract, so
+    the OR is asserted at every precision whichever branch holds. What must never happen is
+    missing the request silently, and clause (3) is the assertion for that: the reported bar
+    contains the error whether or not the request was met.
+
+    An earlier version said this pencil "floors at about 2e-10 relative however tightly it is
+    asked". It does not -- its tension at the true eigenvalues is 1.7e-15 -- and the apparent
+    floor was the refiner declaring `converged` early. See `tests/test_refine_regression.py`.
 
     Section 2.6 is the cost half: a tighter request may cost more and must not cost less.
     """
@@ -105,23 +108,52 @@ def test_a_tighter_request_costs_more_and_says_what_it_could_not_reach():
 
 
 def test_a_request_the_basis_cannot_serve_is_REPORTED_not_met_silently():
-    """Clause (3) at the point it bites. This pencil floors at about 2e-10 relative, so
-    `prec = 1e-12` is a request it cannot serve -- and the whole apparatus exists so that the
-    caller is told rather than handed a confident wrong answer.
+    """Clause (3) at the point it bites. A deliberately STARVED plane-wave basis on the disk --
+    22 columns, `pad = 0.35`, on the roster's fixed `SUITE_RTOL` -- cannot serve
+    `prec = 1e-12` at every level it locates, and the caller must be told rather than handed a
+    confident wrong answer.
+
+    Measured over `pad` at this `prec`, levels found of 6 and levels reported unmet:
+
+        pad    columns   floor at worst level   found   unmet
+        0.30      18           4.0e-03            1       1
+        0.35      22           1.1e-05            2       1
+        0.40      26           1.6e-08            3       0
+        0.45      28           3.7e-10            5       0
+
+    So starving a basis does not mainly produce reported shortfalls: it LOSES the levels it
+    resolves worst, silently. That is a separate defect, pinned by
+    `test_a_starved_basis_does_not_DROP_levels_silently` below.
+
+    It used the reference-grade pencil and the claim that it "floors at about 2e-10". That was
+    the refiner stopping early; with it fixed the same pencil meets `1e-12`, and this test has
+    to starve the basis to keep testing what its name says.
 
     This is the case that caught `delta_res` reporting a bar three orders tighter than its own
     error: before that fix this test's `achieved` read True.
     """
     a, b = 8.0, 60.0
     truth = np.unique(disk_spectrum(a, b, 1.0))
-    s = solver_for(disk(1.0), b, label="disk", prec=1e-12)
+    s = solver_for(disk(1.0), b, label="disk-starved", pad=0.35, prec=1e-12)
 
-    with pytest.warns(PrecisionWarning, match="short of the requested"):
-        spec = s.solve_interval(a, b)
-
+    # Two ways to TELL the caller, and either is acceptable; a confident answer is not. Under the
+    # promoted defaults the starved basis leaves a count the reach rule cannot certify, and
+    # `solve_interval` refuses with that reason -- measured 2026-09-14 -- where the previous
+    # defaults returned the levels with a shortfall warning.
+    import warnings
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            spec = s.solve_interval(a, b)
+        except RuntimeError as exc:
+            assert "could not be certified" in str(exc), f"refused, but not for a stated reason: {exc}"
+            return
+    assert any(issubclass(w.category, PrecisionWarning) and "short of the requested" in str(w.message)
+               for w in caught), "returned without warning that the request was not met"
     assert spec.unmet.any(), "a request beyond the basis must be reported as unmet"
     assert not spec.achieved
-    assert np.all(np.abs(spec.lam - truth) <= spec.bound), "and the bar must still hold"
+    err = np.array([np.min(np.abs(truth - x)) for x in spec.lam])
+    assert np.all(err <= spec.bound), "and the bar must still hold"
 
 
 def test_multiplicity_is_read_from_the_cache_and_spends_nothing():
@@ -157,3 +189,33 @@ def test_solve_interval_returns_a_Spectrum_and_solve_returns_an_array():
     spec = s.solve_interval(8.0, 60.0)
     assert isinstance(spec, Spectrum)
     assert isinstance(s.solve(4), np.ndarray)
+
+
+@pytest.mark.parametrize("pad", [
+    0.35,     # under the promoted defaults the uncertified count makes solve_interval refuse
+    pytest.param(0.45, marks=pytest.mark.xfail(strict=True, reason=(
+        "measured 2026-09-14: on a starved disk basis solve_interval returns 5 of 6 levels at "
+        "pad=0.45 with no decline, no unmet level for the lost one and no warning. Clause (1)'s "
+        "completeness diagnostics do not fire. TODO.md records it."))),
+])
+def test_a_starved_basis_does_not_DROP_levels_silently(pad):
+    """`search.md` section 2.4 clause (3): the completeness diagnostics fire whenever clause (1)
+    fails. A basis too poor to locate a level must say so -- a short count with no warning is
+    what `Eigensolver.solve(n)` turns into a non-consecutive spectrum by widening the window."""
+    import warnings
+
+    a, b = 8.0, 60.0
+    truth = np.unique(disk_spectrum(a, b, 1.0))
+    s = solver_for(disk(1.0), b, label=f"disk-starved-{pad}", pad=pad, prec=1e-12)
+    with warnings.catch_warnings():
+        # Any warning is not enough: a PrecisionWarning about a level that WAS found says
+        # nothing about the ones that were not. No warning names a missing level today, so the
+        # acceptable outcomes are the full count or a decline.
+        warnings.simplefilter("ignore")
+        try:
+            spec = s.solve_interval(a, b)
+        except Exception:
+            return                                   # refusing loudly is an acceptable answer
+    assert spec.count == truth.size or spec.declined, (
+        f"returned {spec.count} of {truth.size} levels without declining")
+

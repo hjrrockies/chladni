@@ -90,15 +90,18 @@ class Objective:
     """
 
     def __init__(self, tensions, lo, hi, *, prec=PREC, variable="k",
-                 expected_count=None, max_cache=None):
+                 expected_count=None, max_cache=None, modes=None):
         if not callable(tensions):
             raise TypeError("tensions must be callable")
+        if modes is not None and not callable(modes):
+            raise TypeError("modes must be callable or None")
         lo, hi = float(lo), float(hi)
         if not np.isfinite(lo) or not np.isfinite(hi) or not lo < hi:
             raise ValueError(f"need a finite interval with lo < hi, got ({lo}, {hi})")
         if variable not in ("k", "lam"):
             raise ValueError(f"variable must be 'k' or 'lam', got {variable!r}")
         self._f = tensions
+        self._m = modes
         self.lo = lo
         self.hi = hi
         self.prec = float(prec)
@@ -106,7 +109,9 @@ class Objective:
         self._expected = expected_count
         self._max_cache = None if max_cache is None else int(max_cache)
         self._cache = {}
+        self._mode_cache = {}
         self._n_calls = 0
+        self._n_mode_calls = 0
 
     # --- evaluation ------------------------------------------------------------------------
 
@@ -130,6 +135,33 @@ class Objective:
         self._cache[key] = v
         return v
 
+    @property
+    def has_modes(self):
+        """Can this objective supply candidate eigenfunctions? Ask before calling `modes`."""
+        return self._m is not None
+
+    def modes(self, x):
+        """The candidate eigenfunction at `x` on the FIXED shared point set, or `None`.
+
+        `None` when no callable was supplied, so a rule that wants the interior Gram angle can
+        ask `has_modes` and fall back rather than crash on an objective built from a bare
+        tension function. `tests/harness.py` states the seam: a search that does not want this
+        ignores it, which is why it rides on the objective instead of widening `solve`.
+
+        **Informative only ACROSS `x`** -- see `MPSPencil.interior_image`, which is what
+        `from_pencil` wires in here.
+        """
+        if self._m is None:
+            return None
+        key = float(x)
+        self._n_mode_calls += 1
+        hit = self._mode_cache.get(key)
+        if hit is not None:
+            return hit
+        u = np.atleast_1d(np.asarray(self._m(key), dtype=float))
+        self._mode_cache[key] = u
+        return u
+
     def tension(self, x):
         """`sigma_1` at `x`. The objective a locator minimizes -- as its SQUARE."""
         return float(self.tensions(x)[0])
@@ -148,8 +180,49 @@ class Objective:
 
     @property
     def n_evals(self):
-        """Cache misses: the only cost currency (`candidates.md` section 3)."""
-        return len(self._cache)
+        """Cache misses: the only cost currency (`candidates.md` section 3).
+
+        **One evaluation is one `x` at which the pencil was FACTORIZED**, by either reader. That
+        keeps the definition `candidates.md` section 3 gives and that every committed grid is
+        denominated in: a mode at a FRESH `x` buys the factorization and is charged in full, or a
+        candidate could scan the whole window through `modes` for nothing.
+
+        **What it does not charge is the second LAPACK call**, and the size of that is worth
+        stating rather than waving at, because two different comparisons get confused here.
+        Measured on a `family_B` pencil, `prec = 1e-8`:
+
+            fresh tension (assemble, equilibrate, regularize, gsvdvals)     1.81 ms
+            mode at a COLD lam (the same, then a separate-mode gsvd)        1.83 ms
+            mode at an lam already tensioned (the separate gsvd alone)      1.16 ms
+
+        So a mode CALL costs about what a tension call costs -- which is the 5-7% figure
+        `tests/rect_suite.py`'s `Counter` records, and why one counter serves both there -- but
+        the MARGINAL cost of a mode at a point already evaluated is about 0.6 of an evaluation,
+        not a twentieth of one. Charging it as a full second miss would overstate by ~1.6x;
+        charging nothing understates by ~0.6. Neither is free of error and the currency cannot
+        express a fraction.
+
+        It stays at zero, and the omission is REPORTED instead: `n_mode_evals` below counts the
+        points where a mode was computed, so `search.md` section 2.6's budget -- one
+        `separate`-mode GSVD per REPORTED ROOT, at the end -- is a number a run prints rather
+        than an assumption. That budget is what keeps the omission small: measured 4 mode calls
+        against 89 evaluations on the same case, so ~3% of the total even at 0.6 each. Inflating
+        the currency to cover it would invalidate every grid measured in it, for 3%.
+
+        The UNION of the two caches, which is exactly `len(self._cache)` when no modes are in
+        play -- eviction included, so an objective under `max_cache` charges the same as before.
+        """
+        return len(self._cache.keys() | self._mode_cache.keys())
+
+    @property
+    def n_mode_evals(self):
+        """`x` values at which a candidate eigenfunction was computed. Reported, not scored."""
+        return len(self._mode_cache)
+
+    @property
+    def n_mode_calls(self):
+        """Every mode ask, hits included. Diagnostic only, never scored."""
+        return self._n_mode_calls
 
     @property
     def n_calls(self):
@@ -166,6 +239,11 @@ class Objective:
         nothing. This is where a candidate reads them from, so it needs no bookkeeping of its
         own, and it is also what the harness uses to induce brackets for a method that never
         produced any.
+
+        Reads the TENSION cache only, deliberately. An `x` where a mode was computed but no
+        tension was has no `sigma_1`, so it is charged but is not a sample -- putting it here
+        would hand `search._samples`, `wide_bracket_for` and the slope readers a point with no
+        value, which is worse than not having it.
         """
         if not self._cache:
             return np.empty(0), np.empty(0)
@@ -173,9 +251,16 @@ class Objective:
         return xs, np.array([self._cache[x][0] for x in xs])
 
     def reset(self):
-        """Drop the cache and the counters. A fresh cost measurement on the same callable."""
+        """Drop the caches and the counters. A fresh cost measurement on the same callable.
+
+        The mode cache goes too, or a candidate scored after another would inherit a warm one --
+        `bracket_score.run_bracketer` calls this precisely so a candidate is charged for its own
+        evaluations and nobody else's.
+        """
         self._cache = {}
+        self._mode_cache = {}
         self._n_calls = 0
+        self._n_mode_calls = 0
 
     # --- Weyl, for SIZING only -------------------------------------------------------------
 
@@ -205,15 +290,34 @@ class Objective:
         if variable == "k":
             def tensions(k):
                 return pencil.tensions(float(k) ** 2)
+
+            def modes(k):
+                return pencil.interior_image(float(k) ** 2)
         else:
             def tensions(lam):
                 return pencil.tensions(float(lam))
+
+            def modes(lam):
+                return pencil.interior_image(float(lam))
         kw.setdefault("prec", getattr(pencil, "prec", PREC))
+        kw.setdefault("modes", modes)
         return cls(tensions, lo, hi, variable=variable, **kw)
 
     def in_lam(self, x):
         """`x` as a `lam`, whichever variable this objective is parameterized by."""
         return float(x) ** 2 if self.variable == "k" else float(x)
+
+    def in_lam_bracket(self, lo, hi):
+        """A bracket in this objective's variable as a `lam` bracket that still fences it.
+
+        Squaring is not exact: `[a*a, b*b]` in float64 can miss `lam* = k*^2` by an ulp even
+        when `[a, b]` correctly fenced `k*`, and a refiner handed that bracket clips onto the
+        endpoint and rejects a real eigenvalue. So each end moves outward by 4 ulps -- the
+        widening `bracket.py`'s module docstring promises -- here, where every caller that
+        converts a bracket passes, rather than at each call site.
+        """
+        a, b = self.in_lam(lo), self.in_lam(hi)
+        return a - 4.0 * np.spacing(abs(a)), b + 4.0 * np.spacing(abs(b))
 
     def from_lam(self, lam):
         """A `lam` as an `x` in this objective's variable."""

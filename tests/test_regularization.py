@@ -289,6 +289,68 @@ def test_the_gesdd_fallback_fires_and_warns(monkeypatch):
     assert r.rank == 12
 
 
+# --- the Accelerate dgeqrf workaround ------------------------------------------------------
+
+
+@pytest.mark.parametrize("shape", [(548, 274), (40, 12), (12, 40), (7, 1)])
+def test_the_geqrt_route_is_an_economic_qr(monkeypatch, shape):
+    """The route taken on Accelerate must be a QR of the same shape as `la.qr`'s, whatever
+    LAPACK this test runs on -- so it is forced on here rather than detected."""
+    monkeypatch.setattr(regmod, "_AVOID_GEQRF", True)
+    a = np.random.default_rng(1).standard_normal(shape)
+    Q, R = regmod._qr_economic(a)
+    Q0, R0 = la.qr(a, mode="economic")
+    assert Q.shape == Q0.shape and R.shape == R0.shape
+    assert np.allclose(np.triu(R), R)
+    assert np.allclose(Q.T @ Q, np.eye(Q.shape[1]), atol=1e-13)
+    assert np.allclose(Q @ R, a, atol=1e-13)
+    assert np.allclose(np.abs(np.diag(R)), np.abs(np.diag(R0)), rtol=1e-12)
+
+
+def test_regularize_never_calls_geqrf_when_avoiding_it(monkeypatch):
+    """The svd mode's QR goes through the helper, and agrees with the stock route."""
+    A_B, A_I = well_conditioned()
+    stock = tensions_fn(A_B, A_I, reg="svd", rank=12)
+    monkeypatch.setattr(regmod, "_AVOID_GEQRF", True)
+
+    def geqrf(*args, **kw):
+        raise AssertionError("la.qr reached while avoiding Accelerate's dgeqrf")
+
+    monkeypatch.setattr(regmod.la, "qr", geqrf)
+    assert np.allclose(tensions_fn(A_B, A_I, reg="svd", rank=12), stock, rtol=1e-10, atol=1e-14)
+
+
+@pytest.mark.slow
+def test_the_170_pi2_rectangle_cluster_solves_without_killing_the_interpreter():
+    """REGRESSION, in a subprocess because the failure is the interpreter dying.
+
+    The rectangle suite's multiplicity-4 cluster at `170*pi^2`, first cell of its grid
+    (`prec = 1e-6`, bands 0.3 and 0.5), exited 139/133 on every measured run on macOS 26.5
+    with Accelerate: heap corruption from `dgeqrf` in `regularize`, surfacing wherever the heap
+    was next touched -- sometimes only at shutdown. See `_regularize._qr_economic`. On other
+    LAPACKs this is an ordinary solve and passes trivially.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    code = (
+        "import sys, warnings\n"
+        f"sys.path.insert(0, {str(Path(__file__).parent)!r})\n"
+        "warnings.simplefilter('ignore')\n"
+        "import rect_suite as rs, bracket_score as bs\n"
+        "from chladni.mps.search import solve\n"
+        "for band in (0.3, 0.5):\n"
+        "    (case,) = rs.split_degeneracy_cases(1e-6, bands=(band,), levels={170: 4})\n"
+        "    res = solve(bs.objective_for(case, 1e-6), prec=1e-6)\n"
+        "    print(band, [(L.lam, L.mult) for L in res.levels], flush=True)\n"
+    )
+    proc = subprocess.run([sys.executable, "-X", "faulthandler", "-c", code],
+                          capture_output=True, text=True, timeout=600)
+    assert proc.returncode == 0, (
+        f"exit {proc.returncode}\n--- stdout\n{proc.stdout}\n--- stderr\n{proc.stderr[-3000:]}")
+
+
 def test_the_unregularized_route_is_usable_from_a_pencil(pencil):
     """`reg=None` must be reachable through the object, not only the free function, and it
     must agree with the svd route on the quantity that matters.

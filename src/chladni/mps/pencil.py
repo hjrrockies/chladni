@@ -381,6 +381,54 @@ class MPSPencil(Frozen):
         c = _gsvd.coef_of(self.regularized(lam), mult)
         return c if c.ndim == 2 else c[:, None]
 
+    def interior_image(self, lam):
+        """The candidate eigenfunction at `lam`, sampled on the interior points. `(n_int,)`, unit.
+
+        `search.md` section 2.4 clause (1)'s `u_i = I(lam_i) @ coef(lam_i, 1)` -- EQUILIBRATED and
+        deliberately not unscaled, because the unscaled vector does not exist in float64 and the
+        comparison the angle makes does not need it.
+
+        **The length is `n_int` at every `lam`, and that is the whole reason the seam is cheap.**
+        The coefficient vector's width moves with `lam` under a threshold rank, so a caller
+        reasoning from `coef` alone would get vectors it cannot compare. `I` has `n_int` ROWS --
+        `interior` is a `Sampling` fixed at construction and only `k` changes inside `assemble` --
+        so the product lands on the same points for every `lam`. That fixed shared point set is
+        exactly what the candidate seam promises, and it holds by construction rather than by
+        agreement between callers.
+
+        **It is informative only ACROSS `lam`.** Within one `lam` the GSVD gives `A_I x_j = s_j v_j`
+        with `V` orthogonal, so the interior images of distinct generalized singular vectors are
+        orthogonal BY CONSTRUCTION -- measured 4.6e-16 -- and an angle between two of them says
+        nothing about the eigenfunctions. `search.md` section 2.4 records this; it is repeated here
+        because this method is where someone would reach for the wrong comparison.
+
+        Costs one GSVD in `separate` mode. At an `lam` the search has already tensioned, the
+        `RegularizedPencil` is cached, so no assembly, equilibration or factorization is
+        repeated -- but the `separate`-mode call is not free: measured 1.16 ms against 1.81 ms
+        for a complete fresh evaluation on a `family_B` pencil, so about 0.6 of one. At a cold
+        `lam` it pays the factorization too and costs a full evaluation (1.83 ms).
+
+        The cache that makes the cheap case cheap is `_cache`, FIFO with `_CACHE_MAX = 64`,
+        while a solve samples far more points than that -- so this only holds because
+        `search.md` section 2.6 asks for modes at the REPORTED ROOTS at the END, and those are
+        the freshest entries. Measured on the same case: 4 of 4 roots still cached after an
+        89-evaluation solve. A caller that asks mid-scan, or for a root found long before, pays
+        the full price and should expect to.
+        """
+        lam = float(lam)
+        _, I = self.pencil(lam)
+        c = self.coef(lam, 1)[:, 0]
+        if c.size != I.shape[1]:
+            # `reg=None` with a frozen rank expresses the vector in the RETAINED columns rather
+            # than in the full basis -- `coef`'s one documented shape exception. Scatter it back
+            # rather than let the product fail or, worse, broadcast.
+            full = np.zeros(I.shape[1], dtype=c.dtype)
+            full[:c.size] = c
+            c = full
+        u = I @ c
+        n = float(np.linalg.norm(u))
+        return u / n if n > 0 else u
+
     # --- the cache -------------------------------------------------------------------------
 
     def _store(self, key, value):

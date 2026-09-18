@@ -12,7 +12,10 @@ from __future__ import annotations
 import numpy as np
 from scipy.optimize import minimize_scalar
 
-__all__ = ["lappy_search"]
+#: One list, at the top. This file carried THREE `__all__` rebinds, one per section,
+#: each silently shadowing the last -- so the name a reader saw depended on where they
+#: stopped reading. `lipschitz_search` was in two of them and had no caller at all.
+__all__ = ["lappy_search", "lappy_repaired_search", "swing_direct_search"]
 
 
 def _local_minima(v):
@@ -135,215 +138,6 @@ def _prefix_multiplicity(T, x, lo, hi, ttol):
     return max(m, 1)
 
 
-# =========================================================================================
-# The Lipschitz cone method, per docs/design/lipschitz-cone-mps.md
-# =========================================================================================
-
-import heapq
-
-
-def lipschitz_search(gamma=2.0, tau_accept=1e-3, tau_scan=None, alpha=0.25, G=10.0,
-                     n_pilot=30, ltol=1e-8, tol_merge=1e-6, max_evals=200000):
-    """Piyavskii-Shubert branch and bound, then Brent, then multiplicity from the cache.
-
-    The four phases of `lipschitz-cone-mps.md`, and the three places this project has
-    already measured something that bears on them:
-
-    * **Phase A** prunes an interval when the lower envelope
-      `s_hat = (s_i + s_j - L*h)/2` exceeds `tau_scan`, and keeps every pruned interval in
-      an ATTIC so that raising `L` can revive it. Pruning is the only irreversible act.
-    * **The isolation criterion uses section 3.4's OFFSET detector**, not sigma_2's value.
-      That distinction is the whole reason this method might beat the baseline: scoring
-      lappy showed its sigma_2 gate tests the sampled MINIMUM VALUE, which on a grid of
-      spacing h is about `c*h/2` -- a property of the grid, not of the pair. A minimum's
-      LOCATION survives coarse sampling where its depth does not, and section 9.2 of the
-      lab notes confirms the offset tracks `d/2` on real pencils to about 1%.
-    * **Phase C** uses both conditions measured to be necessary: (C1) the largest ratio gap,
-      and (C2) that each counted branch is a local minimum at the point. (C2) is
-      load-bearing rather than belt-and-braces -- once `d <~ eps/c` the gap rule alone
-      reports multiplicity 2 at a SIMPLE eigenvalue and double-counts.
-
-    Deliberately NOT implemented: the two-level basis of section 8, which needs the pencil
-    rather than just the tension function, and the Weyl cross-check of the same section,
-    which belongs to the harness because it audits any search rather than this one.
-    """
-    tau_scan = tau_scan if tau_scan is not None else 10.0 * tau_accept
-
-    def search(tensions, a, b, *, modes=None):
-        cache = {}
-
-        def T(x):
-            k = float(x)
-            if k not in cache:
-                if len(cache) >= max_evals:
-                    raise RuntimeError(f"evaluation cap {max_evals} reached")
-                cache[k] = tensions(k)
-            return cache[k]
-
-        def s1(x):
-            return float(T(x)[0])
-
-        # --- pilot: calibrate L and the plateau -----------------------------------------
-        xs = list(np.linspace(a, b, n_pilot))
-        vals = [s1(x) for x in xs]
-        S = float(np.median(vals))
-        slopes = [abs(vals[i + 1] - vals[i]) / (xs[i + 1] - xs[i]) for i in range(len(xs) - 1)]
-        L = gamma * max(max(slopes), 1e-12)
-
-        def envelope(x0, x1, v0, v1):
-            h = x1 - x0
-            s_hat = 0.5 * (v0 + v1 - L * h)
-            x_hat = 0.5 * (x0 + x1) + (v0 - v1) / (2.0 * L)
-            return s_hat, min(max(x_hat, x0 + 1e-15 * h), x1 - 1e-15 * h)
-
-        diag = {"L_pilot": L, "max_observed_slope": max(slopes), "attic_revivals": 0,
-                "plateau_S": S}
-        heap, attic, candidates = [], [], []
-        for i in range(len(xs) - 1):
-            sh, _ = envelope(xs[i], xs[i + 1], vals[i], vals[i + 1])
-            heapq.heappush(heap, (sh, xs[i], xs[i + 1], vals[i], vals[i + 1]))
-
-        while heap:
-            sh, x0, x1, v0, v1 = heapq.heappop(heap)
-            if sh > tau_scan:
-                attic.append((x0, x1, v0, v1))
-                continue
-            h = x1 - x0
-            if h < alpha * S / L:
-                # Section 3.4 in full: the offset between sigma_2's minimum and sigma_1's
-                # ESTIMATES d/2, and that estimate sets how much further to subdivide. An
-                # earlier version used the signal only as a boolean veto, which is half the
-                # idea and does not work: the isolation width alpha*S/L is 3.75e-02 on these
-                # cases, a fixed scale with no relation to the separation, so a 4e-03 pair
-                # was declared isolated and returned as one root.
-                d_est = _pair_separation(T, x0, x1, tau_scan)
-                if d_est is None or h < 0.25 * d_est:
-                    candidates.append((x0, x1))
-                    continue
-            if h < 1e-13 * max(abs(x0), 1.0):
-                candidates.append((x0, x1))
-                continue
-            _, xm = envelope(x0, x1, v0, v1)
-            vm = s1(xm)
-            grew = False
-            for (p, q, vp, vq) in ((x0, xm, v0, vm), (xm, x1, vm, v1)):
-                sl = abs(vq - vp) / max(q - p, 1e-300)
-                diag["max_observed_slope"] = max(diag["max_observed_slope"], sl)
-                if sl > L / gamma:
-                    L = gamma * sl
-                    grew = True
-                sh2, _ = envelope(p, q, vp, vq)
-                heapq.heappush(heap, (sh2, p, q, vp, vq))
-            if grew and attic:
-                revived, keep = [], []
-                for (p, q, vp, vq) in attic:
-                    sh2, _ = envelope(p, q, vp, vq)
-                    (revived if sh2 <= tau_scan else keep).append((p, q, vp, vq))
-                attic = keep
-                diag["attic_revivals"] += len(revived)
-                for (p, q, vp, vq) in revived:
-                    sh2, _ = envelope(p, q, vp, vq)
-                    heapq.heappush(heap, (sh2, p, q, vp, vq))
-
-        # --- Phase B: refine ------------------------------------------------------------
-        # Refine from the SAMPLES, not from the candidate brackets.
-        #
-        # Piyavskii-Shubert evaluates at the envelope's minimiser, which for a cone is its
-        # APEX -- so the branch and bound lands on a root and then splits there, leaving it
-        # on the shared endpoint of two brackets and in the interior of neither. Three
-        # attempts at repairing that after the fact each fixed some cases and broke others:
-        # unioning every touching pair swallowed resolved pairs (a 4e-3 pair went 1.000 ->
-        # 0.500), and unioning only where a refinement "landed on an edge" missed, because
-        # Brent's bounded method halts about 1e-7 from the boundary rather than at it.
-        #
-        # The structure was wrong. The sample set already contains the answer: the apex is a
-        # local minimum AMONG THE SAMPLES, with neighbours on both sides. So sort the cache,
-        # take discrete local minima of it, and bracket each with its neighbours. That uses
-        # every evaluation the scan paid for and needs no bracket bookkeeping at all.
-        xs_all = np.array(sorted(cache))
-        v_all = np.array([cache[x][0] for x in xs_all])
-        idx = _local_minima(v_all)
-        xtol = max(ltol * 1e-2, 1e-15)
-
-        found = []
-        for i in idx:
-            lo, hi = xs_all[i - 1], xs_all[i + 1]
-            r = minimize_scalar(lambda x: s1(x) ** 2, bounds=(lo, hi), method="bounded",
-                                options={"xatol": xtol})
-            f = np.sqrt(max(r.fun, 0.0))
-            if f > tau_accept:
-                continue
-            if not _is_interior_minimum(s1, r.x, lo, hi, f):
-                continue
-            found.append((r.x, f, lo, hi))
-
-        # --- Phase D (collapse) then C (multiplicity) -----------------------------------
-        found.sort()
-        collapsed = []
-        for x, f, x0, x1 in found:
-            if collapsed and abs(x - collapsed[-1][0]) <= tol_merge * max(abs(x), 1.0):
-                if f < collapsed[-1][1]:
-                    collapsed[-1] = (x, f, x0, x1)
-                continue
-            collapsed.append((x, f, x0, x1))
-
-        out = []
-        for x, f, x0, x1 in collapsed:
-            w = max(abs(x1 - x0), 1e-12)
-            out.append((x, _gap_multiplicity(T, x, x - w, x + w, tau_accept, G)))
-
-        # Section 9: the completeness claim is CONDITIONAL on L, so report what it rested
-        # on. A large margin between L and the largest observed slope means the scan was
-        # conservative; a small one means the constant was being pushed.
-        diag["L_final"] = L
-        diag["margin"] = L / max(diag["max_observed_slope"], 1e-300)
-        diag["evaluations"] = len(cache)
-        search.diagnostics = diag
-        return out
-
-    return search
-
-
-def _is_interior_minimum(s1, x, x0, x1, f):
-    """Reject a refinement that stopped on the WALL of a neighbouring root.
-
-    `minimize_scalar` with `bounds` returns the best point IN the interval, which is an
-    endpoint whenever the true minimum lies outside it. Next to a deep root that endpoint is
-    still far below `tau_accept`, so the threshold test passes and a phantom root is
-    reported a few times 1e-4 away from a real one. Measured before this check existed: 8
-    phantoms against 20 true roots, every one of them 2e-5 to 4e-4 from a genuine root with
-    sigma_1 between 1.6e-04 and 9.8e-04.
-
-    The fix is condition (C2) applied to the root itself: a minimum has to be lower than its
-    own neighbourhood, not merely small.
-    """
-    h = max(1e-9 * max(abs(x), 1.0), 1e-12)
-    if not (x0 + 1e-12 < x < x1 - 1e-12):
-        # landed on a bracket edge: only keep it if it still beats both sides
-        pass
-    return s1(x - h) > f and s1(x + h) > f
-
-
-def _pair_separation(T, x0, x1, tau):
-    """Section 3.4: estimate `d` for a pair inside this interval, or None if there is one.
-
-    sigma_1 has two minima with a local maximum between them; sigma_2 has ONE, at the
-    crossing. So `2 * |argmin sigma_2 - argmin sigma_1|` estimates `d`.
-
-    The reason to use the offset rather than sigma_2's value -- which is what lappy's gate
-    tests -- is that a minimum's LOCATION survives coarse sampling while its DEPTH does not.
-    On a grid of spacing h, sigma_2's sampled minimum is about `c*h/2` however tight the
-    pair is, so a value test measures the grid; the location is still good to about h.
-    Section 9.2 of the lab notes confirms the offset tracks d/2 on real pencils to ~1%.
-    """
-    xs = np.linspace(x0, x1, 9)
-    S = np.array([T(x)[:2] for x in xs])
-    if S[:, 1].min() > tau:
-        return None
-    off = abs(xs[int(np.argmin(S[:, 0]))] - xs[int(np.argmin(S[:, 1]))])
-    return 2.0 * off if off > 0 else None
-
-
 def _gap_multiplicity(T, x, lo, hi, tau, G):
     """(C1) largest ratio gap in the low spectrum, and (C2) each counted branch is a local
     minimum here. Both are needed; see the module docstring."""
@@ -359,9 +153,6 @@ def _gap_multiplicity(T, x, lo, hi, tau, G):
     while kappa > 1 and not (t[kappa - 1] < tl[kappa - 1] and t[kappa - 1] < tr[kappa - 1]):
         kappa -= 1
     return max(kappa, 1)
-
-
-__all__ = ["lappy_search", "lipschitz_search"]
 
 
 def lappy_repaired_search(ppl=20, ttol=1e-3, ltol=1e-8, polish_frac=1e-2, n_sub=9,
@@ -451,9 +242,6 @@ def _descend(T, a, b, n, n_sub, depth, floor):
         if hi - lo < floor:
             continue
         _descend(T, lo, hi, n_sub, n_sub, depth - 1, floor)
-
-
-__all__ = ["lappy_search", "lipschitz_search", "lappy_repaired_search"]
 
 
 def swing_direct_search(per_gap=6.0, tau_frac=0.5, thresh=5.0, G=10.0, P=2.0,

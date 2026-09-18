@@ -34,7 +34,7 @@ wants `lam` above the `mps` seam anyway, and here the measurement agrees with th
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -52,6 +52,35 @@ _ENDPOINT_STEPS = 4
 #: vertex formula's `dx` is rounding rather than geometry.
 _SAME_POINT = 4.0
 
+#: Consecutive vertices landing on already-sampled points, away from the best one, before the
+#: refinement is declared `stalled`. Confirming the best point is handled by fencing and never
+#: counts here, so a repeat is noise in the vertex, and three in a row is not going to clear.
+_REPEATS = 3
+
+#: Bisection steps a refinement may take when its starting triple has no parabola, before it gives
+#: up with `no_parabola`. One sufficed on the two-member bracket that motivated it; the endpoint
+#: guard already refuses an empty bracket within `_ENDPOINT_STEPS`, so this only caps a pathology.
+_FALLBACK_STEPS = 4
+
+#: Fraction of `_xatol` within which the vertex must agree with the best point before the best
+#: point is fenced. A fraction rather than the whole tolerance, so the point handed on has been
+#: LOCATED by a vertex and not merely found inside the width rule; the residual disagreement is
+#: carried into the bar, so the choice changes cost and never honesty.
+_SETTLE = 0.05
+
+#: A best point at a bracket END is rejected as a root when a probe past the end, aimed at the
+#: cone's predicted minimum `sigma/c` out, reads below this fraction of its `sigma` and lies past
+#: the end. A phantom sits on the wall of a neighbour's well, so the curve keeps falling past it --
+#: 7.0e-10 at the end, about 2.7e-10 one width out, measured at 130*pi^2 -- while a genuine
+#: eigenvalue AT the end sits at the floor and the probe climbs the cone.
+#: The two differ by orders, so the factor only has to sit between them; it is `bracket.DIP_RATIO`'s
+#: value for the same question asked of a region.
+_DESCENT_RATIO = 0.5
+#: Probe steps past a bracket end, as fractions of the best point's reach `sigma/c`. Each
+#: probe falls only within 1.5x of the minimum's distance; halving twice covers a slope
+#: estimate up to 6x too shallow. One evaluation each, stopping at the first that falls.
+_PROBE_STEPS = (1.0, 0.5, 0.25)
+
 #: Margin on the reported `delta_res`. The located error is `eps/c` to a measured ratio of 0.99
 #: to 1.27 over 12 levels, three domains and two basis families -- so `eps/c` is the right
 #: SCALE but not an upper bound, and a quantity that clause (2) compares against `prec*lam` has
@@ -67,11 +96,14 @@ class RefineResult:
     lam: float                  # the located minimum
     sigma: float                # sigma_1 there
     accepted: bool
-    reason: str                 # converged | no_parabola | flat | budget
+    reason: str                 # converged | stalled | flat | no_parabola | endpoint | budget
     evaluations: int            # what the harness charges for this bracket
     bracket: tuple = ()         # the interval it was handed
     delta_res: float = float("nan")   # attained bound, from the parabola fit
     steps: int = 0
+    #: Width of the final straddling triple. `converged` is a claim that this is at most
+    #: `_xatol`; `stalled` is the admission that it is not and could not be narrowed.
+    width: float = float("nan")
 
     @property
     def rejected(self):
@@ -118,16 +150,28 @@ def _vertex(x, y):
     denom = d01 * d12 * d20
     if denom == 0.0:
         return None
-    # Standard three-point quadratic coefficients; `c2` is the curvature.
+    # `c2` is the curvature, the parabola's leading coefficient, from differences only.
     c2 = -(d12 * y0 + d20 * y1 + d01 * y2) / denom
-    c1 = ((x1 * x1 - x2 * x2) * y0 + (x2 * x2 - x0 * x0) * y1
-          + (x0 * x0 - x1 * x1) * y2) / denom
-    if c2 <= 0.0 or not np.isfinite(c2) or not np.isfinite(c1):
+    if c2 <= 0.0 or not np.isfinite(c2):
         return None
-    return -0.5 * c1 / c2, c2
+    # The vertex CENTRED on the middle point, from offsets and never from `x**2`. The monomial
+    # form `-c1/(2*c2)` squares each `x` about the origin while the samples sit near `lam`, so
+    # every square carries its own `ulp(lam**2)` and the vertex is off by about
+    # `ulp(lam**2)/h` for triple spacing `h` -- 2e-7 relative at `h = 1e-10*lam`. It stalls at
+    # `h ~ lam*sqrt(eps)`, which put the refiner's "converged" at 1e-11 to 1e-9 on pencils
+    # whose floor is 1e-15. Centred, the error is a few ulps of `lam` at every spacing.
+    a, b = x1 - x0, x1 - x2
+    den = a * (y1 - y2) - b * (y1 - y0)
+    if den == 0.0:
+        return None
+    step = 0.5 * (a * a * (y1 - y2) - b * b * (y1 - y0)) / den
+    if not np.isfinite(step):
+        return None
+    return x1 - step, c2
 
 
-def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
+def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None, interior=None,
+           _walk=True):
     """Locate the minimum of `sigma_1**2` in `[lo, hi]`. Both endpoints in `lam`.
 
     `obj` is an `Objective`; it may be parameterized by `k`, in which case the conversion
@@ -189,6 +233,9 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
     steps = 0
     progressed = False
     reason = "budget"
+    repeats = 0
+    fallback = 0      # bisection steps taken because the START had no parabola
+    settle = 0.0      # the vertex's last disagreement with the fenced best point
     curvature = float("nan")
 
     def triple():
@@ -219,13 +266,51 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
             # well-separated eigenvalues where the fit is across a W -- and at the END of a
             # good refinement, once the three points have collapsed onto the floor and the
             # curvature is gone. Treating the second as failure discards correct answers.
-            reason = "flat" if progressed else "no_parabola"
-            break
+            if progressed:
+                reason = "flat"
+                break
+            # With no progress yet, a concave triple is a bad START, not a verdict. It is what a
+            # bracket holding two members looks like when the search's deepest sample sits on the
+            # hump between them: 170*pi^2, prec 1e-8, band 0.3, returned `no_parabola` at once,
+            # `solve` read the rejection as an empty bracket, and two eigenvalues vanished with the
+            # count certified. Bisect the wider gap beside the lowest sample instead -- toward a
+            # well if there is one -- and try the parabola again. A lower sample found this way is
+            # NOT progress: guard 2 must still tell a collapsed refinement from one that never
+            # closed, and an empty bracket still walks to an endpoint and is refused there.
+            b = best
+            left = [p for p in hist if p[0] < b[0]]
+            right = [p for p in hist if p[0] > b[0]]
+            gaps = []
+            if left:
+                q = max(left, key=lambda p: p[0])
+                gaps.append((b[0] - q[0], 0.5 * (b[0] + q[0])))
+            if right:
+                q = min(right, key=lambda p: p[0])
+                gaps.append((q[0] - b[0], 0.5 * (b[0] + q[0])))
+            x_new = float(np.clip(max(gaps)[1], lo, hi)) if gaps else None
+            if (fallback >= _FALLBACK_STEPS or x_new is None
+                    or any(x_new == p[0] for p in hist)):
+                reason = "no_parabola"
+                break
+            new = f(x_new)
+            hist.append(new)
+            steps += 1
+            fallback += 1
+            if new[1] < best[1]:
+                best = new
+            if steps >= _ENDPOINT_STEPS and (best[0] <= lo or best[0] >= hi):
+                reason = "endpoint"
+                break
+            continue
 
         x_star, curvature = v
         # Guard 4: keep the step inside the interval, and nudge it off a duplicate point --
         # clamped, so the nudge cannot leave the bracket it is supposed to be searching.
         x_star = float(np.clip(x_star, lo, hi))
+        # The vertex BEFORE guard 4's nudge. A vertex landing on the best point is the answer,
+        # and the nudge would move it to the midpoint toward a neighbour -- which, evaluated,
+        # halves the distance per step and never settles: 18 evaluations from an exact start.
+        raw = x_star
         for p in pts:
             if abs(x_star - p[0]) <= _SAME_POINT * np.spacing(abs(p[0]) + (hi - lo)):
                 near = min((q for q in pts if q[0] != p[0]),
@@ -234,9 +319,72 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
                 x_star = float(np.clip(target, lo, hi))
                 break
 
+        # The vertex is within tolerance of the best point: the LOCATION is settled, and what
+        # remains is to certify the WIDTH. Iterated vertices approach from one side -- the far
+        # flank of the triple never moves, which is `bracket._locator_step`'s observation -- so
+        # waiting for the triple to narrow on its own costs a halving per step and can exhaust
+        # the budget. Fence the best point at the tolerance on each side not already fenced:
+        # two evaluations at most, and a unimodal minimum is then bounded by the triple.
+        tol = _xatol(best[0], prec)
+        # Fence only a best point that is INTERIOR and that the vertex CONFIRMS. Triggering on
+        # `|raw - best| <= tol` alone fired before any vertex was evaluated whenever the handed-in
+        # bracket was already inside the tolerance -- the routine case, since stage 1 stops on
+        # purity at about `prec*lam` -- and the fence pass then settled on whichever of the three
+        # starting points was lowest. With the root nearer an end that was an ENDPOINT, `_accept`
+        # refused it, and the eigenvalue was dropped. Short of both conditions, take the step.
+        if lo < best[0] < hi and abs(raw - best[0]) <= _SETTLE * tol:
+            settle = max(settle, abs(raw - best[0]))
+            # A side is already fenced when it holds a sample within HALF the tolerance of the
+            # best point; then a pass that evaluates nothing leaves a triple at most `0.9*tol`
+            # wide, which converges below. Using the full tolerance there left triples up to
+            # `1.8*tol` wide with nothing to evaluate, and the loop recomputed the same vertex
+            # without spending a step -- forever.
+            fenced = 0
+            for side in (-1.0, 1.0):
+                fence = float(np.clip(best[0] + side * 0.45 * tol, lo, hi))
+                if any(0.0 <= side * (q[0] - best[0]) <= 0.45 * tol and q[0] != best[0]
+                       for q in hist) or any(fence == q[0] for q in hist):
+                    continue
+                new = f(fence)
+                hist.append(new)
+                steps += 1
+                fenced += 1
+                if new[1] < best[1]:
+                    best = new
+                    progressed = True
+            pts = triple()
+            if pts[-1][0] - pts[0][0] <= _xatol(best[0], prec):
+                reason = "converged"
+                progressed = True
+                break
+            if not fenced:
+                # Termination must not rest on the argument above: nothing new was learned, so
+                # stepping again would compute the same vertex.
+                reason = "stalled" if progressed else "flat"
+                break
+            continue
+
         if any(x_star == p[0] for p in hist):
-            reason = "converged" if progressed else "flat"
-            break
+            # Landing on a sampled point that is NOT the best one is noise in the vertex, and it
+            # says nothing about the width of the triple. With the old monomial vertex this was
+            # reported `converged` at 1e-11 to 1e-9 on pencils whose floor is 1e-15. Split the
+            # wider gap instead, and a vertex that keeps repeating is `stalled`, never converged.
+            pts = triple()
+            if pts[-1][0] - pts[0][0] <= tol:
+                reason = "converged" if progressed else "flat"
+                break
+            repeats += 1
+            gap_left, gap_right = pts[1][0] - pts[0][0], pts[2][0] - pts[1][0]
+            if gap_left >= gap_right:
+                x_star = 0.5 * (pts[0][0] + pts[1][0])
+            else:
+                x_star = 0.5 * (pts[1][0] + pts[2][0])
+            x_star = float(np.clip(x_star, lo, hi))
+            if repeats > _REPEATS or any(x_star == p[0] for p in hist):
+                reason = "stalled" if progressed else "flat"
+                break
+        else:
+            repeats = 0
 
         new = f(x_star)
         hist.append(new)
@@ -287,15 +435,143 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None):
     eps_floor = max(best[2], np.finfo(float).eps)
     delta_res = float(DELTA_SAFETY * eps_floor / np.sqrt(curvature)) if (
         np.isfinite(curvature) and curvature > 0) else float("nan")
+    # No location is better than the arithmetic. On a floor of 1e-15 at `lam = 1e5` the model
+    # reads 4.7e-12 while the located point is 2 ulps -- 2.9e-11 -- from the minimum, so a bar
+    # below a few ulps under-reports. The same floor `_xatol` stops at.
+    if np.isfinite(delta_res):
+        delta_res = max(delta_res, 4.0 * np.spacing(abs(best[0])), 2.0 * settle)
+
+    # The triple the minimum sits in bounds the error whatever the fit said. A `stalled`
+    # refinement could not narrow it, so the bar must cover it; one that ended with no closing
+    # parabola -- collapsed onto the floor -- has no other bound in hand. Either way a NaN bar
+    # would now read as unmet (`search.Level.met`), which is right only if it is really unknown.
+    pts = triple()
+    width = float(pts[-1][0] - pts[0][0])
+    if reason == "stalled":
+        delta_res = max(delta_res, width) if np.isfinite(delta_res) else width
+    elif not np.isfinite(delta_res):
+        delta_res = width
 
     ends = (hist[0][2], hist[2][2])      # sigma_1 at the handed-in endpoints; already paid for
-    accepted = _accept(best, lo, hi, prec, ends) if reason != "no_parabola" else False
-    if not accepted and reason in ("converged", "flat"):
+    if reason == "no_parabola":
+        accepted = False
+    elif interior is None:
+        accepted = _accept(best, lo, hi, prec, ends)
+    else:
+        # `[lo, hi]` was WIDENED from the search's bracket `interior` so that a minimum whose exact
+        # square rounds just outside it is not lost. That makes the ends artificial, so "interior"
+        # has to be judged by where the best point came from:
+        #
+        #   well inside   the search's bracket: strictly inside the widened one is enough. The
+        #                 4-ulp margin against widened ends is what defeated the widening -- a
+        #                 minimum one ulp outside the search's end sits three inside the widened one.
+        #   at an end     within a few ulps of the search's end, or beyond it: judged by the curve
+        #                 past the end. The search's deepest sample can BE its bracket end, and 4
+        #                 ulps of widening against a 4-ulp margin let exactly that sample -- on the
+        #                 wall of a NEIGHBOUR's well, 0.48 licences from the eigenvalue -- through as
+        #                 a root, below the widened end by rounding alone.
+        ilo, ihi = (float(v) for v in interior)
+        x_best, _, s_best = best
+        tie = _SAME_POINT * np.spacing(abs(x_best))
+        side = 1.0 if abs(x_best - ihi) <= abs(x_best - ilo) else -1.0
+        end = ihi if side > 0 else ilo
+        # `c` is the STEEPEST secant from the best point to a sample at least a quarter of the
+        # search bracket away. Not the fitted curvature: the last triple sits in the ulp-scale
+        # noise pressed against the end, and its curvature read a slope 25x too large -- the
+        # probe fell back onto the phantom's own wall and passed it. The quarter-width floor
+        # keeps that noise out of every secant.
+        #
+        # Not the far end alone either, which assumed a phantom's bracket lies on ONE monotone
+        # wall (1.14e-2 against a true 1.17e-2 at 130*pi^2). A bracket over a HUMP breaks it:
+        # 125*pi^2, prec 1e-8, band 1.6, from member 3's wall over the hump to member 4's, the far
+        # end read 7.09e-8 against the phantom's 6.60e-8, a slope 18x too shallow; the probe
+        # overshot member 4 onto its far wall (1.15e-6) and the phantom passed as a fifth level.
+        # Samples past a hump lie BELOW the wall, so they only make a secant shallower -- the
+        # steepest is the wall's; the mid sample there, on the hump, gave 1.15e-2.
+        span = max(ihi - ilo, np.spacing(abs(x_best)))
+        secants = [abs(p[2] - s_best) / abs(p[0] - x_best) for p in hist
+                   if abs(p[0] - x_best) >= 0.25 * span]
+        if not secants:
+            far_x, _, far_s = hist[0] if side > 0 else hist[2]
+            secants = [abs(far_s - s_best) / max(abs(far_x - x_best), np.spacing(abs(x_best)))]
+        c_wall = max(secants)
+        # The best point's own resolution radius: the cone puts the minimum `sigma/c` away.
+        reach = s_best / c_wall if c_wall > 0 else (ihi - ilo)
+        # "At an end" is a question about that RADIUS, not about ulps. A 4-ulp tie let a phantom
+        # 4 ulps inside the upper end through -- 125*pi^2, prec 1e-8, band 1.6, a bracket
+        # narrower than `_xatol`, sigma 6.6e-8 against 1e-10 at the real roots -- as a fifth
+        # level of a four-member cluster. Its radius reached 0.7 bracket widths past the end.
+        at_end = side * (end - x_best) <= max(tie, reach)
+        if not at_end:
+            inside = lo < x_best < hi
+        else:
+            # The best point is ON an end of the search's bracket, in the sliver the widening
+            # added, or close enough that its radius crosses the end. Neither position nor
+            # provenance can say which case this is: the phantom and a genuine eigenvalue exactly
+            # at the search's end (the evenly spaced cluster at 1e-14, band 2.0) both arrive
+            # there, and the first version of this test -- keyed on the point being bit-identical
+            # to a HANDED one -- was defeated by a vertex step landing a tenth of an ulp away.
+            # What differs is the curve BEYOND the end. One evaluation, spent only when this fires.
+            #
+            # Aimed at where the cone puts the minimum: `sigma/c` outward. A FIXED reach cannot
+            # serve both phantoms measured -- one bracket width landed on the well 0.48 licences
+            # out at 130*pi^2 and OVERSHOT the one 0.255 licences out at 25*pi^2, reading the far
+            # wall and passing it. On a genuine root at the end `sigma` IS the floor and the reach
+            # is a few ulps, where the probe reads the same.
+            #
+            # A probe reads "falling" only within 1.5x of the minimum's true distance, so a slope
+            # still off by a factor would overshoot again. Halving twice covers a reach up to 6x
+            # long, at one evaluation a step, stopping at the first probe that falls.
+            phantom = False
+            for frac in _PROBE_STEPS:
+                step = max(frac * reach, 4.0 * np.spacing(abs(x_best)))
+                probe = x_best + side * step
+                # Straight through the objective, NOT through `f`: `f` clamps into the bracket,
+                # and the whole point of this probe is to look outside it. The first version
+                # called `f` and the probe landed back on the widened end, four ulps away, where
+                # it read the same as the phantom and passed it.
+                s_probe = obj.tension(obj.from_lam(probe))
+                if s_probe < _DESCENT_RATIO * s_best:
+                    # A falling curve alone does not make a phantom once the radius, not the tie,
+                    # decides "at an end": a genuine root located only to `_xatol` close to the
+                    # end has a radius that crosses the end too, and its probe lands ON the root
+                    # and reads low. Where the minimum is separates them. A probe falls only
+                    # within half a step of the minimum, so a minimum inside the bracket leaves
+                    # the probe at most half a step past the end; the phantom's lies outside.
+                    phantom = side * (probe - end) > max(tie, 0.5 * step)
+                    break
+            inside = (lo < x_best < hi) and not phantom
+            if not phantom and _walk:
+                # No outward probe fell, so the minimum is NOT outside -- it is inside, about the
+                # same reach in, and nothing sampled it. That is what a start one ulp from an end
+                # produces: on a bracket nested in another, the deepest cached sample is the outer
+                # bracket's end, the triple collapses there and the width rule calls it converged.
+                # 50*pi^2, prec 1e-8, band 0.8 refused a side sub-bracket holding a member 1.58e-7
+                # in (`not_a_minimum`, certified one short); 170*pi^2, band 0.3 accepted a root ON
+                # its end 1.95e-7 from the member. Probe inward at the same steps; the first point
+                # lower than the end starts one nested refinement over the rest of the bracket.
+                # Nothing lower means the end IS the minimum, which the logic above already judges.
+                for frac in _PROBE_STEPS:
+                    step = max(frac * reach, 4.0 * np.spacing(abs(x_best)))
+                    z = float(np.clip(x_best - side * step, lo, hi))
+                    if z == x_best:
+                        continue
+                    if obj.tension(obj.from_lam(z)) < s_best:
+                        far = lo if side > 0 else hi
+                        a_in, b_in = sorted((x_best, far))
+                        inner = refine(obj, a_in, b_in, prec=prec, max_evals=max_evals,
+                                       lam_hint=z, interior=(a_in, b_in), _walk=False)
+                        if inner.accepted:
+                            return replace(inner, evaluations=obj.n_evals - start,
+                                           bracket=(lo, hi), steps=steps + inner.steps)
+                        break
+        accepted = bool(inside and s_best < min(ends))
+    if not accepted and reason in ("converged", "flat", "stalled"):
         reason = "not_a_minimum"
 
     return RefineResult(lam=best[0], sigma=best[2], accepted=bool(accepted), reason=reason,
                         evaluations=obj.n_evals - start, bracket=(lo, hi),
-                        delta_res=delta_res, steps=steps)
+                        delta_res=delta_res, steps=steps, width=width)
 
 
 def _accept(best, lo, hi, prec, ends):

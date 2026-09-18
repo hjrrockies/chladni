@@ -60,8 +60,9 @@ where = ["src"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short -m 'not slow and not gate'"
+addopts = "-v --tb=short -m 'not slow and not gate and not robust'"
 markers = [
     "slow: costs seconds rather than milliseconds -- end-to-end solves, notebook\n        execution, scaling guards. DESELECTED BY DEFAULT via addopts, to keep the inner\n        loop at ~1.5 s. Run them with `-m slow`, or everything with `-m ''`.",
     "gate: THE STANDING ACCEPTANCE GATE for the eigenvalue search. Run it before tagging\n        anything: `pytest -m gate`, about 7 minutes. It scores the crossover sweep and the\n        degeneracy class on three rectangle windows at every precision in\n        {1e-4, 1e-6, 1e-8, 1e-10, 1e-12, 1e-14}, and asserts its own coverage of the\n        multiplicity-3 level it was widened for. DESELECTED BY DEFAULT via addopts.",
+    "robust: the full robustness campaign -- whole grids rather than the slices the slow tier\n        carries, 30-60 minutes when complete. DESELECTED BY DEFAULT via addopts; run with\n        `-m robust`.",
 ]

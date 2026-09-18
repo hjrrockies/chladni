@@ -27,14 +27,24 @@ the basis. From the recipes that reproduce `chladni.reference`'s own tables:
 
     domain      basis                        tension range        finest prec
     L_shape     80 pure FB at the corner     2.1e-15 .. 2.1e-14   ~1e-14
+    eq_tri      90 plane waves               8.1e-16 .. 1.3e-15   1.5e-15   (2026-09-14)
+    disk        84 plane waves               7.2e-16 .. 1.7e-15   1.2e-15   (2026-09-14)
     mushroom    240 mixed                    2.4e-11 .. 3.4e-11   ~1e-10
     GWW1        320 mixed                    6.3e-12 .. 2.7e-11   ~1e-10
     H_shape     320 mixed                    6.1e-13 .. 5.2e-10   ~1e-9
     chevron     160 mixed                    1.4e-10 .. 2.0e-09   ~1e-8
 
-So the L-shape can be swept to the bottom of the `prec` ladder and the others cannot. The
-roster is therefore L-shape plus the two smooth domains, and every case carries the finest
-`prec` it supports -- checked, not assumed, by `finest_prec` below. Scoring a domain past that
+So the L-shape, eq_tri and the disk can be swept to the bottom of the `prec` ladder and the
+tabulated multi-corner domains cannot.
+
+**Every pencil here carries `SUITE_RTOL`.** Built at the default `prec` the rank cutoff was
+`sqrt(1e-8 * eps) = 1.5e-12`, which moved with the request and held eq_tri at 2.4e-12 -- read
+for a long time as "plane waves stop short on eq_tri". They do not: the same 90 columns at
+`SUITE_RTOL` reach 1.3e-15. The disk and the L-shape did not move, because their bases were
+already the binding term.
+
+The roster is the L-shape plus the two smooth domains, and every case carries the finest `prec`
+it supports -- checked, not assumed, by `finest_prec` below. Scoring a domain past that
 point measures the basis.
 
 **The generic basis is not good enough here.** `basis_for`-style plane waves plus a fixed
@@ -51,6 +61,7 @@ from chladni.mps import MPSEigensolver, MPSPencil
 from chladni.reference import L_shape_eigs, disk_spectrum, eq_tri_spectrum
 
 from harness import Case
+from rect_suite import SUITE_RTOL
 
 __all__ = ["nonanalytic", "recipe_basis", "pencil_for", "solver_for", "make_case",
            "finest_prec",
@@ -103,7 +114,7 @@ def pencil_for(dom, lam_hi, *, label="", n_fb=80, pad=1.3, seed=0):
     # 1.2x/1x, so the extra points cost 1.5x for nothing.
     p = MPSPencil.from_basis(
         basis, dom.bdry_quad(3 * n),
-        dom.interior_pts(n, rng=np.random.default_rng(seed)))
+        dom.interior_pts(n, rng=np.random.default_rng(seed)), rtol=SUITE_RTOL)
     _PENCILS[key] = p
     return p
 
@@ -131,7 +142,7 @@ def solver_for(dom, lam_hi, *, label="", n_fb=80, pad=1.3, seed=0, prec=None):
         basis = PlaneWave.uniform(nw, radius=dom.diameter)
     n = len(basis)
     s = MPSEigensolver(dom, basis=basis, n_bdry=3 * n, n_int=n,
-                       rng=np.random.default_rng(seed),
+                       rng=np.random.default_rng(seed), rtol=SUITE_RTOL,
                        **({} if prec is None else {"prec": prec}))
     _PENCILS[key] = s
     return s
@@ -166,9 +177,16 @@ def make_case(label, dom, a, b, truth, *, complete, n_fb=80, seed=0):
     def tensions(lam):
         return p.tensions(float(lam))
 
+    # `Case.modes`, which the roster went without until Phase D's rule was measured against it
+    # and `solve(phase_d="angle")` refused the whole roster outright. `rect_suite` has carried
+    # this since the harness was written; the transfer domains are exactly the ones a grouping
+    # rule most needs to be tried on, so the omission mattered.
+    def modes(lam):
+        return p.interior_image(float(lam))
+
     case = Case(label=label, tensions=tensions, a=float(a), b=float(b),
                 truth=np.sort(np.asarray(truth, dtype=float)), domain=dom,
-                complete=complete, variable="lam")
+                complete=complete, variable="lam", modes=modes)
     case.pencil = p
     return case
 
@@ -182,7 +200,11 @@ def l_shape_case(a=5.0, b=26.0, n_fb=80):
     """
     lam = np.asarray(L_shape_eigs(12), dtype=float)
     inside = lam[(lam >= a) & (lam <= b)]
-    return make_case("L_shape", L_shape(), a, b, inside, complete=False, n_fb=n_fb)
+    case = make_case("L_shape", L_shape(), a, b, inside, complete=False, n_fb=n_fb)
+    # The table's own accuracy, which `basis_sufficiency` reads: a 14-digit table cannot
+    # referee a request past 1e-13, whatever the basis does.
+    case.digits = float(L_shape_eigs.digits)
+    return case
 
 
 def disk_case(a=5.0, b=60.0, r=1.0):

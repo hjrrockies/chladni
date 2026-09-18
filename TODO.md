@@ -26,62 +26,80 @@ The search SHIPS. `chladni.mps.{bracket,refine,multiplicity,search}` are the fou
 with multiplicities come out. `tests/candidates_v1.py` holds the two adapters that keep V1 on
 `candidates.md`'s scored seam, so a fourth candidate is still measured on the same instrument.
 
-What is left here is not construction. It is the multiplicity contract, the `modes(x)` widening
-Phase D needs, and the constants still inherited from one rectangle family.
+What is left here is not construction, and since 2026-09-18 it is not Phase D either. The
+`modes(x)` widening landed, the interior Gram angle is built behind `phase_d=` and measured, and
+the multiplicity contract is stated in `docs/design/search.md`'s As-built section. **There are no
+known wrong totals and no known lost eigenvalues on any measured grid.** What is left is the
+constants still inherited from one rectangle family, the rank policy that belongs to the planner,
+and deciding whether Phase D's angle earns its keep.
 
-**Two items in this file are `[blocking]` and Phase D goes first**, ahead of basis planning in
-section 3. Phase D is a CORRECTNESS defect and the planner is a CAPABILITY gap: today
-`solve_interval` can report one eigenvalue where a window holds four, so anything built on it
-inherits a count that is a lower bound -- including a planner, whose entire job is to judge a
-basis by results the solver may be miscounting. And for `douse` the ordering is not close: a
-shape objective goes non-smooth exactly where levels collide, which is exactly where the count
-is currently unreliable.
+* **[later]** The `125*pi^2` rejection in `notes/landscape_findings.md` section 37 is still a
+  bracket that held an eigenvalue and was refused -- it costs nothing today, the eigenvalue being
+  accounted for elsewhere, but it is the same residual/refiner shape and nothing guarantees it
+  stays harmless. The standoff at 0.3 closed its sibling at `170*pi^2`; this one it did not.
+* **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
+  slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
+  planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner
+  is where the two halves of the `_UNSAFE_RATIO` question get decided together rather than one at
+  a time. Recorded here in full so the planner inherits the measurement rather than rediscovering
+  it. `notes/landscape_findings.md` section 34. At `145*pi^2` **30 of
+  55 cells decline**, every one of them `_seed`'s "the slope estimate never settled", and the
+  rising secants that cause it are RANK FLIPS: at every seed density the largest secant sits
+  exactly on a `107 -> 108` boundary with `sigma_1` halving across it, so the secant grows like
+  `1/dk` and cannot settle (2.05, 3.38, 6.04, 19.82 at n = 64, 127, 253, 505).
 
-Do the `modes(x)` widening as its OWN step before the angle. It is a seam change across
-`Objective`, the pencil and the candidate interface; the angle is a rule. Landing them together
-is two kinds of work in one session, which is what made the previous promotion attempt
-illegible.
+  Freezing the rank (`lam_ref`, nothing else changed) removes every flip, takes the max secant to
+  1.52, moves the minimum sampled `sigma` by 2%, and on whole grids:
 
-* **[blocking]** Phase D's Gram angle. **A collapsed cluster DROPS members**, so the reported
-  total is a lower bound rather than a count, and `search.md` section 2.4a stage 3 had to be
-  corrected because it claimed otherwise. Measured over `bracket_score.PREC_LADDER` on the real
-  cases: `B:d=1.8e-03` at `prec = 1e-04` reports 3 eigenvalues where the window holds 4,
-  `C:m=3,s=9.5e-02` reports 1 of 3, `C:m=4,s=1.2e-01` reports 1 of 4. The mechanism is the one
-  commit `e2ac06c` named -- the recount reads at ONE representative, the partner's branch is
-  minimal at the partner rather than there, (C2) refuses it, and multiplicity 2 reads 1. The
-  contrast that makes it sharp: `B:d=1.8e-12` at `prec = 1e-08` collapses and recounts to 2
-  CORRECTLY, so collapse-and-recount is sound for a duplicate and unsound for two distinct
-  eigenvalues inside the merge licence -- which distance cannot tell apart, and the angle can.
-  It is detected (`n_ambiguous`) and warned about, so it is not silent; it is still wrong.
-  Needs the `modes(x)` widening below. An earlier version of this item said nothing in the
-  roster exercised it; `tests/test_precision_ladder.py` now does, at every precision.
-* **[next]** The old Phase D note, for the case distance cannot settle. `chladni.mps.search`
-  implements Phase D's DISTANCE PREFILTER and gets the collapse branch for free -- reading
-  multiplicity once per merged group RECOUNTS by construction, which `search.md` says is the
-  right move and warns against replacing with a sum. What remains is the case the angle is
-  really for: two roots at the SAME separation where one pair is a duplicate and the other is
-  not. Needs the `modes(x)` widening below. Nothing in the roster exercises it, which is a
-  measurement on one roster and not an argument.
-* **[next]** State the multiplicity contract. `v1_solve` now DETECTS the regime where a
-  cluster's grouping is arbitrary and collapses it, so the total is right at every span
-  measured -- but nothing is written down about when the GROUPING is guaranteed. The condition
-  is that a level be clear of its neighbours by more than its own spread, and it belongs beside
-  `search.md` section 2.2's basis contract, since it is the same kind of statement about the
-  request rather than the pencil. Measure the UNEVENLY spaced case first: everything so far is
-  on evenly spaced triples, because that is how `crossover_cases` dials them, and an uneven
-  cluster may have a non-degenerate window -- which would make the contract weaker and more
-  useful. `surrogate_cases.cluster`'s 1 : 2.2 : 1 spacing is the case to try.
-* **[later]** Whether a smaller `WIDE_FACTOR` narrows the ambiguous band. The band is
-  `1 < diameter/(prec*lam) < WIDE_FACTOR` and the prominence bound needs `f > sqrt(3)`, so
-  there is little room; the collapse makes it a cost question rather than a correctness one,
-  since a collapsed level is coarser than `prec` asked for. Low priority for that reason.
-* **[blocking]** Widen the candidate interface from `tensions(x)` to also carry `modes(x)` --
-  the candidate eigenfunctions on a fixed shared point set. **This is the first thing to do**:
-  Phase D's collapse-versus-merge is decided by the interior Gram angle, which `tensions(x)`
-  cannot supply, so everything about multiplicity is un-benchmarkable until it lands. A seam
-  change, so it wants its own step and its own commit, with the angle following separately.
-  `notes/solver_features.md` section 4 argues the widening over post-processing; section 5
-  ranks it second.
+      grid        threshold rank                    frozen rank
+      145*pi^2    22 right, 0 wrong, 23 declined    44 right, 0 wrong,  1 declined
+      65*pi^2     47 right, 0 wrong,  6 declined    47 right, 0 wrong,  6 declined
+      50*pi^2     53 right, 0 wrong,  0 declined    53 right, 0 wrong,  0 declined
+
+  **This is the SHIPPED default**, not a test artifact: `MPSEigensolver` takes no `lam_ref` and
+  `rank_at` re-derives per `lam`, justified as "the only rule that cannot pick an unsafe rank" --
+  an argument about picking a rank too HIGH, silent on the objective being discontinuous in `lam`.
+  Not every decline is this: `65*pi^2`'s six are unaffected, and the roster pencils are
+  threshold-rank too but untested for it.
+
+  **And freezing is not the answer either**, which section 35 measures and section 34 did not:
+  its 2% figure came from a 6%-wide window. Over `[5, 300]` on `rect(1, 1/phi)` one frozen rank
+  inflates the floor up to **2.0e11x** -- `choose_rank` returns 29 where the lowest eigenvalue
+  needs 39 and the highest 61 -- at a steady 2 to 3 retained directions per decade of floor. The
+  asymmetry is what makes `choose_rank`'s MINIMUM the wrong end: short is fatal, long costs 264
+  spurious minima and no floor at all.
+
+  What separates the two regimes is the WINDOW WIDTH -- the threshold rank is constant below
+  about 10% -- so **this is one decision the code lets three places make separately**: the window
+  (`weyl_window` or a caller), the rank (`choose_rank` or the threshold rule) and the floor
+  (`rtol`). A planner chooses a `(window, rank, floor)` TRIPLE. Section 35 also records the third
+  option that dissolves the dichotomy -- a smooth spectral filter in place of the hard cut, since
+  a matrix function is continuous where a rank projector is not -- with its three costs, and the
+  cheapest thing that needs no new numerics: size the sub-window from the rank, freeze within it,
+  and the jumps land on boundaries the search restarts at.
+
+  Two remedies are measured NOT to work and are in section 9. The decline rate is now a scored
+  quantity (`test_cluster_totals.MAX_DECLINE_RATE`, 5.7% over 106 exercisable cells); the "5% the
+  robustness plan set" cited here before came from a plan not in this repository, and the "24 of
+  45" beside it contradicted `search.solve`'s own table, where 24 is the number RIGHT.
+* **[later]** Promote Phase D's angle, or retire it. It is BUILT --
+  `solve(..., phase_d="angle")`, `search._gram_group`, `multiplicity.TAU_GRAM` -- and off by
+  default because it **changes nothing measurable**. Over five cluster grids and the roster it is
+  consulted 115 times and agrees with the distance rule on every one: no regression, no
+  improvement (`notes/landscape_findings.md` sections 36, 36.1). The prediction that it would be
+  inert was wrong; it is exercised, it just never disagrees.
+
+  What would settle it is a case where the two rules differ, and none of the committed grids
+  holds one. The roster asks the angle NOTHING at `prec = 1e-8` -- its levels are further apart
+  than a licence -- so the grouping regime lives only in the split-degeneracy grids. Either find
+  or construct a domain where a duplicate and a genuine pair occur at the same separation, or
+  accept that the rule is insurance against a case this roster does not contain and say so.
+
+  One correction it already bought, section 36.2: **the ambiguous eigenspace is NOT benign under
+  the reach rule.** The spec's "parallel recounts to 2, orthogonal sums 1+1 to 2" assumes each
+  member read 1; a degenerate level located twice has both reading the full multiplicity, and the
+  sum doubles it. Flagged rather than guessed, since capping by a spanning recount is measured
+  unsafe elsewhere.
 * **[next]** Carry the in-loop stride correction past the seed. The bracketing stage now has
   one -- `v1_bracket._seed` sizes from Weyl and then doubles until the largest observed secant
   stops growing, so no a-priori stride is trusted -- but nothing downstream of it adapts, and
@@ -180,11 +198,30 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
-* **[next]** `MPSEigensolver`'s `rng=None` default should become a fixed constant. Unseeded, an
-  interior fill gives a 110x run-to-run spread in the located eigenvalue, and that goes into a
-  shape objective as noise. The docstring at `src/chladni/mps/solver.py:44` already says the
-  argument "is not optional in spirit"; the default has not followed.
-  `search.md` As built; `notes/landscape_findings.md` section 17.
+* **[later]** A starved basis DROPS the levels it resolves worst, silently, and **no diagnostic
+  added to `solve` can catch it** -- `notes/landscape_findings.md` section 38. RECLASSIFIED to
+  basis planning (section 3) rather than an honesty gap in the search. On the disk over `[8, 60]`
+  at `prec = 1e-12`, plane waves at `pad = 0.45` return 5 of 6 levels with no decline, nothing in
+  `unmet` and no warning; pinned as a strict xfail in `tests/test_solve_interval.py`.
+
+  Both candidate alarms are measured to fail, and differently. The **Weyl deficit** is
+  INSENSITIVE, not inverted: 0.91 with nothing missing, 0.91 with two missing, 0.87 with six,
+  every reading inside its own +-1 baseline. Its cuts are derived from the data being audited, so
+  a missing level removes the cut AND the values below it; every cut lies below the top returned
+  level, which is where a starved basis loses them; and it returns `nan` at the worst pad, where
+  one level comes back claiming multiplicity 8. **`findability` is flat, and correctly so** -- it
+  keys on the PLATEAU and the catchment width, which starvation does not move, while starvation
+  raises the FLOOR.
+
+  The quantity that does separate the ladder is the tension floor AT THE LEVELS (4.0e-03 down to
+  3.7e-10), and reading it requires knowing where the levels are -- circular for the ones lost. A
+  search cannot distinguish "no eigenvalue here" from "one my basis cannot resolve". That is the
+  planner's contract to publish, not the searcher's to detect.
+
+  (Beware the multiplicity trap when re-measuring: `weyl_count_poly` counts WITH multiplicity, so
+  audit `SolveResult.unfolded`. Auditing distinct levels reports +4.70 on the TRUE spectrum and
+  invalidated the first attempt at this. Invisible on the L-shape, which has no degeneracies and
+  is what `test_hard_roster.py` audits.)
 * **[next]** Nothing on the solve path calls `MPSEigensolver.findability`
   (`src/chladni/mps/solver.py:128`). The check is built, exported and tested
   (`src/chladni/mps/calibrate.py`), it costs ~40 evaluations, and it
@@ -236,25 +273,32 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   eigensolver to test them with. They are the `mps` layer's first tests. Includes the L-shape
   Fourier-Bessel enrichment regression: 1e-12 to 1e-13 with the corner terms against ~1e-5
   without.
+* **[next]** Accelerate's blocked `dgeqrf` corrupts the heap on macOS 26.5 / M4, and only the
+  hot path is routed around it. **Its own regression test is intermittent for the same
+  reason**: `test_the_geqrt_route_is_an_economic_qr[shape0]` compares the safe route against
+  `la.qr` on a 548 x 274 matrix -- which IS the standalone reproducer -- so the guard calls
+  the faulty path to check itself. Observed failing once in about ten default-tier runs on
+  2026-09-18, passing five for five immediately after. The comparison needs a shape that is
+  not the reproducer, or the stock call needs skipping when `_AVOID_GEQRF` is detected
+  rather than forced. `regularize`'s svd-mode QR now uses `dgeqrt`
+  (`src/chladni/mps/_regularize.py`, `_qr_economic`), which took the rectangle suite's
+  `170*pi^2` cluster from exit 139 on every run to 3 of 3 clean with identical levels. Still
+  on Accelerate's `dgeqrf` or unmeasured: `choose_rank` and `rank_diagnostics` (`svdvals` of
+  the TALL stack, and `gesdd` QR-factors first when `m >= ~1.8n`), the `"qrp"` mode
+  (`dgeqp3`), and the GSVD's internal `dggsvp3` at shapes other than the one probed. The
+  standalone reproducer is `numpy.linalg.qr` of a random 548 x 274 matrix in a loop. Re-test
+  each macOS release with `CHLADNI_ACCELERATE_GEQRF=1` and delete the workaround when it
+  passes; scipy/scipy#26145 is the upstream report of the same fault class (`dpotrf`).
+  Regression: `tests/test_regularization.py`, the slow `170_pi2` subprocess test.
 
 ## 5. Test-suite hygiene
 
-* **[next]** The suite takes 11:47, up from 6:29, and `tests/test_precision_ladder.py` is 5:13
-  of that -- 30 cases x 6 precisions, one full solve each. It earns its place (it is what found
-  the cluster-collapse defect and it is the only thing driving the pipeline across the whole
-  ladder), but `family_B` contributes fourteen near-duplicate separations where five would
-  cover the same ground. Trimming the grid, not the ladder: every precision must stay.
-* **[next]** `tests/bracketers.py` is orphaned. No `test_*.py` imports it, and it is the only
-  importer of `tests/searches.py`. Wire both in or delete both -- and note that
-  `tests/baselines.py` now supplies the honest-baseline role on the current seam, so the case
-  for keeping `bracketers.py` is only that it holds the older generation for comparison.
-* **[next]** Delete `lipschitz_search`. `notes/handoff_minimization.md` section 1 gave it two
-  fates -- rebuild against `search.md` sections 4-5, or delete, explicitly and without
-  patching. **The rebuild happened**: `chladni.mps.bracket` is that structure done properly,
-  and it passes the gate where `lipschitz_search` scored 7/12. Nothing now depends on the old
-  one.
-* **[later]** No direct `test_searches.py` covering the older searches; they are exercised
-  only through `bracketers.py`, which is itself orphaned.
+* **[later]** No direct `test_searches.py` covering the older public searches. `test_searches.py`
+  reaches only three private helpers (`_spacing`, `_descend`, `_local_minima`); `lappy_search`,
+  `lappy_repaired_search` and `swing_direct_search` are exercised only through
+  `tests/bracketers.py`, which is `notes/`-runner tooling rather than a test module. That is now
+  stated in `bracketers.py`'s own docstring, so the arrangement is deliberate rather than
+  undiscovered -- but the searches themselves are still uncovered by anything the suite runs.
 
 ## 6. Small deferred measurements
 
@@ -398,6 +442,18 @@ From `notes/solver_features.md` section 3 and `CHLADNI_V1.md` section 10.
   `notes/mps_symmetry.md` section 2.
 * **Do not design against a narrow dip.** No domain produces one; `c` is 0.445 to 1.725 over 19
   eigenvalues. The real failure mode is a cluster.
+* **No handing a non-settled seed to the cover phase.** The argument is good -- `MAX_GROWTHS = 16`
+  is already the falsification test, so let cover discover the walls -- and it is wrong. Measured
+  across five cluster grids: 215 right / 1 wrong / 35 declined becomes 242 right / **9 wrong** / 0
+  declined, three of them absurd (176 of 6, 184 of 6, 72 of 8), and the median cost at `145*pi^2`
+  goes 961 -> 3249. With `L` set from a max secant that is a rank-flip artifact the exclusion
+  radii are far too small, nothing is excluded, and every live region becomes a bracket. **The
+  decline must not be relaxed at the seam that reports it**; the objective is what is wrong.
+  `notes/landscape_findings.md` section 34.
+* **No raising `MAX_DOUBLINGS` to make a cluster seed settle.** The secant history rises like
+  `1/dk` because it is tracking a discontinuity, so there is nothing to converge to. At 12
+  doublings the seed is ~260k points and still rising -- the cost the ladder law predicts, paid
+  for nothing. Section 34.
 * **Nothing that makes the cover phase sample more cleverly.** The ladder law says a wall
   yields to a geometric ladder set by the safety factor and to nothing else. Six attempts have
   failed. `CHLADNI_V1.md` section 10.

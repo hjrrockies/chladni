@@ -24,7 +24,8 @@ def v1_brackets(**kw):
     """Stage 1 on the seam: `brackets(tensions, a, b, *, prec, modes=None)`."""
     def brackets(tensions, a, b, *, prec, modes=None, objective=None, expected_count=None):
         obj = objective if objective is not None else Objective(
-            tensions, a, b, prec=prec, variable="k", expected_count=expected_count)
+            tensions, a, b, prec=prec, variable="k", expected_count=expected_count,
+            modes=modes)
         res = bracket_interval(obj, prec=prec, **kw)
         brackets.last = res
         # Already in the objective's variable -- `bracket_interval` converts on the way out.
@@ -41,13 +42,20 @@ def v1_brackets(**kw):
 def v1_solve(**kw):
     """Stage 4 on the seam: `solve(tensions, a, b, *, prec, modes=None)`.
 
-    `modes` is accepted and ignored -- Phase D is what would use it. Declining propagates as a
-    `Declined` value rather than an empty list, because an empty list looks like success.
+    `modes` is CARRIED on the `Objective` and read by nothing yet -- Phase D's interior Gram
+    angle is what will use it. It rides on the objective rather than on `solve`'s signature
+    because `solve` already receives the objective, and because a second callable beside the
+    first would mean a second cache and a charged evaluation count that depends on which was
+    consulted (`bracket_score.run_bracketer` makes the same argument for `objective=`).
+
+    Declining propagates as a `Declined` value rather than an empty list, because an empty list
+    looks like success.
     """
     def fn(tensions, a, b, *, prec, modes=None, objective=None, expected_count=None):
         # `v1_solve(collapse=False)` reaches the ablation through **kw.
         obj = objective if objective is not None else Objective(
-            tensions, a, b, prec=prec, variable="lam", expected_count=expected_count)
+            tensions, a, b, prec=prec, variable="lam", expected_count=expected_count,
+            modes=modes)
         res = solve(obj, prec=prec, **kw)
         fn.last = res
         if res.declined:

@@ -2513,3 +2513,514 @@ plus-or-minus-one estimator -- a heuristic, not a guarantee.
 The general lesson is section 32's yet again, one level up: **a claim checked at one point on a
 ladder is a claim about that point.** Section 33 caught a constant fitted to one geometry by
 varying the geometry, and then made the same error in the other coordinate by fixing `prec`.
+
+---
+
+# 34. The `145*pi^2` declines are the THRESHOLD RANK, not the domain and not the seed
+
+2026-09-17. `TODO.md` carried "declines at `145*pi^2`" as a search-quality item, pointing
+upstream at the bracketer. It is upstream of the bracketer too: the objective the bracketer is
+handed is genuinely not Lipschitz, because the threshold rank flips between adjacent samples and
+each flip moves `sigma_1` by about a factor of two.
+
+## Every decline is the same one
+
+Swept 5 precisions x 11 bands on the split degeneracy at `145*pi^2`: **30 of 55 cells decline,
+and every one carries `_seed`'s message**, "the slope estimate never settled". Not one is the
+`MAX_GROWTHS` path, not one is stage 2 or stage 3. The 25 cells that do not decline are all
+correct: 25 right, 0 wrong. A typical history, the largest observed secant per doubling:
+
+    0.7101  0.8090  2.201  3.920  7.765  16.24
+
+Rising monotonically, no plateau in sight, so the doubling loop exhausts `MAX_DOUBLINGS`.
+
+## What the rising secants ARE
+
+At every seed density the largest secant sits **exactly on a rank flip**, and `sigma_1` roughly
+halves across it. `prec = 1e-14`, band 1.3:
+
+    n      max secant   at pair   rank         sigma across it        flips in grid
+    64        2.0485      48      107 -> 108   6.956e-02 -> 3.266e-02       7
+    127       3.3788      97      107 -> 108   6.309e-02 -> 3.266e-02      23
+    253       6.0387     195      107 -> 108   5.985e-02 -> 3.266e-02      31
+    505      19.8187     370      107 -> 108   9.157e-02 -> 4.694e-02      61
+
+The jump in `sigma` is a fixed ratio while `dk` halves, so the secant grows like `1/dk` and
+**cannot** settle. Refining the seed does not approach a slope; it approaches a discontinuity.
+Rank ranges 106-109 over the window, so this is not one bad point but a boundary the grid keeps
+re-crossing.
+
+## Freezing the rank removes it, and does not hide the wells
+
+Same case, same basis, same collocation, same `rtol` -- only `lam_ref=(a, b)` added, so the rank
+is chosen once at 107 instead of re-derived per `lam`:
+
+    n       threshold: max secant / flips     frozen: max secant / flips    min sigma thr / frz
+    64          2.0485 /  7                      0.7602 / 0                4.88e-04 / 4.88e-04
+    127         3.3788 / 23                      0.7616 / 0                2.03e-05 / 2.07e-05
+    253         6.0387 / 31                      1.0718 / 0                2.03e-05 / 2.07e-05
+    505        19.8187 / 61                      1.5155 / 0                2.03e-05 / 2.07e-05
+
+An order of magnitude off the secant, every flip gone, and **the minimum sampled `sigma` moves by
+2%** -- so the discontinuity was not the wells and removing it does not remove them.
+
+## And it recovers the declines, introducing nothing
+
+Whole grids, unexercisable cells excluded, the ONLY change being `lam_ref=(a, b)` on the pencil:
+
+    grid        threshold rank                    frozen rank
+    145*pi^2    22 right, 0 wrong, 23 declined    44 right, 0 wrong,  1 declined
+    65*pi^2     47 right, 0 wrong,  6 declined    47 right, 0 wrong,  6 declined
+    50*pi^2     53 right, 0 wrong,  0 declined    53 right, 0 wrong,  0 declined
+
+**22 of 23 declines recovered, no wrong answer introduced, and nothing else moves.** Compare the
+hand-over above, which bought its 27 with 9 wrong answers: the difference is that this removes
+the discontinuity while that one asks the search to bound it.
+
+Two things this does NOT say. `65*pi^2`'s six declines are unaffected, so not every decline is a
+rank flip and this is one cause rather than the cause. And it is measured on the split-degeneracy
+rectangles only -- the roster pencils are also threshold-rank, and whether they carry the same
+artifact is untested.
+
+## Two remedies measured NOT to work
+
+**Raising `MAX_DOUBLINGS`.** The history above says it cannot help, and it does not: at 12
+doublings the seed is ~260k points and still rising. This is the cost the table predicts, paid
+for nothing.
+
+**Handing a non-settled seed to the cover phase**, on the argument that `MAX_GROWTHS = 16` is
+already the falsification test. Measured across five cluster grids, unexercisable cells excluded:
+
+    configuration       right   wrong   declined   median evals at 145
+    decline (shipped)     215      1        35            961
+    hand over to cover    242      9         0           3249
+
+It converts 35 honest declines into 27 more right answers and **9 wrong ones**, three of them
+absurd -- 176 of 6, 184 of 6, 72 of 8 -- and triples the cost. With `L` set from a max secant
+that is a rank-flip artifact, the exclusion radii are far too small, nothing is excluded, and
+every live region becomes a bracket. **The decline is doing real work and must not be relaxed at
+the seam that reports it.**
+
+## What this means
+
+The bracketer is CORRECT here. It is being handed an objective with genuine discontinuities and
+is refusing to bound a slope that has no bound -- which is exactly what `_seed`'s docstring says
+the bootstrap is for. The remedy is not in `bracket.py` at all.
+
+It is also not a property of these test cases. The threshold rank is the SHIPPED default --
+`MPSEigensolver` takes no `lam_ref` and `pencil.rank_at` re-derives per `lam`, on the argument
+that it "is the only rule that cannot pick an unsafe rank". That argument is about picking a rank
+that is too high; it says nothing about the objective being piecewise in `lam`, which is what
+this section measures.
+
+So this joins the open `_UNSAFE_RATIO` / `SUITE_RTOL` question rather than standing alone: the
+frozen path is unsafe at cuts the threshold path tolerates, and the threshold path is
+discontinuous where the frozen path is smooth. Neither has been measured against the other on
+the question that matters, which is what a SEARCH can work on. A rank policy chosen for the
+pencil's conditioning is being inherited by an optimizer, and section 17's lesson applies
+unchanged: a solver whose objective moves for reasons the caller cannot see is not one a shape
+optimization can descend on.
+
+Note this is the same mechanism as section 6's narrow plateau spikes, where the threshold rank
+"flips 85 <-> 86 on a one-ulp change in `lam` and each flip moves `sigma_1` by 2.3x" -- recorded
+there as an oddity affecting one gate cell. Here it is the dominant effect and it costs 30 of 55
+cells outright.
+
+---
+
+# 35. The rank policy is not a choice between two evils, and it is not a choice on its own
+
+2026-09-18. Section 34 showed the threshold rank makes the tension curve discontinuous and
+costs 30 of 55 cells at `145*pi^2`, and that freezing the rank removes every flip there for 2%
+of floor. **That 2% was measured on a 6%-wide window and generalizes to nothing**, which is what
+this section corrects. `notes/rank_policy.py` reproduces both tables.
+
+## The other horn, measured: freezing across a wide window is FATAL
+
+`rect(1, 1/phi)` over `[5, 300]`, 126 columns, 11 distinct eigenvalues. One rank frozen over the
+whole window, against the threshold rank, tension at each true eigenvalue:
+
+           lam  rank  short by    THRESHOLD       FROZEN    inflation  ranks/decade
+       35.7086    39        10    7.739e-16    4.773e-11     6.17e+04          2.09
+       65.3174    45        16    1.002e-15    4.335e-08     4.32e+07          2.10
+      113.2254    49        20    1.023e-15    1.072e-07     1.05e+08          2.49
+      114.6654    51        22    1.569e-15    3.326e-08     2.12e+07          3.00
+      142.8343    53        24    9.155e-16    1.189e-06     1.30e+09          2.63
+      183.7526    55        26    1.337e-15    6.831e-05     5.11e+10          2.43
+      192.1823    57        28    1.112e-15    5.882e-05     5.29e+10          2.61
+      242.4202    59        30    1.559e-15    1.191e-04     7.64e+10          2.76
+      261.2695    61        32    1.152e-15    2.259e-04     1.96e+11          2.83
+      272.0291    61        32    1.380e-15    1.896e-04     1.37e+11          2.87
+      272.5791    61        32    1.275e-15    2.704e-05     2.12e+10          3.10
+
+`choose_rank` returns **29**, while the LOWEST eigenvalue in the window already needs 39 and the
+highest needs 61. The floor inflates up to **2.0e11x** -- 1.2e-15 becomes 2.3e-4 -- and at that
+floor the eigenvalue is not merely inaccurate, it is unfindable. The rate is steady and worth
+having: **about 2 to 3 retained directions per decade of floor.**
+
+## The asymmetry, and why `choose_rank`'s MINIMUM is the wrong end
+
+Being SHORT is fatal, per the table above. Being LONG is expensive but survivable: at
+`rtol = 1e-16` on this same domain over `[5, 120]` the floor did not move at all (1.1e-15) and
+the cost was **264 spurious local minima** in a window holding four eigenvalues (the `SUITE_RTOL`
+comment records this). A refiner rejects an empty bracket in 2 to 7 evaluations, so spurious
+minima are a bill; a blown floor is a lost eigenvalue.
+
+`choose_rank` takes the MINIMUM over its nine probe parameters -- i.e. it optimizes against the
+cheap failure and accepts the fatal one. That is the right rule for its stated purpose ("the only
+rule that cannot pick an unsafe rank", where unsafe means too HIGH) and the wrong rule for a
+window wider than a few percent.
+
+## The axis that separates the two regimes is the WINDOW WIDTH
+
+Same pencil, how far the threshold rank moves as a function of window width:
+
+     centre lam   width   rank lo..hi  d(rank)
+             50     1%     43..43            0
+             50     3%     42..43            1
+             50    10%     41..43            2
+             50    30%     41..43            2
+             50   100%     37..45            8
+            150     1%     53..53            0
+            150     3%     53..53            0
+            150    10%     53..53            0
+            150    30%     51..55            4
+            150   100%     45..59           14
+            280     1%     61..61            0
+            280     3%     61..61            0
+            280    10%     61..62            1
+
+**Below about 10% the threshold rank is constant or moves by one or two.** So on a narrow window
+freezing costs almost nothing and buys a continuous curve outright -- section 34's `145*pi^2`
+case, 6% wide, 1.02x -- while over the 60x span of `[5, 300]` it is hopeless. The dilemma is not
+global. It is a statement about how wide a window one rank is asked to serve, and neither horn
+is a property of the method.
+
+## A third option that dissolves it rather than picking a side
+
+The discontinuity is not inherent to truncation. It is inherent to a HARD cut.
+
+The rank-`r` projector is a discontinuous function of the matrix. A smooth spectral filter is
+not: weight direction `j` by `f(s_j/s_0)` with `f` a smooth sigmoid from 1 to 0 across the
+threshold, and the operator is a MATRIX FUNCTION of the stacked Gram, which is continuous in the
+matrix whenever `f` is continuous. A newly admitted direction then enters with weight about one
+half and grows smoothly, instead of appearing at full strength, so `sigma_1` moves continuously
+in `lam` while the effective rank is still right everywhere. This is exactly the step from TSVD
+to Tikhonov filter factors in discrete ill-posed problems, and it is the standard answer there
+to the standard version of this complaint.
+
+What it would cost, none of it measured:
+
+* **The floor rises to about the filter width.** That may be no loss: Betcke's relation is
+  already measured here -- `eps ~ max(eps_basis, rtol)`, log-log slope 1.13 with `eps/rtol` about
+  1.15 (`tests/test_floor.py`) -- so the floor already tracks the threshold. The trade is a known
+  discontinuity for a known smooth floor.
+* **The GSVD grows.** Weighting keeps all `n` columns where truncation reduces to `r`: 126
+  against 29-61 here, so several times the cost per evaluation, on the hot path. Mitigable by
+  hard-cutting only the genuinely null directions and filtering across the band that matters,
+  which is a second parameter and wants its own measurement.
+* **It is a seam change, not a parameter.** `rank_at`, `coef(lam, mult)`, `choose_rank`,
+  `RankDiagnostics` and `n_useful` all assume an integer rank, and `Objective.sigma` reads the
+  vector LENGTH as the rank.
+
+## What this means for the planner
+
+The reason this is recorded rather than acted on: **it is one decision, and the code currently
+lets three places make it independently.** The window comes from `weyl_window` or a caller, the
+rank from `choose_rank` or the threshold rule, and the floor falls out of `rtol` -- and the
+tables above say those three are a single constraint. A planner is not choosing a rank. It is
+choosing a `(window, rank, floor)` triple, and any two of them determine roughly what the third
+can be.
+
+The cheapest thing that follows, and it needs no new numerics: **size the sub-window from the
+rank.** Hold `d(rank)` to one or two and the window may be ten percent wide; freeze the rank
+there and the curve is continuous within it, correct at both ends, and the search never has to
+bound a slope across a jump because the jumps are now at known sub-window boundaries the search
+is restarted at. The bill is one seed per sub-window, which is what wants measuring before
+anyone believes it -- `[5, 300]` would be roughly forty sub-windows at ten percent each.
+
+Untested, and it is the load-bearing gap: everything here is `rect(1, 1/phi)`. Whether the roster
+pencils carry the same rank drift, and whether a corner-adapted basis's rank grows the same way
+as plane waves do, is not known. `PlaneWave.n_useful_at(k)` predicts the growth for one family
+and `Basis` has no composite counterpart, which is the same hole section 3 of `TODO.md` records
+from the other side.
+
+---
+
+# 36. The interior Gram angle DOES discriminate, on every domain in the roster
+
+2026-09-18. Section 15 measured the angle on `rect(1+delta, 1)` and `docs/design/search.md` took
+its numbers as Phase D's contract. Section 15 also recorded the caveat: exact eigenvalues, ONE
+domain, one mode pair, low `lam`, and a domain whose modes are exactly L2-orthogonal -- so the
+distinct-pair floor there is pure sampling noise, and **the L-shape with a corner-adapted basis
+is the case to check.** Now that `MPSPencil.interior_image` exists, it is checked.
+`notes/gram_discrimination.py` reproduces everything below.
+
+## The two populations, and they are cleanly separated
+
+**Duplicate**, meaning two located roots a MERGE LICENCE apart -- the separation Phase D
+actually sees. Nine levels across three domains, four precisions each:
+
+       domain         lam |    1e-06     1e-08     1e-10     1e-12
+      L_shape     9.63972 |   1.0000    1.0000    1.0000    1.0000
+      L_shape    15.19725 |   1.0000    1.0000    1.0000    1.0000
+      L_shape    19.73921 |   1.0000    1.0000    1.0000    1.0000
+         disk     5.78319 |   1.0000    1.0000    1.0000    1.0000
+         disk    14.68197 |   1.0000    1.0000    1.0000    1.0000
+         disk    26.37462 |   1.0000    1.0000    1.0000    1.0000
+       eq_tri    52.63789 |   1.0000    1.0000    1.0000    1.0000
+      eq_tri   122.82174 |   1.0000    1.0000    1.0000    1.0000
+      eq_tri   210.55156 |   1.0000    1.0000    1.0000    1.0000
+
+**Distinct**, meaning adjacent true eigenvalues:
+
+    domain     worst |cos|    sampling floor 1/sqrt(n_int)
+    rect          0.1402              0.146   (n_int = 47)
+    L_shape       0.0605              0.112   (n_int = 80)
+    eq_tri        0.1678              0.105   (n_int = 90)
+    disk          0.2544              0.109   (n_int = 84)
+
+    SEPARATION:  worst distinct 0.2544  <  tau_gram 0.5  <  weakest duplicate 1.0000
+
+**The corner domain is the BEST of the four**, at 0.0605. The transfer risk section 15 named --
+that a corner-adapted basis on a domain with a singular eigenfunction would lift the
+distinct-pair floor -- does not materialize. Whatever raises the floor, it is not the corner.
+
+## Two corrections to `search.md`'s numbers
+
+**The distinct bound is not 0.10.** The spec quotes "distinct <= 0.10"; measured it is 0.06 to
+0.25 depending on the domain, and the rectangle's own 0.1402 already exceeded it. The floor is
+the Monte-Carlo sampling noise of the discrete interior inner product, `1/sqrt(n_int)`, which the
+table above tracks closely on three of four domains -- so the right way to state the bound is as
+a FUNCTION OF THE POINT COUNT, not as a constant. `tau_gram = 0.5` is unaffected and still sits
+in a wide gap, but the headroom on the distinct side is about 2x rather than the 5x the document
+implies.
+
+The outlier is the disk at 0.2544, which is 2.3x its own sampling floor, on the pair
+`14.68197 / 26.37462`. Both are DEGENERATE levels of the disk, where which vector the GSVD
+returns inside the eigenspace is decided by roundoff -- a plausible mechanism for a larger
+overlap between two such choices, and not confirmed. It is the one number here worth chasing
+before anyone tightens `tau_gram`.
+
+**"Even at two-thirds of a gap" is a trap, and reading it literally makes the instrument look
+broken.** At two-thirds of a gap the probe is PAST THE MIDPOINT, where the candidate has already
+turned into the neighbour's eigenfunction. L_shape, `lam_i = 9.63972`, gap 5.56:
+
+    offset from lam_i     0.001   0.010   0.100   0.330   0.500   0.670   0.900  (x gap)
+    |cos| with u(lam_i)  1.0000  1.0000  0.9980  0.9758  0.1617  0.0600  0.0545
+
+The turn is sharp and sits at the midpoint, which is exactly where it should: past halfway the
+nearest eigenvalue is the other one. Nothing is wrong, but a probe placed there is measuring the
+DISTINCT case while being labelled the duplicate one. The duplicate separation is `prec*lam` --
+eight to fourteen orders closer than "two-thirds of a gap" -- and there the reading is 1.0000.
+
+## What this does and does not license
+
+It licenses building Phase D's rule: the instrument separates the two populations by a factor of
+four on the worst domain measured, which is not a delicate margin.
+
+It does not license the rule's OUTPUT being right, which is a different claim and needs the rule.
+And two gaps remain in the measurement itself: every reading above is taken at EXACT eigenvalues
+rather than at located roots carrying their own `delta_res` (the licence-apart probe is a fair
+proxy, not the same thing), and the whole table is Dirichlet, low `lam`, and three domains that
+`hard_roster` already calls the easy ones.
+
+## 36.1 The rule built on it: consulted 115 times, agrees with distance every time
+
+2026-09-18. `solve(..., phase_d="angle")` is built and is NOT the default. Measured over the five
+cluster grids at five precisions and eleven bands, unexercisable cells excluded, plus the roster:
+
+    grid        phase_d="distance"                phase_d="angle"          gram pairs
+    50*pi^2     53 right, 0 wrong                 identical                    23
+    65*pi^2     47 right, 0 wrong, 6 declined     identical                    29
+    125*pi^2    52 right, 0 wrong, 1 declined     identical                    26
+    145*pi^2    22 right, 0 wrong, 23 declined    identical                     8
+    170*pi^2    41 right, 1 wrong, 5 declined     identical                    29
+    roster                                        identical                     0
+
+**The prediction going in was that the angle would be inert -- zero pairs -- because the
+attained-merge prefilter folds roots closer than their attained accuracy. That was wrong**: 115
+pairs survive the prefilter inside a licence and reach the angle. The rule is exercised. It just
+agrees with the distance rule on all 115.
+
+So it regresses nothing, improves nothing, and there is no case for promoting it. The seam keeps
+both reachable, which is what the seam is for. The one wrong cell left at `170*pi^2` is the
+refiner's residual-abutting-an-exclusion defect (section 34's neighbour, recorded in `TODO.md`)
+and not a grouping question at all, which is why the angle does not touch it.
+
+The roster asks the angle NOTHING at `prec = 1e-8`: its levels sit further apart than a licence,
+so nothing reaches the prefilter's survivors. **The grouping regime lives in the split-degeneracy
+grids and nowhere else currently measured** -- which is worth knowing before anyone reads a clean
+roster as evidence that grouping is solved.
+
+## 36.2 A correction to `search.md`: the ambiguous eigenspace is NOT benign under the reach rule
+
+The spec argues the degenerate case is harmless whichever way the angle falls: "parallel gives 2
+by recount, orthogonal gives 1+1 = 2 by sum". **That assumes each member read 1.** A reach read
+answers "how many eigenvalues are inside MY bracket", so a degenerate level located twice has
+both members reading the full multiplicity. Measured on `_gram_group` directly, two roots inside
+one licence:
+
+    each member reads   parallel (collapse)   orthogonal (sum)   truth
+    1                          1                    2            both arms right
+    2                          2                    4            the SUM DOUBLES IT
+
+Attribution (section 34's commit) is what makes the first row hold -- it removes the eigenvalues
+one root's read counted that another root owns -- and it cannot help in the second, because both
+members own the same eigenspace and neither is the other's partner to claim.
+
+No safe guess is available. Capping the sum by a recount over the union bracket is not it:
+`_collapse_ambiguous` records a spanning read folding four CORRECT levels into two on the
+`65*pi^2` cluster. So a sum whose members read more than 1 is FLAGGED and carries the
+alternative, and `solve_interval` raises on it. Loud, and honest about which of two readings is
+in doubt.
+
+This is the third of the spec's Phase D numbers that did not survive measurement, after the
+`distinct <= 0.10` bound and the "two-thirds of a gap" probe in section 36.
+
+---
+
+# 37. The refiner-rejection rule `TODO.md` proposed is exactly backwards
+
+2026-09-18. The open item read: "`solve` still reads every refiner rejection as an empty bracket
+... a rejection other than `not_a_minimum` or `endpoint` should still not certify a count." It
+rested on a partial rescan -- one row at `170*pi^2` plus three cluster cells, 42 of 42 accepted --
+which established that the defect was latent, not what an alarm should key on.
+
+Measured properly: every rejection the main stage and the side search make, across five cluster
+grids at five precisions and eleven bands plus the roster at five precisions, labelled by whether
+the rejected bracket actually CONTAINED a true eigenvalue.
+
+              reason   bracket EMPTY   bracket HELD one
+            endpoint               3                  0
+         no_parabola              21                  0
+       not_a_minimum             153                  2
+
+    179 rejections, of which 2 were on a bracket that contained an eigenvalue.
+
+**The proposed rule would have fired on all 24 `no_parabola` and `endpoint` rejections -- every
+one of them correctly empty -- and caught neither of the two real losses, because both are
+`not_a_minimum`, the reason it explicitly exempts.** Twenty-four false alarms, zero true
+positives, on a flag that makes `solve_interval` refuse. It is not a conservative version of the
+right rule; it keys on the wrong column.
+
+## And the two real ones are a defect already diagnosed
+
+    1677.8327481833226 .. 1677.832748183896     (170*pi^2, prec 1e-12, band 0.3)
+    1233.7005501361673 .. 1233.7005501361732    (125*pi^2)
+
+The first is, to the digit, the residual sub-bracket of section 34's neighbour -- the side search
+finds a member, searches on past it, and the residual begins one exclusion radius out where the
+find's own wall is the lowest point, so the refiner returns that endpoint and calls it
+`not_a_minimum`. Both are that shape. The `170*pi^2` one is the single wrong cell the grids still
+carry; the `125*pi^2` one costs nothing, the eigenvalue being accounted for elsewhere.
+
+So there is no separate honesty defect to build here. **Fixing the residual standoff fixes both
+losses at the source**, and an alarm keyed on rejection reasons would meanwhile refuse 24 correct
+solves. The item was rewritten rather than implemented -- and then the standoff was swept on the
+whole grid and taken from 0.1 to 0.3, which closes the `170*pi^2` cell and leaves **zero wrong
+cells on all five grids**:
+
+    standoff   right   wrong   declined
+    0.1          215       1         35
+    0.3          216       0         35
+    0.5          216       0         35
+
+0.3 and 0.5 are identical, so it is a plateau rather than a fitted value, and the declines do not
+move. With that, the two rejections above are the last lost eigenvalues the grids contained and
+neither survives.
+
+## The general lesson, and it is section 7's again
+
+The proposed rule was derived from a plausible story -- "a refiner that gave up for an odd reason
+might have given up on something real" -- checked against a sample chosen because it was already
+suspicious. The reason distribution over the whole population inverts it. A rule about which
+FAILURES matter cannot be calibrated on the failures one happened to be looking at.
+
+---
+
+# 38. Nothing cheap detects a starved basis, and the two candidates fail differently
+
+2026-09-18. `TODO.md` section 4 carried the silent-drop defect -- on the disk over `[8, 60]` at
+`prec = 1e-12`, a starved plane-wave basis returns 5 of 6 levels with no decline, nothing in
+`unmet` and no warning -- and named the Weyl deficit as "the obvious candidate alarm". It is not
+one. Neither is `findability`. `notes/starved_basis_alarm.py` reproduces both tables.
+
+## First, a trap that invalidated the first attempt at this measurement
+
+`asymp.weyl_count_poly` counts eigenvalues WITH MULTIPLICITY. The disk's spectrum over this
+window is 6 distinct levels and 11 eigenvalues. Auditing one entry per LEVEL against it reports
+
+    weyl_deficit(true spectrum, unfolded)        +0.91
+    weyl_deficit(true spectrum, levels only)     +4.70
+
+and the +4.70 is pure bookkeeping. The first run of this measurement made exactly that error and
+produced a story -- "the deficit reads highest on the correct answer, it is anti-correlated" --
+that was entirely an artifact. `SolveResult.unfolded` exists for this. Recorded because the trap
+is invisible on the L-shape, which has no degeneracies, and `tests/test_hard_roster.py` audits
+the L-shape.
+
+## The Weyl deficit is INSENSITIVE, not inverted
+
+Starving the basis from 84 columns to 18, spectrum unfolded:
+
+    pad   cols   levels   unfolded   MISSING    deficit
+    0.30    18        1          8         3        nan
+    0.35    22        2          3         8       1.27
+    0.40    26        3          5         6       0.87
+    0.45    28        5          9         2       0.91
+    1.30    84        6         11         0       0.91   <- correct
+
+0.91 with nothing missing, 0.91 with two missing, 0.87 with SIX missing -- every reading inside
+the +-1 noise of its own baseline, which section 33.1 already recorded for narrow windows. Three
+structural reasons, and they compound:
+
+* **The cuts are derived from the data being audited.** A cut sits between adjacent RETURNED
+  levels. When levels go missing you lose the cut that would have straddled them AND the values
+  below it, so the comparison sheds evidence from both sides at once and the difference barely
+  moves.
+* **Every cut lies below the top returned level**, which `weyl_deficit`'s own docstring states.
+  A starved basis loses the levels it resolves WORST, and those are typically the highest in the
+  window -- exactly where no cut can be placed.
+* **It degrades to `nan` when things are worst.** At `pad = 0.30` the solver returns a single
+  level (claiming multiplicity 8) and there is nowhere to cut at all. The audit goes blind in the
+  case it most needs to catch.
+
+## `findability` is flat here, and that is CORRECT rather than blind
+
+    pad   cols   MISSING   sigma_base   achieved   shortfall
+    0.30    18         3    3.141e-01       True        0.06
+    0.35    22         8    3.188e-01       True        0.06
+    0.45    28         2    3.142e-01       True        0.06
+    1.30    84         0    2.987e-01       True        0.07
+
+It is measuring a different failure and says so. Its criterion is whether a dip's visible
+catchment is at least one scan step wide, `w_k = 2*q*sigma_base/C_k >= dk`, which depends on the
+PLATEAU and the wall slope. Starving a basis raises the FLOOR -- the bottom of the clipped V --
+and leaves the plateau where it was (0.31 -> 0.29 across a 4.7x change in columns). So the
+catchment genuinely did not narrow, and a flat reading is the right answer to the question it
+asks.
+
+**An earlier note in this session read the flat readings as evidence that `findability` is not
+worth wiring. That inference was wrong** and is withdrawn. Its own failure -- the perimeter-4
+triangle at 21.9/25.0/133.1 degrees returning `(lam_1, lam_3, lam_4, lam_7)`, every value
+accurate to 1e-14 and the set not consecutive -- is a genuine missed-level failure that no floor
+check and no counting test catches, and it came from a shape optimization, which is the setting
+`chladni` exists to serve. What the disk ladder shows is only that basis starvation is a
+DIFFERENT mechanism from narrow catchment.
+
+## Why both fail, and where this belongs
+
+A search cannot tell "there is no eigenvalue here" from "there is one my basis cannot resolve".
+Both instruments above are computed from what the search RETURNED, and the missing levels are
+missing from the evidence as well as from the answer. The quantity that does separate the rows is
+the tension floor AT THE LEVELS -- 4.0e-03, 1.1e-05, 1.6e-08, 3.7e-10 down the ladder -- and
+reading it requires knowing where the levels are, which is circular for the ones that were lost.
+
+So this is not an honesty gap in the search, and no diagnostic added to `solve` will close it. It
+is the basis planner's: `eps` is the planner's published output, and the contract
+`search.md` asks it for -- the `eps` and dip width a search can tolerate -- is exactly the
+statement that would let a caller know the basis was too poor BEFORE the solve rather than after.
+
+Third time this session a proposed diagnostic was measured to key on the wrong signal, after the
+refiner-rejection alarm (section 37) and the seed hand-over (section 34).
