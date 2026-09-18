@@ -127,13 +127,23 @@ illegible.
   <= 0.10 against duplicate >= 0.948). It goes on the existing rule seam, off by default, and
   ships only if it improves the committed grids without regressing them.
 
-  Two things to carry into it. **Within one `lam` the angle is vacuous** and must not be
-  consulted -- the GSVD's interior images are orthogonal by construction, measured 4.6e-16 and
-  now pinned in `tests/test_mps_seam.py`. And `tau_gram`'s margin is measured on `rect(1+delta,
-  1)` with EXACT eigenvalues, one mode pair, low `lam`, on a domain whose modes are exactly
-  L2-orthogonal -- which is what makes the distinct-pair floor pure sampling noise. The L-shape
-  with a corner-adapted basis is the case to check before it becomes a default.
-  `tests/test_search_collapse.py`, which `search.md` section 7 specifies, does not exist.
+  **The instrument is measured and it works** -- `notes/landscape_findings.md` section 36,
+  `tests/test_search_collapse.py`, which `search.md` section 7 specifies and which now exists.
+  Worst distinct 0.2544 < `TAU_GRAM` 0.5 < weakest duplicate 1.0000, over L_shape, disk, eq_tri
+  and the rectangle pair. The transfer risk section 15 named did NOT materialize: the L-shape
+  with a corner-adapted basis is the BEST of the four at 0.0605.
+
+  Four things to carry into the rule. **Within one `lam` the angle is vacuous** and must not be
+  consulted -- orthogonal by construction, 4.6e-16. **The spec's "distinct <= 0.10" is the wrong
+  SHAPE of bound**: the floor is `1/sqrt(n_int)` and moves with the point count, and the
+  rectangle's own 0.1402 already exceeds the quoted constant. **The spec's "even at two-thirds of
+  a gap" is a trap**: that probe is past the midpoint and measures the NEIGHBOUR, reading ~0.06;
+  the duplicate separation is `prec*lam`. And **the disk's 0.2544 is the one number worth
+  chasing** before anyone tightens `TAU_GRAM` -- it is 2.3x its own sampling floor, on a pair of
+  DEGENERATE levels where the vector the GSVD returns inside the eigenspace is arbitrary.
+
+  `TAU_GRAM` lives in `tests/test_search_collapse.py` until the rule exists, deliberately: an
+  unused package constant is what `search._SLOPE_FRAC` became.
 * **[next]** Carry the in-loop stride correction past the seed. The bracketing stage now has
   one -- `v1_bracket._seed` sizes from Weyl and then doubles until the largest observed secant
   stops growing, so no a-priori stride is trusted -- but nothing downstream of it adapts, and

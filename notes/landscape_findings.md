@@ -2744,3 +2744,83 @@ pencils carry the same rank drift, and whether a corner-adapted basis's rank gro
 as plane waves do, is not known. `PlaneWave.n_useful_at(k)` predicts the growth for one family
 and `Basis` has no composite counterpart, which is the same hole section 3 of `TODO.md` records
 from the other side.
+
+---
+
+# 36. The interior Gram angle DOES discriminate, on every domain in the roster
+
+2026-09-18. Section 15 measured the angle on `rect(1+delta, 1)` and `docs/design/search.md` took
+its numbers as Phase D's contract. Section 15 also recorded the caveat: exact eigenvalues, ONE
+domain, one mode pair, low `lam`, and a domain whose modes are exactly L2-orthogonal -- so the
+distinct-pair floor there is pure sampling noise, and **the L-shape with a corner-adapted basis
+is the case to check.** Now that `MPSPencil.interior_image` exists, it is checked.
+`notes/gram_discrimination.py` reproduces everything below.
+
+## The two populations, and they are cleanly separated
+
+**Duplicate**, meaning two located roots a MERGE LICENCE apart -- the separation Phase D
+actually sees. Nine levels across three domains, four precisions each:
+
+       domain         lam |    1e-06     1e-08     1e-10     1e-12
+      L_shape     9.63972 |   1.0000    1.0000    1.0000    1.0000
+      L_shape    15.19725 |   1.0000    1.0000    1.0000    1.0000
+      L_shape    19.73921 |   1.0000    1.0000    1.0000    1.0000
+         disk     5.78319 |   1.0000    1.0000    1.0000    1.0000
+         disk    14.68197 |   1.0000    1.0000    1.0000    1.0000
+         disk    26.37462 |   1.0000    1.0000    1.0000    1.0000
+       eq_tri    52.63789 |   1.0000    1.0000    1.0000    1.0000
+      eq_tri   122.82174 |   1.0000    1.0000    1.0000    1.0000
+      eq_tri   210.55156 |   1.0000    1.0000    1.0000    1.0000
+
+**Distinct**, meaning adjacent true eigenvalues:
+
+    domain     worst |cos|    sampling floor 1/sqrt(n_int)
+    rect          0.1402              0.146   (n_int = 47)
+    L_shape       0.0605              0.112   (n_int = 80)
+    eq_tri        0.1678              0.105   (n_int = 90)
+    disk          0.2544              0.109   (n_int = 84)
+
+    SEPARATION:  worst distinct 0.2544  <  tau_gram 0.5  <  weakest duplicate 1.0000
+
+**The corner domain is the BEST of the four**, at 0.0605. The transfer risk section 15 named --
+that a corner-adapted basis on a domain with a singular eigenfunction would lift the
+distinct-pair floor -- does not materialize. Whatever raises the floor, it is not the corner.
+
+## Two corrections to `search.md`'s numbers
+
+**The distinct bound is not 0.10.** The spec quotes "distinct <= 0.10"; measured it is 0.06 to
+0.25 depending on the domain, and the rectangle's own 0.1402 already exceeded it. The floor is
+the Monte-Carlo sampling noise of the discrete interior inner product, `1/sqrt(n_int)`, which the
+table above tracks closely on three of four domains -- so the right way to state the bound is as
+a FUNCTION OF THE POINT COUNT, not as a constant. `tau_gram = 0.5` is unaffected and still sits
+in a wide gap, but the headroom on the distinct side is about 2x rather than the 5x the document
+implies.
+
+The outlier is the disk at 0.2544, which is 2.3x its own sampling floor, on the pair
+`14.68197 / 26.37462`. Both are DEGENERATE levels of the disk, where which vector the GSVD
+returns inside the eigenspace is decided by roundoff -- a plausible mechanism for a larger
+overlap between two such choices, and not confirmed. It is the one number here worth chasing
+before anyone tightens `tau_gram`.
+
+**"Even at two-thirds of a gap" is a trap, and reading it literally makes the instrument look
+broken.** At two-thirds of a gap the probe is PAST THE MIDPOINT, where the candidate has already
+turned into the neighbour's eigenfunction. L_shape, `lam_i = 9.63972`, gap 5.56:
+
+    offset from lam_i     0.001   0.010   0.100   0.330   0.500   0.670   0.900  (x gap)
+    |cos| with u(lam_i)  1.0000  1.0000  0.9980  0.9758  0.1617  0.0600  0.0545
+
+The turn is sharp and sits at the midpoint, which is exactly where it should: past halfway the
+nearest eigenvalue is the other one. Nothing is wrong, but a probe placed there is measuring the
+DISTINCT case while being labelled the duplicate one. The duplicate separation is `prec*lam` --
+eight to fourteen orders closer than "two-thirds of a gap" -- and there the reading is 1.0000.
+
+## What this does and does not license
+
+It licenses building Phase D's rule: the instrument separates the two populations by a factor of
+four on the worst domain measured, which is not a delicate margin.
+
+It does not license the rule's OUTPUT being right, which is a different claim and needs the rule.
+And two gaps remain in the measurement itself: every reading above is taken at EXACT eigenvalues
+rather than at located roots carrying their own `delta_res` (the licence-apart probe is a fair
+proxy, not the same thing), and the whole table is Dirichlet, low `lam`, and three domains that
+`hard_roster` already calls the easy ones.
