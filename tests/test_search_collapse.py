@@ -1,10 +1,10 @@
 """Phase D's instrument: can the interior Gram angle tell a duplicate from a genuine pair?
 
-`docs/design/search.md` section 7 specifies this file. It is written BEFORE the rule that will
-use it, which is `CHLADNI_V1.md` section 5.1's discipline -- build the scorer before the searcher
--- and it is why the assertions here are about the ANGLE rather than about `solve`'s output. When
-Phase D's rule lands, its own behaviour (collapse-and-recount against merge-and-sum, and the
-ambiguous-eigenspace case giving the same total under both verdicts) is tested beside these.
+`docs/design/search.md` section 7 specifies this file. It was written BEFORE the rule that uses
+it -- `CHLADNI_V1.md` section 5.1's discipline, build the scorer before the searcher -- so the
+first half tests the INSTRUMENT (the angle itself, on real pencils) and the second half tests the
+RULE built on it (`solve(..., phase_d="angle")`, on controlled inputs). Both halves are here
+because the rule is only as good as the separation the instrument gives it.
 
 # Why the angle at all
 
@@ -49,10 +49,10 @@ import rect_suite as rs
 
 pytestmark = pytest.mark.slow
 
-#: The verdict boundary Phase D will use. Defined HERE and not in the package, because the rule
-#: that reads it is not built: `search._SLOPE_FRAC` is what an unused package constant becomes.
-#: It moves to `chladni.mps.multiplicity` with the rule, and this file imports it from there.
-TAU_GRAM = 0.5
+#: The verdict boundary, imported rather than restated. It lived in this file while nothing read
+#: it -- an unused package constant is what `search._SLOPE_FRAC` became -- and moved into the
+#: package with the rule. `test_TAU_GRAM_moved_into_the_package_with_the_rule` pins the move.
+from chladni.mps.multiplicity import TAU_GRAM
 
 ROSTER = ("L_shape", "disk", "eq_tri")
 
@@ -238,7 +238,6 @@ def test_the_rectangle_pair_is_STABLE_across_six_orders_of_separation():
 # demand -- which a real domain will not do -- and because the ambiguous-eigenspace case is
 # defined by the verdict being arbitrary.
 
-from chladni.mps.multiplicity import TAU_GRAM as PKG_TAU            # noqa: E402
 from chladni.mps.objective import Objective                         # noqa: E402
 from chladni.mps.search import Level, _gram_group, solve            # noqa: E402
 
@@ -269,9 +268,12 @@ ORTH = ([1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0])      # |cos| = 0 -> independ
 SAME = ([1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0])      # |cos| = 1 -> one eigenfunction
 
 
-def test_TAU_GRAM_moved_into_the_package_with_the_rule():
-    """It lived here while nothing read it, so it would not become another `_SLOPE_FRAC`."""
-    assert PKG_TAU == TAU_GRAM
+def test_TAU_GRAM_lives_in_the_PACKAGE_now_that_something_reads_it():
+    """It lived in this file while nothing read it, so it would not become another
+    `_SLOPE_FRAC` -- a constant with a docstring and no caller."""
+    import chladni.mps.multiplicity as mult
+    assert mult.TAU_GRAM is TAU_GRAM
+    assert "TAU_GRAM" in mult.__all__
 
 
 def test_the_default_is_DISTANCE_and_the_angle_is_OPT_IN():

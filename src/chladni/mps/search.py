@@ -5,10 +5,14 @@ the seam. `docs/design/candidates.md` section 1 calls `solve` "the only mandator
 method that does not decompose into bracket -> refine -> multiplicity implements this and
 nothing else, so it is where v1 and a monolithic candidate are compared on equal terms.
 
-`MPSEigensolver.solve_interval` is the intended caller and does not exist yet; it is the one
-piece of this layer still to be built.
+`MPSEigensolver.search_interval` is the caller, and `solve_interval` narrows what comes back to
+the method-agnostic `Spectrum` above it.
 
-    solve(tensions, a, b, *, prec, modes=None) -> [(lam, mult), ...]
+    solve(obj, *, prec, collapse, merge, rule, reach_slope, phase_d) -> SolveResult
+
+The scored SEAM is narrower than that signature and is what a candidate must present:
+
+    search(tensions, a, b, *, prec, modes=None) -> [(lam, mult), ...]
 
 # Composition is not the sum of the parts, and each seam cost a defect
 
