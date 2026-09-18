@@ -2513,3 +2513,115 @@ plus-or-minus-one estimator -- a heuristic, not a guarantee.
 The general lesson is section 32's yet again, one level up: **a claim checked at one point on a
 ladder is a claim about that point.** Section 33 caught a constant fitted to one geometry by
 varying the geometry, and then made the same error in the other coordinate by fixing `prec`.
+
+---
+
+# 34. The `145*pi^2` declines are the THRESHOLD RANK, not the domain and not the seed
+
+2026-09-17. `TODO.md` carried "declines at `145*pi^2`" as a search-quality item, pointing
+upstream at the bracketer. It is upstream of the bracketer too: the objective the bracketer is
+handed is genuinely not Lipschitz, because the threshold rank flips between adjacent samples and
+each flip moves `sigma_1` by about a factor of two.
+
+## Every decline is the same one
+
+Swept 5 precisions x 11 bands on the split degeneracy at `145*pi^2`: **30 of 55 cells decline,
+and every one carries `_seed`'s message**, "the slope estimate never settled". Not one is the
+`MAX_GROWTHS` path, not one is stage 2 or stage 3. The 25 cells that do not decline are all
+correct: 25 right, 0 wrong. A typical history, the largest observed secant per doubling:
+
+    0.7101  0.8090  2.201  3.920  7.765  16.24
+
+Rising monotonically, no plateau in sight, so the doubling loop exhausts `MAX_DOUBLINGS`.
+
+## What the rising secants ARE
+
+At every seed density the largest secant sits **exactly on a rank flip**, and `sigma_1` roughly
+halves across it. `prec = 1e-14`, band 1.3:
+
+    n      max secant   at pair   rank         sigma across it        flips in grid
+    64        2.0485      48      107 -> 108   6.956e-02 -> 3.266e-02       7
+    127       3.3788      97      107 -> 108   6.309e-02 -> 3.266e-02      23
+    253       6.0387     195      107 -> 108   5.985e-02 -> 3.266e-02      31
+    505      19.8187     370      107 -> 108   9.157e-02 -> 4.694e-02      61
+
+The jump in `sigma` is a fixed ratio while `dk` halves, so the secant grows like `1/dk` and
+**cannot** settle. Refining the seed does not approach a slope; it approaches a discontinuity.
+Rank ranges 106-109 over the window, so this is not one bad point but a boundary the grid keeps
+re-crossing.
+
+## Freezing the rank removes it, and does not hide the wells
+
+Same case, same basis, same collocation, same `rtol` -- only `lam_ref=(a, b)` added, so the rank
+is chosen once at 107 instead of re-derived per `lam`:
+
+    n       threshold: max secant / flips     frozen: max secant / flips    min sigma thr / frz
+    64          2.0485 /  7                      0.7602 / 0                4.88e-04 / 4.88e-04
+    127         3.3788 / 23                      0.7616 / 0                2.03e-05 / 2.07e-05
+    253         6.0387 / 31                      1.0718 / 0                2.03e-05 / 2.07e-05
+    505        19.8187 / 61                      1.5155 / 0                2.03e-05 / 2.07e-05
+
+An order of magnitude off the secant, every flip gone, and **the minimum sampled `sigma` moves by
+2%** -- so the discontinuity was not the wells and removing it does not remove them.
+
+## And it recovers the declines, introducing nothing
+
+Whole grids, unexercisable cells excluded, the ONLY change being `lam_ref=(a, b)` on the pencil:
+
+    grid        threshold rank                    frozen rank
+    145*pi^2    22 right, 0 wrong, 23 declined    44 right, 0 wrong,  1 declined
+    65*pi^2     47 right, 0 wrong,  6 declined    47 right, 0 wrong,  6 declined
+    50*pi^2     53 right, 0 wrong,  0 declined    53 right, 0 wrong,  0 declined
+
+**22 of 23 declines recovered, no wrong answer introduced, and nothing else moves.** Compare the
+hand-over above, which bought its 27 with 9 wrong answers: the difference is that this removes
+the discontinuity while that one asks the search to bound it.
+
+Two things this does NOT say. `65*pi^2`'s six declines are unaffected, so not every decline is a
+rank flip and this is one cause rather than the cause. And it is measured on the split-degeneracy
+rectangles only -- the roster pencils are also threshold-rank, and whether they carry the same
+artifact is untested.
+
+## Two remedies measured NOT to work
+
+**Raising `MAX_DOUBLINGS`.** The history above says it cannot help, and it does not: at 12
+doublings the seed is ~260k points and still rising. This is the cost the table predicts, paid
+for nothing.
+
+**Handing a non-settled seed to the cover phase**, on the argument that `MAX_GROWTHS = 16` is
+already the falsification test. Measured across five cluster grids, unexercisable cells excluded:
+
+    configuration       right   wrong   declined   median evals at 145
+    decline (shipped)     215      1        35            961
+    hand over to cover    242      9         0           3249
+
+It converts 35 honest declines into 27 more right answers and **9 wrong ones**, three of them
+absurd -- 176 of 6, 184 of 6, 72 of 8 -- and triples the cost. With `L` set from a max secant
+that is a rank-flip artifact, the exclusion radii are far too small, nothing is excluded, and
+every live region becomes a bracket. **The decline is doing real work and must not be relaxed at
+the seam that reports it.**
+
+## What this means
+
+The bracketer is CORRECT here. It is being handed an objective with genuine discontinuities and
+is refusing to bound a slope that has no bound -- which is exactly what `_seed`'s docstring says
+the bootstrap is for. The remedy is not in `bracket.py` at all.
+
+It is also not a property of these test cases. The threshold rank is the SHIPPED default --
+`MPSEigensolver` takes no `lam_ref` and `pencil.rank_at` re-derives per `lam`, on the argument
+that it "is the only rule that cannot pick an unsafe rank". That argument is about picking a rank
+that is too high; it says nothing about the objective being piecewise in `lam`, which is what
+this section measures.
+
+So this joins the open `_UNSAFE_RATIO` / `SUITE_RTOL` question rather than standing alone: the
+frozen path is unsafe at cuts the threshold path tolerates, and the threshold path is
+discontinuous where the frozen path is smooth. Neither has been measured against the other on
+the question that matters, which is what a SEARCH can work on. A rank policy chosen for the
+pencil's conditioning is being inherited by an optimizer, and section 17's lesson applies
+unchanged: a solver whose objective moves for reasons the caller cannot see is not one a shape
+optimization can descend on.
+
+Note this is the same mechanism as section 6's narrow plateau spikes, where the threshold rank
+"flips 85 <-> 86 on a one-ulp change in `lam` and each flip moves `sigma_1` by 2.3x" -- recorded
+there as an oddity affecting one gate cell. Here it is the dominant effect and it costs 30 of 55
+cells outright.

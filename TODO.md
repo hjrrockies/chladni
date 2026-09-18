@@ -62,31 +62,34 @@ illegible.
   `no_parabola` fallback, a rescan of the `170*pi^2` band-0.3 row and three other cluster cells
   found no main-stage bracket holding eigenvalues rejected (42 of 42 accepted), so this is latent,
   not live; a rejection other than `not_a_minimum` or `endpoint` should still not certify a count.
-* **[next]** Declines at `145*pi^2`, and they have ONE cause. Re-measured over 5 precisions x 11
-  bands: **30 of 55 cells decline, and every one of them carries the bracketer's seed message** --
-  "the slope estimate never settled" -- with the largest observed secant rising monotonically
-  through all six doublings (e.g. `0.71 -> 0.81 -> 2.20 -> 3.92 -> 7.77 -> 16.24`). Not one is the
-  `MAX_GROWTHS` path and not one is the multiplicity layer. The cells that do NOT decline are all
-  correct: 25 right, 0 wrong.
+* **[blocking-ish]** **The threshold rank makes the objective piecewise, and a search cannot
+  bound a slope across a jump.** `notes/landscape_findings.md` section 34. At `145*pi^2` **30 of
+  55 cells decline**, every one of them `_seed`'s "the slope estimate never settled", and the
+  rising secants that cause it are RANK FLIPS: at every seed density the largest secant sits
+  exactly on a `107 -> 108` boundary with `sigma_1` halving across it, so the secant grows like
+  `1/dk` and cannot settle (2.05, 3.38, 6.04, 19.82 at n = 64, 127, 253, 505).
 
-  The mechanism is already written down one constant away, in `MAX_GROWTHS`'s own comment: on a
-  tight cluster "the settling test passes on the PLATEAU's own variation and the cover phase then
-  discovers the walls one doubling at a time". Here it does not even pass -- six doublings of
-  `n -> 2n-1` never resolve a cluster whose members sit a fraction of a licence apart -- so the
-  bootstrap meant to falsify the Lipschitz premise is instead reporting that a SEED GRID is too
-  coarse. Candidates, cheapest first: more doublings (the history shows no plateau in sight, so
-  this alone will not do it); a settling test that is not fooled by plateau variation on a narrow
-  window; or accepting that a narrow cluster window declines at seed and letting the cover phase's
-  `MAX_GROWTHS = 16` do the work it was widened for. Do NOT invent a seventh way to sample the
-  cover phase more cleverly: `bracket.py`'s cost law retires that family and six attempts have
-  failed.
+  Freezing the rank (`lam_ref`, nothing else changed) removes every flip, takes the max secant to
+  1.52, moves the minimum sampled `sigma` by 2%, and on whole grids:
 
-  Note the "5% the robustness plan set" cited here before: that plan is not in the repository, and
-  the "24 of 45 declining" it quoted contradicted `search.solve`'s own promotion table, where 24
-  is the number RIGHT and 21 declined under both configurations. State a whole-solve decline
-  target with its justification; the estimator-level `decline_rate < 0.10` in
-  `tests/test_multiplicity_ladder.py` is a different quantity, since these declines are upstream
-  of the estimator entirely.
+      grid        threshold rank                    frozen rank
+      145*pi^2    22 right, 0 wrong, 23 declined    44 right, 0 wrong,  1 declined
+      65*pi^2     47 right, 0 wrong,  6 declined    47 right, 0 wrong,  6 declined
+      50*pi^2     53 right, 0 wrong,  0 declined    53 right, 0 wrong,  0 declined
+
+  **This is the SHIPPED default**, not a test artifact: `MPSEigensolver` takes no `lam_ref` and
+  `rank_at` re-derives per `lam`, justified as "the only rule that cannot pick an unsafe rank" --
+  an argument about picking a rank too HIGH, silent on the objective being discontinuous in `lam`.
+  So this is the same open question as `_UNSAFE_RATIO` vs `SUITE_RTOL` below, from the other side:
+  the frozen path is unsafe at cuts the threshold path tolerates, the threshold path is
+  discontinuous where the frozen path is smooth, and **which one a SEARCH can work on has never
+  been measured**. Decide that before changing a default. Not every decline is this: `65*pi^2`'s
+  six are unaffected, and the roster pencils are threshold-rank too but untested for it.
+
+  Two remedies are measured NOT to work and are in section 9. The decline rate is now a scored
+  quantity (`test_cluster_totals.MAX_DECLINE_RATE`, 5.7% over 106 exercisable cells); the "5% the
+  robustness plan set" cited here before came from a plan not in this repository, and the "24 of
+  45" beside it contradicted `search.solve`'s own table, where 24 is the number RIGHT.
 * **[next]** The old Phase D note, for the case distance cannot settle. `chladni.mps.search`
   implements Phase D's DISTANCE PREFILTER and gets the collapse branch for free -- reading
   multiplicity once per merged group RECOUNTS by construction, which `search.md` says is the
@@ -430,6 +433,18 @@ From `notes/solver_features.md` section 3 and `CHLADNI_V1.md` section 10.
   `notes/mps_symmetry.md` section 2.
 * **Do not design against a narrow dip.** No domain produces one; `c` is 0.445 to 1.725 over 19
   eigenvalues. The real failure mode is a cluster.
+* **No handing a non-settled seed to the cover phase.** The argument is good -- `MAX_GROWTHS = 16`
+  is already the falsification test, so let cover discover the walls -- and it is wrong. Measured
+  across five cluster grids: 215 right / 1 wrong / 35 declined becomes 242 right / **9 wrong** / 0
+  declined, three of them absurd (176 of 6, 184 of 6, 72 of 8), and the median cost at `145*pi^2`
+  goes 961 -> 3249. With `L` set from a max secant that is a rank-flip artifact the exclusion
+  radii are far too small, nothing is excluded, and every live region becomes a bracket. **The
+  decline must not be relaxed at the seam that reports it**; the objective is what is wrong.
+  `notes/landscape_findings.md` section 34.
+* **No raising `MAX_DOUBLINGS` to make a cluster seed settle.** The secant history rises like
+  `1/dk` because it is tracking a discontinuity, so there is nothing to converge to. At 12
+  doublings the seed is ~260k points and still rising -- the cost the ladder law predicts, paid
+  for nothing. Section 34.
 * **Nothing that makes the cover phase sample more cleverly.** The ladder law says a wall
   yields to a geometric ladder set by the safety factor and to nothing else. Six attempts have
   failed. `CHLADNI_V1.md` section 10.

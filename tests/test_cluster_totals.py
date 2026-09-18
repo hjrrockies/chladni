@@ -172,6 +172,56 @@ def test_every_wrong_total_in_the_grid_is_LOUD(N, m, prec, band):
     assert res.diagnostics.n_uncertain > 0
 
 
+#: Whole-solve decline rate this grid is held to. NOT the estimator's number: `mult_suite` scores
+#: `decline_rate < 0.10` on the reach rule and measures 2.1%, but those are declines of a COUNT
+#: over a bracket, and the ones here are stage 1 refusing to bound a slope -- upstream of the
+#: estimator entirely. Measured on this grid: 0 of 53 exercisable cells at `50*pi^2`, 6 of 53 at
+#: `65*pi^2`, so 6 of 106 = 5.7%. Set at 15% to leave room without letting the rate double
+#: unnoticed; a change that pushes it past this is a change to report, not to absorb.
+#:
+#: The number to beat is not this one. On the held-out `145*pi^2` grid the rate is 23 of 45, and
+#: `notes/landscape_findings.md` section 34 shows every one of those is the threshold rank
+#: flipping rather than anything about the search.
+MAX_DECLINE_RATE = 0.15
+
+
+@pytest.mark.robust
+def test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate():
+    """`docs/design/candidates.md` section 5: **the decline rate is quoted beside the pass rate
+    over the same case set, always.** This grid did neither -- `_assert_total` returns early on a
+    decline, asserting only that it carries a reason, and nothing aggregated them. A method that
+    declines whenever it is about to be wrong has a perfect record over what it accepted and has
+    demonstrated nothing, and this grid could not have told the difference.
+
+    Scored over the exercisable cells only, for the same reason `_assert_total` skips the others:
+    a cell whose basis cannot resolve the cluster measures the basis.
+    """
+    n = declined = right = 0
+    reasons = {}
+    for N, m in (EVEN, UNEVEN):
+        for prec in PRECS:
+            for band in BANDS:
+                case = cluster(N, m, band, prec)
+                if not sufficient(case, prec).multiplicity:
+                    continue
+                n += 1
+                _, res = _solve(N, m, band, prec)
+                if res.declined:
+                    declined += 1
+                    key = res.diagnostics.decline_reason.split(":")[0]
+                    reasons[key] = reasons.get(key, 0) + 1
+                elif sum(x.mult for x in res.levels) == m:
+                    right += 1
+    rate = declined / n if n else 0.0
+    print(f"\n  {right} right, {declined} declined of {n} exercisable cells "
+          f"(decline rate {rate:.1%})")
+    for why, k in sorted(reasons.items(), key=lambda kv: -kv[1]):
+        print(f"    {k:>3}  {why}")
+    assert right + declined == n, f"{n - right - declined} cell(s) neither right nor declined"
+    assert rate <= MAX_DECLINE_RATE, (
+        f"decline rate {rate:.1%} over {n} cells, above {MAX_DECLINE_RATE:.0%}: {reasons}")
+
+
 @pytest.mark.slow
 def test_the_uneven_cluster_really_is_unevenly_spaced():
     """The premise, asserted. If the dial made this cluster even, every uneven cell above would
