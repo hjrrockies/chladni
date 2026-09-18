@@ -177,9 +177,16 @@ def make_case(label, dom, a, b, truth, *, complete, n_fb=80, seed=0):
     def tensions(lam):
         return p.tensions(float(lam))
 
+    # `Case.modes`, which the roster went without until Phase D's rule was measured against it
+    # and `solve(phase_d="angle")` refused the whole roster outright. `rect_suite` has carried
+    # this since the harness was written; the transfer domains are exactly the ones a grouping
+    # rule most needs to be tried on, so the omission mattered.
+    def modes(lam):
+        return p.interior_image(float(lam))
+
     case = Case(label=label, tensions=tensions, a=float(a), b=float(b),
                 truth=np.sort(np.asarray(truth, dtype=float)), domain=dom,
-                complete=complete, variable="lam")
+                complete=complete, variable="lam", modes=modes)
     case.pencil = p
     return case
 

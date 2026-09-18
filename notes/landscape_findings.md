@@ -2824,3 +2824,56 @@ And two gaps remain in the measurement itself: every reading above is taken at E
 rather than at located roots carrying their own `delta_res` (the licence-apart probe is a fair
 proxy, not the same thing), and the whole table is Dirichlet, low `lam`, and three domains that
 `hard_roster` already calls the easy ones.
+
+## 36.1 The rule built on it: consulted 115 times, agrees with distance every time
+
+2026-09-18. `solve(..., phase_d="angle")` is built and is NOT the default. Measured over the five
+cluster grids at five precisions and eleven bands, unexercisable cells excluded, plus the roster:
+
+    grid        phase_d="distance"                phase_d="angle"          gram pairs
+    50*pi^2     53 right, 0 wrong                 identical                    23
+    65*pi^2     47 right, 0 wrong, 6 declined     identical                    29
+    125*pi^2    52 right, 0 wrong, 1 declined     identical                    26
+    145*pi^2    22 right, 0 wrong, 23 declined    identical                     8
+    170*pi^2    41 right, 1 wrong, 5 declined     identical                    29
+    roster                                        identical                     0
+
+**The prediction going in was that the angle would be inert -- zero pairs -- because the
+attained-merge prefilter folds roots closer than their attained accuracy. That was wrong**: 115
+pairs survive the prefilter inside a licence and reach the angle. The rule is exercised. It just
+agrees with the distance rule on all 115.
+
+So it regresses nothing, improves nothing, and there is no case for promoting it. The seam keeps
+both reachable, which is what the seam is for. The one wrong cell left at `170*pi^2` is the
+refiner's residual-abutting-an-exclusion defect (section 34's neighbour, recorded in `TODO.md`)
+and not a grouping question at all, which is why the angle does not touch it.
+
+The roster asks the angle NOTHING at `prec = 1e-8`: its levels sit further apart than a licence,
+so nothing reaches the prefilter's survivors. **The grouping regime lives in the split-degeneracy
+grids and nowhere else currently measured** -- which is worth knowing before anyone reads a clean
+roster as evidence that grouping is solved.
+
+## 36.2 A correction to `search.md`: the ambiguous eigenspace is NOT benign under the reach rule
+
+The spec argues the degenerate case is harmless whichever way the angle falls: "parallel gives 2
+by recount, orthogonal gives 1+1 = 2 by sum". **That assumes each member read 1.** A reach read
+answers "how many eigenvalues are inside MY bracket", so a degenerate level located twice has
+both members reading the full multiplicity. Measured on `_gram_group` directly, two roots inside
+one licence:
+
+    each member reads   parallel (collapse)   orthogonal (sum)   truth
+    1                          1                    2            both arms right
+    2                          2                    4            the SUM DOUBLES IT
+
+Attribution (section 34's commit) is what makes the first row hold -- it removes the eigenvalues
+one root's read counted that another root owns -- and it cannot help in the second, because both
+members own the same eigenspace and neither is the other's partner to claim.
+
+No safe guess is available. Capping the sum by a recount over the union bracket is not it:
+`_collapse_ambiguous` records a spanning read folding four CORRECT levels into two on the
+`65*pi^2` cluster. So a sum whose members read more than 1 is FLAGGED and carries the
+alternative, and `solve_interval` raises on it. Loud, and honest about which of two readings is
+in doubt.
+
+This is the third of the spec's Phase D numbers that did not survive measurement, after the
+`distinct <= 0.10` bound and the "two-thirds of a gap" probe in section 36.

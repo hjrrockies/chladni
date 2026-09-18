@@ -70,7 +70,7 @@ __all__ = ["multiplicity", "reach_multiplicity", "floor_multiplicity", "wide_bra
            "Multiplicity", "Branch", "GAP_RATIO", "PROMINENCE", "WIDE_FACTOR", "MAX_BRANCHES",
            "FLOOR_RATIO", "FLOOR_BAND", "COUNT_BELOW", "REJECT_ABOVE", "SLOPE_STANDOFF",
            "BIAS_LO", "BIAS_HI", "COUNT_BELOW_CACHE", "REJECT_ABOVE_CACHE", "BIAS_LO_CACHE",
-           "BIAS_HI_CACHE"]
+           "BIAS_HI_CACHE", "TAU_GRAM"]
 
 #: (C1). The ratio `sigma_{j+1}/sigma_j` that separates "still inside the multiplet" from
 #: "across the gap". Measured 1.0-1.7 within a multiplet against 1e11-1e15 across it, so the
@@ -234,6 +234,43 @@ BIAS_HI_CACHE = 2.21
 #: Branches read. The low spectrum only -- a multiplet of interest is small, and reading deep
 #: into the vector costs nothing but invites a spurious gap far above anything physical.
 MAX_BRANCHES = 8
+
+#: (PHASE D) `|<u_i, u_j>|` at or above which two reported roots are the SAME eigenfunction.
+#:
+#: Distance provably cannot make this call: one eigenvalue found twice and two genuine
+#: eigenvalues occur at the SAME separation. Only the eigenfunctions tell them apart, which is
+#: the whole argument for `modes(x)` riding on the `Objective`.
+#:
+#: Measured through `MPSPencil.interior_image` on the whole roster
+#: (`notes/landscape_findings.md` section 36, `notes/gram_discrimination.py`):
+#:
+#:     domain     worst DISTINCT   sampling floor 1/sqrt(n_int)
+#:     rect             0.1402           0.146   (n_int = 47)
+#:     L_shape          0.0605           0.112   (n_int = 80)
+#:     eq_tri           0.1678           0.105   (n_int = 90)
+#:     disk             0.2544           0.109   (n_int = 84)
+#:
+#:     worst distinct 0.2544  <  0.5  <  weakest duplicate 1.0000
+#:
+#: A factor of four on the worst domain measured, so this is not a delicate value; anything from
+#: about 0.3 to 0.9 reproduces every reading. The corner domain is the BEST of the four, which
+#: retires the transfer risk section 15 named.
+#:
+#: **The distinct side is a FLOOR THAT MOVES, not a constant.** `search.md` quotes "distinct
+#: <= 0.10"; that is the Monte-Carlo noise of a discrete inner product over `n_int` interior
+#: points, so it scales as `1/sqrt(n_int)` and the rectangle's own 0.1402 already exceeded the
+#: quoted number. A collocation change moves it, and this constant's margin with it.
+#:
+#: **WITHIN ONE `lam` THE ANGLE IS VACUOUS AND MUST NOT BE CONSULTED.** The GSVD gives
+#: `A_I x_j = s_j v_j` with `V` orthogonal, so the interior images of distinct generalized
+#: singular vectors are orthogonal BY CONSTRUCTION -- measured 4.6e-16. It is informative only
+#: ACROSS reported roots, where the vectors come from different pencils.
+#:
+#: Two things not yet measured. Every reading above is at EXACT eigenvalues rather than at
+#: located roots carrying their own `delta_res`. And the disk's 0.2544 is 2.3x its own sampling
+#: floor, on a pair of DEGENERATE levels where which vector the GSVD returns inside the
+#: eigenspace is decided by roundoff -- the one number to chase before anyone tightens this.
+TAU_GRAM = 0.5
 
 
 @dataclass(frozen=True)

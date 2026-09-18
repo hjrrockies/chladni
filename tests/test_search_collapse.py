@@ -227,3 +227,252 @@ def test_the_rectangle_pair_is_STABLE_across_six_orders_of_separation():
     assert len(seen) >= 5
     assert max(seen) - min(seen) < 0.01, f"the distinct reading moved with separation: {seen}"
     assert max(seen) < TAU_GRAM
+
+
+# =============================================================================================
+# THE RULE, on the seam. `solve(..., phase_d="angle")`.
+# =============================================================================================
+#
+# Everything above measures the INSTRUMENT. These test the rule built on it. They use a
+# synthetic objective rather than a pencil, because the point is to force BOTH verdicts on
+# demand -- which a real domain will not do -- and because the ambiguous-eigenspace case is
+# defined by the verdict being arbitrary.
+
+from chladni.mps.multiplicity import TAU_GRAM as PKG_TAU            # noqa: E402
+from chladni.mps.objective import Objective                         # noqa: E402
+from chladni.mps.search import Level, _gram_group, solve            # noqa: E402
+
+
+def _pair_objective(centres, directions, *, eps=1e-13, c_k=0.27, plateau=0.2,
+                    lo=15.0, hi=110.0, prec=1e-8):
+    """Cones at `centres`, with a prescribed eigenfunction direction at each.
+
+    `modes(x)` returns the direction belonging to the NEAREST centre, which is what a real
+    candidate eigenfunction does -- it is the mode of whichever eigenvalue dominates there, and
+    it is why the angle turns at the midpoint on a real pencil.
+    """
+    ks = np.sqrt(np.asarray(centres, dtype=float))
+    dirs = np.array(directions, dtype=float)
+    dirs = dirs / np.linalg.norm(dirs, axis=1)[:, None]
+
+    def tensions(lam):
+        d = np.sort(np.abs(ks - np.sqrt(float(lam))))
+        return np.minimum(np.sqrt(eps**2 + (c_k * d) ** 2), plateau)
+
+    def modes(lam):
+        return dirs[int(np.argmin(np.abs(ks - np.sqrt(float(lam)))))]
+
+    return Objective(tensions, lo, hi, prec=prec, variable="lam", modes=modes)
+
+
+ORTH = ([1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0])      # |cos| = 0 -> independent
+SAME = ([1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0])      # |cos| = 1 -> one eigenfunction
+
+
+def test_TAU_GRAM_moved_into_the_package_with_the_rule():
+    """It lived here while nothing read it, so it would not become another `_SLOPE_FRAC`."""
+    assert PKG_TAU == TAU_GRAM
+
+
+def test_the_default_is_DISTANCE_and_the_angle_is_OPT_IN():
+    """Promoted one variable at a time, as `rule=` and `merge=` were. The default is named for
+    what it DOES -- the distance prefilter is not nothing; it already gets collapse-by-recount
+    for free -- rather than for what it lacks."""
+    import inspect
+    assert inspect.signature(solve).parameters["phase_d"].default == "distance"
+    obj = _pair_objective([50.0], ORTH[:1])
+    with pytest.raises(ValueError, match="phase_d"):
+        solve(obj, prec=1e-8, phase_d="gram")
+
+
+def test_the_angle_REFUSES_an_objective_with_no_eigenfunctions():
+    """Silently falling back to the distance rule would tell a caller nothing, and the seam
+    exists so the two can be measured one at a time."""
+    bare = Objective(lambda x: np.array([abs(x - 50.0) + 1e-9]), 15.0, 110.0, variable="lam")
+    with pytest.raises(ValueError, match="modes|eigenfunction"):
+        solve(bare, prec=1e-8, phase_d="angle")
+
+
+def test_a_DUPLICATE_pair_COLLAPSES_and_is_RECOUNTED_not_summed():
+    """One eigenvalue reported twice inside a licence. Summation IS the double count."""
+    lam, prec = 50.0, 1e-8
+    obj = _pair_objective([lam, lam * (1 + 0.4 * prec)], SAME, prec=prec)
+    res = solve(obj, prec=prec, phase_d="angle")
+    assert sum(x.mult for x in res.levels) == 1, [(x.lam, x.mult) for x in res.levels]
+    assert res.diagnostics.n_gram_collapsed == 1
+    assert res.diagnostics.n_gram_summed == 0
+    assert all(x.count_decided_by == "gram" for x in res.levels if x.n_roots > 1)
+
+
+def test_an_INDEPENDENT_pair_MERGES_and_is_SUMMED():
+    """Two genuine eigenvalues at the SAME separation as the duplicate above. Distance cannot
+    tell this case from that one; the angle is the only thing that differs."""
+    lam, prec = 50.0, 1e-8
+    obj = _pair_objective([lam, lam * (1 + 0.4 * prec)], ORTH, prec=prec)
+    res = solve(obj, prec=prec, phase_d="angle")
+    assert sum(x.mult for x in res.levels) == 2, [(x.lam, x.mult) for x in res.levels]
+    assert res.diagnostics.n_gram_summed == 1
+    assert res.diagnostics.n_gram_collapsed == 0
+
+
+def test_the_two_cases_are_IDENTICAL_in_distance_and_differ_only_in_the_ANGLE():
+    """The argument for Phase D existing, as one assertion: same separation, same tensions, same
+    everything a distance rule can see -- and the right answers differ."""
+    lam, prec = 50.0, 1e-8
+    dup = _pair_objective([lam, lam * (1 + 0.4 * prec)], SAME, prec=prec)
+    ind = _pair_objective([lam, lam * (1 + 0.4 * prec)], ORTH, prec=prec)
+    xs = np.linspace(49.0, 51.0, 11)
+    assert np.allclose([dup.tension(x) for x in xs], [ind.tension(x) for x in xs]), (
+        "the two cases must be indistinguishable to anything reading only tensions")
+    a = solve(dup, prec=prec, phase_d="angle")
+    b = solve(ind, prec=prec, phase_d="angle")
+    assert sum(x.mult for x in a.levels) == 1
+    assert sum(x.mult for x in b.levels) == 2
+
+
+def test_the_DISTANCE_rule_cannot_separate_them_which_is_why_the_angle_exists():
+    """The control. Under the shipped default both cases give the same total, so whatever that
+    total is, one of the two is wrong -- and nothing in the result says which."""
+    lam, prec = 50.0, 1e-8
+    a = solve(_pair_objective([lam, lam * (1 + 0.4 * prec)], SAME, prec=prec), prec=prec)
+    b = solve(_pair_objective([lam, lam * (1 + 0.4 * prec)], ORTH, prec=prec), prec=prec)
+    assert sum(x.mult for x in a.levels) == sum(x.mult for x in b.levels)
+    assert a.diagnostics.n_gram_pairs == 0, "the distance rule asks the angle nothing"
+
+
+def _levels_at(a, b, mult_a, mult_b):
+    """Two hand-built levels inside one licence, with their multiplicity reads fixed."""
+    return [Level(lam=a, mult=mult_a, sigma=1e-13, delta_res=1e-12, n_roots=1),
+            Level(lam=b, mult=mult_b, sigma=2e-13, delta_res=1e-12, n_roots=1)]
+
+
+def _obj_with_directions(a, b, dir_a, dir_b):
+    """An objective whose `modes` returns a prescribed direction at each of two points."""
+    table = {round(float(a), 12): np.array(dir_a, dtype=float),
+             round(float(b), 12): np.array(dir_b, dtype=float)}
+    table = {k: v / np.linalg.norm(v) for k, v in table.items()}
+    return Objective(lambda x: np.array([1e-13]), 1.0, 1000.0, variable="lam",
+                     modes=lambda x: table[round(float(x), 12)])
+
+
+E1, E2 = [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]
+
+
+@pytest.mark.parametrize("dir_b, arm, total", [(E1, "collapse", 1), (E2, "sum", 2)])
+def test_the_DECISION_TABLE_on_per_root_reads(dir_b, arm, total):
+    """The rule in isolation, with the multiplicity reads controlled rather than solved for.
+
+    Two roots inside one licence, each read counting ONE eigenvalue -- which is what attribution
+    leaves behind for genuinely distinct roots. Parallel collapses to 1, orthogonal sums to 2,
+    and the two inputs are identical in every respect a distance rule can see.
+    """
+    a, prec = 50.0, 1e-8
+    b = a + 0.4 * prec * a
+    out, pairs, coll, summed = _gram_group(_obj_with_directions(a, b, E1, dir_b),
+                                           _levels_at(a, b, 1, 1), prec)
+    assert pairs == 1
+    assert (coll, summed) == ((1, 0) if arm == "collapse" else (0, 1))
+    assert sum(x.mult for x in out) == total
+    assert len(out) == 1, "both arms produce ONE level of S(prec); they differ in its count"
+
+
+def test_a_DEGENERATE_eigenspace_located_twice_is_NOT_benign_and_says_so():
+    """`search.md` claims the ambiguous eigenspace is harmless under both verdicts -- "parallel
+    collapses and recounts to 2, orthogonal sums 1 + 1 to 2". **That assumes each member read 1,
+    and under the reach rule it does not.**
+
+    A read answers "how many eigenvalues are inside MY bracket", so a degenerate level located
+    twice has both members reading the full multiplicity:
+
+        each member reads   parallel (collapse)   orthogonal (sum)   truth
+        1                          1                    2            both arms right
+        2                          2                    4            the sum DOUBLES it
+
+    Attribution is what makes the first row work, and it cannot help here: both members own the
+    same eigenspace, so neither is the other's partner to claim. There is no safe guess -- capping
+    by a recount over the union bracket is not it either, since `_collapse_ambiguous` records a
+    spanning read folding four correct levels into two -- so the sum is FLAGGED and carries the
+    alternative. `solve_interval` raises on a flag, which is loud and honest.
+    """
+    a, prec = 50.0, 1e-8
+    b = a + 0.4 * prec * a
+
+    par, _, coll, _ = _gram_group(_obj_with_directions(a, b, E1, E1),
+                                  _levels_at(a, b, 2, 2), prec)
+    assert (coll, sum(x.mult for x in par)) == (1, 2), "collapse recounts, and is right"
+    assert not par[0].count_uncertain, "a collapse of equal reads is not in doubt"
+
+    orth, _, _, summed = _gram_group(_obj_with_directions(a, b, E1, E2),
+                                     _levels_at(a, b, 2, 2), prec)
+    assert summed == 1
+    assert sum(x.mult for x in orth) == 4, "the sum doubles it -- recorded, not hidden"
+    assert orth[0].count_uncertain, "and it must NOT be certified"
+    assert orth[0].count_alt == 2, "the other reading is carried"
+    assert "degenerate" in orth[0].uncertain_reason
+
+
+def test_a_collapse_whose_members_DISAGREE_is_flagged():
+    """The angle says one eigenfunction; the two reads say different multiplicities. Which count
+    the collapse should carry is then not decided, and pretending otherwise would pick one."""
+    a, prec = 50.0, 1e-8
+    b = a + 0.4 * prec * a
+    out, _, coll, _ = _gram_group(_obj_with_directions(a, b, E1, E1),
+                                  _levels_at(a, b, 1, 2), prec)
+    assert coll == 1
+    assert out[0].count_uncertain and out[0].count_alt == 1
+
+
+def test_a_summed_level_carries_the_span_in_its_BAR():
+    """Clause (2) honesty. A level standing for eigenvalues either side of its reported `lam`
+    must have a bar that reaches them, and the span is bounded by the licence so this can never
+    by itself put the level in `unmet`."""
+    a, prec = 50.0, 1e-8
+    b = a + 0.8 * prec * a
+    out, _, _, summed = _gram_group(_obj_with_directions(a, b, E1, E2),
+                                    _levels_at(a, b, 1, 1), prec)
+    assert summed == 1
+    lvl = out[0]
+    assert lvl.delta_res >= 0.5 * (b - a)
+    assert min(a, b) - lvl.delta_res <= lvl.lam <= max(a, b) + lvl.delta_res
+    assert lvl.met(prec), "the span is inside the licence, so the bar still meets the request"
+    assert lvl.spacings == (pytest.approx(b - a),)
+
+
+def test_the_angle_is_NOT_asked_about_roots_further_apart_than_a_licence():
+    """The distance prefilter's surviving role: it decides which pairs are worth testing, and
+    anything wider is a separate level whatever the angle would say."""
+    prec = 1e-8
+    obj = _pair_objective([50.0, 50.0 * (1 + 1000 * prec)], SAME, prec=prec)
+    res = solve(obj, prec=prec, phase_d="angle")
+    assert res.diagnostics.n_gram_pairs == 0
+    assert len(res.levels) == 2, "two levels a thousand licences apart are two levels"
+
+
+def test_a_gram_decided_level_is_not_re_flagged_as_uncertain():
+    """`_flag_uncertain_counts` raises exactly the question the angle answered, and
+    `solve_interval` RAISES on a flag -- so re-raising a settled question would turn a correct
+    answer into an exception."""
+    lam, prec = 50.0, 1e-8
+    res = solve(_pair_objective([lam, lam * (1 + 0.4 * prec)], SAME, prec=prec),
+                prec=prec, phase_d="angle")
+    collapsed = [x for x in res.levels if x.count_decided_by == "gram"]
+    assert collapsed, "this cell must exercise the collapse arm"
+    assert res.diagnostics.n_uncertain == 0, res.diagnostics.uncertain
+    assert all(not x.grouping_ambiguous for x in collapsed), (
+        "the grouping is DECIDED, not arbitrary -- saying otherwise is a lie about the one "
+        "thing Phase D settles")
+
+
+@pytest.mark.parametrize("name", ROSTER)
+def test_every_ROSTER_case_carries_its_eigenfunctions(name):
+    """The roster went without `Case.modes` until Phase D's rule was measured against it, and
+    `solve(phase_d="angle")` refused the entire roster outright.
+
+    `rect_suite` has carried it since the harness was written. The transfer domains are exactly
+    the ones a grouping rule most needs trying on, so the omission was the wrong way round.
+    """
+    case = hr.ROSTER[name]()
+    assert getattr(case, "modes", None) is not None
+    u = case.modes(float(_levels(case)[0]))
+    assert u.shape == (case.pencil.n_int,)
+    assert np.linalg.norm(u) == pytest.approx(1.0, rel=1e-12)

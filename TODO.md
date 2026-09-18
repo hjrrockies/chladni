@@ -119,31 +119,24 @@ illegible.
   band of one to eight licences belonged to the cross-check, which is retired from the defaults
   (`tests/test_cluster_totals.py` records the grid); the contract is a statement about the rule
   that replaced it, including when a count declines and what the side search may add.
-* **[next]** Phase D's interior Gram angle. The `modes(x)` widening has LANDED --
-  `MPSPencil.interior_image`, `Objective(modes=)`, and the scorer and both `candidates_v1`
-  factories carry it -- and nothing reads it yet, which was the point of doing it as its own
-  step. What remains is the rule: `|<u_i, u_j>| >= TAU_GRAM` collapses and RECOUNTS, below it
-  merges and SUMS (`docs/design/search.md` section on Phase D, `tau_gram = 0.5` from distinct
-  <= 0.10 against duplicate >= 0.948). It goes on the existing rule seam, off by default, and
-  ships only if it improves the committed grids without regressing them.
+* **[later]** Promote Phase D's angle, or retire it. It is BUILT --
+  `solve(..., phase_d="angle")`, `search._gram_group`, `multiplicity.TAU_GRAM` -- and off by
+  default because it **changes nothing measurable**. Over five cluster grids and the roster it is
+  consulted 115 times and agrees with the distance rule on every one: no regression, no
+  improvement (`notes/landscape_findings.md` sections 36, 36.1). The prediction that it would be
+  inert was wrong; it is exercised, it just never disagrees.
 
-  **The instrument is measured and it works** -- `notes/landscape_findings.md` section 36,
-  `tests/test_search_collapse.py`, which `search.md` section 7 specifies and which now exists.
-  Worst distinct 0.2544 < `TAU_GRAM` 0.5 < weakest duplicate 1.0000, over L_shape, disk, eq_tri
-  and the rectangle pair. The transfer risk section 15 named did NOT materialize: the L-shape
-  with a corner-adapted basis is the BEST of the four at 0.0605.
+  What would settle it is a case where the two rules differ, and none of the committed grids
+  holds one. The roster asks the angle NOTHING at `prec = 1e-8` -- its levels are further apart
+  than a licence -- so the grouping regime lives only in the split-degeneracy grids. Either find
+  or construct a domain where a duplicate and a genuine pair occur at the same separation, or
+  accept that the rule is insurance against a case this roster does not contain and say so.
 
-  Four things to carry into the rule. **Within one `lam` the angle is vacuous** and must not be
-  consulted -- orthogonal by construction, 4.6e-16. **The spec's "distinct <= 0.10" is the wrong
-  SHAPE of bound**: the floor is `1/sqrt(n_int)` and moves with the point count, and the
-  rectangle's own 0.1402 already exceeds the quoted constant. **The spec's "even at two-thirds of
-  a gap" is a trap**: that probe is past the midpoint and measures the NEIGHBOUR, reading ~0.06;
-  the duplicate separation is `prec*lam`. And **the disk's 0.2544 is the one number worth
-  chasing** before anyone tightens `TAU_GRAM` -- it is 2.3x its own sampling floor, on a pair of
-  DEGENERATE levels where the vector the GSVD returns inside the eigenspace is arbitrary.
-
-  `TAU_GRAM` lives in `tests/test_search_collapse.py` until the rule exists, deliberately: an
-  unused package constant is what `search._SLOPE_FRAC` became.
+  One correction it already bought, section 36.2: **the ambiguous eigenspace is NOT benign under
+  the reach rule.** The spec's "parallel recounts to 2, orthogonal sums 1+1 to 2" assumes each
+  member read 1; a degenerate level located twice has both reading the full multiplicity, and the
+  sum doubles it. Flagged rather than guessed, since capping by a spanning recount is measured
+  unsafe elsewhere.
 * **[next]** Carry the in-loop stride correction past the seed. The bracketing stage now has
   one -- `v1_bracket._seed` sizes from Weyl and then doubles until the largest observed secant
   stops growing, so no a-priori stride is trusted -- but nothing downstream of it adapts, and
