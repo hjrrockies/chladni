@@ -433,6 +433,12 @@ def run_bracketer(brackets_fn, obj, truth, prec, *, label="", refine=None,
             kw["objective"] = obj
     except (TypeError, ValueError):
         pass
+    if obj.has_modes:
+        try:
+            if "modes" in inspect.signature(brackets_fn).parameters:
+                kw["modes"] = obj.modes
+        except (TypeError, ValueError):
+            pass
     t0 = time.perf_counter()
     result = brackets_fn(obj.tensions, obj.lo, obj.hi, prec=prec, **kw)
     seconds = time.perf_counter() - t0
@@ -490,8 +496,13 @@ def objective_for(case, prec):
             except (NotImplementedError, ValueError):
                 return float("nan")
 
+    # `Case.modes` has existed since the harness was written (`harness.py`: "the normalized
+    # candidate eigenFUNCTION at `x`, as a vector sampled on a FIXED point set shared across all
+    # `x`") and `harness.run` has always passed it. This scorer dropped it on the floor, so a
+    # candidate reaching the objective could not see it. Carried now; nothing reads it yet.
     return Objective(case.tensions, case.a, case.b, prec=prec,
-                     variable=getattr(case, "variable", "lam"), expected_count=expected)
+                     variable=getattr(case, "variable", "lam"), expected_count=expected,
+                     modes=getattr(case, "modes", None))
 
 
 def run_case(brackets_fn, case, prec, *, label=None, refine=None,

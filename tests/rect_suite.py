@@ -213,7 +213,14 @@ def _truth_in_window(L, H, a, b, modes=None):
 
 
 def make_case(label, L, H, a, b, *, seed=0, modes=None, variable="lam", pad=1.6):
-    """One scored case: a shared pencil, counted access, and complete closed-form truth."""
+    """One scored case: a shared pencil, counted access, and complete closed-form truth.
+
+    **`modes` here is a list of `(m, n)` TRUTH INDICES, and it is not `Case.modes`.** The two
+    collide by name and are different things: this one says which analytic modes truth should be
+    built from, while `Case.modes` is the `modes_fn` below -- the candidate eigenFUNCTION on a
+    fixed shared point set, which is what the seam means by the word. Neither is renamed, because
+    each is right in its own layer; this note is here so the next reader does not conflate them.
+    """
     p = pencil_for(L, H, a, b, seed=seed, pad=pad)
     truth, spec = _truth_in_window(L, H, a, b, modes)
     c = Counter()
@@ -223,10 +230,11 @@ def make_case(label, L, H, a, b, *, seed=0, modes=None, variable="lam", pad=1.6)
         return p.tensions(float(x))
 
     def modes_fn(x):
+        # `MPSPencil.interior_image` is this, promoted -- the shape rules (a coefficient width
+        # that moves with `lam`, and `coef`'s frozen-rank exception) belong where the shapes are
+        # known. Kept as a call rather than reimplemented so the two cannot drift.
         c.calls += 1
-        _, I = p.pencil(float(x))
-        u = I @ p.coef(float(x), 1)[:, 0]
-        return u / np.linalg.norm(u)
+        return p.interior_image(float(x))
 
     case = Case(label=label, tensions=tensions, a=a, b=b, truth=truth, counter=c,
                 domain=rect(L, H), complete=True, variable=variable, modes=modes_fn)

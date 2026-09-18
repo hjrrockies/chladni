@@ -14,6 +14,8 @@ import pytest
 
 import bracket_score as bs
 import rect_suite as rs
+from chladni.mps.objective import Objective
+from chladni.mps.search import solve
 from chladni.reference import rect_eig, rect_spectrum
 
 BANDS = (0.5, 0.8, 1.3, 3.0)
@@ -258,3 +260,28 @@ def test_assert_smooth_reads_the_SEARCHERS_own_seed(prec):
     _, _, seed_hist, settled = _seed(view, view.lo, view.hi, 0.5 * prec)
     assert ok == settled
     assert hist == tuple(seed_hist), f"precondition saw {hist}, the searcher saw {seed_hist}"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("label", ["A:isolated", "B:d=5.9e-07", "D:mult=2"])
+def test_the_MODES_WIDENING_moves_no_number(label):
+    """The `modes(x)` widening must change nothing until a rule reads it.
+
+    Two objectives on the same case, one carrying eigenfunctions and one not, driven through the
+    whole pipeline: the levels must be EQUAL and the charged evaluation count identical. If the
+    widening were touching the search -- a stray mode call, a cache that counts differently, a
+    sample list that grew a point with no `sigma_1` -- this is where it shows.
+
+    `n_evals` is the currency every committed grid is denominated in, so it is asserted as an
+    integer identity rather than approximately.
+    """
+    case = {c.label: c for c in (rs.family_A() + rs.family_B() + rs.family_D())}[label]
+    prec = 1e-8
+    plain = Objective(case.tensions, case.a, case.b, prec=prec, variable="lam")
+    wide = Objective(case.tensions, case.a, case.b, prec=prec, variable="lam",
+                     modes=case.modes)
+    assert wide.has_modes and not plain.has_modes
+    a, b = solve(plain, prec=prec), solve(wide, prec=prec)
+    assert [(x.lam, x.mult) for x in a.levels] == [(x.lam, x.mult) for x in b.levels]
+    assert a.diagnostics.evaluations == b.diagnostics.evaluations
+    assert wide.n_mode_evals == 0, "nothing in the pipeline reads modes yet"

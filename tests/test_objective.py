@@ -189,3 +189,95 @@ def test_a_converted_bracket_covers_every_point_it_stood_for(variable):
                 "the EXACT square of each end must be inside, not only its rounding")
         assert hi - lo <= (obj.in_lam(b) - obj.in_lam(a)) + 16 * np.spacing(abs(hi)), (
             "a few ulps, not a fraction of the width")
+
+
+# --- the modes widening: what it costs, and what it must not move --------------------------
+#
+# `notes/solver_features.md` section 4 argues for widening the seam over post-processing the
+# result: post-processing inside `MPSEigensolver` puts Phase D's collapse decision ABOVE the
+# scored seam, which makes the decision that most needs benchmarking un-benchmarkable. Nothing
+# reads `modes` yet; these pin the currency before a rule depends on it.
+
+
+def _mode(x):
+    """A stand-in eigenfunction on a fixed 4-point set. Direction turns with `x`."""
+    v = np.array([np.cos(x), np.sin(x), np.cos(2 * x), np.sin(2 * x)])
+    return v / np.linalg.norm(v)
+
+
+def test_an_objective_with_no_modes_says_so_rather_than_failing():
+    """A bare tension function is still a valid objective -- the surrogate tier has nothing
+    else -- so a rule that wants eigenfunctions asks and falls back."""
+    obj = Objective(cone, 1.0, 5.0)
+    assert obj.has_modes is False
+    assert obj.modes(3.0) is None
+
+
+def test_modes_must_be_callable():
+    with pytest.raises(TypeError, match="modes"):
+        Objective(cone, 1.0, 5.0, modes=object())
+
+
+def test_a_mode_at_an_ALREADY_EVALUATED_point_is_FREE():
+    """The cost decision. One evaluation is one `x` at which the pencil was FACTORIZED, and a
+    mode there reuses the cached `RegularizedPencil` -- measured at 5-7% over the tension alone,
+    so charging it as a second evaluation would overstate it about twentyfold."""
+    obj = Objective(cone, 1.0, 5.0, modes=_mode)
+    obj.tension(3.0)
+    assert obj.n_evals == 1
+    obj.modes(3.0)
+    assert obj.n_evals == 1, "a mode where a tension was already paid for is not a second miss"
+    assert obj.n_mode_evals == 1
+
+
+def test_a_mode_at_a_FRESH_point_is_CHARGED():
+    """The other half, and the one that keeps the currency honest: without it a candidate could
+    scan the whole window through `modes` for nothing."""
+    obj = Objective(cone, 1.0, 5.0, modes=_mode)
+    obj.modes(3.0)
+    assert obj.n_evals == 1
+    obj.tension(3.0)
+    assert obj.n_evals == 1, "the factorization at this x was already charged"
+
+
+def test_a_repeated_mode_costs_one_miss():
+    obj = Objective(cone, 1.0, 5.0, modes=_mode)
+    for _ in range(5):
+        obj.modes(3.0)
+    assert obj.n_evals == 1 and obj.n_mode_evals == 1
+    assert obj.n_mode_calls == 5, "asks are diagnostic and counted separately"
+
+
+def test_a_MODE_ONLY_point_is_charged_but_is_NOT_a_sample():
+    """`samples` feeds the slope readers and `wide_bracket_for`, which want `(x, sigma_1)`. An
+    `x` where only a mode was computed has no `sigma_1`, so putting it there would hand them a
+    point with no value -- worse than not having it."""
+    obj = Objective(cone, 1.0, 5.0, modes=_mode)
+    obj.tension(2.0)
+    obj.modes(4.0)
+    xs, _ = obj.samples
+    assert obj.n_evals == 2
+    assert list(xs) == [2.0], "4.0 is charged, and is not a sample"
+
+
+def test_reset_drops_the_MODE_cache_too():
+    """`bracket_score.run_bracketer` resets so a candidate is charged for its own evaluations
+    and nobody else's. A warm mode cache would break exactly that."""
+    obj = Objective(cone, 1.0, 5.0, modes=_mode)
+    obj.tension(3.0)
+    obj.modes(3.0)
+    obj.reset()
+    assert (obj.n_evals, obj.n_mode_evals, obj.n_calls, obj.n_mode_calls) == (0, 0, 0, 0)
+
+
+def test_the_currency_is_UNCHANGED_when_no_modes_are_in_play():
+    """The whole commit's claim, at the seam every grid is denominated in: with no modes,
+    `n_evals` is what it always was, eviction included."""
+    obj = Objective(cone, 1.0, 5.0)
+    for x in np.linspace(1.0, 5.0, 40):
+        obj.tension(x)
+    assert obj.n_evals == 40
+    capped = Objective(cone, 1.0, 5.0, max_cache=16, modes=_mode)
+    for x in np.linspace(1.0, 5.0, 40):
+        capped.tension(x)
+    assert capped.n_evals == 16, "eviction still governs the tension cache"

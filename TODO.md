@@ -106,13 +106,21 @@ illegible.
   band of one to eight licences belonged to the cross-check, which is retired from the defaults
   (`tests/test_cluster_totals.py` records the grid); the contract is a statement about the rule
   that replaced it, including when a count declines and what the side search may add.
-* **[blocking]** Widen the candidate interface from `tensions(x)` to also carry `modes(x)` --
-  the candidate eigenfunctions on a fixed shared point set. **This is the first thing to do**:
-  Phase D's collapse-versus-merge is decided by the interior Gram angle, which `tensions(x)`
-  cannot supply, so everything about multiplicity is un-benchmarkable until it lands. A seam
-  change, so it wants its own step and its own commit, with the angle following separately.
-  `notes/solver_features.md` section 4 argues the widening over post-processing; section 5
-  ranks it second.
+* **[next]** Phase D's interior Gram angle. The `modes(x)` widening has LANDED --
+  `MPSPencil.interior_image`, `Objective(modes=)`, and the scorer and both `candidates_v1`
+  factories carry it -- and nothing reads it yet, which was the point of doing it as its own
+  step. What remains is the rule: `|<u_i, u_j>| >= TAU_GRAM` collapses and RECOUNTS, below it
+  merges and SUMS (`docs/design/search.md` section on Phase D, `tau_gram = 0.5` from distinct
+  <= 0.10 against duplicate >= 0.948). It goes on the existing rule seam, off by default, and
+  ships only if it improves the committed grids without regressing them.
+
+  Two things to carry into it. **Within one `lam` the angle is vacuous** and must not be
+  consulted -- the GSVD's interior images are orthogonal by construction, measured 4.6e-16 and
+  now pinned in `tests/test_mps_seam.py`. And `tau_gram`'s margin is measured on `rect(1+delta,
+  1)` with EXACT eigenvalues, one mode pair, low `lam`, on a domain whose modes are exactly
+  L2-orthogonal -- which is what makes the distinct-pair floor pure sampling noise. The L-shape
+  with a corner-adapted basis is the case to check before it becomes a default.
+  `tests/test_search_collapse.py`, which `search.md` section 7 specifies, does not exist.
 * **[next]** Carry the in-loop stride correction past the seed. The bracketing stage now has
   one -- `v1_bracket._seed` sizes from Weyl and then doubles until the largest observed secant
   stops growing, so no a-priori stride is trusted -- but nothing downstream of it adapts, and
