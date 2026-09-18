@@ -2877,3 +2877,51 @@ in doubt.
 
 This is the third of the spec's Phase D numbers that did not survive measurement, after the
 `distinct <= 0.10` bound and the "two-thirds of a gap" probe in section 36.
+
+---
+
+# 37. The refiner-rejection rule `TODO.md` proposed is exactly backwards
+
+2026-09-18. The open item read: "`solve` still reads every refiner rejection as an empty bracket
+... a rejection other than `not_a_minimum` or `endpoint` should still not certify a count." It
+rested on a partial rescan -- one row at `170*pi^2` plus three cluster cells, 42 of 42 accepted --
+which established that the defect was latent, not what an alarm should key on.
+
+Measured properly: every rejection the main stage and the side search make, across five cluster
+grids at five precisions and eleven bands plus the roster at five precisions, labelled by whether
+the rejected bracket actually CONTAINED a true eigenvalue.
+
+              reason   bracket EMPTY   bracket HELD one
+            endpoint               3                  0
+         no_parabola              21                  0
+       not_a_minimum             153                  2
+
+    179 rejections, of which 2 were on a bracket that contained an eigenvalue.
+
+**The proposed rule would have fired on all 24 `no_parabola` and `endpoint` rejections -- every
+one of them correctly empty -- and caught neither of the two real losses, because both are
+`not_a_minimum`, the reason it explicitly exempts.** Twenty-four false alarms, zero true
+positives, on a flag that makes `solve_interval` refuse. It is not a conservative version of the
+right rule; it keys on the wrong column.
+
+## And the two real ones are a defect already diagnosed
+
+    1677.8327481833226 .. 1677.832748183896     (170*pi^2, prec 1e-12, band 0.3)
+    1233.7005501361673 .. 1233.7005501361732    (125*pi^2)
+
+The first is, to the digit, the residual sub-bracket of section 34's neighbour -- the side search
+finds a member, searches on past it, and the residual begins one exclusion radius out where the
+find's own wall is the lowest point, so the refiner returns that endpoint and calls it
+`not_a_minimum`. Both are that shape. The `170*pi^2` one is the single wrong cell the grids still
+carry; the `125*pi^2` one costs nothing, the eigenvalue being accounted for elsewhere.
+
+So there is no separate honesty defect to build here. **Fixing the residual standoff fixes both
+losses at the source**, and an alarm keyed on rejection reasons would meanwhile refuse 24 correct
+solves. The item is rewritten rather than implemented.
+
+## The general lesson, and it is section 7's again
+
+The proposed rule was derived from a plausible story -- "a refiner that gave up for an odd reason
+might have given up on something real" -- checked against a sample chosen because it was already
+suspicious. The reason distribution over the whole population inverts it. A rule about which
+FAILURES matter cannot be calibrated on the failures one happened to be looking at.

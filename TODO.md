@@ -58,10 +58,27 @@ illegible.
 
   Belongs with the refiner-rejection item below: both are `solve` reading a refiner verdict on a
   sub-interval that is not empty.
-* **[later]** `solve` still reads every refiner rejection as an empty bracket. Since the
-  `no_parabola` fallback, a rescan of the `170*pi^2` band-0.3 row and three other cluster cells
-  found no main-stage bracket holding eigenvalues rejected (42 of 42 accepted), so this is latent,
-  not live; a rejection other than `not_a_minimum` or `endpoint` should still not certify a count.
+* **[next]** Fix the side search's residual standoff -- it is the ONLY source of lost
+  eigenvalues the grids show, and fixing it closes the last wrong cell. The previous item here
+  proposed flagging refiner rejections whose reason was not `not_a_minimum` or `endpoint`;
+  **that is measured to be exactly backwards** (`notes/landscape_findings.md` section 37). Over
+  179 rejections on every grid and the roster:
+
+      reason           bracket EMPTY   bracket HELD one
+      endpoint                     3                  0
+      no_parabola                 21                  0
+      not_a_minimum              153                  2
+
+  The proposed flag fires on all 24 correctly-empty `no_parabola`/`endpoint` rejections and
+  catches neither real loss, both of which are `not_a_minimum` -- the reason it exempts. Since
+  the flag makes `solve_interval` refuse, that is 24 refused correct solves for nothing.
+
+  Both real losses are the same defect, to the digit: the residual sub-bracket begins one
+  exclusion radius past a find, where the find's own wall is the lowest point in the interval, so
+  the refiner returns that endpoint. `_SIDE_STANDOFF` fixed the `50*pi^2` instance; `170*pi^2`
+  prec 1e-12 band 0.3 and `125*pi^2` survive it. A standoff of 2x or more recovers the first
+  (1.0 and 1.5 do not), but that factor is measured on one cell and wants the five grids before
+  it ships.
 * **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
   slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
   planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner
