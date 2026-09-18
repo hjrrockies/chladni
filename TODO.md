@@ -29,9 +29,32 @@ with multiplicities come out. `tests/candidates_v1.py` holds the two adapters th
 What is left here is not construction, and since 2026-09-18 it is not Phase D either. The
 `modes(x)` widening landed, the interior Gram angle is built behind `phase_d=` and measured, and
 the multiplicity contract is stated in `docs/design/search.md`'s As-built section. **There are no
-known wrong totals and no known lost eigenvalues on any measured grid.** What is left is the
+known wrong totals and no known lost eigenvalues on any measured grid, ON macOS/ACCELERATE** --
+Linux/OpenBLAS has one, see the item below. What is left is the
 constants still inherited from one rectangle family, the rank policy that belongs to the planner,
 and deciding whether Phase D's angle earns its keep.
+
+* **[blocking]** **CI is red on Linux, and one failure is a PLATFORM-DEPENDENT WRONG TOTAL.**
+  Everything in this project is measured on macOS/Accelerate; CI runs `ubuntu-latest` against
+  `scipy-openblas32` (`pyproject.toml`), and there `test_the_cluster_total_GRID[N65-1e-06-b2.6]`
+  declares **3 of 4, silently**. Every other cell of all five grids agrees. A different LAPACK
+  moves the GSVD at the 1e-15 level, and the split-degeneracy grids are built to sit exactly at
+  that edge -- so this is the honest reading of "0 wrong", not an infrastructure annoyance.
+  Blocking because the contract's central claim is currently stated more broadly than the
+  evidence supports, and because neither platform is the trusted reference: `TODO.md` section 4
+  already tracks an Accelerate fault that corrupts the heap.
+
+  Caught by `test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate`, which fails with "1 cell(s)
+  neither right nor declined" -- what it was written to say.
+
+  The rest of the CI board, for scale: 8 failures now against **16 on the merge-base**, so this
+  session halved it. Five are pre-existing and all exercise `_collapse_ambiguous`, the cross-check
+  now off by default (`test_solve.py` x4, `test_floor.py` x1) -- they may be measuring a
+  configuration nothing ships. The third new one is
+  `test_hard_roster.py::test_the_l_shape_is_covered_and_AUDITED[0.0001]`, where CI's
+  `-W error::UserWarning` escalates the FourierBessel accuracy shortfall this file already tracks
+  in section 4; it needs the per-test `filterwarnings` mark the workflow's own comment describes,
+  or that question resolved.
 
 * **[later]** The `125*pi^2` rejection in `notes/landscape_findings.md` section 37 is still a
   bracket that held an eigenvalue and was refused -- it costs nothing today, the eigenvalue being

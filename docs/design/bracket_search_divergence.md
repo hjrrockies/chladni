@@ -51,7 +51,8 @@ at the partner rather than at the representative, and (C2) correctly refuses it.
 > level or the root. The under-count this section diagnoses -- the partner's branch being minimal
 > at the partner rather than at the representative -- is what attribution addresses directly.
 > `notes/landscape_findings.md` and `search.md`'s multiplicity contract record the result: 216
-> right, 0 wrong over five cluster grids.
+> right, 0 wrong over five cluster grids on macOS/Accelerate -- one cell short of that on
+> Linux/OpenBLAS, see the contract's platform note.
 
 ## 2. Grouping is by DIAMETER, and this was got wrong again
 

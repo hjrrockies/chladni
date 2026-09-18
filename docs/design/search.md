@@ -886,6 +886,23 @@ Measured over five split-degeneracy grids (`50`, `65`, `125`, `145`, `170` x `pi
 precisions and eleven bands, unexercisable cells excluded: **216 right, 0 wrong, 35 declined.**
 The roster (disk, eq_tri, L-shape) is certified at every precision on the ladder.
 
+> **THAT IS A macOS / Accelerate MEASUREMENT, and it does not hold on Linux.** CI runs the same
+> grids on `ubuntu-latest` against `scipy-openblas32` (`pyproject.toml`) and
+> `test_the_cluster_total_GRID[N65-1e-06-b2.6]` declares **3 of 4**, silently. Every other cell
+> agrees. A different LAPACK moves the GSVD at the 1e-15 level, which is enough to change what a
+> tight cluster's brackets and refinements do -- and this grid is built to sit exactly at that
+> edge.
+>
+> So the honest form of the claim is **0 wrong on macOS/Accelerate, 1 wrong of 251 on
+> Linux/OpenBLAS**, and the guarantee above should be read as conditional on the arithmetic until
+> that cell is understood. It is not known whether the two platforms disagree anywhere else that
+> is not measured, and `TODO.md` section 4 already tracks a separate Accelerate fault, so neither
+> platform is the trusted reference.
+>
+> The decline-rate instrument caught it rather than the grid alone: on Linux
+> `test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate` fails with "1 cell(s) neither right nor
+> declined", which is what it was written to say.
+
 ### What is NOT guaranteed, stated as plainly
 
 * **A decline is not a failure and not an answer.** 35 of 251 cells decline, all of them stage 1
