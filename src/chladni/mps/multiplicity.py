@@ -67,7 +67,7 @@ from dataclasses import dataclass
 import numpy as np
 
 __all__ = ["multiplicity", "reach_multiplicity", "floor_multiplicity", "wide_bracket_for",
-           "Multiplicity", "GAP_RATIO", "PROMINENCE", "WIDE_FACTOR", "MAX_BRANCHES",
+           "Multiplicity", "Branch", "GAP_RATIO", "PROMINENCE", "WIDE_FACTOR", "MAX_BRANCHES",
            "FLOOR_RATIO", "FLOOR_BAND", "COUNT_BELOW", "REJECT_ABOVE", "SLOPE_STANDOFF",
            "BIAS_LO", "BIAS_HI", "COUNT_BELOW_CACHE", "REJECT_ABOVE_CACHE", "BIAS_LO_CACHE",
            "BIAS_HI_CACHE"]
@@ -237,6 +237,38 @@ MAX_BRANCHES = 8
 
 
 @dataclass(frozen=True)
+class Branch:
+    """One branch the reach rule EXAMINED, and what it concluded about it.
+
+    The count alone cannot be reconciled with anything. `mu` says how many eigenvalues the rule
+    believes are in the bracket; it does not say WHICH, so when the side search then locates one
+    of them as a level of its own there is nothing to compare against and the member is counted
+    twice. That was `170*pi^2`, band 0.3, prec 1e-8: 9 of 8, certified. This record is the
+    missing half -- a branch carries where the rule thinks its eigenvalue is, so a located level
+    can OWN it and the root's count drop by one.
+
+    `d_est = sigma_j/c` is an ESTIMATE, biased: `d_est = beta * d_true` with `beta` in
+    `[bias_lo, bias_hi]`, so the true distance lies in `[d_est/bias_hi, d_est/bias_lo]`. That is
+    the same interval the rule itself decides with, and ownership is tested against it rather
+    than against a new constant.
+
+    `side` is `-1`/`+1` only where the two-evaluation probe actually resolved it. It is 0 in the
+    two cheap paths, where the verdict holds whichever side the eigenvalue lies, and where the
+    probe tied -- so a reader can never mistake "not measured" for "measured as centred".
+
+    **A branch the loop never reached is ABSENT, not marked.** After a `break` or a decline there
+    is no evidence about the branches above, and an `"unexamined"` entry would invite a caller to
+    reason from nothing. The absence is what makes a declined read legible: `mu` is a partial
+    count, and the record says exactly which branches it is partial over.
+    """
+    index: int                          # j, the branch's position in the tension vector at x
+    sigma: float                        # sigma_j at x, so d_est can be re-derived under another c
+    d_est: float                        # sigma_j/c: the ESTIMATED distance from x to it
+    side: int                           # -1 below x, +1 above, 0 undetermined or not probed
+    verdict: str                        # "counted" | "rejected" | "undecided"
+
+
+@dataclass(frozen=True)
 class Multiplicity:
     """What Phase C concluded, and the evidence it concluded it from."""
     mu: int
@@ -248,6 +280,10 @@ class Multiplicity:
     #: A branch landed in the band around `FLOOR_RATIO` where the calibration populations put
     #: nothing. The count is reported anyway and flagged: this is off the measured manifold.
     ambiguous: bool = False
+    #: Per-branch evidence, under `rule="reach"` only. Empty under "gap" and "floor", which have
+    #: no per-branch distance estimate to record -- they answer a different question, and an
+    #: empty tuple says so rather than implying the rule declined to fill it in.
+    branches: tuple = ()
 
     @property
     def c2_rejected(self):
@@ -385,7 +421,13 @@ def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
                        reject_above=REJECT_ABOVE, bias_lo=BIAS_LO, bias_hi=BIAS_HI,
                        side_ratio=SIDE_RATIO,
                        max_branches=MAX_BRANCHES, counter=None):
-    """How many eigenvalues lie inside `[lo, hi]`. `(mu, declined, spent)`.
+    """How many eigenvalues lie inside `[lo, hi]`. `(mu, declined, spent, branches)`.
+
+    `branches` is one `Branch` per branch EXAMINED, in order, carrying the estimated distance and
+    the verdict this function reached. It is evidence, not a second answer: `mu` counts exactly
+    the entries with `verdict == "counted"`. It exists because a caller that later LOCATES an
+    eigenvalue needs to know whether that eigenvalue is one this count already includes -- see
+    `Branch`, and `search._claim`, which is the only consumer.
 
     **The question is `mu*(B)`** and this answers it by comparing A DISTANCE TO A DISTANCE, which
     is the comparison it actually calls for. `sigma_j/c` estimates the distance from `x` to the
@@ -422,22 +464,34 @@ def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
     before = counter.n_evals if counter is not None else 0
     t = np.atleast_1d(np.asarray(tensions(x), dtype=float))[:max_branches]
     if t.size == 0 or not (c > 0):
-        return 1, False, 0
+        return 1, False, 0, ()
     x, lo, hi = float(x), float(lo), float(hi)
     near, far = min(x - lo, hi - x), max(x - lo, hi - x)
     if not (far > 0):
-        return 1, False, 0
+        return 1, False, 0, ()
+
+    # Every verdict below also EMITS a `Branch`, so the count can be reconciled with the levels a
+    # later stage locates. The verdicts themselves are untouched -- this records what the rule
+    # already decided and decides nothing new.
+    seen = []
+
+    def note(j, d, side, verdict):
+        seen.append(Branch(index=j, sigma=float(t[j]), d_est=float(d), side=int(side),
+                           verdict=verdict))
 
     # Branch 0 is the level's OWN eigenvalue -- the level exists because it was located -- so it
     # is counted and never tested. Testing it lost a partner at 170*pi^2, prec 1e-12, band 0.3: the
     # root sat at its bracket's edge with its eigenvalue 1.7e-14 relative beyond, branch 0 landed in
     # the band, the probe read it outside on the short side, and the loop stopped before branch 1.
     mu, declined = 1, False
-    for d in t[1:] / c:
+    note(0, t[0] / c, 0, "counted")
+    for j, d in enumerate(t[1:] / c, start=1):
         if d <= near * count_below:
             mu += 1                                   # inside whichever side it lies
+            note(j, d, 0, "counted")
             continue
         if d >= far * reject_above:
+            note(j, d, 0, "rejected")
             break                                     # outside both ways; branches ascend
         # In the band: the answer depends on the side, so measure the side. Each side is judged on
         # its own: does it HOLD an eigenvalue near `d`? (`d*c` is `sigma_j`.)
@@ -447,17 +501,20 @@ def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
         has_lo, has_hi = v_lo < bar, v_hi < bar
         if has_lo != has_hi:
             # How far the bracket runs on the one side that holds the branch.
+            side = -1 if has_lo else +1
             r_side = (x - lo) if has_lo else (hi - x)
             # The probe fixes the SIDE; the bias bounds fix how far. `d_est = beta * d_true`, so
             # the true distance is in `[d/BIAS_HI, d/BIAS_LO]` and the three cases are decidable:
             if d / bias_lo <= r_side:
                 mu += 1                               # inside even at its furthest possible
+                note(j, d, side, "counted")
                 continue
             if d / bias_hi > r_side:
                 # Outside on THIS side only, so this branch is not counted -- and the loop goes on,
                 # since the next branch may lie on the other side, which reaches further. Breaking
                 # here lost a member at 170*pi^2, prec 1e-12, band 0.3: branch 1 was outside the
                 # short side, branch 2 inside the long one. Only "outside both ways" ends the loop.
+                note(j, d, side, "rejected")
                 continue
         else:
             # BOTH sides hold an eigenvalue near `d`, or neither reads as holding one: the side is
@@ -466,18 +523,22 @@ def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
             # the SHORT side, the branch was judged outside and the loop stopped, and the partner
             # inside the long side went uncounted -- 2 of 3, not declined. Only a verdict that
             # holds on EITHER side stands.
+            side = 0
             if d / bias_lo <= near:
                 mu += 1                               # inside whichever side it lies
+                note(j, d, side, "counted")
                 continue
             if d / bias_hi > far:
+                note(j, d, side, "rejected")
                 break                                 # outside whichever side it lies
         # Undetermined: the eigenvalue may or may not be inside, and nothing cheap decides it.
         # This is the bracket-edge case -- measured at `65*pi^2`, `prec = 1e-10`, where the
         # partner sits exactly `near` away and `d_est` overshoots it by 55%.
+        note(j, d, side, "undecided")
         declined = True
         break
     spent = (counter.n_evals - before) if counter is not None else 0
-    return max(mu, 1), declined, spent
+    return max(mu, 1), declined, spent, tuple(seen)
 
 
 def multiplicity(tensions, x, *, wide_bracket=None, prec=None, G=GAP_RATIO, P=PROMINENCE,
@@ -509,13 +570,13 @@ def multiplicity(tensions, x, *, wide_bracket=None, prec=None, G=GAP_RATIO, P=PR
         kw = {} if reach_bounds is None else dict(
             count_below=reach_bounds[0], reject_above=reach_bounds[1],
             bias_lo=reach_bounds[2], bias_hi=reach_bounds[3])
-        mu, declined, spent = reach_multiplicity(tensions, x, lo, hi, float(c),
-                                                 max_branches=max_branches, counter=counter, **kw)
+        mu, declined, spent, seen = reach_multiplicity(
+            tensions, x, lo, hi, float(c), max_branches=max_branches, counter=counter, **kw)
         t = np.atleast_1d(np.asarray(tensions(x), dtype=float))
         n = min(t.size, max_branches)
         gap = float(t[mu] / t[mu - 1]) if mu < n and t[mu - 1] > 0 else float("inf")
         return Multiplicity(mu=mu, gap_ratio=gap, bracket=(lo, hi), c1_read=mu,
-                            evaluations=spent, ambiguous=declined)
+                            evaluations=spent, ambiguous=declined, branches=seen)
     if rule == "floor":
         before = counter.n_evals if counter is not None else 0
         t = np.atleast_1d(np.asarray(tensions(x), dtype=float))

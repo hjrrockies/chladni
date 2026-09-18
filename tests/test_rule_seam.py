@@ -18,8 +18,8 @@ import inspect
 import numpy as np
 import pytest
 
-from chladni.mps.multiplicity import multiplicity
-from chladni.mps.search import solve
+from chladni.mps.multiplicity import Branch, multiplicity
+from chladni.mps.search import _claim, solve
 
 C, EPS, PLATEAU = 1.0, 1e-15, 10.0
 
@@ -101,23 +101,128 @@ def test_reach_keeps_looking_past_a_branch_OUTSIDE_the_short_side():
                      reach_bounds=(0.61, 2.21, 0.61, 2.21))
     assert m.mu == 2 or m.ambiguous, f"read {m.mu}, not declined"
 
+# --- the branch record, and ownership --------------------------------------------------------
+#
+# `mu` says HOW MANY eigenvalues the rule believes are in the bracket, never WHICH, so a level the
+# side search later locates could not be compared against it and the member was reported twice.
+# These pin the record and the claim that reconciles them, on exact cones where the answer is
+# known by construction.
+
+
+def test_the_read_RECORDS_every_branch_it_EXAMINED():
+    """One entry per branch looked at, in order, and `mu` is exactly the counted ones."""
+    m = multiplicity(cones(10.0, 10.3, 12.0), 10.0, rule="reach", bracket=(9.5, 10.5), c=C)
+    assert [b.index for b in m.branches] == list(range(len(m.branches)))
+    assert m.mu == sum(b.verdict == "counted" for b in m.branches)
+    assert m.branches[0].verdict == "counted", "branch 0 is the level's own eigenvalue"
+    assert any(b.verdict == "rejected" for b in m.branches), "the neighbour at 12.0"
+    for b in m.branches:
+        assert b.d_est == pytest.approx(b.sigma / C, rel=1e-12)
+
+
+def test_a_branch_the_loop_NEVER_REACHED_is_absent_rather_than_marked():
+    """After a break there is no evidence about the branches above, and an "unexamined" entry
+    would invite a caller to reason from nothing. Four cones, the far ones ending the loop: the
+    record stops there, so `mu` is legibly partial over exactly what was looked at."""
+    m = multiplicity(cones(10.0, 20.0, 30.0, 40.0), 10.0, rule="reach", bracket=(9.5, 10.5), c=C)
+    assert len(m.branches) < 4, "the loop broke and the record stops with it"
+    assert m.branches[-1].verdict in ("rejected", "undecided")
+
+
+def test_a_branch_the_read_counted_is_owned_ONCE():
+    """The band is `[d_est/bias_hi, d_est/bias_lo]`, 3.6x wide under the cache bounds, so two
+    claimants can both admit one branch. Exactly one of them gets it."""
+    b = Branch(index=1, sigma=1.0, d_est=1.0, side=0, verdict="counted")
+    assert _claim((b,), 10.0, [10.0 + 0.45, 10.0 + 1.60], 0.61, 2.21) == (1, (1,))
+
+
+def test_a_claimant_OUTSIDE_the_estimate_s_band_claims_nothing():
+    """`d_est = beta * d_true` with beta in `[bias_lo, bias_hi]`, so a claimant nearer than
+    `d_est/bias_hi` or further than `d_est/bias_lo` is a different eigenvalue."""
+    b = Branch(index=1, sigma=1.0, d_est=1.0, side=0, verdict="counted")
+    assert _claim((b,), 10.0, [10.0 + 0.30], 0.61, 2.21)[0] == 0, "nearer than the band"
+    assert _claim((b,), 10.0, [10.0 + 2.00], 0.61, 2.21)[0] == 0, "further than the band"
+
+
+def test_a_claimant_on_the_WRONG_SIDE_of_a_RESOLVED_branch_claims_nothing():
+    """Where the probe resolved the side, the side is evidence and a claimant the other way is a
+    different eigenvalue. Where it did not (`side == 0`) either way is admissible."""
+    resolved = Branch(index=1, sigma=1.0, d_est=1.0, side=+1, verdict="counted")
+    assert _claim((resolved,), 10.0, [10.0 - 1.0], 0.61, 2.21)[0] == 0
+    assert _claim((resolved,), 10.0, [10.0 + 1.0], 0.61, 2.21)[0] == 1
+    unresolved = Branch(index=1, sigma=1.0, d_est=1.0, side=0, verdict="counted")
+    assert _claim((unresolved,), 10.0, [10.0 - 1.0], 0.61, 2.21)[0] == 1
+
+
+def test_a_REJECTED_or_UNDECIDED_or_ZEROTH_branch_is_NOT_claimable():
+    """The safety property, and what keeps `mult >= 1` true by construction rather than by a
+    clamp. Only a branch the read ADDED to `mu` may be taken out of it -- capping the count at
+    what the search could not reach was measured and lost a member (2 of 3 at prec 1e-6). Branch 0
+    is the level's own eigenvalue and is excluded outright, or a claimant a few ulps out could
+    claim the root's own existence."""
+    for b in (Branch(index=1, sigma=1.0, d_est=1.0, side=0, verdict="rejected"),
+              Branch(index=1, sigma=1.0, d_est=1.0, side=0, verdict="undecided"),
+              Branch(index=0, sigma=1.0, d_est=1.0, side=0, verdict="counted")):
+        assert _claim((b,), 10.0, [10.0 + 1.0], 0.61, 2.21)[0] == 0, b.verdict
+
+
+def test_two_claimants_cannot_take_the_SAME_branch():
+    """"Owned ONCE" is the whole content of the fix. Without it the root's count drops twice for
+    one eigenvalue, which under-reads exactly as the double count over-read."""
+    b = Branch(index=1, sigma=1.0, d_est=1.0, side=0, verdict="counted")
+    assert _claim((b,), 10.0, [10.0 + 0.9, 10.0 + 1.1], 0.61, 2.21)[0] == 1
+
+
+def test_each_claimant_takes_at_most_one_branch():
+    two = (Branch(index=1, sigma=1.0, d_est=1.0, side=0, verdict="counted"),
+           Branch(index=2, sigma=1.1, d_est=1.1, side=0, verdict="counted"))
+    assert _claim(two, 10.0, [10.0 + 1.0], 0.61, 2.21)[0] == 1
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("N, m, band, prec", [(50, 3, 0.8, 1e-8), (65, 4, 0.3, 1e-8),
+                                              (50, 3, 0.3, 1e-8), (170, 4, 0.3, 1e-12)])
+def test_the_multiplicity_READ_spends_nothing_even_where_the_count_DECLINES(N, m, band, prec):
+    """Stage 3's contract, asserted where it could actually fail.
+
+    `multiplicity_evals` used to be the WHOLE stage-3 window, so it silently included the reach
+    rule's two-evaluation side probes and the side search's refinements. It read zero only on
+    cells that never decline -- which are exactly the cells that do neither -- so the contract
+    was being checked where it was unfalsifiable. Split out, the READ answers from the cache and
+    nothing else, and the work it used to hide is reported as `probe_evals` and `side_evals`.
+
+    A cone surrogate cannot stand in here: its branches never land in the undecided band, so it
+    declines nothing and spends nothing. That is why this is a real cluster and lives in the slow
+    tier.
+    """
+    _, _, d = _cluster_total(N, m, band, prec)
+    assert d.probe_evals + d.side_evals > 0, (
+        "this cell no longer exercises the probes or the side search, so it no longer tests what "
+        "it was written for -- find a cluster that does")
+    assert d.multiplicity_evals == 0, (
+        f"the stage-3 read spent {d.multiplicity_evals} evaluations; it must answer from the "
+        f"cache (probes {d.probe_evals}, side search {d.side_evals})")
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize("N, m, band, prec, cause", [
     (50, 3, 0.8, 1e-8, "both sides hold a partner, and the side probe picked one"),
-    pytest.param(170, 4, 0.3, 1e-12, "a side holding two members, of which the search locates one",
+    pytest.param(170, 4, 0.3, 1e-12, "a residual sub-bracket abutting an exclusion, where the "
+                                     "refiner lands on the excluded member's wall",
                  marks=pytest.mark.xfail(strict=True, reason=(
-                     "the two reach-rule defects here are fixed (branch 0 counted; no stop after a "
-                     "short-side reject) and the count now declines, but the side search refines each "
-                     "side once and the long side held two members -- 7 of 8, certified. Searching "
-                     "on after a find double-counted members the read had already counted inside; "
-                     "reconciling the two is its own change, TODO.md."))),
-    pytest.param(170, 4, 0.3, 1e-8, "a member counted inside by the read AND located by the side search",
-                 marks=pytest.mark.xfail(strict=True, reason=(
-                     "the refiner fallback and inward walk fixed the loss here (the bracket was "
-                     "rejected, 6 of 8), and exposed the attribution defect: the read at member 2 "
-                     "counts member 1 inside, the side search then locates member 1 as its own "
-                     "level, and it is counted twice -- 9 of 8, certified. The reconciliation "
-                     "item in TODO.md."))),
+                     "NOT the attribution defect any more, and not the single-refine one either -- "
+                     "both are fixed, and the side search now DOES search on. Measured after: the "
+                     "root at 1677.83274818468 declines, the low side finds 1677.83274818396, and "
+                     "the residual (1677.8327481833226, 1677.832748183896) provably HOLDS the "
+                     "missing member: sigma_1 dips to 2.18e-13 at 1677.8327481833942 against "
+                     "9.0e-13 at the lower end. The refiner returns the UPPER end instead, at "
+                     "sigma 2.47e-13, and rejects it `not_a_minimum` -- that end sits on the "
+                     "excluded member's wall, one exclusion radius out, where the wall still reads "
+                     "sigma_r2/bias_lo = 1.64x its own floor and so competes with a genuine "
+                     "member's. 7 of 8, certified. Standing the exclusion off further recovers it "
+                     "-- factors 1.0 and 1.5 fail, 2.0, 3.0, 4.0 and 6.0 all find it -- but that "
+                     "factor is a constant measured on ONE cell, and it belongs with the refiner "
+                     "rejection work rather than here. TODO.md."))),
     (65, 4, 0.3, 1e-8, "a hump top kept as a level beside the two members found either side"),
 ])
 def test_the_promoted_defaults_leave_no_SILENT_wrong_total(N, m, band, prec, cause):

@@ -40,27 +40,53 @@ Do the `modes(x)` widening as its OWN step before the angle. It is a seam change
 is two kinds of work in one session, which is what made the previous promotion attempt
 illegible.
 
-* **[next]** Reconcile the reach count with the side search. When the count declines, the side
-  search locates members as their own levels, and nothing reconciles what it locates with what the
-  read already counted inside. Both silent cells left at `170*pi^2`, band 0.3, are this, in opposite
-  directions (strict xfails in `tests/test_rule_seam.py`):
-  - prec 1e-8, 9 of 8: the read at member 2 counts member 1 inside, and the side search then
-    locates member 1 as its own level -- counted twice. Hidden until the refiner's `no_parabola`
-    fallback and inward walk let the side search locate it.
-  - prec 1e-12, 7 of 8: each side is refined ONCE, and the long side held two members.
+* **[next]** The side search's residual can start ON its find's wall, and the refiner then
+  returns that endpoint. This is the one cause behind every wrong total the cluster grids still
+  carry, and it is a REFINER interaction rather than a counting one. When the side search finds a
+  member and searches on past it, the residual begins one exclusion radius out; that radius is
+  `(sigma/c)/bias_lo`, which is right for the dedup it was borrowed from and wrong here, because
+  at a CONVERGED find `sigma` is the tension floor rather than a distance to anything. A standoff
+  of a fraction of the remaining span was added and fixes one of the two measured cells
+  (`search._SIDE_STANDOFF`, flat over 0.05 to 0.2, so the value is not tuned). What it does not
+  fix is the case where the refiner lands on the residual's inner end anyway:
 
-  Searching on after a find was measured and reverted: it double-counted members the read had
-  counted (4 of 3 at `50*pi^2`, 1e-12, band 0.3), and capping the root's count at what the search
-  could not reach lost a member the search then failed to find (2 of 3 at 1e-6). The fix is
-  attribution: each branch the read counts inside is owned ONCE, by a located level near where
-  `sigma_j/c` puts it, or else by the root.
+  - `170*pi^2`, band 0.3, prec 1e-12, 7 of 8 (strict xfail in `tests/test_rule_seam.py`). The
+    residual `(1677.8327481833226, 1677.832748183896)` provably holds the missing member --
+    `sigma_1` dips to 2.18e-13 at 1677.8327481833942 -- and the refiner returns the upper end at
+    2.47e-13, `not_a_minimum`. Standing the exclusion off by 2x or more recovers it; 1.0 and 1.5
+    do not. That factor is measured on one cell and wants the whole grid before it ships.
+
+  Belongs with the refiner-rejection item below: both are `solve` reading a refiner verdict on a
+  sub-interval that is not empty.
 * **[later]** `solve` still reads every refiner rejection as an empty bracket. Since the
   `no_parabola` fallback, a rescan of the `170*pi^2` band-0.3 row and three other cluster cells
   found no main-stage bracket holding eigenvalues rejected (42 of 42 accepted), so this is latent,
   not live; a rejection other than `not_a_minimum` or `endpoint` should still not certify a count.
-* **[next]** Declines at `145*pi^2`. 24 of 45 cells decline under the promoted defaults against 21
-  under the previous ones, far over the 5% the robustness plan set; the count is not where it
-  starts, so look upstream at the bracketer's decline reasons first.
+* **[next]** Declines at `145*pi^2`, and they have ONE cause. Re-measured over 5 precisions x 11
+  bands: **30 of 55 cells decline, and every one of them carries the bracketer's seed message** --
+  "the slope estimate never settled" -- with the largest observed secant rising monotonically
+  through all six doublings (e.g. `0.71 -> 0.81 -> 2.20 -> 3.92 -> 7.77 -> 16.24`). Not one is the
+  `MAX_GROWTHS` path and not one is the multiplicity layer. The cells that do NOT decline are all
+  correct: 25 right, 0 wrong.
+
+  The mechanism is already written down one constant away, in `MAX_GROWTHS`'s own comment: on a
+  tight cluster "the settling test passes on the PLATEAU's own variation and the cover phase then
+  discovers the walls one doubling at a time". Here it does not even pass -- six doublings of
+  `n -> 2n-1` never resolve a cluster whose members sit a fraction of a licence apart -- so the
+  bootstrap meant to falsify the Lipschitz premise is instead reporting that a SEED GRID is too
+  coarse. Candidates, cheapest first: more doublings (the history shows no plateau in sight, so
+  this alone will not do it); a settling test that is not fooled by plateau variation on a narrow
+  window; or accepting that a narrow cluster window declines at seed and letting the cover phase's
+  `MAX_GROWTHS = 16` do the work it was widened for. Do NOT invent a seventh way to sample the
+  cover phase more cleverly: `bracket.py`'s cost law retires that family and six attempts have
+  failed.
+
+  Note the "5% the robustness plan set" cited here before: that plan is not in the repository, and
+  the "24 of 45 declining" it quoted contradicted `search.solve`'s own promotion table, where 24
+  is the number RIGHT and 21 declined under both configurations. State a whole-solve decline
+  target with its justification; the estimator-level `decline_rate < 0.10` in
+  `tests/test_multiplicity_ladder.py` is a different quantity, since these declines are upstream
+  of the estimator entirely.
 * **[next]** The old Phase D note, for the case distance cannot settle. `chladni.mps.search`
   implements Phase D's DISTANCE PREFILTER and gets the collapse branch for free -- reading
   multiplicity once per merged group RECOUNTS by construction, which `search.md` says is the

@@ -51,9 +51,9 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 
 from .bracket import bracket_interval
-from .multiplicity import (BIAS_HI_CACHE, BIAS_LO_CACHE, COUNT_BELOW_CACHE,
-                           REJECT_ABOVE_CACHE, SIDE_RATIO, SLOPE_STANDOFF, WIDE_FACTOR, multiplicity,
-                           wide_bracket_for)
+from .multiplicity import (BIAS_HI, BIAS_HI_CACHE, BIAS_LO, BIAS_LO_CACHE, COUNT_BELOW_CACHE,
+                           MAX_BRANCHES, REJECT_ABOVE_CACHE, SIDE_RATIO, SLOPE_STANDOFF,
+                           WIDE_FACTOR, multiplicity, wide_bracket_for)
 from .refine import refine
 
 __all__ = ["Level", "SolveResult", "SolveDiagnostics", "solve"]
@@ -68,6 +68,36 @@ _SLOPE_FRAC = 0.005
 #: while the hump sits about the whole distance up it, so both read near 1/4; a genuine root, even
 #: one located coarsely, climbs its own wall toward at least one neighbour.
 _HUMP_RATIO = 0.5
+
+#: Refine calls the side search may spend on one root, across both sides together.
+#:
+#: A bound on COST, never a decision. The read examines at most `MAX_BRANCHES` branches, so at
+#: most `MAX_BRANCHES - 1` partners can exist for it to find, and a cap at that number cannot
+#: change an answer -- it can only stop a pathology from spinning. The previous structure had an
+#: implicit cap of one PER SIDE, which is what left a member unfound wherever a side held two
+#: (170*pi^2, band 0.3, prec 1e-12: 7 of 8).
+_SIDE_SEARCH_MAX = MAX_BRANCHES
+
+#: Fraction of the remaining sub-bracket the side search stands off from a find before searching
+#: on past it.
+#:
+#: **`(sigma/c)/bias_lo` alone is the wrong radius for this job**, though it is the right one for
+#: the dedup it was borrowed from. At a CONVERGED find `sigma` is the tension FLOOR, not a
+#: distance to anything, so the radius collapses to `eps/c` and the residual begins on the find's
+#: own wall -- where the wall is the lowest point in the interval, so the refiner returns that
+#: endpoint and rejects it `not_a_minimum`. Measured at 50*pi^2, band 0.3, prec 1e-12: the find at
+#: 493.480220054314 reads sigma 1.13e-14, the residual starts 1e-15 later at 493.480220054315, and
+#: the member at 493.480220054462 -- 1.5e-10 further in, sigma 3.7e-15 -- is never located.
+#:
+#: Swept on that residual, as a fraction of the span from the find to the sub-bracket's outer end:
+#:
+#:     fraction   0.00   0.02   0.05   0.10   0.20   0.30   0.50
+#:     found        no     no     no    yes    yes    yes    yes
+#:
+#: A fraction of the remaining span rather than an absolute distance, for the reason `STRADDLE`
+#: is one: it is dimensionless, and the scale that matters is the interval still to be searched.
+#: The floor stays, so a find that is NOT converged still excludes its own resolution.
+_SIDE_STANDOFF = 0.1
 
 
 @dataclass(frozen=True)
@@ -157,7 +187,17 @@ class SolveDiagnostics:
     uncertain: tuple = ()            # (lam, mult, count_alt, reason) per uncertain level
     search_evals: int = 0
     refine_evals: int = 0
-    multiplicity_evals: int = 0      # must be zero: stage 3 reads the cache
+    #: The stage-3 READ, which must be zero: it answers from the cache and nothing else. It was
+    #: previously the whole stage-3 window, so it silently included the two side probes and the
+    #: side search below -- and read zero only on cells where the count never declined, i.e.
+    #: exactly the cells that do none of that work. Split out so the contract is asserted where
+    #: it could fail rather than where it cannot.
+    multiplicity_evals: int = 0
+    #: The reach rule's SIDE PROBES: two evaluations per branch that lands in the undecided band,
+    #: and none at all on a simple bracket.
+    probe_evals: int = 0
+    #: The side search's refinements, when a count declines and the partner is LOCATED instead.
+    side_evals: int = 0
     evaluations: int = 0
     declined: bool = False
     decline_reason: str = ""
@@ -247,6 +287,77 @@ def _slope_outside(lams, vs, lam, min_dist):
     lo, hi = float(lams[left][i]), float(lams[right][j])
     v_lo, v_hi = float(vs[left][i]), float(vs[right][j])
     return (v_lo + v_hi) / (hi - lo) if hi > lo else None
+
+
+def _claim(branches, lam_root, claimants, bias_lo, bias_hi):
+    """Which branches the read counted are ALREADY ACCOUNTED FOR by a located level.
+
+    Returns `(n_claimed, claimed)`, `claimed` the indices claimed, one per claimant at most.
+
+    # The defect this exists for
+
+    `mu` says how many eigenvalues the reach rule believes are in the bracket. It does not say
+    WHICH, so when the side search then locates one of them as a level of its own, nothing
+    compares the two and the member is reported twice -- `170*pi^2`, band 0.3, prec 1e-8: 9 of 8,
+    and CERTIFIED, because a successful find also cleared the doubt. The mirror case is 7 of 8 at
+    1e-12, where a side held two members and only one was ever looked for.
+
+    `TODO.md` recorded two measured dead ends, and both are avoided here by construction rather
+    than by tuning. Searching on after a find double-counted members the read had counted inside
+    (4 of 3 at `50*pi^2`, 1e-12, band 0.3) -- safe now, because a second find CLAIMS a branch
+    instead of adding to the total. Capping the root's count at what the search could not reach
+    lost a member the search then failed to find (2 of 3 at 1e-6) -- not done here, because only
+    a branch the read actually counted can be claimed, so nothing the read did not put in can be
+    taken out.
+
+    # The predicate, and why it needs no new constant
+
+    `d_est = beta * d_true` with `beta` in `[bias_lo, bias_hi]`, so the true distance to a
+    branch's eigenvalue lies in `[d_est/bias_hi, d_est/bias_lo]`. A claimant whose offset from
+    the root falls in that interval, on a side the branch does not contradict, IS that
+    eigenvalue. This is the interval `reach_multiplicity` itself decides with, and the one the
+    side search already uses one-sided as `reach_find`; attribution uses the instrument the count
+    used, so there is nothing new to calibrate. **The bias pair must be the one passed to the
+    read that produced these branches** -- `solve` selects between two calibrated sets -- which is
+    why it is an argument rather than an import.
+
+    Branch 0 is never claimable: it is the level's own eigenvalue, the reason the level exists.
+    Without that exclusion a claimant a few ulps out could claim the root's own existence. With
+    it, `mu - n_claimed >= 1` holds by construction, since `mu` is `1 + |counted j>=1|`.
+
+    # Matching, deliberately greedy
+
+    With the cache bias pair the admissible band spans 3.6x, so one claimant can admit two
+    branches and one branch two claimants. Claimants are taken nearest-first, each keeping the
+    unclaimed admissible branch whose estimate best matches its offset in the LOG -- scale-free,
+    so a 0.45x and a 1.64x match are compared fairly -- ties by lowest index. An optimal
+    assignment is over-engineering: the read examines at most `MAX_BRANCHES` branches and no
+    bracket on any measured grid held more than four members.
+    """
+    usable = [b for b in branches if b.verdict == "counted" and b.index >= 1 and b.d_est > 0]
+    if not usable:
+        return 0, ()
+    claimed, taken = [], set()
+    for lam_q in sorted(claimants, key=lambda q: abs(q - lam_root)):
+        off = abs(lam_q - lam_root)
+        if not off > 0:
+            continue
+        side = 1 if lam_q > lam_root else -1
+        best, best_key = None, None
+        for b in usable:
+            if b.index in taken:
+                continue
+            if b.side != 0 and b.side != side:
+                continue
+            if not (b.d_est / bias_hi <= off <= b.d_est / bias_lo):
+                continue
+            key = (abs(np.log(b.d_est / off)), b.index)
+            if best_key is None or key < best_key:
+                best, best_key = b, key
+        if best is not None:
+            taken.add(best.index)
+            claimed.append(best.index)
+    return len(claimed), tuple(claimed)
 
 
 def _spanning_bracket(lams, roots, reach):
@@ -549,6 +660,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     mark = obj.n_evals
     lams, svals = _samples(obj)
     levels = []
+    probe_evals = side_evals = 0
     for (r, bracket), n_roots in located:
         c = _slope_from_cache(lams, svals, r.lam)
         # The distance to the next eigenvalue, from the free `sigma_2` the search already has.
@@ -577,8 +689,14 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
             # `multiplicity.COUNT_BELOW_CACHE`.
             bounds = (None if reach_slope == "outside" else
                       (COUNT_BELOW_CACHE, REJECT_ABOVE_CACHE, BIAS_LO_CACHE, BIAS_HI_CACHE))
+            # The bias pair the READ was given, so attribution below inverts the same estimate the
+            # count made. Hardcoding the cache pair would claim with the wrong band whenever
+            # `reach_slope="outside"` -- the ablation path, whose bounds are the wip branch's.
+            bias_lo_eff, bias_hi_eff = ((BIAS_LO, BIAS_HI) if bounds is None
+                                        else (bounds[2], bounds[3]))
             m = multiplicity(tens, r.lam, bracket=bracket, c=c_out, prec=prec, rule="reach",
-                             reach_bounds=bounds)
+                             reach_bounds=bounds, counter=obj)
+            probe_evals += int(m.evaluations)
             if m.ambiguous:
                 # The rule could not place a branch inside the bracket or out. Every wrong total it
                 # left on the cluster grid was this: one bracket holding two DISTINCT eigenvalues,
@@ -594,6 +712,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                 # at 1e-8, band 0.3, where the declined branch belonged to a member 0.96 licences
                 # out, located as its own level, with this bracket reaching 0.27 on that side. Only
                 # an inconclusive search, or no distance to search at, leaves the level flagged.
+                side_mark = obj.n_evals
                 t_here = np.atleast_1d(np.asarray(tens(r.lam), dtype=float))
                 j = min(int(m.mu), t_here.size - 1)
                 half = 0.5 * float(t_here[j]) / c_out if j > 0 else float("inf")
@@ -605,9 +724,23 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                 # which the refiner's end probe rejects.
                 taken = [p[0][0] for p in located if p[0][0] is not r]
                 found, inconclusive = 0, not np.isfinite(half)
-                for a, b2 in ((bracket[0], r.lam - half), (r.lam + half, bracket[1])):
+                # A WORK LIST per side, not one interval each. Refining each side exactly once
+                # left a member unfound wherever a side held two: 170*pi^2, band 0.3, prec 1e-12,
+                # 7 of 8, certified. Searching on after a find was measured and REVERTED once --
+                # 4 of 3 at 50*pi^2, 1e-12, band 0.3 -- because a second find was added to a total
+                # that had already counted it inside. Attribution is what makes it safe: below,
+                # every find CLAIMS a branch rather than adding to `mu`.
+                #
+                # OUTWARD only. The residual on the inner side of a find is `r`'s own wall, and
+                # refining there fits a parabola to rounding -- the phantom class the reach dedup
+                # below records at 65*pi^2, prec 1e-10, band 1.0.
+                sides = [(bracket[0], r.lam - half, -1), (r.lam + half, bracket[1], +1)]
+                budget = _SIDE_SEARCH_MAX
+                while sides and budget > 0:
+                    a, b2, side = sides.pop(0)
                     if not (np.isfinite(half) and a < b2):
                         continue                    # too short to hold the branch: resolved
+                    budget -= 1
                     r2 = refine(obj, a, b2, prec=prec, interior=(a, b2))
                     if not r2.accepted:
                         # A side is resolved by a firm rejection, by a root ALREADY located there --
@@ -652,6 +785,15 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                     found += 1
                     extra.append(Level(lam=r2.lam, mult=1, sigma=r2.sigma,
                                        delta_res=r2.delta_res, bracket=(a, b2), n_roots=1))
+                    # Search ON, outward, past an exclusion of the width this find's own reading
+                    # implies -- the same "any root within this reach IS r2" quantity the dedup
+                    # above uses, reused as a radius rather than re-derived.
+                    span = (r2.lam - a) if side < 0 else (b2 - r2.lam)
+                    excl = max((r2.sigma / c_out) / bias_lo_eff, _SIDE_STANDOFF * span,
+                               4.0 * np.spacing(abs(r2.lam)))
+                    nxt = (a, r2.lam - excl) if side < 0 else (r2.lam + excl, b2)
+                    if nxt[1] - nxt[0] > 4.0 * np.spacing(abs(r2.lam)):
+                        sides.append((nxt[0], nxt[1], side))
                 uncertain = inconclusive and found == 0
                 # Is `r` itself a minimum, or the HUMP between two members? 65*pi^2, prec 1e-8,
                 # band 0.3: a bracket narrower than the licence held two members, the refiner
@@ -671,6 +813,36 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                                    r.lam + 0.75 * (min(above) - r.lam))
                         reads = [float(np.atleast_1d(tens(z))[0]) for z in towards]
                         drop = max(reads) < _HUMP_RATIO * r.sigma
+                side_evals += obj.n_evals - side_mark
+            # ATTRIBUTION. A branch the read counted INSIDE the bracket and a level located inside
+            # the same bracket can be the same eigenvalue, and until now nothing compared them --
+            # so the member was reported twice (170*pi^2, band 0.3, prec 1e-8: 9 of 8, certified).
+            # Each such branch is owned ONCE: by a located level near where `sigma_j/c` puts it,
+            # or else by the root. Only counted branches are claimable, so this can never take out
+            # what the read did not put in -- the failure capping produced at 2 of 3, prec 1e-6.
+            #
+            # ONLY levels the SIDE SEARCH just located may claim, not levels already located from
+            # their own bracket. Both were measured, and the wider source REGRESSES the committed
+            # grid: at 50*pi^2, band 0.3, prec 1e-12 and 1e-14 it takes 3 of 3 to 2 of 3, silently.
+            #
+            # And the cell says something worth keeping, because the 3 was never right. The read
+            # at the first member counts the second inside (branch 1, d_est 1.59e-10, side +1) and
+            # the second is ALSO reported from its own bracket -- a double count -- while the
+            # third member at 493.480220054462 is never located at all. Two errors cancelling.
+            # Letting the wider source claim removes the double count and leaves the miss visible,
+            # which is the honest state and a WRONG TOTAL either way. The miss is the same refiner
+            # defect the 170*pi^2 xfail records: the side search's residual starts one exclusion
+            # radius past its find, that radius is `(sigma/c)/bias_lo` on a CONVERGED find where
+            # `sigma` is the floor rather than a neighbour distance, so the residual begins on the
+            # find's own wall and the refiner returns that endpoint (`not_a_minimum` at
+            # 493.480220054315, with the member 1.5e-10 further in). Fix that first; the wider
+            # claimant source is then a strict improvement rather than a trade.
+            claimants = [q.lam for q in extra if bracket[0] <= q.lam <= bracket[1]]
+            n_claimed, _ = _claim(m.branches, r.lam, claimants, bias_lo_eff, bias_hi_eff)
+            mu = int(m.mu) - n_claimed
+            assert mu >= 1, (f"attribution took the root's own branch: mu={m.mu}, "
+                             f"claimed={n_claimed}")
+            m = replace(m, mu=mu)
         elif wb is None:
             levels.append(Level(lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res,
                                 bracket=bracket, n_roots=n_roots))
@@ -707,7 +879,9 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     # last, so it sees the levels a caller will actually receive.
     levels, uncertain = _flag_uncertain_counts(
         levels, folds_are_duplicates=(merge == "attained" and rule == "reach"))
-    mult_evals = obj.n_evals - mark
+    # The READ's own spend: the whole stage-3 window less the probes and the side search, both of
+    # which are evaluations by design and are reported as themselves.
+    mult_evals = (obj.n_evals - mark) - probe_evals - side_evals
 
     unmet = tuple(x.lam for x in levels if not x.met(prec))
     attained = max((x.attained_prec for x in levels
@@ -716,7 +890,8 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     return SolveResult(tuple(levels), SolveDiagnostics(
         search=sd, n_brackets=len(res.brackets), n_rejected=rejected, n_merged=merged,
         search_evals=search_evals, refine_evals=refine_evals,
-        multiplicity_evals=mult_evals, evaluations=obj.n_evals, n_ambiguous=n_amb,
+        multiplicity_evals=mult_evals, probe_evals=probe_evals, side_evals=side_evals,
+        evaluations=obj.n_evals, n_ambiguous=n_amb,
         n_uncertain=len(uncertain),
         uncertain=tuple((x.lam, x.mult, x.count_alt, x.uncertain_reason) for x in uncertain),
         prec_requested=prec, attained_prec=float(attained), unmet=unmet))

@@ -82,7 +82,8 @@ def test_clause_3_reports_what_a_caller_cannot_otherwise_see():
     rejected, and how many roots were folded together."""
     res = solve(_cone([2 * np.pi**2, 5 * np.pi**2, 8 * np.pi**2]), prec=1e-8)
     d = res.diagnostics
-    assert d.evaluations == d.search_evals + d.refine_evals + d.multiplicity_evals
+    assert d.evaluations == (d.search_evals + d.refine_evals + d.multiplicity_evals
+                            + d.probe_evals + d.side_evals)
     assert d.search is not None and np.isfinite(d.search.L)
     assert d.n_brackets >= len(res.levels)
 
