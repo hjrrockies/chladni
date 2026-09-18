@@ -21,7 +21,7 @@ refiner's `no_parabola` fallback and inward walk. Declared total; `L` wrong and 
     1e-08     3    3    3    3    3    3    3    3    3    3    3
     1e-10     3    3    3    3    3    3    3    3    3    3    3
     1e-12     3    3    3    3    3    3    3    3    3    3    3
-    1e-14     3    3    3    3    3    3    3   3f    3    3    3
+    1e-14     U    U    3    3    3    3    3   3f    3    3    3
 
     N = 65, UNEVENLY spaced (1 : 2.2 : 1), truth 4
     prec     0.3  0.5  0.8  1.0  1.3  1.6  2.0  2.6  3.0  4.0  6.0
@@ -29,7 +29,20 @@ refiner's `no_parabola` fallback and inward walk. Declared total; `L` wrong and 
     1e-08     4    D    4    4    4    4    D    4    4    4    4
     1e-10     4    4    4    4    D    4    4    4    4    4    4
     1e-12     4    4    4    4    4    4    4    4    4    4    4
-    1e-14     4    4    4    4    4    4    4    4    4    D    4
+    1e-14     U    U    4    4    4    4    4    4    4    D    4
+
+# `U`: the precondition, which this file scored past for its whole life
+
+`TODO.md` section 8 -- **a case that violates a precondition measures the case, not the method**
+-- and this grid was the fourth tier to learn it. At `prec = 1e-14`, bands 0.3 and 0.5 dial the
+cluster tighter than the basis can resolve, so no counting rule can be right there and whatever
+the cell reported was luck. At 50*pi^2, band 0.3: members 2.99e-15 apart against a multiplicity
+resolution of 7.11e-15. Two cells of 55 here, two at 65*pi^2, eight of 55 at 170*pi^2 -- all of
+them at 1e-14, and every one previously scored as a pass or a failure on its merits.
+
+This is not bookkeeping. Under the attribution rule the 50*pi^2 1e-14 band-0.3 cell reads 2 of 3
+where it used to read 3, and taking that as a regression would have been taking a basis limit for
+a solver defect.
 
 No wrong cell -- against 33 wrong (32 flagged, 1 silent) under the previous defaults, which failed
 wherever a cluster's width fell between about one and eight merge licences. That band belonged to
@@ -53,6 +66,7 @@ import pytest
 import bracket_score as bs
 import hard_roster as hr
 import rect_suite as rs
+from basis_sufficiency import sufficient
 from chladni.mps.multiplicity import multiplicity
 from chladni.mps.search import solve
 
@@ -99,6 +113,17 @@ def _cells(precs, bands, marks):
 
 
 def _assert_total(N, m, prec, band):
+    # THE PRECONDITION, which this file scored past for its whole life. `TODO.md` section 8: a
+    # case that violates a precondition measures the CASE, not the method -- and three tiers
+    # learned that separately before this one did. At `prec = 1e-14`, bands 0.3 and 0.5 dial the
+    # cluster tighter than the basis can resolve: at 50*pi^2, band 0.3, the members sit 2.99e-15
+    # apart against a multiplicity resolution of 7.11e-15, so no counting rule can be right here
+    # and whatever this cell reported was luck. Measured unexercisable: 2 cells of 55 at 50*pi^2
+    # and at 65*pi^2, 8 of 55 at 170*pi^2, all of them at 1e-14.
+    suff = sufficient(cluster(N, m, band, prec), prec)
+    if not suff.multiplicity:
+        pytest.skip(f"UNEXERCISABLE: the basis cannot resolve this cluster's multiplicity at "
+                    f"prec={prec:.0e} -- {'; '.join(suff.reasons)}")
     case, res = _solve(N, m, band, prec)
     if res.declined:
         assert res.diagnostics.decline_reason.strip(), "a decline must carry its reason"
