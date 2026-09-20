@@ -886,20 +886,40 @@ Measured over five split-degeneracy grids (`50`, `65`, `125`, `145`, `170` x `pi
 precisions and eleven bands, unexercisable cells excluded: **216 right, 0 wrong, 35 declined.**
 The roster (disk, eq_tri, L-shape) is certified at every precision on the ladder.
 
-> **THAT IS A macOS / Accelerate MEASUREMENT, and it does not hold on Linux.** CI runs the same
-> grids on `ubuntu-latest` against `scipy-openblas32` (`pyproject.toml`) and
-> `test_the_cluster_total_GRID[N65-1e-06-b2.6]` declares **3 of 4**, silently. Every other cell
-> agrees. A different LAPACK moves the GSVD at the 1e-15 level, which is enough to change what a
-> tight cluster's brackets and refinements do -- and this grid is built to sit exactly at that
-> edge.
+> **THAT IS A macOS / Accelerate MEASUREMENT, taken at NARROW SCOPE, and it does not hold on
+> Linux.** CI runs the same grids on `ubuntu-latest` against `scipy-openblas32`
+> (`pyproject.toml`), and in the FULL SUITE `test_the_cluster_total_GRID[N65-1e-06-b2.6]` declares
+> **3 of 4**, silently. Every other cell agrees.
 >
 > So the honest form of the claim is **0 wrong on macOS/Accelerate, 1 wrong of 251 on
 > Linux/OpenBLAS**, and the guarantee above should be read as conditional on the arithmetic until
-> that cell is understood. It is not known whether the two platforms disagree anywhere else that
-> is not measured, and `TODO.md` section 4 already tracks a separate Accelerate fault, so neither
+> that cell is understood. `TODO.md` section 4 tracks a separate Accelerate fault, so neither
 > platform is the trusted reference.
 >
-> The decline-rate instrument caught it rather than the grid alone: on Linux
+> **The MECHANISM is unknown, and the obvious candidates are refuted.** An earlier version of this
+> note said "a different LAPACK moves the GSVD at the 1e-15 level, and this grid is built to sit
+> exactly at that edge". That is wrong on both halves and is recorded here so it is not proposed
+> again. This cell's members sit 2.60 / 5.72 / 2.60 licences apart with barriers four orders above
+> the wells -- it is not at any edge -- and `notes/session_2026-09-19.md` measures four candidate
+> mechanisms to negative: pinning `gsvd4py` onto OpenBLAS moves `sigma_1` 2% inside the 1e-15
+> floor and changes no total; jittering the tension values anywhere from 1e-15 to 1e-04 leaves the
+> total at 4; moving the threshold rank across 83 to 125 gives 4 or a decline but never 3; and the
+> shared pencil's cache residency is bit-inert.
+>
+> What the failure actually needs is the OpenBLAS arithmetic **and full-suite scope together**. On
+> Linux the cell is wrong 4 times of 4 in the full suite and 0 times of 35 at every narrower scope
+> measured, including 28 repetitions of its own module; run alone it is indistinguishable from
+> macOS, down to the retained rank at all 60 sampled parameters and the search's own evaluation
+> split. And macOS reads 4 of 4 at full-suite scope too, so the scope dependence is Linux's alone.
+> `notes/session_2026-09-19.md` has the table and names the next experiment.
+>
+> **A second platform difference bears on the denominator of the count above.** macOS calls 10
+> cells unexercisable where Linux calls 7, because two of the `basis_sufficiency` decisions sit on
+> the precondition boundary -- separation 4.78e-15 against a resolution of 5.09e-15, a ratio of
+> 0.94. The two platforms therefore score different case sets, and "216 right" is not over the
+> same 251 cells on both.
+>
+> The decline-rate instrument caught the wrong total rather than the grid alone: on Linux
 > `test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate` fails with "1 cell(s) neither right nor
 > declined", which is what it was written to say.
 

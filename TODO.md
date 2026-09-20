@@ -29,32 +29,67 @@ with multiplicities come out. `tests/candidates_v1.py` holds the two adapters th
 What is left here is not construction, and since 2026-09-18 it is not Phase D either. The
 `modes(x)` widening landed, the interior Gram angle is built behind `phase_d=` and measured, and
 the multiplicity contract is stated in `docs/design/search.md`'s As-built section. **There are no
-known wrong totals and no known lost eigenvalues on any measured grid, ON macOS/ACCELERATE** --
-Linux/OpenBLAS has one, see the item below. What is left is the
+known wrong totals and no known lost eigenvalues on any measured grid, ON macOS/ACCELERATE AT ANY
+SCOPE** -- including the full suite, measured 2026-09-19. Linux/OpenBLAS has one, and only in the
+full suite; the two platforms also score different case sets. See the two items below. What is
+left is the
 constants still inherited from one rectangle family, the rank policy that belongs to the planner,
 and deciding whether Phase D's angle earns its keep.
 
-* **[blocking]** **CI is red on Linux, and one failure is a PLATFORM-DEPENDENT WRONG TOTAL.**
-  Everything in this project is measured on macOS/Accelerate; CI runs `ubuntu-latest` against
-  `scipy-openblas32` (`pyproject.toml`), and there `test_the_cluster_total_GRID[N65-1e-06-b2.6]`
-  declares **3 of 4, silently**. Every other cell of all five grids agrees. A different LAPACK
-  moves the GSVD at the 1e-15 level, and the split-degeneracy grids are built to sit exactly at
-  that edge -- so this is the honest reading of "0 wrong", not an infrastructure annoyance.
-  Blocking because the contract's central claim is currently stated more broadly than the
-  evidence supports, and because neither platform is the trusted reference: `TODO.md` section 4
-  already tracks an Accelerate fault that corrupts the heap.
+* **[blocking]** **CI is red on Linux, and one failure is a WRONG TOTAL that needs both the
+  OpenBLAS arithmetic and FULL-SUITE SCOPE.** Everything in this project is measured on
+  macOS/Accelerate; CI runs `ubuntu-latest` against `scipy-openblas32` (`pyproject.toml`), and
+  there `test_the_cluster_total_GRID[N65-1e-06-b2.6]` declares **3 of 4, silently**. Every other
+  cell of all five grids agrees. Blocking because the contract's central claim is stated more
+  broadly than the evidence supports, and because neither platform is the trusted reference:
+  section 4 already tracks an Accelerate fault that corrupts the heap.
 
   Caught by `test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate`, which fails with "1 cell(s)
   neither right nor declined" -- what it was written to say.
 
-  The rest of the CI board, for scale: 8 failures now against **16 on the merge-base**, so this
-  session halved it. Five are pre-existing and all exercise `_collapse_ambiguous`, the cross-check
-  now off by default (`test_solve.py` x4, `test_floor.py` x1) -- they may be measuring a
-  configuration nothing ships. The third new one is
-  `test_hard_roster.py::test_the_l_shape_is_covered_and_AUDITED[0.0001]`, where CI's
-  `-W error::UserWarning` escalates the FourierBessel accuracy shortfall this file already tracks
-  in section 4; it needs the per-test `filterwarnings` mark the workflow's own comment describes,
-  or that question resolved.
+  **The mechanism is unknown and four candidates are measured to negative**
+  (`notes/session_2026-09-19.md`, and `docs/design/search.md`'s As-built note now carries the
+  correction). Do not re-propose them: pinning `gsvd4py` onto OpenBLAS, jittering the tension
+  values across eleven orders, moving the threshold rank across 83 to 125, and the shared pencil's
+  cache residency. **The earlier reading in this file -- "a different LAPACK moves the GSVD at the
+  1e-15 level, and the split-degeneracy grids sit exactly at that edge" -- is wrong on both
+  halves**: this cell's members sit 2.60 / 5.72 / 2.60 licences apart with barriers four orders
+  above the wells.
+
+  What it does need is BOTH platform and scope. On Linux: wrong 4 of 4 in the full suite, 0 of 35
+  at every narrower scope, including 28 repetitions of its own module. Run alone it is
+  indistinguishable from macOS, down to the retained rank at all 60 sampled parameters. And macOS
+  reads 4 of 4 at full-suite scope, so the scope dependence is Linux's alone. Threading is not it
+  (`OPENBLAS_NUM_THREADS=1` and the default agree over 12 repetitions each).
+
+  **The next experiment is named and costed** in `notes/session_2026-09-19.md`: pytest imports
+  every collected module before running any test, so `pytest tests -m '' -k "cluster_totals"`
+  separates import-time state from executed state in about five minutes. That is the one channel by
+  which files that RUN later can reach a cell scored at 21%.
+
+  The rest of the CI board, for scale: 8 failures. Five are pre-existing and all exercise
+  `_collapse_ambiguous`, the cross-check now off by default (`test_solve.py` x4, `test_floor.py`
+  x1) -- they may be measuring a configuration nothing ships, and they pass on macOS. Seven of the
+  eight are Linux-only; the eighth was not, and is fixed.
+
+* **[next]** **`basis_sufficiency` decides the DENOMINATOR at a boundary it clears by 6%, and the
+  two platforms therefore score different case sets.** macOS calls 10 cells unexercisable where
+  Linux calls 7. Two of the four `test_cluster_totals` skips sit on the precondition boundary:
+  separation 4.78e-15 against a multiplicity resolution of 5.09e-15, a ratio of **0.94**, and
+  2.84e-15 against 4.67e-15. On Linux those are scored instead of skipped.
+
+  So "216 right, 0 wrong, 35 declined" is not over the same 251 cells on both platforms, and any
+  cross-platform tally is a comparison of different denominators. Measured 2026-09-19,
+  `notes/session_2026-09-19.md`. The precondition is right in kind -- section 8's rule -- and the
+  question is whether a decision this close to its own threshold should be reported rather than
+  silently taken.
+
+* **[later]** **Pinning OpenBLAS to one thread is 2.5x to 3.2x FASTER on this suite**, measured on
+  the same `ubuntu-latest` image at module scope: 221 s and 284 s at `OPENBLAS_NUM_THREADS=1`
+  against 712 s at the runner's default two cores. Thousands of factorizations of a 190-column
+  pencil, where per-call thread spawn and synchronization dominate what they parallelize. If it
+  holds at full-suite scope it takes CI's legs from ~65 minutes toward ~20. NOT measured at
+  full-suite scope, and not a claim about Accelerate versus OpenBLAS. `notes/session_2026-09-19.md`.
 
 * **[later]** The `125*pi^2` rejection in `notes/landscape_findings.md` section 37 is still a
   bracket that held an eigenvalue and was refused -- it costs nothing today, the eigenvalue being
