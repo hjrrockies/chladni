@@ -122,8 +122,10 @@ def test_a_request_the_basis_cannot_serve_is_REPORTED_not_met_silently():
         0.45      28           3.7e-10            5       0
 
     So starving a basis does not mainly produce reported shortfalls: it LOSES the levels it
-    resolves worst, silently. That is a separate defect, pinned by
-    `test_a_starved_basis_does_not_DROP_levels_silently` below.
+    resolves worst -- silently until 2026-09-20, when `_deep_rejections` made the refusal that
+    drops them reach `n_uncertain`. Pinned by
+    `test_a_starved_basis_does_not_DROP_levels_silently` below, whose `pad=0.45` case was a strict
+    xfail for exactly this and is now a passing one.
 
     It used the reference-grade pencil and the claim that it "floors at about 2e-10". That was
     the refiner stopping early; with it fixed the same pencil meets `1e-12`, and this test has
@@ -193,10 +195,19 @@ def test_solve_interval_returns_a_Spectrum_and_solve_returns_an_array():
 
 @pytest.mark.parametrize("pad", [
     0.35,     # under the promoted defaults the uncertified count makes solve_interval refuse
-    pytest.param(0.45, marks=pytest.mark.xfail(strict=True, reason=(
-        "measured 2026-09-14: on a starved disk basis solve_interval returns 5 of 6 levels at "
-        "pad=0.45 with no decline, no unmet level for the lost one and no warning. Clause (1)'s "
-        "completeness diagnostics do not fire. TODO.md records it."))),
+    # 0.45 WAS a strict xfail: "measured 2026-09-14: on a starved disk basis solve_interval
+    # returns 5 of 6 levels at pad=0.45 with no decline, no unmet level for the lost one and no
+    # warning. Clause (1)'s completeness diagnostics do not fire."
+    #
+    # It fires now, and not by being aimed at this case. `_deep_rejections` (2026-09-20) was built
+    # for a wrong total on a rectangle cluster under Linux/OpenBLAS, and it catches this one on the
+    # way past: 6 brackets, 5 levels, the refusal reported at `lam = 14.68197` with
+    # `sigma_1 = 4.94e-13` against a worst located level no shallower, reason `not_a_minimum`. So
+    # `solve_interval` raises, which this test accepts as "refusing loudly".
+    #
+    # Different domain, different regime and a different refusal reason than the case the rule was
+    # built from, which is the evidence that it keys on something real rather than on that cell.
+    0.45,
 ])
 def test_a_starved_basis_does_not_DROP_levels_silently(pad):
     """`search.md` section 2.4 clause (3): the completeness diagnostics fire whenever clause (1)

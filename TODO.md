@@ -91,10 +91,22 @@ and deciding whether Phase D's angle earns its keep.
   holds at full-suite scope it takes CI's legs from ~65 minutes toward ~20. NOT measured at
   full-suite scope, and not a claim about Accelerate versus OpenBLAS. `notes/session_2026-09-19.md`.
 
-* **[later]** The `125*pi^2` rejection in `notes/landscape_findings.md` section 37 is still a
-  bracket that held an eigenvalue and was refused -- it costs nothing today, the eigenvalue being
-  accounted for elsewhere, but it is the same residual/refiner shape and nothing guarantees it
-  stays harmless. The standoff at 0.3 closed its sibling at `170*pi^2`; this one it did not.
+* **[next]** **The refuser's own question: WHY does a bracket that held an eigenvalue end in
+  `no_parabola`?** It did not stay harmless. `notes/landscape_findings.md` section 37 filed the
+  `125*pi^2` rejection as costing nothing "but it is the same residual/refiner shape and nothing
+  guarantees it stays harmless" -- and on 2026-09-20 that shape produced the one wrong total CI
+  ever had. Since 2026-09-20 such a refusal is LOUD (`_deep_rejections`, `docs/design/search.md`'s
+  As-built note), which converts a silent wrong answer into a raised one. That is the honest
+  outcome, not the fix.
+
+  The fix is upstream, and the mechanism is measured: `refine.py:457` refuses on `no_parabola`
+  UNCONDITIONALLY, alone among the endings, and this well bottoms out AT the arithmetic floor --
+  `sigma_1 = 2.03e-15` at truth against `rtol = 1.49e-15`. There is no parabola to close on
+  because the last bits are noise, which is why a threaded BLAS flips it and one thread never
+  does. `notes/session_2026-09-19.md`, the 09-20 section. The question for the refiner is what it
+  should do when the fit cannot close because the objective has reached its floor -- accepting the
+  deepest point in hand is one answer, and the walk already has machinery for the neighbouring
+  case.
 * **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
   slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
   planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner
@@ -256,11 +268,23 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
-* **[later]** A starved basis DROPS the levels it resolves worst, silently, and **no diagnostic
-  added to `solve` can catch it** -- `notes/landscape_findings.md` section 38. RECLASSIFIED to
-  basis planning (section 3) rather than an honesty gap in the search. On the disk over `[8, 60]`
-  at `prec = 1e-12`, plane waves at `pad = 0.45` return 5 of 6 levels with no decline, nothing in
-  `unmet` and no warning; pinned as a strict xfail in `tests/test_solve_interval.py`.
+* **[later]** A starved basis DROPS the levels it resolves worst, and for the levels that are
+  never BRACKETED no diagnostic added to `solve` can catch it -- `notes/landscape_findings.md`
+  section 38. RECLASSIFIED to basis planning (section 3) rather than an honesty gap in the search.
+
+  **The claim was stated too broadly, and one case of it is now caught.** It read "no diagnostic
+  added to `solve` can catch it", and the `pad = 0.45` case it cited is catchable, because stage 1
+  DID bracket the level and the refiner then refused it: `_deep_rejections` (2026-09-20) reports
+  the refusal at `lam = 14.68197`, `sigma_1 = 4.94e-13`, reason `not_a_minimum`, and
+  `solve_interval` raises. Its strict xfail in `tests/test_solve_interval.py` is retired. The rule
+  was built for a wrong total on a rectangle cluster and catches this on the way past, which is
+  the evidence it keys on something real.
+
+  What survives is the narrower and still-true version: **a level the search never brackets is
+  undetectable from inside `solve`**, because there is nothing to compare against -- "no
+  eigenvalue here" and "one my basis cannot resolve" are the same observation. The distinction
+  worth keeping is between a level LOST SILENTLY (no bracket, still undetectable) and one
+  REFUSED (bracketed and thrown away, now loud).
 
   Both candidate alarms are measured to fail, and differently. The **Weyl deficit** is
   INSENSITIVE, not inverted: 0.91 with nothing missing, 0.91 with two missing, 0.87 with six,

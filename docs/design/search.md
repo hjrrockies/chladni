@@ -882,6 +882,17 @@ can detect between two readings of a multiplicity reaches `SolveDiagnostics.n_un
 indistinguishable from "there are none", and `Eigensolver.solve` answers a short return by
 widening the window.
 
+**A REFUSED BRACKET counts as such a disagreement, since 2026-09-20.** Stage 1 keeping a bracket
+and the refiner throwing it away are two readings of whether an eigenvalue is there, and the one
+wrong cell CI ever had was exactly that: `n_brackets=4, n_rejected=1`, three levels reported for
+four eigenvalues, certified. `search._deep_rejections` decides which refusals are suspicious by
+DEPTH -- the `sigma_1` the refiner reached against the worst ACCEPTED level's -- because an empty
+bracket is refused on the barrier between wells, orders above any root, while a bracket that
+dipped as far as a located eigenvalue and was still refused may have held one. No new constant:
+the accepted levels supply the scale. Measured over five grids and 251 exercisable cells, it is
+quiet on 33 of 35 rejections, flags the one wrong cell, and costs ONE false alarm, at
+`prec = 1e-14` where every `sigma` sits at the floor and depth stops discriminating.
+
 Measured over five split-degeneracy grids (`50`, `65`, `125`, `145`, `170` x `pi^2`) at five
 precisions and eleven bands, unexercisable cells excluded: **216 right, 0 wrong, 35 declined.**
 The roster (disk, eq_tri, L-shape) is certified at every precision on the ladder.

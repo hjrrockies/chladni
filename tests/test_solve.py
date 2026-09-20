@@ -339,3 +339,88 @@ def test_a_level_with_NO_attained_bound_has_NOT_met_the_request():
     assert not Level(lam=5.0, mult=1).met(1e-8), "NaN is not a bound"
     assert not Level(lam=5.0, mult=1, delta_res=5.0e-7).met(1e-8)
     assert Level(lam=5.0, mult=1, delta_res=5.0e-9).met(1e-8)
+
+
+# --- a refused bracket that held an eigenvalue ------------------------------------------------
+#
+# The one wrong cell CI ever had was this: `test_the_cluster_total_GRID[N65-1e-06-b2.6]` on
+# Linux/OpenBLAS with `n_brackets=4, n_rejected=1`, three levels reported for four eigenvalues,
+# `n_merged=0`, `n_ambiguous=0`, `n_uncertain=0` -- a total short by a bracket the refiner refused,
+# and CERTIFIED. `notes/session_2026-09-19.md` has the measurement; these are the tests for the
+# rule that makes it loud.
+
+def test_a_rejection_that_dipped_as_DEEP_as_a_located_root_is_flagged():
+    """The discriminator, and it costs nothing: an empty bracket is refused on the barrier
+    between wells, orders above any root, while this one reached a located level's own depth."""
+    from chladni.mps.refine import RefineResult
+    from chladni.mps.search import Level, _deep_rejections
+
+    levels = [Level(lam=10.0, mult=1, sigma=4.1e-07), Level(lam=20.0, mult=1, sigma=2.6e-11)]
+    deep = RefineResult(lam=15.0, sigma=9.0e-11, accepted=False, reason="no_parabola",
+                        evaluations=6)
+    (got,) = _deep_rejections([deep], levels)
+    assert got == (15.0, 9.0e-11, "no_parabola")
+
+
+def test_a_rejection_on_the_BARRIER_stays_quiet():
+    """The false-alarm side. 1.2e-05 is where this cell's barrier between wells sits, four
+    orders above the deepest located root, and refusing there is the refiner working correctly."""
+    from chladni.mps.refine import RefineResult
+    from chladni.mps.search import Level, _deep_rejections
+
+    levels = [Level(lam=10.0, mult=1, sigma=4.1e-07), Level(lam=20.0, mult=1, sigma=2.6e-11)]
+    shallow = RefineResult(lam=15.0, sigma=1.2e-05, accepted=False, reason="not_a_minimum",
+                           evaluations=3)
+    assert _deep_rejections([shallow], levels) == ()
+
+
+def test_with_NOTHING_located_every_refusal_is_flagged():
+    """A solve that located no eigenvalue and refused a bracket has not earned a certified count
+    either, and `max(..., default=inf)` is what makes that fall out rather than being special
+    cased."""
+    from chladni.mps.refine import RefineResult
+    from chladni.mps.search import _deep_rejections
+
+    r = RefineResult(lam=15.0, sigma=1.2e-05, accepted=False, reason="flat", evaluations=3)
+    assert len(_deep_rejections([r], [])) == 1
+
+
+def test_a_deep_rejection_reaches_n_uncertain_and_UNCERTIFIES_the_solve(monkeypatch):
+    """End to end, and the assertion the Linux cell would have failed on. The refiner is made to
+    refuse the first bracket at the depth it actually reached, which is what a rounding difference
+    did on that runner; everything else is the shipped pipeline."""
+    import dataclasses
+    import chladni.mps.search as S
+
+    lams = [2 * np.pi**2, 5 * np.pi**2, 8 * np.pi**2]
+    real, seen = S.refine, []
+
+    def refuse_the_first(obj, lo, hi, **kw):
+        r = real(obj, lo, hi, **kw)
+        seen.append(r)
+        if len(seen) == 1:
+            return dataclasses.replace(r, accepted=False, reason="no_parabola")
+        return r
+
+    monkeypatch.setattr(S, "refine", refuse_the_first)
+    res = S.solve(_cone(lams), prec=1e-8)
+    d = res.diagnostics
+
+    assert d.n_brackets == 3 and d.n_rejected == 1, (d.n_brackets, d.n_rejected)
+    assert len(res.levels) == 2, "the total IS short -- that is the premise, not the defect"
+    assert len(d.rejected_deep) == 1, d.rejected_deep
+    assert d.n_uncertain == 1, "and it says so"
+    assert not d.certified_counts
+    (_, _, _, why) = d.uncertain[-1]
+    assert "REFUSED" in why and "no_parabola" in why, why
+
+
+def test_the_shipped_pipeline_flags_NOTHING_on_a_clean_cone():
+    """The guard against the rule being loud everywhere: on a landscape with three separated
+    roots and nothing refused, it must be inert."""
+    from chladni.mps.search import solve as _solve
+
+    lams = [2 * np.pi**2, 5 * np.pi**2, 8 * np.pi**2]
+    d = _solve(_cone(lams), prec=1e-8).diagnostics
+    assert d.n_rejected == 0 and d.rejected_deep == ()
+    assert d.certified_counts

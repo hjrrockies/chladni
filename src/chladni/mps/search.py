@@ -225,6 +225,13 @@ class SolveDiagnostics:
     search: object = None            # the stage-1 SearchDiagnostics
     n_brackets: int = 0
     n_rejected: int = 0              # brackets the refiner threw away as empty
+    #: The rejections that were NOT plausibly empty: `(lam, sigma, reason)` per bracket the
+    #: refiner refused while reaching a `sigma_1` no larger than the deepest ACCEPTED level's.
+    #: An empty region's `sigma` sits on the barrier between wells, orders above any root; a
+    #: bracket that dipped as far as a located eigenvalue and was still refused is a candidate
+    #: LOST EIGENVALUE, and it is what `test_the_cluster_total_GRID[N65-1e-06-b2.6]` was on
+    #: Linux -- `n_brackets=4, n_rejected=1`, three levels reported, and nothing said so.
+    rejected_deep: tuple = ()
     n_merged: int = 0                # located roots folded into a neighbour within `prec`
     n_ambiguous: int = 0             # levels collapsed because their grouping was arbitrary
     n_gram_pairs: int = 0            # root pairs Phase D's angle was asked about
@@ -261,7 +268,12 @@ class SolveDiagnostics:
 
     @property
     def certified_counts(self):
-        """Is every level's MULTIPLICITY certified? The other half of the honesty clause."""
+        """Is every level's MULTIPLICITY certified? The other half of the honesty clause.
+
+        A DEEP REJECTION also answers no, through `n_uncertain`. The clause is "nothing is
+        silently wrong about a count that is certified", and a count short by a bracket the
+        refiner refused is wrong in exactly that way -- it was the one wrong cell CI had.
+        """
         return self.n_uncertain == 0
 
     @property
@@ -739,6 +751,31 @@ def _samples(obj):
     return (np.array([obj.in_lam(x) for x in xs]) if xs.size else xs), vs
 
 
+def _deep_rejections(refused, levels):
+    """The refused brackets that were NOT plausibly empty, as `(lam, sigma, reason)`.
+
+    **A rejection is suspicious when the `sigma_1` the refiner reached is no larger than the
+    WORST accepted level's.** `search.md`'s honesty clause is that nothing is silently wrong
+    about a count that is certified, and a total short by a refused bracket is wrong in exactly
+    that way -- so the question is only whether the refusal plausibly dropped an empty region or
+    an eigenvalue, and the refiner already measured what decides it.
+
+    The comparison needs no new constant, which is the point. A bracket holding no root is
+    refused somewhere on the barrier between two wells, and on the cell this was built for that
+    barrier is 1.2e-05 against located roots at 2.6e-11 to 4.1e-07 -- four orders of daylight. The
+    accepted levels supply the scale, so the rule travels to a domain whose floor sits elsewhere
+    instead of encoding this pencil's.
+
+    With NOTHING accepted, every refusal is suspicious: a solve that located no eigenvalue and
+    refused a bracket has not earned a certified count either.
+    """
+    if not refused:
+        return ()
+    worst = max((x.sigma for x in levels if np.isfinite(x.sigma)), default=float("inf"))
+    return tuple((float(r.lam), float(r.sigma), r.reason) for r in refused
+                 if not (np.isfinite(r.sigma) and r.sigma > worst))
+
+
 def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
           reach_slope="cache", phase_d="distance"):
     """Locate every eigenvalue in the objective's window, with its multiplicity.
@@ -808,7 +845,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     # Stage 2. `bracket_interval` returns brackets in the objective's OWN variable, so this
     # converts once, here, to the `lam` the refiner works in.
     mark = obj.n_evals
-    located, rejected = [], 0
+    located, refused = [], []
     for b in res.brackets:
         lo, hi = obj.in_lam_bracket(b.lo, b.hi)
         hint = obj.in_lam(b.k_hint) if np.isfinite(b.k_hint) else None
@@ -817,11 +854,19 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
         if r.accepted:
             located.append((r, (lo, hi)))
         else:
-            # A bracket the search kept on purpose and the refiner threw away. Not a failure of
-            # either: dropping a doubtful region costs an eigenvalue and keeping one costs about
-            # three evaluations, so the search is right to hand it on and the refiner is right
-            # to refuse it.
-            rejected += 1
+            # A bracket the search kept on purpose and the refiner threw away. USUALLY not a
+            # failure of either: dropping a doubtful region costs an eigenvalue and keeping one
+            # costs about three evaluations, so the search is right to hand it on and the refiner
+            # is right to refuse it.
+            #
+            # But "usually" was doing unpaid work here. The refiner's `sigma` says which case this
+            # is, at no cost, and `_deep_rejections` below reads it: an empty region is refused at
+            # a `sigma` sitting on the barrier between wells, ORDERS above any root, while a
+            # bracket that dipped as far as a located eigenvalue and was still refused is a
+            # candidate lost eigenvalue. Silence on the second is what made the one wrong cell on
+            # Linux/OpenBLAS silent.
+            refused.append(r)
+    rejected = len(refused)
     refine_evals = obj.n_evals - mark
 
     # Phase D's DISTANCE PREFILTER, before stage 3 rather than after it.
@@ -1107,6 +1152,12 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     # which are evaluations by design and are reported as themselves.
     mult_evals = (obj.n_evals - mark) - probe_evals - side_evals - mode_evals
 
+    # A refused bracket that dipped as deep as a located root is a candidate LOST eigenvalue, and
+    # it reaches `n_uncertain` so that `certified_counts` is False and `solve_interval` raises.
+    # LAST, so the comparison sees the levels a caller actually receives rather than an
+    # intermediate set that Phase D or the cross-check may still have folded.
+    deep = _deep_rejections(refused, levels)
+
     unmet = tuple(x.lam for x in levels if not x.met(prec))
     attained = max((x.attained_prec for x in levels
                     if np.isfinite(x.attained_prec)), default=prec)
@@ -1117,6 +1168,12 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
         multiplicity_evals=mult_evals, probe_evals=probe_evals, side_evals=side_evals,
         evaluations=obj.n_evals, n_ambiguous=n_amb, n_gram_pairs=n_gram_pairs,
         n_gram_collapsed=n_gram_coll, n_gram_summed=n_gram_sum,
-        n_uncertain=len(uncertain),
-        uncertain=tuple((x.lam, x.mult, x.count_alt, x.uncertain_reason) for x in uncertain),
+        rejected_deep=deep,
+        n_uncertain=len(uncertain) + len(deep),
+        uncertain=(tuple((x.lam, x.mult, x.count_alt, x.uncertain_reason) for x in uncertain)
+                   + tuple((lam, 0, None,
+                            f"the refiner REFUSED a bracket that reached sigma_1 = {sig:.3e}, no "
+                            f"larger than the worst located level's, so the total may be short "
+                            f"by this eigenvalue (refusal reason: {why})")
+                           for lam, sig, why in deep)),
         prec_requested=prec, attained_prec=float(attained), unmet=unmet))
