@@ -343,11 +343,15 @@ def test_a_level_with_NO_attained_bound_has_NOT_met_the_request():
 
 # --- a refused bracket that held an eigenvalue ------------------------------------------------
 #
-# The one wrong cell CI ever had was this: `test_the_cluster_total_GRID[N65-1e-06-b2.6]` on
+# Prompted by the one wrong cell CI ever had: `test_the_cluster_total_GRID[N65-1e-06-b2.6]` on
 # Linux/OpenBLAS with `n_brackets=4, n_rejected=1`, three levels reported for four eigenvalues,
-# `n_merged=0`, `n_ambiguous=0`, `n_uncertain=0` -- a total short by a bracket the refiner refused,
-# and CERTIFIED. `notes/session_2026-09-19.md` has the measurement; these are the tests for the
-# rule that makes it loud.
+# `n_uncertain=0` -- a total short by a bracket the refiner refused, and CERTIFIED.
+#
+# **The rule these test does NOT catch that cell**, measured on a Linux runner 2026-09-21: the
+# refusal there was at a rank-flipped flank point, `sigma = 5.18e-07`, SHALLOWER than the worst
+# located level, `4.08e-07`, so `rejected_deep` is `()`. It catches refusals that are deep -- the
+# starved-disk drop in `test_solve_interval.py` is the real one on record -- and these tests pin
+# that behaviour. `notes/session_2026-09-19.md`, the 09-21 section, has the trace.
 
 def test_a_rejection_that_dipped_as_DEEP_as_a_located_root_is_flagged():
     """The discriminator, and it costs nothing: an empty bracket is refused on the barrier
@@ -386,9 +390,12 @@ def test_with_NOTHING_located_every_refusal_is_flagged():
 
 
 def test_a_deep_rejection_reaches_n_uncertain_and_UNCERTIFIES_the_solve(monkeypatch):
-    """End to end, and the assertion the Linux cell would have failed on. The refiner is made to
-    refuse the first bracket at the depth it actually reached, which is what a rounding difference
-    did on that runner; everything else is the shipped pipeline."""
+    """End to end. The refiner is made to refuse the first bracket AT THE DEPTH IT REACHED, and
+    everything else is the shipped pipeline.
+
+    NOT a reproduction of the Linux cell, which this was once described as. There the refusal
+    came at a rank-flipped bracket END, shallower than every located level, and the rule stays
+    silent on it. This pins the deep case, which is the case the rule is for."""
     import dataclasses
     import chladni.mps.search as S
 

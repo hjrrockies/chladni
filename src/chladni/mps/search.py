@@ -229,8 +229,13 @@ class SolveDiagnostics:
     #: refiner refused while reaching a `sigma_1` no larger than the deepest ACCEPTED level's.
     #: An empty region's `sigma` sits on the barrier between wells, orders above any root; a
     #: bracket that dipped as far as a located eigenvalue and was still refused is a candidate
-    #: LOST EIGENVALUE, and it is what `test_the_cluster_total_GRID[N65-1e-06-b2.6]` was on
-    #: Linux -- `n_brackets=4, n_rejected=1`, three levels reported, and nothing said so.
+    #: LOST EIGENVALUE.
+    #:
+    #: **It does NOT catch the Linux wrong total it was prompted by.** That refusal was a rank
+    #: flip making a bracket END look deep, and the refiner refused at that flipped flank point,
+    #: `sigma = 5.18e-07` -- shallower than the worst accepted level, `4.08e-07` -- so this reads
+    #: `()` there. What it does catch is the starved-disk drop in
+    #: `test_a_starved_basis_does_not_DROP_levels_silently[0.45]`. `notes/session_2026-09-19.md`.
     rejected_deep: tuple = ()
     n_merged: int = 0                # located roots folded into a neighbour within `prec`
     n_ambiguous: int = 0             # levels collapsed because their grouping was arbitrary
@@ -272,7 +277,9 @@ class SolveDiagnostics:
 
         A DEEP REJECTION also answers no, through `n_uncertain`. The clause is "nothing is
         silently wrong about a count that is certified", and a count short by a bracket the
-        refiner refused is wrong in exactly that way -- it was the one wrong cell CI had.
+        refiner refused is wrong in exactly that way. Not every such refusal is deep, though:
+        the Linux wrong total on the N65 cluster was refused at a rank-flipped flank point
+        shallower than every located level, and this still answers True there.
         """
         return self.n_uncertain == 0
 
@@ -863,8 +870,13 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
             # is, at no cost, and `_deep_rejections` below reads it: an empty region is refused at
             # a `sigma` sitting on the barrier between wells, ORDERS above any root, while a
             # bracket that dipped as far as a located eigenvalue and was still refused is a
-            # candidate lost eigenvalue. Silence on the second is what made the one wrong cell on
-            # Linux/OpenBLAS silent.
+            # candidate lost eigenvalue.
+            #
+            # A refusal can also be SHALLOW and still lose an eigenvalue, and this does not see
+            # it: the Linux wrong total on the N65 cluster was a rank flip making the bracket's
+            # upper END look deepest, so the refiner walked away from the root and refused at the
+            # flipped end, above every located level. The depth test cannot tell that from an
+            # empty bracket; only an objective continuous in `lam` removes it.
             refused.append(r)
     rejected = len(refused)
     refine_evals = obj.n_evals - mark

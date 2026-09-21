@@ -36,8 +36,8 @@ left is the
 constants still inherited from one rectangle family, the rank policy that belongs to the planner,
 and deciding whether Phase D's angle earns its keep.
 
-* **[blocking]** **CI is red on Linux, and one failure is a WRONG TOTAL that needs both the
-  OpenBLAS arithmetic and FULL-SUITE SCOPE.** Everything in this project is measured on
+* **[blocking]** **CI is red on Linux, and one failure is a WRONG TOTAL from a threshold-rank
+  flip.** Everything in this project is measured on
   macOS/Accelerate; CI runs `ubuntu-latest` against `scipy-openblas32` (`pyproject.toml`), and
   there `test_the_cluster_total_GRID[N65-1e-06-b2.6]` declares **3 of 4, silently**. Every other
   cell of all five grids agrees. Blocking because the contract's central claim is stated more
@@ -47,25 +47,23 @@ and deciding whether Phase D's angle earns its keep.
   Caught by `test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate`, which fails with "1 cell(s)
   neither right nor declined" -- what it was written to say.
 
-  **The mechanism is unknown and four candidates are measured to negative**
-  (`notes/session_2026-09-19.md`, and `docs/design/search.md`'s As-built note now carries the
-  correction). Do not re-propose them: pinning `gsvd4py` onto OpenBLAS, jittering the tension
-  values across eleven orders, moving the threshold rank across 83 to 125, and the shared pencil's
-  cache residency. **The earlier reading in this file -- "a different LAPACK moves the GSVD at the
-  1e-15 level, and the split-degeneracy grids sit exactly at that edge" -- is wrong on both
-  halves**: this cell's members sit 2.60 / 5.72 / 2.60 licences apart with barriers four orders
-  above the wells.
+  **The mechanism is OBSERVED: a rank flip at one bracket end** -- the `[next]` item below has the
+  chain, and `notes/session_2026-09-19.md` the trace. Three things this item said earlier are
+  superseded:
 
-  What it does need is BOTH platform and scope. On Linux: wrong 4 of 4 in the full suite, 0 of 35
-  at every narrower scope, including 28 repetitions of its own module. Run alone it is
-  indistinguishable from macOS, down to the retained rank at all 60 sampled parameters. And macOS
-  reads 4 of 4 at full-suite scope, so the scope dependence is Linux's alone. Threading is not it
-  (`OPENBLAS_NUM_THREADS=1` and the default agree over 12 repetitions each).
-
-  **The next experiment is named and costed** in `notes/session_2026-09-19.md`: pytest imports
-  every collected module before running any test, so `pytest tests -m '' -k "cluster_totals"`
-  separates import-time state from executed state in about five minutes. That is the one channel by
-  which files that RUN later can reach a cell scored at 21%.
+  * "the mechanism is unknown" -- it was traced on a Linux runner 2026-09-21. The four candidates
+    measured to negative still stand, and none was it: pinning `gsvd4py` onto OpenBLAS, jittering
+    the tension values across eleven orders, moving the rank UNIFORMLY via `rtol` (a different
+    thing from one flip at one point), and the pencil cache. Nor is "a different LAPACK moves the
+    GSVD at 1e-15, and the grid sits at that edge": the members sit 2.60 / 5.72 / 2.60 licences
+    apart.
+  * "needs full-suite scope" and "threading is not it" -- both wrong. Across every Linux run,
+    `OPENBLAS_NUM_THREADS=1` has never failed (0 of ~39), and at default threading the rate moves
+    with scope: 1 of 8 for the module, 3 of 4 for the nine preceding files plus it, 4 of 5 for the
+    full suite. Scope moves the rate by moving where stage 1 puts the bracket end, and a flip only
+    fails the cell if that end lands where direction 86 happens to drop `sigma_1` hard.
+  * the collection-versus-execution experiment it named was run: import-time state is not the
+    trigger, 12 of 12 right with the whole suite collected.
 
   The rest of the CI board, for scale: 8 failures. Five are pre-existing and all exercise
   `_collapse_ambiguous`, the cross-check now off by default (`test_solve.py` x4, `test_floor.py`
@@ -91,22 +89,36 @@ and deciding whether Phase D's angle earns its keep.
   holds at full-suite scope it takes CI's legs from ~65 minutes toward ~20. NOT measured at
   full-suite scope, and not a claim about Accelerate versus OpenBLAS. `notes/session_2026-09-19.md`.
 
-* **[next]** **The refuser's own question: WHY does a bracket that held an eigenvalue end in
-  `no_parabola`?** It did not stay harmless. `notes/landscape_findings.md` section 37 filed the
-  `125*pi^2` rejection as costing nothing "but it is the same residual/refiner shape and nothing
-  guarantees it stays harmless" -- and on 2026-09-20 that shape produced the one wrong total CI
-  ever had. Since 2026-09-20 such a refusal is LOUD (`_deep_rejections`, `docs/design/search.md`'s
-  As-built note), which converts a silent wrong answer into a raised one. That is the honest
-  outcome, not the fix.
+* **[next]** **A threshold-rank flip at one bracket END makes the refiner refuse a real root.**
+  OBSERVED on a Linux runner 2026-09-21, bit-identical over 3 repetitions, and reproducible on
+  macOS in a second (`notes/session_2026-09-19.md`, the 09-21 section). This is the mechanism of
+  the blocking item above. `notes/landscape_findings.md` section 37 filed the `125*pi^2` rejection
+  as costing nothing "but ... nothing guarantees it stays harmless"; this is that shape, costing
+  the one wrong total CI ever had.
 
-  The fix is upstream, and the mechanism is measured: `refine.py:457` refuses on `no_parabola`
-  UNCONDITIONALLY, alone among the endings, and this well bottoms out AT the arithmetic floor --
-  `sigma_1 = 2.03e-15` at truth against `rtol = 1.49e-15`. There is no parabola to close on
-  because the last bits are noise, which is why a threaded BLAS flips it and one thread never
-  does. `notes/session_2026-09-19.md`, the 09-20 section. The question for the refiner is what it
-  should do when the fit cannot close because the objective has reached its floor -- accepting the
-  deepest point in hand is one answer, and the walk already has machinery for the neighbouring
-  case.
+  The chain: stage 1 brackets all four roots. In bracket 0, ONE evaluation -- the upper end --
+  retains rank 86 instead of 85, because `s[85]/s[0]` sits at 0.89x the cutoff on macOS and a
+  few percent more on OpenBLAS crosses it. Direction 86 is noise, so its effect on `sigma_1` is
+  jagged in `lam` -- a 67% drop to none across 8e-9 relative -- and at that end it drops `sigma_1`
+  3.1x. The end becomes the deepest point the refiner holds, it walks outward, and it refuses
+  `not_a_minimum` at the flipped end.
+
+  **Two claims this file made on 2026-09-20 were wrong.** The mechanism is NOT `no_parabola` --
+  that was argued from the code and never observed. And `_deep_rejections` does NOT catch this
+  cell: the refused point is a flipped FLANK point, `sigma = 5.18e-07`, shallower than the worst
+  located level, so the rule reads `()` on Linux. Its "flags the one wrong cell" came from macOS,
+  where the cell is right.
+
+  **Exposure is general, not local to this cell.** In 70 of this solve's 83 evaluations the first
+  dropped singular value sits at 0.80-0.90x the cutoff; a flip moves `sigma_1` up to 3.5x on the
+  flanks and barely at the roots, which is where `_accept` compares ends. The pencil's own
+  retained rank also disagrees with `choose_rank`'s `svdvals` rank at 2 of 83 points on ONE
+  platform, where `svdvals` puts the kept value 24-37% above the cutoff.
+
+  The remedy is an objective CONTINUOUS in `lam` -- a regularization without discontinuous rank
+  jumps, in progress. The acceptance test for it is this cell in the nine-file scope at default
+  threading (`test_asymp.py` through `test_cluster_totals.py`), which reproduced 3 of 3 at about
+  eight minutes a repetition.
 * **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
   slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
   planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner

@@ -889,9 +889,18 @@ four eigenvalues, certified. `search._deep_rejections` decides which refusals ar
 DEPTH -- the `sigma_1` the refiner reached against the worst ACCEPTED level's -- because an empty
 bracket is refused on the barrier between wells, orders above any root, while a bracket that
 dipped as far as a located eigenvalue and was still refused may have held one. No new constant:
-the accepted levels supply the scale. Measured over five grids and 251 exercisable cells, it is
-quiet on 33 of 35 rejections, flags the one wrong cell, and costs ONE false alarm, at
-`prec = 1e-14` where every `sigma` sits at the floor and depth stops discriminating.
+the accepted levels supply the scale. Measured on macOS over five grids and 251 exercisable
+cells, it is quiet on 33 of 35 rejections and costs ONE false alarm, at `prec = 1e-14` where
+every `sigma` sits at the floor and depth stops discriminating. It catches the starved-disk drop
+that `test_a_starved_basis_does_not_DROP_levels_silently[0.45]` pinned as a strict xfail.
+
+**It does NOT catch the Linux wrong total that prompted it**, and an earlier version of this
+paragraph said it did. Traced on a Linux runner 2026-09-21: the refusal came at a bracket END
+whose retained rank flipped 85 -> 86, which lowered `sigma_1` there 3.1x and made it the deepest
+point the refiner held; the refiner walked away from the root and refused `not_a_minimum` at
+that end, `sigma = 5.18e-07` -- SHALLOWER than the worst located level, `4.08e-07`. A depth test
+cannot tell that from an empty bracket. So this clause is still violated on Linux, and the
+remedy is an objective continuous in `lam`, not a sharper alarm.
 
 Measured over five split-degeneracy grids (`50`, `65`, `125`, `145`, `170` x `pi^2`) at five
 precisions and eleven bands, unexercisable cells excluded: **216 right, 0 wrong, 35 declined.**
@@ -907,7 +916,11 @@ The roster (disk, eq_tri, L-shape) is certified at every precision on the ladder
 > that cell is understood. `TODO.md` section 4 tracks a separate Accelerate fault, so neither
 > platform is the trusted reference.
 >
-> **The MECHANISM is unknown, and the obvious candidates are refuted.** An earlier version of this
+> **The MECHANISM is now OBSERVED (2026-09-21): a threshold-rank flip at one bracket end.** See
+> the paragraph on refused brackets above and `notes/session_2026-09-19.md`, the 09-21 section.
+> What follows is the record of how it was not found, kept because each negative still stands.
+>
+> **Before the trace, the obvious candidates were refuted.** An earlier version of this
 > note said "a different LAPACK moves the GSVD at the 1e-15 level, and this grid is built to sit
 > exactly at that edge". That is wrong on both halves and is recorded here so it is not proposed
 > again. This cell's members sit 2.60 / 5.72 / 2.60 licences apart with barriers four orders above
