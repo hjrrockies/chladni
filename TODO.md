@@ -209,8 +209,8 @@ and deciding whether Phase D's angle earns its keep.
   as measured by number of GSVD calls, then we should implement a "fast cold start" solver
   which has excellent average-case performance, with guards that can opt back-in to the slower-
   but-air-tight solver.
-* **[later/maybe]** Use course and fine bases separately to reduce the cost of the search phase. 
-  See `notes/course_to_fine_basis.md`.
+* **[later/maybe]** Use coarse and fine bases separately to reduce the cost of the search phase. 
+  See `notes/coarse_to_fine_basis.md`.
 
 ## 2. Generalization and validation debt
 
@@ -288,6 +288,14 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
+* **[next]** **The search can report ONE root as several levels.** On the 50*pi^2 triple at
+  `prec = 1e-6`, band 1.3, under a flat-bottomed (order-2, `tau_2 = 2 prec`) objective, `solve`
+  declared 5 of 3: the middle member three times, two of them at 493.47959664 -- 2e-15 apart. The
+  merge policy says an exact degeneracy must merge, whatever the objective. The threshold never
+  produced such a well, which is presumably why it never showed; any smooth regularization can.
+  `notes/smooth_filter.md` sections 10.1-10.2, which also show it is what blocks a `prec = 1e-14`
+  rule for the order-2 penalty.
+
 * **[next]** **The penalty regularization is an option with a stated limit, and five things about
   it are undecided.** `reg="tikhonov_qr"` landed 2026-09-21 (`notes/smooth_filter.md` section 9):
   no rank chosen, so none flips; verified continuous where the threshold flickers, and immune to
@@ -296,8 +304,12 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   1. **Its reach, which is limited by NOISE.** The 9e-14 "saturation" in `notes/smooth_filter.md`
      sections 2 and 7.4 was measured on the literal form and is LAPACK's internal cut. The QR
      form's floor tracks `tau` down to 2.1e-15, but its plateau noise grows as `tau` shrinks --
-     1e-2 at the `tau` a 1e-14 floor needs (section 10). A second-order penalty realized with
-     QRs is the lead under investigation; the SVD-based hybrid of section 6b is the fallback.
+     1e-2 at the `tau` a 1e-14 floor needs (section 10). A SECOND-ORDER penalty built from QRs
+     (`notes/tikhonov_derivations.tex`) fixes the noise and gets the slope loop through at 1e-14,
+     and `tau_2 = C * prec` is a clean rule down to 1e-10 for C in 0.2-0.9 -- but at 1e-14 no C
+     is robustly free of wrong totals (section 10.2). Parked, and not built into `src/`, until
+     the search's merge defect (below in this section) is fixed and bases are right-sized
+     (`notes/coarse_to_fine_basis.md`).
   2. **Default or not.** Section 7 of the same note found the regimes cleanly split: frozen rank
      wins narrow windows, a filter wins wide windows with a tight pair, and on a corner-FB basis
      nothing differs because the rank does not move. A default has to be argued from that table,

@@ -1,0 +1,295 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{microtype}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\lam}{\lambda}
+\newcommand{\sig}{\sigma}
+\newcommand{\pr}{\mathrm{prec}}
+\newcommand{\eps}{\varepsilon_{\mathrm{mach}}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\AB}{A_B}
+\newcommand{\AI}{A_I}
+
+\title{Penalty regularization for the MPS pencil:\\ derivations of the Tikhonov variants}
+\author{\code{chladni} working notes}
+\date{2026-09-21}
+
+\begin{document}
+\maketitle
+
+\noindent These notes derive the regularizations measured in \code{notes/smooth\_filter.md}
+and implemented as \code{reg="tikhonov"} and \code{reg="tikhonov\_qr"} in
+\code{chladni.mps}, plus the second-order variant under test. Statements are marked as
+\emph{proved} or \emph{measured}; the measured ones cite the note's sections.
+
+\section{Setting}
+
+At a parameter $\lam$ the method of particular solutions assembles a boundary block
+$\AB \in \R^{m_B\times n}$ and an interior block $\AI \in \R^{m_I\times n}$, one column per basis
+function, and equilibrates so that every column of the stack
+\[
+  A = \begin{bmatrix}\AB\\ \AI\end{bmatrix} \in \R^{m\times n}, \qquad m = m_B + m_I,
+\]
+has unit norm. The \emph{tension} is
+\begin{equation}\label{eq:tension}
+  \sig_1(\lam) = \min_{c\neq 0} \frac{\norm{\AB c}}{\norm{\AI c}},
+\end{equation}
+the smallest generalized singular value of the pair $(\AB,\AI)$. Write the SVD of the stack as
+$A = U\Sigma V^{\mathsf T}$ with $\Sigma = \mathrm{diag}(s_1\ge\cdots\ge s_n\ge 0)$, and split
+$U$ by rows as $U = \begin{bmatrix}U_B\\ U_I\end{bmatrix}$. After equilibration
+$\norm{A}_F = \sqrt{n}$ (a column that underflowed to exact zeros keeps norm $0$).
+
+The basis is over-complete, so $\Sigma$ is a smooth ramp that meets a flat floor of rounding
+noise at $s_j/s_1 \approx 10^{-16}$. Directions near that floor carry no signal; the whole
+question is how to keep them out of \eqref{eq:tension}.
+
+\section{The invariance that rules out a weighting}
+
+\begin{lemma}[proved]\label{lem:invariance}
+For any invertible $M\in\R^{n\times n}$ the generalized singular values of $(\AB M,\AI M)$ equal
+those of $(\AB,\AI)$.
+\end{lemma}
+\begin{proof}
+The substitution $c = Mc'$ is a bijection of $\R^n\setminus\{0\}$, and
+\[
+  \frac{\norm{\AB M c'}}{\norm{\AI M c'}} = \frac{\norm{\AB c}}{\norm{\AI c}}.
+\]
+The min--max characterization of every generalized singular value is therefore unchanged.
+\end{proof}
+
+A column weighting $w_j = f(s_j/s_1)$ is a right factor $M=\mathrm{diag}(w)$, so by
+Lemma~\ref{lem:invariance} it changes nothing until some $w_j = 0$ exactly (measured: $4\times
+10^{-15}$ change under a random invertible $M$). Truncation works \emph{because} its projector is
+singular. A continuous regularization must therefore change the \emph{objective}, not the
+coordinates: it must be a penalty.
+
+\section{Truncation, in whitened coordinates}
+
+Let $y = \Sigma V^{\mathsf T} c$, so that $Ac = Uy$ and \eqref{eq:tension} becomes
+$\min_y \norm{U_B y}/\norm{U_I y}$. Rank truncation at $r$ restricts $y$ to its first $r$
+coordinates: the pencil $(U_{B,1},U_{I,1})$ with $U_1 = U[:,1{:}r]$, and back map
+$c = V_1\Sigma_1^{-1}y$. The threshold rule re-derives $r(\lam) = \#\{j: s_j \ge
+\mathrm{rtol}\cdot s_1\}$ at every $\lam$, and $r$ is a step function: wherever a noisy $s_j$ sits
+near the cutoff, rounding decides it, and the rank flickers. Measured: 63--88 changes per
+201 samples at every half-width from $2\times10^{-2}$ down to $2\times10^{-10}$ (\S3 of the
+note).
+
+\section{Order-1 Tikhonov}
+
+\begin{definition}
+For $\tau>0$,
+\begin{equation}\label{eq:tik1}
+  \sig_\tau(\lam) = \min_{c\ne 0}
+  \frac{\sqrt{\norm{\AB c}^2 + \tau^2\norm{c}^2}}{\norm{\AI c}},
+\end{equation}
+which is the smallest generalized singular value of $\left(\begin{bmatrix}\AB\\ \tau I\end{bmatrix},
+\AI\right)$.
+\end{definition}
+
+\paragraph{Whitened form.} With $y=\Sigma V^{\mathsf T}c$ (assume $s_j>0$; otherwise take limits),
+$\tau^2\norm{c}^2 = \tau^2\norm{\Sigma^{-1}y}^2 = \sum_j g_j^2 y_j^2$ with
+\begin{equation}\label{eq:g1}
+  g_j = \frac{\tau}{s_j},
+\end{equation}
+so \eqref{eq:tik1} is the pencil
+$\left(\begin{bmatrix}U_B\\ \mathrm{diag}(g)\end{bmatrix}, U_I\right)$. A weight $g_j=0$ leaves a
+direction alone; $g_j\to\infty$ forbids it, which is truncation. The corresponding filter factor is
+\[
+  f_j = \frac{1}{1+g_j^2} = \frac{s_j^2}{s_j^2+\tau^2},
+\]
+a one-decade-wide smooth step centred at $s_j=\tau$. The augmented numerator has full column rank
+for every $\tau>0$, and \eqref{eq:tik1} is continuous in $(\AB,\AI)$: no rank is chosen, so none
+can change.
+
+\paragraph{Scaling.} Scaling the whole pencil by $\alpha$ divides $\tau$'s effect by $\alpha$, so a
+scale-invariant choice is relative:
+\[
+  \tau = \mathrm{rtol}\cdot\norm{A}_F = \mathrm{rtol}\cdot\sqrt{n}
+  \quad\text{(equilibrated)},
+\]
+a constant for the pencil's life. The penalty acts in equilibrated coordinates, which is what makes
+$\norm{c}$ meaningful: raw Fourier--Bessel columns span about $1149$ nats of scale.
+
+\section{Two realizations: identical on paper, not in LAPACK}
+
+\paragraph{Literal (\code{"tikhonov"}).} Hand the GSVD the pair $\left(\begin{bmatrix}\AB\\ \tau
+I\end{bmatrix},\AI\right)$ directly. Back map: the identity.
+
+\paragraph{QR (\code{"tikhonov\_qr"}).} Take an unpivoted QR
+\[
+  M_\tau = \begin{bmatrix}\AB\\ \tau I\\ \AI\end{bmatrix} = QR,
+  \qquad Q = \begin{bmatrix}Q_1\\ Q_2\end{bmatrix},
+\]
+with $Q_1$ the rows belonging to $\begin{bmatrix}\AB\\ \tau I\end{bmatrix}$, and hand the GSVD
+$(Q_1,Q_2)$. Back map: $c = R^{-1}y$.
+
+\begin{proposition}[proved]\label{prop:same}
+The two realizations have identical generalized singular values in exact arithmetic.
+\end{proposition}
+\begin{proof}
+$M_\tau$ has full column rank because of the $\tau I$ block, so $R$ is invertible and
+$(Q_1,Q_2) = \left(\begin{bmatrix}\AB\\ \tau I\end{bmatrix}R^{-1},\ \AI R^{-1}\right)$. Apply
+Lemma~\ref{lem:invariance} with $M = R^{-1}$.
+\end{proof}
+
+\paragraph{Why they differ in floating point (measured).} $\tau I$ makes the \emph{stack} full rank
+but does nothing for the \emph{interior} block. LAPACK's \code{?ggsvp3} decides the numerical
+rank of that block with its own tolerance, about $\max(m,n)\norm{A}\eps$. So the literal form
+moves the rank decision inside LAPACK rather than removing it: its count of finite tensions ran
+$41$--$50$ over a scan where the threshold took seven values. The QR form gives LAPACK an
+orthonormal stack, $Q_1^{\mathsf T}Q_1 + Q_2^{\mathsf T}Q_2 = I$, and the problem is then a CS
+decomposition with nothing to decide: the count held at $n$ (or $m_I$) everywhere measured. The
+literal form's LAPACK cut is also why its floor stalls near $9\times10^{-14}$; the QR form's does
+not (\S10 of the note).
+
+\section{Order 1: the floor, and why it cannot be traded against the noise}
+
+\begin{proposition}[proved]\label{prop:floor1}
+Let $c^\ast$ satisfy $\norm{\AB c^\ast} = \epsilon\,\norm{\AI c^\ast}$ (an eigenfunction resolved to
+$\epsilon$ by the basis), and let $\rho = \norm{c^\ast}/\norm{\AI c^\ast}$. Then
+\[
+  \sig_\tau \le \sqrt{\epsilon^2 + \tau^2\rho^2}.
+\]
+\end{proposition}
+\begin{proof}
+Evaluate the quotient in \eqref{eq:tik1} at $c^\ast$.
+\end{proof}
+
+Measured, the floor is $1.38$--$1.45\,\tau$ from $\tau = 1.7\times10^{-11}$ down to
+$1.7\times10^{-14}$, so $\rho\approx1.45$; it rises to $1.9\,\tau$ at $\tau=1.1\times10^{-15}$, where
+the basis's own $\epsilon$ enters, exactly as the bound says. That bottom value, $2.1\times10^{-15}$,
+is within $1.3\times$ of the threshold's $1.6\times10^{-15}$.
+The eigenfunction lives in well-conditioned directions, yet it still pays $\tau\norm{c^\ast}$: the
+order-1 penalty charges every direction, the signal included.
+
+\paragraph{Noise (heuristic, and measured).} Assembly and the QR are backward stable, so each is
+exact for a perturbation $\delta A$ with $\norm{\delta A}\approx\eps\norm{A}$. In a noise direction
+the only thing holding the minimizer off it is the penalty, of size $\tau$, against rounding of
+size $\eps\norm{A}$. As $\tau$ falls toward $\eps\norm{A}\approx 10^{-15}$, a weak penalty lets the
+minimizer lean on directions whose content is rounding. Measured: relative noise in $\sig_\tau$ is
+$1\times10^{-2}$ at the $\tau$ a $5\times10^{-15}$ floor needs, against the threshold's
+$1\times10^{-3}$, and it is \emph{multiplicative}, uniform along a well's flank. Floor and noise are
+both set by $\tau$ against $\eps\norm{A}$, so no single $\tau$ makes both small.
+
+\section{Order 2: a penalty that spares the signal}
+
+The fix is to make the penalty depend on the direction: tiny on well-conditioned directions,
+large on noise. In whitened coordinates this is $g_j = (\tau_2/s_j)^2$ in place of
+\eqref{eq:g1}. The point is that it can be built from triangular factors, without an SVD.
+
+\begin{lemma}[proved]\label{lem:rinvt}
+If $A = Q_0R_0$ is an economic QR with $R_0$ invertible, then
+$\norm{R_0^{-\mathsf T}c} = \norm{\Sigma^{-1}V^{\mathsf T}c}$ for all $c$.
+\end{lemma}
+\begin{proof}
+$R_0^{\mathsf T}R_0 = A^{\mathsf T}A = V\Sigma^2V^{\mathsf T}$, so $R_0 = W\Sigma V^{\mathsf T}$ for
+some orthogonal $W$ (its singular values are $\Sigma$ and its right singular vectors $V$). Hence
+$R_0^{-\mathsf T} = W\Sigma^{-1}V^{\mathsf T}$, and $W$ preserves norms.
+\end{proof}
+
+\paragraph{The bounded form.} $R_0$ is singular when a column underflows, and near-singular
+always. Use instead the factor $R_1$ of the $\tau_1$-augmented stack, which \code{"tikhonov\_qr"}
+already computes:
+\[
+  \begin{bmatrix}\AB\\ \tau_1 I\\ \AI\end{bmatrix} = Q_1'R_1,\qquad
+  R_1^{\mathsf T}R_1 = A^{\mathsf T}A + \tau_1^2 I = V(\Sigma^2 + \tau_1^2 I)V^{\mathsf T}.
+\]
+By the argument of Lemma~\ref{lem:rinvt},
+$\norm{R_1^{-\mathsf T}c} = \norm{(\Sigma^2+\tau_1^2I)^{-1/2}V^{\mathsf T}c}$, so
+$\norm{R_1^{-\mathsf T}}\le 1/\tau_1$: bounded, and invertible whatever $A$ does.
+
+\begin{definition}
+The order-2 penalized tension is the smallest generalized singular value of
+\begin{equation}\label{eq:tik2}
+  \left(\begin{bmatrix}\AB\\ \tau_1 I\\ \tau_2^2 R_1^{-\mathsf T}\end{bmatrix},\ \AI\right),
+\end{equation}
+realized, like \code{"tikhonov\_qr"}, by an unpivoted QR of the numerator stacked on $\AI$ and a
+GSVD of the two row blocks of its $Q$.
+\end{definition}
+
+\paragraph{Whitened form.} With $y = \Sigma V^{\mathsf T}c$,
+$\tau_2^4\norm{R_1^{-\mathsf T}c}^2 = \sum_j \big(\tau_2^2/(s_j\sqrt{s_j^2+\tau_1^2})\big)^2 y_j^2$.
+Together with the $\tau_1 I$ rows, direction $j$ carries the weight
+\begin{equation}\label{eq:g2}
+  g_j^2 = \Big(\frac{\tau_1}{s_j}\Big)^2
+        + \Big(\frac{\tau_2^2}{s_j\sqrt{s_j^2+\tau_1^2}}\Big)^2
+  \;\approx\;
+  \begin{cases}
+    (\tau_2/s_j)^4 & \tau_1 \ll s_j \quad\text{(order 2)},\\[2pt]
+    (\tau_2^2/(\tau_1 s_j))^2 & s_j \ll \tau_1 \quad\text{(order 1, bounded)},
+  \end{cases}
+\end{equation}
+taking $\tau_1\ll\tau_2$ so that the first term is negligible wherever it matters. In basis
+coordinates the block $\tau_2^2R_1^{-\mathsf T}$ is dense lower-triangular, not diagonal. It is
+diagonal only in the SVD basis, and Lemma~\ref{lem:rinvt} is what lets us apply it without forming
+that basis.
+
+\paragraph{Floor.} Proposition~\ref{prop:floor1} carries over with the penalty term replaced:
+\[
+  \sig \le \sqrt{\epsilon^2 + \tau_1^2\rho^2
+   + \tau_2^4\,\norm{(\Sigma^2+\tau_1^2)^{-1/2}V^{\mathsf T}c^\ast}^2/\norm{\AI c^\ast}^2 }.
+\]
+If $c^\ast$ lies in directions with $s_j\ge s_\ast\gg\tau_2$, the last term under the root is at
+most $(\tau_2^2\rho/s_\ast)^2$, and $\tau_2^2\rho/s_\ast\ll\tau_2\rho$. The signal is charged by $(\tau_2/s_j)^2$, not
+$\tau_2/s_j$, so the floor can sit far \emph{below} $\tau_2$.
+
+\paragraph{Noise (heuristic).} In a noise direction ($s_j\approx\eps\norm{A}$) the weight is
+$(\tau_2/s_j)^2$ rather than $\tau/s_j$: the margin over rounding is the \emph{square} of the
+order-1 margin at the same $\tau$.
+
+\paragraph{Measured} (\S10 of the note; family A, $n=126$, $\tau_1 = 10^{-16}\sqrt n$):
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+penalty & worst floor & median floor & plateau noise\\
+\midrule
+threshold, $\mathrm{rtol}=1.49\times10^{-15}$ & $1.6\times10^{-15}$ & $1.2\times10^{-15}$ & $1.0\times10^{-3}$\\
+order 1 (QR), $\tau = 3.4\times10^{-15}$     & $5.2\times10^{-15}$ & $4.8\times10^{-15}$ & $1.0\times10^{-2}$\\
+order 2, $\tau_2 = 3\times10^{-14}$          & $7.1\times10^{-15}$ & $4.3\times10^{-15}$ & $3.7\times10^{-5}$\\
+order 2, $\tau_2 = 10^{-14}$                 & $4.1\times10^{-15}$ & $2.2\times10^{-15}$ & $3.2\times10^{-4}$\\
+\bottomrule
+\end{tabular}
+\end{center}
+At a matched $\approx5\times10^{-15}$ floor, order 2 is about $270\times$ quieter than order 1 and
+$27\times$ quieter than the threshold. On the one $\pr=10^{-14}$ decline-grid cell checked so far
+($145\pi^2$, band $1.3$), the threshold declines on ``the slope estimate never settled'' and order 2
+brackets all ten levels, pure, in $280$ evaluations.
+
+\section{Relation to the hybrid}
+
+Section 6b of the note measured a ``hybrid'': an SVD of the stack, a hard cut below $\eps s_1$, and
+$g_j = (c\,s_1/s_j)^p$. At $p=2$ that is \eqref{eq:g2} with an explicit SVD and a hard cut. Order 2
+recovers the same filter shape with two QRs and one triangular inverse, and without either the SVD
+or a cut that a singular value could cross.
+
+\section*{Summary}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}l>{\raggedright\arraybackslash}p{3.1cm}>{\raggedright\arraybackslash}p{3.2cm}cc@{}}
+\toprule
+mode & penalty, basis coords & weight $g_j$, whitened & SVD? & rank decision?\\
+\midrule
+threshold & --- (truncate) & $0$ or $\infty$ at $\mathrm{rtol}\,s_1$ & yes & yes, flickers\\
+\code{tikhonov} & $\tau I$ & $\tau/s_j$ & no & yes, inside LAPACK\\
+\code{tikhonov\_qr} & $\tau I$ (via QR) & $\tau/s_j$ & no & none\\
+order 2 & $\tau_1 I,\ \tau_2^2R_1^{-\mathsf T}$ & \eqref{eq:g2} & no & none\\
+hybrid ($p=2$) & SVD-built & $(c\,s_1/s_j)^2$, cut & yes & at $\eps s_1$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}

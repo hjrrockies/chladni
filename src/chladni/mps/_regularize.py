@@ -24,11 +24,12 @@ there by 67%, the refiner steps toward that end, and a true root is refused. A f
 moves `sigma_1` at a root (median ratio 0.986) and moves it by up to 3.5x on the flanks, which
 is exactly where a refiner compares ends. The penalty modes below exist because of this.
 
-What survives of the integer-rank argument is narrower. The rank is a property of the solver rather than of `k`, so
-`tension` is a function of `k` alone: two visits to a parameter agree and a re-solve does not
-drift for unrelated reasons. And it skips one `svdvals` of the stack per evaluation, 11.3 ms
-against 13.4 ms per `k` on a 132-column pencil. `tests/test_regularization.py` pins both,
-and pins the agreement measurement too, so the next person to ask can find the answer.
+What survives of the integer-rank argument is narrower. The rank is a property of the solver
+rather than of `k`, so `tension` is a function of `k` alone: two visits to a parameter agree and
+a re-solve does not drift for unrelated reasons. And it skips one `svdvals` of the stack per
+evaluation, 11.3 ms against 13.4 ms per `k` on a 132-column pencil.
+`tests/test_regularization.py` pins both, and pins the agreement measurement too, so the next
+person to ask can find the answer.
 
 **There is one inverse.** `regularize` returns `back`, the map from reduced coordinates to
 basis coordinates, built by whichever mode ran. lappy's `nullspace_coef` instead branches on
@@ -64,13 +65,14 @@ Both need `tau` above the rounding noise. At the `prec`-derived default `rtol` t
 to 1e-7 or better; at `rtol = 1.5e-15` they part by 1e-3.
 
 **What limits the penalty at tight `prec` is NOISE, not the floor.** The literal form's floor
-saturates near 9e-14 -- that is LAPACK's internal cut, and it is where the claim that "a
-plain penalty cannot go below 1e-12" came from. The QR form's floor tracks `tau` (about
-`1.45 * tau`) down to 2.1e-15, within 1.3x of the threshold's. But its noise grows as `tau`
-shrinks, multiplicatively along the whole curve: 1e-2 relative at the `tau` a 1e-14 floor
-needs, against the threshold's 1e-3. An order-1 penalty charges the eigenfunction itself
-`tau * ||c||`, so floor and noise are both set by `tau` against the rounding level and cannot
-be traded apart. `notes/smooth_filter.md` sections 2, 7.4, 9 and 10 carry the measurements.
+saturates near 9e-14 -- that is LAPACK's internal cut, and it is where the claim that "a plain
+penalty cannot go below 1e-12" came from. The QR form's floor tracks `tau` -- 1.4x `tau` down to
+`tau = 1.7e-14`, 1.9x at the bottom -- to 2.1e-15, within 1.3x of the threshold's. But its noise
+grows as `tau` shrinks, multiplicatively along the whole curve: 1e-2 relative at the `tau` a
+1e-14 floor needs, against the threshold's 1e-3. An order-1 penalty charges the eigenfunction
+itself `tau * ||c||`, so floor and noise are both set by `tau` against the rounding level and
+cannot be traded apart. `notes/smooth_filter.md` sections 2, 7.4, 9 and 10 carry the
+measurements.
 """
 from __future__ import annotations
 

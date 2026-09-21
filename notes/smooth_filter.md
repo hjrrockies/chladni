@@ -641,8 +641,8 @@ LAPACK re-truncate internally. Measured on the QR form instead, family A, 126 co
     1.0e-16   1.1e-15        9.3e-14        2.1e-15     6.1e-02
     threshold (1.49e-15)                    1.6e-15     1.0e-03
 
-**The QR form's floor is `1.45 * tau` all the way down**, within 1.3x of the threshold's at the
-bottom. The literal form's 9.3e-14 is LAPACK's `?ggsvp3` tolerance, not the penalty.
+**The QR form's floor is 1.38-1.45 `tau` down to `tau = 1.7e-14`**, rising to 1.9 `tau` at the
+bottom where the basis's own resolution enters -- 2.1e-15 there, within 1.3x of the threshold's. The literal form's 9.3e-14 is LAPACK's `?ggsvp3` tolerance, not the penalty.
 
 **The obstacle is noise, and it is multiplicative, not a plateau effect.** Relative noise holds
 at 6e-3 (`rtol = 3e-16`) and 3e-2 (`1e-16`) all the way down a flank to `sigma ~ 3e-8`, and a
@@ -671,4 +671,129 @@ sqrt(n)`:
 At a matched 5e-15 floor, order 2 is about 270x quieter than order 1 and 27x quieter than the
 threshold -- the first penalty to beat the threshold on noise at a 1e-14-capable floor. This is
 section 6b's `p = 2` hybrid WITHOUT its SVD or its hard cut, which is why it is worth pursuing.
-Not yet run through the solver; that is next.
+**Through the solver: it beats the frozen rank on the frozen rank's own grid.** Section 34's
+`145*pi^2` split-degeneracy grid at `prec = 1e-14`, 11 bands, `bracket_interval`, only
+`Objective.tensions` varying:
+
+                   objective   right   wrong  declined
+         threshold (current)       0       0        11     all "slope estimate never settled"
+                 frozen rank      10       0         1
+       order-1 QR, rtol 3e-16      0       0        11     all "slope estimate never settled"
+          order-2, tau_2 3e-14     11       0         0
+          order-2, tau_2 1e-14     10       0         1
+
+This is the grid where the frozen rank beat every filter in section 7.3, at the rung where every
+filter scored 0 to 2 of 11. Order 2 at `tau_2 = 3e-14` takes all eleven, no wrong answers, no
+declines. The ordering between the two strengths is the noise table's: `tau_2 = 1e-14` is 9x
+noisier and loses one cell to the slope loop. Order 1 at the `tau` a 1e-14 floor needs declines
+every cell, exactly as its 1e-2 noise predicts. On the one cell probed ahead of the row (band
+1.3), the threshold's decline reproduces section 34's secant history digit for digit
+(0.7101, 0.8090, 2.201, 3.920), which says the harness measures what section 34 measured.
+
+What this does NOT yet show: one grid, one rung, one margin of a single cell over the frozen rank;
+`tau_2` is a hand-picked constant, not a rule in `prec`; the WIDE window of section 7.4, where the
+frozen rank declined all fifteen, is unmeasured for order 2; and the cost is about 2x the QR
+order-1 form. `notes/tikhonov_derivations.tex` has the derivation.
+
+### 10.1 The `tau_2` rule: what is settled
+
+2026-09-21. **Floor law, five pencils.** Worst `sigma_1` at the true levels over `tau_2` from 1e-6
+to 1e-14, absolute on the equilibrated pencil (`tau_1 = 1e-16 sqrt(n)`):
+
+    pencil               n     worst floor / tau_2
+    rect(1, 1/phi)      126    0.08 .. 0.41
+    near-square N65     190    0.07 .. 0.28
+    eq_tri               90    0.10 .. 0.30
+    disk                 84    << 1 -- on the basis floor, 1.8e-15, for every tau_2 <= 1e-10
+    L-shape, FB 240     240    << 1 -- on the basis floor, 8e-13, for every tau_2 <= 1e-8
+
+So **worst floor <~ max(eps_basis, 0.41 tau_2)**, and the constant carries across n = 84 .. 258
+with no `sqrt(n)`: the natural unit for `tau_2` is the RMS column norm (1 on an equilibrated
+pencil), not the Frobenius norm order 1 uses. Noise falls monotonically as `tau_2` grows on
+every pencil (N65 looked flat under a linear-fit probe; that was curvature between close roots,
+and a quadratic-detrended probe shows the same fall as the others).
+
+**`tau_1` does not matter.** Floor and noise are flat over `tau_1` = 1e-18 .. 1e-15 on two
+pencils. It only keeps `R_1` invertible; fix it at `eps` in RMS-column units.
+
+**The first candidate, `tau_2 = C * prec`, fails -- and it fails SILENTLY.** End to end on the
+cluster-totals grid (full `solve`, even 50*pi^2 triple and uneven 65*pi^2 quadruple), the
+wrong-total count at `prec = 1e-14`, 18 exercisable cells:
+
+    C        1    1.5    2    2.5    3    4    5    8
+    wrong    2     1     2     1     0   11   10   16
+
+C = 3 scored 34 of 34 across three rungs in the first pass and looked like the answer. It is an
+ISOLATED zero: every neighbour has wrong totals, and above it the grid collapses. The wrong cells
+are almost all the even triple at 493.48, declared 2 of 3 -- a member LOST, not merged. The
+mechanism, corrected after the loose-`prec` cells were pulled apart: a floor near the merge
+licence (`C * prec` puts it at up to 0.41 C prec) breaks multiplicity ACCOUNTING in BOTH
+directions. At `prec = 1e-6`, C = 2, band 1.3, the triple is declared 5 of 3: the middle member
+reported three times, at 493.47955009 and twice at 493.47959664 -- 2e-15 apart, an exact duplicate
+that must merge -- because a well whose bottom is as wide as the floor holds several local minima
+and nothing merges them. A first draft of this paragraph said only "wells blur", which is half of
+it. (For reference the threshold runs at floor ~0.16 prec at 1e-14.)
+
+One wrong cell does NOT fit: C = 0.1 at `prec = 1e-6`, band 0.5, declared 2 of 3 with the middle
+member lost, at a floor of ~4e-8, far under the separation. That cell's triple has DIAMETER
+exactly equal to the licence (2 x 0.5 prec), the configuration `rect_suite.cluster_diameter_ratio`
+calls "an UNDECIDED one ... should be reported, not scored". It is a boundary cell, not evidence
+about the floor, but it is scored by the grid as written.
+
+Accuracy was never the problem: in every RIGHT cell, for every C and every rung, the worst
+eigenvalue error was at most 0.071 prec. And the decline grid, which scores brackets and not
+totals, gives C = 2 and C = 3 both 11 of 11 -- it cannot see this failure, which is why both
+grids are needed.
+
+Criterion from here: **the largest C with zero wrong totals across a NEIGHBOURHOOD of C**, with
+declines accepted as honest.
+
+
+
+### 10.2 The sweep below C = 1: no robust rule at `prec = 1e-14`
+
+2026-09-21. `tau_2 = C * prec`, `tau_1 = eps`, both grids, every rung (right / wrong / declined):
+
+      C    cluster 1e-14   cluster 1e-10   cluster 1e-6   decline 1e-14
+     0.1      0/0/18           8/0/0          7/1/0*          1/0/10
+     0.2      2/0/16           8/0/0          8/0/0           0/0/11
+     0.3      3/0/15           8/0/0          8/0/0           0/1/10
+     0.5     10/0/8            8/0/0          8/0/0           3/0/8
+     0.6     14/1/3            8/0/0          8/0/0           9/0/2
+     0.7     18/0/0            8/0/0          8/0/0          11/0/0
+     0.8     18/0/0            8/0/0          8/0/0          11/0/0
+     0.9     17/1/0            8/0/0          8/0/0          11/0/0
+
+    * the diameter-equals-licence boundary cell of section 10.1
+
+Wrong totals on the 1e-14 cluster row across the whole sweep, 10.1 included:
+
+    C       0.1  0.2  0.3  0.5  0.6  0.7  0.8  0.9  1.0  1.5  2.0  2.5  3.0  4.0  5.0  8.0
+    wrong    0    0    0    0    1    0    0    1    2    1    2    1    0   11   10   16
+
+**No robust rule exists at `prec = 1e-14`.** C = 0.7 and 0.8 are perfect on both grids at every
+rung -- but they are an island flanked by wrong totals at 0.6 and 0.9, the same shape as the
+isolated zero at C = 3 that section 10.1 declined to trust. From C = 0.6 upward wrong totals appear
+sporadically; below it the 1e-14 row drowns in slope-loop declines (honest, useless). There is no
+C with zero wrong totals across a neighbourhood and few declines. The wrong cells are
+multiplicity ACCOUNTING failures (section 10.1), which is a defect of the search's merge step
+reacting to flat-bottomed wells, not something a choice of C can remove.
+
+**At `prec` of 1e-10 and looser the rule is easy:** every C from 0.2 to 0.9 is clean on every cell
+measured. So order 2 with `tau_2 = C * prec`, C around 0.5, is a defensible rule down to 1e-10; it
+is the 1e-14 rung, and only that rung, where it has no safe setting.
+
+**Where this leaves order 2.** It is the only penalty measured that gets the SLOPE LOOP through at
+1e-14 (11 of 11 on the decline grid where the threshold and order 1 decline all eleven), so the
+noise mechanism of section 10 is right and the construction works. What stops it is downstream: the
+multiplicity accounting of a solver whose merge step reports one root several times (5 of 3, two of
+them 2e-15 apart). Two things should come before any further tuning here:
+
+1. **Fix the merge.** An exact duplicate 2e-15 apart must merge under the project's own policy,
+   whatever the objective. That is a search defect this sweep exposed, not a regularization one.
+2. **Right-size the bases** (`notes/coarse_to_fine_basis.md`). The noise directions exist because
+   plane-wave bases are over-complete; a basis sized to `n_useful` may remove enough of them that
+   the threshold stops flickering and no penalty is needed.
+
+Then re-ask the 1e-14 question. The order-2 construction and its derivation
+(`notes/tikhonov_derivations.tex`) are kept for that.

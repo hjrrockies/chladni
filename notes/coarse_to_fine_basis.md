@@ -15,9 +15,16 @@ trades an honest refusal for a silent acceptance. It also misses the silent loca
 (2.6e-5 from the root without the hint) and the stage-1 slope-loop declines of section 34. The
 session note already argues against refiner heuristics that distrust ends.
 
-**Wall time.** No test measures it. Per evaluation, assembly cached, `tikhonov_qr` is about 1.5x
-the threshold (4.83 vs 3.18 ms at 126 columns, 13.7 vs 8.85 at 190, measured under load);
-order 2 is estimated at about 2x that. Per SOLVE the penalty may break even or win where the
+**Wall time.** No test measures it. Per evaluation, assembly cached, measured under load, so
+trust the ratios over the milliseconds:
+
+    columns   threshold   tikhonov_qr (order 1)   order 2
+      126      3.23 ms          1.54x              1.87x
+      190      9.14 ms          1.55x              1.92x
+      258     16.89 ms          1.96x              2.43x
+
+An earlier draft estimated order 2 at "about 2x" order 1; measured, it is about 1.2x order 1,
+and 1.9-2.4x the threshold, the gap widening with columns. Per SOLVE the penalty may break even or win where the
 threshold's noise makes false wells (section 7.4: 42k vs 82k evaluations, 38 vs 807 spurious
 brackets), and loses where it does not. An end-to-end timed `solve` under both modes, on both
 platforms, has not been run.
@@ -38,9 +45,14 @@ platforms, has not been run.
 1. A level the coarse pass never brackets is lost silently (`TODO.md` section 4; landscape
    section 38). The Weyl audit is the only search-independent completeness check -- make it
    mandatory on the coarse pass.
-2. A coarse floor above a pair's separation merges its members (the resolution failure of the
-   `tau_2 = C*prec` rule, section 10.1). The coarse pass should emit CLUSTERS under a loose
-   licence and leave splitting to the fine pass.
+2. A coarse floor near the merge licence breaks multiplicity ACCOUNTING, in both directions
+   (`notes/smooth_filter.md` section 10.1). Under the order-2 rule `tau_2 = C * prec` the floor
+   is up to 0.41 C prec, and on the 50*pi^2 triple at `prec = 1e-6`: members LOST (declared 2 of
+   3) and one well reported SEVERAL times (5 of 3 -- the middle member three times, two of them
+   2e-15 apart, an exact duplicate the merge policy says must merge). It is erratic in C, not
+   monotone, so it cannot be tuned around by picking C. The coarse pass should therefore emit
+   CLUSTERS under a loose licence and never COUNT multiplicity -- counting belongs to the fine
+   pass, whose floor must sit well below its own licence.
 3. Brackets must be widened when the basis changes, by the coarse root's displacement --
    `delta_res = DELTA_SAFETY * eps / c` gives it in closed form.
 4. Thin per family, never by dropping a family: plane waves alone floor at 3.8e-1 on the
