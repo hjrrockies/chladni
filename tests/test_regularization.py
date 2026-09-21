@@ -1,4 +1,4 @@
-"""Rank truncation, and why it is an integer.
+"""Regularization: rank truncation, the penalty that replaces it, and why either is chosen.
 
 This is the file that records the central correction to lappy.
 
@@ -9,14 +9,18 @@ comment concedes there is nothing to hide the jump in -- "the largest consecutiv
 singular values is only 0.4-0.7 decades -- smooth decay, no rank cliff" -- and the eigenvalue
 search is a parabolic minimizer, which a discontinuous objective lies to.
 
-So the rank is chosen once and held fixed. Truncating to a fixed INDEX is continuous away
-from exact singular-value crossings, because the tension depends only on the span of the
-leading `r` left singular vectors and that subspace varies continuously except where
-`s[r-1] == s[r]`. A threshold discontinues wherever `s[r-1]` crosses a constant, which is not
-a measure-zero event.
-
+Truncating to a fixed INDEX (a frozen rank) is continuous away from exact singular-value
+crossings, because the tension depends only on the span of the leading `r` left singular
+vectors and that subspace varies continuously except where `s[r-1] == s[r]`. A threshold
+discontinues wherever `s[r-1]` crosses a constant, which is not a measure-zero event -- and
+the default IS a threshold, because a rank frozen over a wide window is wrong at one end of it.
 `test_a_frozen_rank_gives_a_continuous_tension_curve` and its threshold twin are the pair
 that makes that argument checkable rather than merely asserted.
+
+The penalty modes, `"tikhonov_qr"` and `"tikhonov"`, are the third answer: no rank at all.
+Their sections below check the algebra, check that no rank change survives -- including the
+one LAPACK makes internally, which is where `"tikhonov"` falls short -- and replay the
+2026-09-21 CI refusal (`notes/session_2026-09-19.md`) that a threshold flip caused.
 
 The second claim here is that there is ONE inverse. lappy's `nullspace_coef` branches on
 `reg_type` again at the recovery site, so two places have to agree about a transformation
@@ -37,6 +41,11 @@ from conftest import L_SHAPE
 K = 3.3
 LAM = K**2
 REGS = ["svd", "qrp", None]
+PENALTY = ["tikhonov", "tikhonov_qr"]
+
+#: `(reg, frozen)` pairs for the contracts that hold in every mode. A penalty has no rank to
+#: freeze -- asking is refused -- so it joins in threshold form only.
+MODE_RANKS = [(r, f) for r in REGS for f in (None, 30)] + [(r, None) for r in PENALTY]
 
 
 def basis_for(poly):
@@ -70,10 +79,13 @@ def well_conditioned(seed=0, m_b=40, m_i=25, n=12):
 # --- the modes agree where they should ---------------------------------------------------
 
 
-@pytest.mark.parametrize("reg", REGS)
+@pytest.mark.parametrize("reg", REGS + PENALTY)
 def test_the_modes_agree_on_a_well_conditioned_pencil(reg):
     """No truncation happens, so regularization is a change of coordinates and the tension
-    is an invariant of the pair. Anything else means a mode is not solving the same problem."""
+    is an invariant of the pair. Anything else means a mode is not solving the same problem.
+
+    The penalty modes join at the free function's default `rtol = eps`: `tau` is then about
+    1e-15 against tensions of order one, too small to move anything here."""
     A_B, A_I = well_conditioned()
     ref = tensions_fn(A_B, A_I, reg=None)
     got = tensions_fn(A_B, A_I, reg=reg)
@@ -374,8 +386,7 @@ def test_the_unregularized_route_is_usable_from_a_pencil(pencil):
     assert abs(p.tension(LAM) - ref) / ref < 0.05
 
 
-@pytest.mark.parametrize("reg", REGS)
-@pytest.mark.parametrize("frozen", [None, 30])
+@pytest.mark.parametrize("reg, frozen", MODE_RANKS)
 def test_rank_at_is_what_the_pencil_actually_yields(pencil, reg, frozen):
     """One contract for every mode: `len(tensions(lam)) == rank_at(lam)`, and asking `coef`
     for that many vectors is always a valid call.
@@ -395,8 +406,7 @@ def test_rank_at_is_what_the_pencil_actually_yields(pencil, reg, frozen):
     assert p.coef(LAM, mult=r).shape[1] == r
 
 
-@pytest.mark.parametrize("reg", REGS)
-@pytest.mark.parametrize("frozen", [None, 30])
+@pytest.mark.parametrize("reg, frozen", MODE_RANKS)
 def test_coef_returns_basis_coordinates_except_where_it_says_otherwise(pencil, reg, frozen):
     """`coef` claims `(n_cols, mult)`, and that claim was untested and false in one cell of
     the mode/rank cross product. Five of six return `n_cols` rows; `reg=None` with a frozen
@@ -646,3 +656,285 @@ def test_the_rank_is_derived_inside_the_factorization_not_before_it():
 def test_an_explicit_rank_still_overrides_the_derivation():
     A_B, A_I = well_conditioned(n=12)
     assert regularize(A_B, A_I, reg="svd", rank=5, rtol=1e-10).rank == 5
+
+
+# --- penalty modes: the algebra -----------------------------------------------------------
+#
+# `"tikhonov"` hands the GSVD `([A_B; tau*I], A_I)`; `"tikhonov_qr"` hands it the row blocks of
+# `Q` from an unpivoted QR of `[A_B; tau*I; A_I]`. `tau = rtol * ||[A_B; A_I]||_F`. See the
+# `_regularize` module docstring for why there are two and which to use.
+
+
+def test_the_two_penalty_realizations_agree(pencil):
+    """Identical in exact arithmetic -- `R` is invertible and the GSVD is blind to an invertible
+    right factor -- so at the default `rtol` they must agree to well inside the working
+    precision. Measured on this fixture at `LAM`: 6e-8 to 4e-7 over the first five."""
+    t1 = MPSPencil(pencil.bdry, pencil.interior, reg="tikhonov").tensions(LAM)
+    t2 = MPSPencil(pencil.bdry, pencil.interior, reg="tikhonov_qr").tensions(LAM)
+    assert np.allclose(t1[:5], t2[:5], rtol=1e-6, atol=0)
+
+
+@pytest.mark.parametrize("reg", PENALTY)
+def test_back_names_the_same_function_under_a_penalty(reg):
+    """The penalty analogue of `test_back_inverts_the_reduction`. `B` is the AUGMENTED
+    numerator, so the identity is against `[A_B; tau*I]`, not `A_B`."""
+    A_B, A_I = well_conditioned()
+    r = regularize(A_B, A_I, reg=reg, rtol=1e-6)
+    y = np.random.default_rng(3).standard_normal((r.rank, 2))
+    c = r.back(y)
+    numer = np.vstack([A_B, r.tau * np.eye(A_B.shape[1])])
+    assert c.shape == (A_B.shape[1], 2)
+    assert np.allclose(r.B @ y, numer @ c, rtol=1e-9, atol=1e-12)
+    assert np.allclose(r.I @ y, A_I @ c, rtol=1e-9, atol=1e-12)
+    assert np.allclose(r.back(y[:, 0]), c[:, 0]), "a flat vector must map the same way"
+
+
+@pytest.mark.parametrize("reg", PENALTY)
+def test_the_penalty_minimizer_attains_the_reported_tension(pencil, reg):
+    """`coef` is the minimizer of `sqrt(||Bc||^2 + tau^2 ||c||^2) / ||Ic||`, so evaluating
+    that quotient at it must give back the tension. Measured 5e-8 and 7e-8 relative here,
+    which is the minimizer's own accuracy on a plateau point, not a defect of `back`."""
+    p = MPSPencil(pencil.bdry, pencil.interior, reg=reg)
+    c = p.coef(LAM)[:, 0]
+    B, I = p.pencil(LAM)
+    tau = p.regularized(LAM).tau
+    got = np.hypot(np.linalg.norm(B @ c), tau * np.linalg.norm(c)) / np.linalg.norm(I @ c)
+    assert got == pytest.approx(p.tension(LAM), rel=1e-6)
+
+
+@pytest.mark.parametrize("reg", PENALTY)
+def test_tau_is_relative_not_absolute(reg):
+    """The penalty twin of `test_rtol_is_relative_not_absolute`: scaling the whole pencil
+    scales `tau` with it and leaves every tension alone."""
+    A_B, A_I = well_conditioned(n=12)
+    A_B[:, 8:] *= 1e-10
+    A_I[:, 8:] *= 1e-10
+    r = regularize(A_B, A_I, reg=reg, rtol=1e-8)
+    ref = tensions_fn(A_B, A_I, reg=reg, rtol=1e-8)
+    for a in (1e6, 1e-6):
+        s = regularize(A_B * a, A_I * a, reg=reg, rtol=1e-8)
+        assert s.tau == pytest.approx(a * r.tau, rel=1e-12)
+        assert np.allclose(tensions_fn(A_B * a, A_I * a, reg=reg, rtol=1e-8), ref,
+                           rtol=1e-8, atol=0)
+
+
+def test_tau_is_rtol_sqrt_n_on_an_equilibrated_pencil(pencil):
+    """Equilibration gives every column of the stack unit norm, so `||stack||_F = sqrt(n_cols)`
+    and `tau = rtol * sqrt(n_cols)` -- a constant for the pencil's life, adding no `lam`
+    dependence of its own. (A column that underflowed to exact zeros would keep norm 0.)"""
+    p = MPSPencil(pencil.bdry, pencil.interior, reg="tikhonov_qr")
+    for lam in (LAM, 16.0, 30.0):
+        assert p.regularized(lam).tau == pytest.approx(p.rtol * np.sqrt(p.n_cols), rel=1e-12)
+
+
+@pytest.mark.parametrize("reg", PENALTY)
+def test_a_penalty_mode_refuses_a_rank(pencil, reg):
+    """A penalty chooses no rank, so freezing one -- directly or through `lam_ref` -- has
+    nothing to act on. Refused rather than silently ignored."""
+    with pytest.raises(ValueError, match="penalty"):
+        MPSPencil(pencil.bdry, pencil.interior, reg=reg, rank=30)
+    with pytest.raises(ValueError, match="penalty"):
+        MPSPencil(pencil.bdry, pencil.interior, reg=reg, lam_ref=LAM)
+    with pytest.raises(ValueError, match="rtol > 0"):
+        MPSPencil(pencil.bdry, pencil.interior, reg=reg, rtol=0.0)
+    A_B, A_I = well_conditioned()
+    with pytest.raises(ValueError, match="penalty"):
+        regularize(A_B, A_I, reg=reg, rank=5)
+    with pytest.raises(ValueError, match="all-zero"):
+        regularize(0 * A_B, 0 * A_I, reg=reg, rtol=1e-8)
+
+
+def test_an_unknown_mode_is_refused_at_construction(pencil):
+    """It used to be refused on first USE, inside `regularize`, which could be a long way
+    from the line that asked for it."""
+    with pytest.raises(ValueError, match="unknown regularization"):
+        MPSPencil(pencil.bdry, pencil.interior, reg="bogus")
+
+
+# --- penalty modes: no rank change, and what that buys ------------------------------------
+
+
+# The scan runs to lam = 60, far above the fixture's lam_ref, where FourierBessel reports a
+# digit less than 1e-8. The claim is about counting directions, not accuracy.
+@pytest.mark.filterwarnings(
+    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
+def test_the_qr_penalty_never_changes_rank_and_the_literal_one_does():
+    """The stated goal, measured. Over a scan where the threshold rank takes seven values
+    (42 to 48 of 50), `"tikhonov_qr"` yields 50 finite tensions at every `lam`: nothing is
+    decided, so nothing can flip.
+
+    `"tikhonov"` reports `rank_at == 50` too -- the penalty makes the STACK full rank -- but its
+    count of FINITE tensions moves, measured 41 to 50 over this scan. That is LAPACK's `?ggsvp3`
+    deciding the interior block's rank with its own tolerance, which `tau*I` does nothing to
+    prevent. So the literal formulation relocates the rank decision rather than removing it,
+    and this is the test that says so.
+    """
+    poly = Polygon(L_SHAPE, bc="dir")
+    b = basis_for(poly)
+    base = MPSPencil.from_basis(b, poly.bdry_quad(400),
+                                poly.interior_pts(150, rng=np.random.default_rng(0)))
+    lams = np.linspace(9.0, 60.0, 24)
+    assert len({base.rank_at(lam) for lam in lams}) >= 2, "the scan must exercise flips"
+
+    qr = MPSPencil(base.bdry, base.interior, reg="tikhonov_qr")
+    assert {qr.rank_at(lam) for lam in lams} == {qr.n_cols}
+    assert {int(np.isfinite(qr.tensions(lam)).sum()) for lam in lams} == {qr.n_cols}
+
+    lit = MPSPencil(base.bdry, base.interior, reg="tikhonov")
+    assert {lit.rank_at(lam) for lam in lams} == {lit.n_cols}
+    finite = {int(np.isfinite(lit.tensions(lam)).sum()) for lam in lams}
+    assert len(finite) >= 2, f"the literal penalty's finite count did not move: {finite}"
+
+
+def _flicker_point():
+    """A plateau point on `rect(1, 1/phi)` where the threshold rank flips between 39 and 40 at
+    every scale -- `notes/smooth_filter.md` section 3: 63-88 changes per 201 samples whether
+    the interval is 2e-2 or 2e-10 wide."""
+    import rect_suite as rs
+
+    return rs.family_A()[0].pencil, 38.261708924
+
+
+def _spread(f, centre, w, n=41):
+    v = np.array([f(x) for x in centre + np.linspace(-w, w, n)])
+    return float(np.ptp(v) / np.median(v))
+
+
+@pytest.mark.slow
+def test_the_qr_penalty_is_differentiable_where_the_threshold_flickers():
+    """The test for differentiability: a smooth function's spread over an interval shrinks in
+    proportion to the interval; noise does not.
+
+    Measured at half-widths 2e-4 .. 2e-8: the penalty falls 1.56e-4, 1.56e-5, 1.53e-6,
+    1.61e-7 -- exactly a decade per decade -- before flattening at its own floor, 8.5e-8. The
+    threshold stays at 2.8e-3 to 3.8e-3 throughout, the 0.4% noise a flickering rank leaves.
+
+    The penalty uses `MPSPencil`'s `prec`-derived `rtol`, not the suite's fixed 1.5e-15: at
+    that `rtol` a plain penalty sits in its own saturated-noise regime (section 2).
+    """
+    p, x0 = _flicker_point()
+    q = MPSPencil(p.bdry, p.interior, reg="tikhonov_qr", prec=1e-8)
+    wide, narrow = _spread(q.tension, x0, 2e-4), _spread(q.tension, x0, 2e-6)
+    assert wide / narrow > 50, f"spread {wide:.2e} -> {narrow:.2e}: not shrinking with width"
+    assert _spread(q.tension, x0, 2e-8) < 1e-6
+    assert len({p.rank_at(x) for x in x0 + np.linspace(-2e-6, 2e-6, 41)}) >= 2
+    assert _spread(p.tension, x0, 2e-8) > 1e-3, "the threshold twin should plateau"
+
+
+@pytest.mark.slow
+def test_a_blas_sized_perturbation_flips_the_threshold_and_not_the_penalty():
+    """The 2026-09-21 root cause, modelled. Linux and macOS disagree in the last bits, and
+    where a singular value sits near the cutoff that decides the rank. Jitter the pencil by
+    1e-15 relative -- a cross-BLAS difference -- at points whose first dropped singular value
+    sits at 0.98x the cutoff.
+
+    Measured over twelve such points: the threshold rank flips at five and `sigma_1` moves by
+    up to 4.2e-3. The penalty moves by at most 6.6e-8, which is its plateau noise at this
+    `tau` and five orders below.
+    """
+    p, x0 = _flicker_point()
+    rng = np.random.default_rng(0)
+    rtol_pen = float(np.sqrt(1e-8 * np.finfo(float).eps))
+    flips, worst_thr, worst_pen = 0, 0.0, 0.0
+    for x in x0 + np.linspace(-2e-3, -1.45e-3, 12):
+        B, I = p.pencil(x)
+        Bp = B * (1 + 1e-15 * rng.standard_normal(B.shape))
+        Ip = I * (1 + 1e-15 * rng.standard_normal(I.shape))
+        a = tensions_fn(B, I, reg="svd", rtol=p.rtol)
+        b = tensions_fn(Bp, Ip, reg="svd", rtol=p.rtol)
+        flips += len(a) != len(b)
+        worst_thr = max(worst_thr, abs(b[0] - a[0]) / a[0])
+        c = tensions_fn(B, I, reg="tikhonov_qr", rtol=rtol_pen)[0]
+        d = tensions_fn(Bp, Ip, reg="tikhonov_qr", rtol=rtol_pen)[0]
+        worst_pen = max(worst_pen, abs(d - c) / c)
+    assert flips >= 1 and worst_thr > 1e-4, "the threshold twin should flip somewhere"
+    assert worst_pen < 1e-6, f"the penalty moved {worst_pen:.2e} under a 1e-15 jitter"
+
+
+# --- the 2026-09-21 CI refusal ------------------------------------------------------------
+#
+# `notes/session_2026-09-19.md`, the 09-21 trace. On Linux/OpenBLAS the threshold rank
+# flipped 85 -> 86 at ONE end of the bracket around the lowest member of the N = 65 cluster
+# at `prec = 1e-6`, band 2.6. That lowered `sigma_1` there by 67%, the refiner walked toward
+# the end, and a true root was refused `not_a_minimum` -- the silent wrong total in
+# `test_the_cluster_total_GRID[N65-1e-06-b2.6]`. These replay it deterministically, on any
+# platform, by INJECTING the flip; and check the penalty has nothing to inject.
+
+_CI = dict(lo=641.5168481866608, hi=641.517275351795, hint=641.517204846656,
+           root=641.5171694882)
+
+
+def _ci_cell():
+    import rect_suite as rs
+
+    (case,) = rs.split_degeneracy_cases(1e-6, bands=(2.6,), levels={65: 4})
+    return case
+
+
+@pytest.mark.slow
+def test_the_refused_bracket_end_is_smooth_under_the_penalty():
+    """At the note's offsets around the refused end, the forced rank-86 / rank-85 ratio runs
+    0.962, 0.781, 0.461, 0.328, 1.000 -- a 67% drop and back inside 8e-9 relative. The penalty
+    is a straight ramp there: quadratic-fit residual 5.6e-10."""
+    case = _ci_cell()
+    p = case.pencil
+    offs = np.array([-4e-6, -2e-6, -1e-6, 0.0, 1e-6])
+
+    q = MPSPencil(p.bdry, p.interior, reg="tikhonov_qr", prec=1e-6)
+    t = np.array([q.tension(_CI["hi"] + o) for o in offs])
+    fit = np.polyval(np.polyfit(offs, t, 2), offs)
+    assert np.max(np.abs(t - fit) / t) < 1e-7
+
+    f85 = MPSPencil(p.bdry, p.interior, rank=85, rtol=p.rtol, prec=p.prec)
+    f86 = MPSPencil(p.bdry, p.interior, rank=86, rtol=p.rtol, prec=p.prec)
+    ratio = [f86.tension(_CI["hi"] + o) / f85.tension(_CI["hi"] + o) for o in offs]
+    assert min(ratio) < 0.5, f"the injected flip should be jagged here: {np.round(ratio, 3)}"
+
+
+@pytest.mark.slow
+def test_the_ci_refusal_does_not_happen_under_the_penalty():
+    """The note's one-second reproduction. With the flip injected at the bracket's upper end
+    the refiner refuses the root, `not_a_minimum`, `sigma = 5.330e-7`, exactly as recorded.
+    Under `"tikhonov_qr"` there is no rank to flip, and it converges in four evaluations to
+    6.5e-8 from the root."""
+    from chladni.mps.objective import Objective
+    from chladni.mps.refine import refine
+
+    case = _ci_cell()
+    p = case.pencil
+    lo, hi, hint = _CI["lo"], _CI["hi"], _CI["hint"]
+
+    def run(tensions):
+        obj = Objective(tensions, case.a, case.b, prec=1e-6, variable="lam")
+        return refine(obj, lo, hi, prec=1e-6, lam_hint=hint, interior=(lo, hi))
+
+    q = MPSPencil(p.bdry, p.interior, reg="tikhonov_qr", prec=1e-6)
+    res = run(q.tensions)
+    assert res.accepted, f"refused under the penalty: {res.reason}"
+    assert abs(res.lam - _CI["root"]) < 1e-6 * _CI["root"]
+
+    f86 = MPSPencil(p.bdry, p.interior, rank=86, rtol=p.rtol, prec=p.prec)
+    flipped = run(lambda lam: f86.tensions(lam) if float(lam) == hi else p.tensions(lam))
+    assert not flipped.accepted and flipped.reason == "not_a_minimum", (
+        "the injected flip no longer reproduces the refusal, so the penalty half proves nothing")
+
+
+@pytest.mark.slow
+def test_the_ci_cell_counts_four_under_the_penalty():
+    """The cell itself, solved end to end under `"tikhonov_qr"`: 4 of 4. This is the portable
+    acceptance test the session note asks a replacement regularization to pass. On macOS the
+    threshold passes it too -- the failure needed OpenBLAS's rounding -- so here it guards
+    against the penalty losing the cluster, and the Linux runner is where it discriminates."""
+    import bracket_score as bs
+    from chladni.mps.objective import Objective
+    from chladni.mps.search import solve
+
+    case = _ci_cell()
+    p = case.pencil
+    q = MPSPencil(p.bdry, p.interior, reg="tikhonov_qr", prec=1e-6)
+    base = bs.objective_for(case, 1e-6)
+    obj = Objective(q.tensions, base.lo, base.hi, prec=1e-6, variable="lam",
+                    expected_count=getattr(base, "expected_count", None))
+    res = solve(obj, prec=1e-6)
+    assert not res.declined, res.diagnostics.decline_reason
+    assert sum(x.mult for x in res.levels) == 4

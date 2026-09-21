@@ -1,22 +1,30 @@
-"""Rank truncation before the GSVD, and the one map back out of it.
+"""Regularization before the GSVD -- truncation or a penalty -- and the one map back out of it.
 
 Private module name, public functions: `regularize` the function and `regularize` the module
 cannot both live at `chladni.mps.regularize` without `import chladni.mps.regularize` becoming
 ambiguous, and the function is the one callers want.
 
-Two decisions are recorded here.
+Three decisions are recorded here.
 
 **The rank is an integer, not a tolerance -- for reproducibility and cost, not accuracy.**
 lappy re-derives the rank at every parameter, cutting at `(s >= rtol).sum()`. The original
 argument against that was a correctness one: the retained rank becomes a step function of `k`,
 so the tension should jump, and near an eigenvalue truncation might delete the eigenfunction.
-That was measured and it is wrong. `||A_I c||` is of order one for any minimizer -- that is
+Measured AT THE ROOT, that is wrong. `||A_I c||` is of order one for any minimizer -- that is
 what the tension's denominator is for -- so the minimizer has healthy norm in the STACKED
 pencil, which is what the cutoff acts on. On the L-shape at `lam_1`, tension 1.7e-12, the
 minimizer carries all of its energy in the retained subspace and the threshold rank does not
 move at all. See `docs/design/mps.md`, "As built".
 
-What survives is narrower. The rank is a property of the solver rather than of `k`, so
+**It is not wrong on the FLANK, and that is where it has cost a real answer.**
+`notes/session_2026-09-19.md` (the 09-21 trace) observes the threshold rank flip 85 -> 86 at
+one bracket end on Linux/OpenBLAS, where the first dropped singular value sits at 0.89x the
+cutoff -- rounding noise, decided differently by a different BLAS. The flip lowers `sigma_1`
+there by 67%, the refiner steps toward that end, and a true root is refused. A flip barely
+moves `sigma_1` at a root (median ratio 0.986) and moves it by up to 3.5x on the flanks, which
+is exactly where a refiner compares ends. The penalty modes below exist because of this.
+
+What survives of the integer-rank argument is narrower. The rank is a property of the solver rather than of `k`, so
 `tension` is a function of `k` alone: two visits to a parameter agree and a re-solve does not
 drift for unrelated reasons. And it skips one `svdvals` of the stack per evaluation, 11.3 ms
 against 13.4 ms per `k` on a 132-column pencil. `tests/test_regularization.py` pins both,
@@ -26,6 +34,43 @@ and pins the agreement measurement too, so the next person to ask can find the a
 basis coordinates, built by whichever mode ran. lappy's `nullspace_coef` instead branches on
 `reg_type` a second time at the recovery site, so two places have to agree about a
 transformation only one of them computed.
+
+**A penalty is an alternative to a rank, and only the QR form of it removes the rank.** The
+`"tikhonov"` modes make no truncation decision at all. They minimize
+
+    sigma_tau = min_c  sqrt(||A_B c||^2 + tau^2 ||c||^2) / ||A_I c||,
+
+the GSVD of `([A_B; tau*I], A_I)`, which is continuous in the matrix for every `tau > 0` where a
+truncation is not. `tau = rtol * ||[A_B; A_I]||_F`: relative, like `rtol` everywhere else here,
+and on an equilibrated stack -- every column of unit norm -- exactly `rtol * sqrt(n_cols)`, a
+constant for the pencil's life. (A column that underflowed to exact zeros keeps norm 0, so the
+norm counts nonzero columns; the equilibrated matrix is already discontinuous at such an event.)
+The penalty acts in EQUILIBRATED coordinates, which is the point: raw Fourier-Bessel columns
+span about 1149 nats of scale, and `||c||` there would penalize nothing but the largest few.
+
+`"tikhonov"` hands the GSVD `([A_B; tau*I], A_I)` directly. `"tikhonov_qr"` first takes an
+unpivoted QR of `[A_B; tau*I; A_I]` and hands it the two row blocks of `Q`. In exact arithmetic
+the two are identical -- `R` is invertible, and the GSVD is blind to an invertible right
+factor. Through LAPACK they are not, and the difference is the whole point. `tau*I` makes the
+STACK full rank but does nothing for the INTERIOR block, and LAPACK's `?ggsvp3` decides that
+block's numerical rank with its own tolerance. So `"tikhonov"` does not remove the rank
+decision, it moves it inside LAPACK: on `rect(1, 1/phi)`'s 126-column pencil its count of
+finite tensions was 33, 43, 48 at `lam = 35.7, 150, 261`, at every `tau` tried. `"tikhonov_qr"`
+hands LAPACK an orthonormal stack, and its count was `n_int = 63` at all three.
+`"tikhonov_qr"` is the mode to use; `"tikhonov"` is kept as the literal formulation and as an
+oracle the QR form must agree with.
+
+Both need `tau` above the rounding noise. At the `prec`-derived default `rtol` the two agree
+to 1e-7 or better; at `rtol = 1.5e-15` they part by 1e-3.
+
+**What limits the penalty at tight `prec` is NOISE, not the floor.** The literal form's floor
+saturates near 9e-14 -- that is LAPACK's internal cut, and it is where the claim that "a
+plain penalty cannot go below 1e-12" came from. The QR form's floor tracks `tau` (about
+`1.45 * tau`) down to 2.1e-15, within 1.3x of the threshold's. But its noise grows as `tau`
+shrinks, multiplicatively along the whole curve: 1e-2 relative at the `tau` a 1e-14 floor
+needs, against the threshold's 1e-3. An order-1 penalty charges the eigenfunction itself
+`tau * ||c||`, so floor and noise are both set by `tau` against the rounding level and cannot
+be traded apart. `notes/smooth_filter.md` sections 2, 7.4, 9 and 10 carry the measurements.
 """
 from __future__ import annotations
 
@@ -44,6 +89,13 @@ __all__ = ["RegularizedPencil", "regularize", "choose_rank"]
 #: continuity argument for a fixed index does not apply -- the one configuration where this
 #: design has nothing to offer, so it says so rather than pretending.
 _DEGENERACY_ATOL = 1e-8
+
+#: The penalty modes: no rank decision, so no `rank` to freeze and no `lam_ref` to choose one.
+_PENALTY = ("tikhonov", "tikhonov_qr")
+
+#: Every mode `regularize` accepts, so a caller can refuse a bad one at construction rather
+#: than on first use.
+_MODES = ("svd", "qrp", None) + _PENALTY
 
 
 def _lapack_is_accelerate():
@@ -102,6 +154,10 @@ class RegularizedPencil(NamedTuple):
     `B` and `I` are the reduced blocks; `back(y)` maps reduced coordinates to basis
     coordinates; `rank` is what was retained; `s` are the singular values the choice was made
     from, or None for a mode that computes none.
+
+    For a penalty mode `B` is the AUGMENTED numerator block -- `[A_B; tau*I]`, or its rows of
+    `Q` -- so it has `n_cols` more rows than `A_B`, and `rank` is `n_cols` because nothing is
+    dropped. `tau` is the absolute penalty weight used, or None for a truncating mode.
     """
 
     B: np.ndarray
@@ -109,6 +165,7 @@ class RegularizedPencil(NamedTuple):
     back: Callable[[np.ndarray], np.ndarray]
     rank: int
     s: Optional[np.ndarray] = None
+    tau: Optional[float] = None
 
 
 def _svd_gesdd_then_gesvd(a):
@@ -182,7 +239,7 @@ def _warn_if_degenerate(s, rank):
 
 
 def regularize(A_B, A_I, reg="svd", rank=None, rtol=np.finfo(float).eps):
-    """Reduce the pencil `(A_B, A_I)` to `rank` columns, returning the map back.
+    """Regularize the pencil `(A_B, A_I)` for the GSVD, returning the map back.
 
     `reg` selects the mode:
 
@@ -191,6 +248,15 @@ def regularize(A_B, A_I, reg="svd", rank=None, rtol=np.finfo(float).eps):
     * `"qrp"` -- column-pivoted QR, keep the leading `rank` pivoted columns. Cheaper, and it
       names actual basis columns, which makes it the readable one when debugging.
     * `None` -- no regularization at all.
+    * `"tikhonov_qr"` -- a PENALTY instead of a truncation: unpivoted QR of
+      `[A_B; tau*I; A_I]`, and the two row blocks of `Q` go to the GSVD. No rank is chosen,
+      so none can change with `lam`. `back` is `R^-1`.
+    * `"tikhonov"` -- the same penalty handed to the GSVD directly as `([A_B; tau*I], A_I)`.
+      Identical in exact arithmetic; NOT free of rank decisions in practice, because LAPACK
+      then decides the interior block's rank itself. `back` is the identity.
+
+    For the penalty modes `rtol` sets the weight, `tau = rtol * ||[A_B; A_I]||_F`, and `rank`
+    must be None. The module docstring records why the two differ and what they cannot do.
 
     There was a fourth, `"implicit"`, which passed `tola`/`tolb` to `gsvd4py` and let
     LAPACK's `?ggsvp3` pick the rank. `gsvd4py` 0.3.0 removed those parameters, so the mode
@@ -254,4 +320,47 @@ def regularize(A_B, A_I, reg="svd", rank=None, rtol=np.finfo(float).eps):
 
         return RegularizedPencil(reduced[:m], reduced[m:], back, r, d)
 
-    raise ValueError(f"unknown regularization {reg!r}; expected 'svd', 'qrp' or None")
+    if reg in _PENALTY:
+        tau = _penalty_weight(stack, rank, rtol, reg)
+        numer = np.vstack([A_B, tau * np.eye(n)])            # (m + n, n)
+
+        if reg == "tikhonov":
+            return RegularizedPencil(numer, A_I, lambda y: np.asarray(y, dtype=float), n,
+                                     tau=tau)
+
+        # `_qr_economic`, not `la.qr`: this is a tall QR of exactly the kind Accelerate's
+        # `dgeqrf` corrupts the heap on. Unpivoted, so `back` needs no permutation.
+        Q, R = _qr_economic(np.vstack([numer, A_I]))
+
+        def back(y, _R=R):
+            # [numer; A_I] = Q R, so a reduced vector y names c = R^-1 y: numer c = Q_1 y and
+            # A_I c = Q_2 y, the statement that makes this an inverse.
+            y = np.asarray(y, dtype=float)
+            flat = y.ndim == 1
+            c = la.solve_triangular(_R, y[:, None] if flat else y)
+            return c[:, 0] if flat else c
+
+        return RegularizedPencil(Q[:m + n], Q[m + n:], back, n, tau=tau)
+
+    raise ValueError(f"unknown regularization {reg!r}; expected one of {_MODES}")
+
+
+def _penalty_weight(stack, rank, rtol, reg):
+    """`tau = rtol * ||stack||_F`, refusing the inputs that would make it meaningless.
+
+    Relative, so scaling the pencil scales `tau` with it and leaves the tensions alone. On an
+    equilibrated stack this is `rtol * sqrt(n_cols)`. Zero is refused rather than returned:
+    `tau = 0` is `reg=None` with a singular `R` waiting in the QR form's `back`.
+    """
+    if rank is not None:
+        raise ValueError(
+            f"reg={reg!r} is a penalty and chooses no rank, so rank={rank!r} has nothing to "
+            f"freeze. Freezing a rank is a truncating mode's option ('svd' or 'qrp')."
+        )
+    rtol = float(rtol)
+    if not rtol > 0.0:
+        raise ValueError(f"reg={reg!r} needs rtol > 0 to set its penalty, got {rtol!r}")
+    tau = rtol * float(np.linalg.norm(stack))
+    if not tau > 0.0:
+        raise ValueError(f"reg={reg!r} cannot penalize an all-zero pencil")
+    return tau
