@@ -94,12 +94,62 @@ def cluster(N, m, band, prec):
 _SOLVES = {}
 
 
+#: THROWAWAY, `diag/refine-trace` only. The cell Linux gets wrong, traced DURING its real solve
+#: -- in the same process, after the same preceding tests -- because the failure needs that
+#: state and every attempt to reproduce it elsewhere has failed. Every refinement is recorded with
+#: every evaluation it made, and each evaluation with the retained rank `len(tensions)`, which is
+#: the quantity a threaded BLAS can flip.
+_TRACE_KEY = (65, 2.6, 1e-6)
+_TRACE = {}
+
+
 def _solve(N, m, band, prec):
     key = (N, band, prec)
     if key not in _SOLVES:
         case = cluster(N, m, band, prec)
-        _SOLVES[key] = (case, solve(bs.objective_for(case, prec), prec=prec))
+        obj = bs.objective_for(case, prec)
+        if key == _TRACE_KEY:
+            import chladni.mps.search as S
+            evals, refines = [], []
+            real_t, real_refine = obj._f, S.refine
+
+            def traced_t(x, _f=real_t):
+                v = _f(x)
+                a = np.atleast_1d(np.asarray(v, dtype=float))
+                evals.append((float(x), int(a.size), float(a[0]) if a.size else float("nan")))
+                return v
+
+            def traced_refine(o, lo, hi, **kw):
+                start = len(evals)
+                r = real_refine(o, lo, hi, **kw)
+                refines.append((r, lo, hi, evals[start:]))
+                return r
+
+            obj._f = traced_t
+            S.refine = traced_refine
+            try:
+                res = solve(obj, prec=prec)
+            finally:
+                S.refine = real_refine
+            _TRACE.update(evals=evals, refines=refines)
+        else:
+            res = solve(obj, prec=prec)
+        _SOLVES[key] = (case, res)
     return _SOLVES[key]
+
+
+def _trace_dump():
+    if not _TRACE:
+        return ""
+    ranks = sorted({r for _, r, _ in _TRACE["evals"]})
+    out = [f"  ALL {len(_TRACE['evals'])} evaluations: retained ranks seen {ranks}"]
+    for r, lo, hi, ev in _TRACE["refines"]:
+        out.append(f"  REFINE [{lo!r}, {hi!r}] -> accepted={r.accepted} reason={r.reason} "
+                   f"lam={r.lam!r} sigma={r.sigma:.4e} evals={r.evaluations} steps={r.steps} "
+                   f"delta_res={r.delta_res:.3e} width={r.width:.3e}")
+        for x, rk, s1 in ev:
+            out.append(f"      eval lam={x!r}  rank={rk}  sigma1={s1:.6e}")
+    return "\n".join(out)
 
 
 def _cells(precs, bands, marks):
@@ -128,9 +178,18 @@ def _assert_total(N, m, prec, band):
     if res.declined:
         assert res.diagnostics.decline_reason.strip(), "a decline must carry its reason"
         return
-    assert sum(x.mult for x in res.levels) == m, (
-        f"declared {sum(x.mult for x in res.levels)} of {m}; "
-        f"n_uncertain={res.diagnostics.n_uncertain}")
+    tot = sum(x.mult for x in res.levels)
+    if (N, band, prec) == _TRACE_KEY:
+        # Printed PASS OR FAIL, so a passing Linux run and a failing one compare line for line.
+        print(f"\n==== TRACE {_TRACE_KEY}: declared {tot} of {m} ====")
+        print(f"  levels: {[(repr(x.lam), x.mult, f'{x.sigma:.3e}') for x in res.levels]}")
+        print(f"  n_brackets={res.diagnostics.n_brackets} n_rejected={res.diagnostics.n_rejected} "
+              f"n_merged={res.diagnostics.n_merged} rejected_deep={res.diagnostics.rejected_deep}")
+        print(_trace_dump())
+    assert tot == m, (
+        f"declared {tot} of {m}; n_uncertain={res.diagnostics.n_uncertain}; "
+        f"n_brackets={res.diagnostics.n_brackets} n_rejected={res.diagnostics.n_rejected} "
+        f"n_merged={res.diagnostics.n_merged} rejected_deep={res.diagnostics.rejected_deep}")
 
 
 @pytest.mark.parametrize("N, m, prec, band",

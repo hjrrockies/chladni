@@ -1,0 +1,70 @@
+name: diag-refine-trace
+
+# THROWAWAY. The refinement trace of the one cell Linux gets wrong, taken DURING its real solve.
+#
+# Why this is needed: `_deep_rejections`, merged 2026-09-20, did NOT fire on the first Linux run
+# after it -- the cell still read "declared 3 of 4; n_uncertain=0". Its "flags the one wrong
+# cell" was measured on macOS, where this cell is right. And no local perturbation reproduces the
+# failure: value jitter to 1e-04, 792 shifted brackets, and scattered rank flips (which make stage
+# 1 DECLINE, where Linux's stage 1 was undisturbed) all fail to. So the repair cannot be designed
+# from inference; it needs what the refiner actually saw.
+#
+# `tests/test_cluster_totals.py` on this branch records every refinement of that cell with every
+# evaluation it made and the RETAINED RANK at each, and prints it pass or fail.
+#
+#   nine-files   the scope that failed 3 of 3 at default threading, with -s for the full trace
+#   full-suite   the exact CI command; its assertion message now carries the counts
+#
+# Delete this file and the test patch with the branch.
+on:
+  push:
+    branches: ["diag/**"]
+  workflow_dispatch:
+
+env:
+  MPLBACKEND: Agg
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: nine-files
+            reps: 3
+            full: 'no'
+          - name: full-suite
+            reps: 1
+            full: 'yes'
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+          cache-suffix: diag
+      - name: Install
+        run: |
+          uv venv --python 3.13
+          uv pip install -e ".[test]"
+      - name: ${{ matrix.name }}
+        run: |
+          NINE="tests/test_asymp.py tests/test_basis.py tests/test_basis_sufficiency.py
+                tests/test_bessel_branches.py tests/test_bessel_kernel.py tests/test_boundary.py
+                tests/test_bounds.py tests/test_bracket_score.py tests/test_calibrate.py
+                tests/test_cluster_totals.py"
+          for i in $(seq 1 ${{ matrix.reps }}); do
+            if [ "${{ matrix.full }}" = "yes" ]; then
+              .venv/bin/python -m pytest -m "" -W error::UserWarning > "r$i.txt" 2>&1 || true
+            else
+              .venv/bin/python -m pytest $NINE -m '' -W error::UserWarning -q -s > "r$i.txt" 2>&1 || true
+            fi
+            echo "################ rep $i: $(tail -n 1 r$i.txt)"
+            grep -E "declared [0-9]+ of 4" "r$i.txt" | head -3 || true
+          done
+          for i in $(seq 1 ${{ matrix.reps }}); do
+            echo "################################ TRACE, rep $i ################################"
+            sed -n '/==== TRACE/,/^[^ ]/p' "r$i.txt" | head -200 || true
+          done
