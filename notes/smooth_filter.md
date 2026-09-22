@@ -797,3 +797,32 @@ them 2e-15 apart). Two things should come before any further tuning here:
 
 Then re-ask the 1e-14 question. The order-2 construction and its derivation
 (`notes/tikhonov_derivations.tex`) are kept for that.
+
+### 10.3 The accounting failure was two defects, and one is fixed
+
+2026-09-22. Section 10.2's "one root reported three times" at 50*pi^2, `prec = 1e-6`, band 1.3
+(order 2, `tau_2 = 2 prec`: 5 of 3) is two separate defects, traced:
+
+1. **One eigenvalue reported TWICE, 1e-12 apart -- fixed.** Stage 3's cache wall slope,
+   `search._slope_from_cache`, uses the cone identity `c = (v_lo + v_hi)/(hi - lo)`, which assumes
+   `sigma` reaches zero. With a 9.6e-7 floor and the nearest samples a few ulps apart it read
+   `2*floor/(hi - lo)` = 8.45e6 against a true 0.02-0.08. The side search excludes `r +- half`
+   with `half = 0.5 sigma_j / c`, so the radius collapsed to 1e-13, the side search refined against
+   the root itself, and found it again as a new level. Fixed with a GUARD, after a first version
+   failed the gate: a floor-aware estimate (samples within twice the root's `sigma` skipped as flat
+   bottom, flank values reduced to `sqrt(v^2 - floor^2)`) applied UNCONDITIONALLY flipped four
+   calibrated tests, because at a hump top accepted as a root (65*pi^2, prec 1e-8, band 0.3)
+   `sigma` is not a floor and the estimate moved 2.3x. The two estimates agree within 4x at every
+   genuine or hump root measured and differ by 4.6e8 at the defect, so the floor-aware one is used
+   only where the blind one exceeds it by more than 100x; everywhere else the calibrated slope is
+   unchanged bit for bit. 5 of 3 became 4 of 3.
+2. **A flank point accepted as a root -- not fixed, recorded in `TODO.md` section 4.** The bracket
+   lying between two members converged 2 ulps inside its lower end, on the wall of the member
+   below. `refine`'s end probe reaches `sigma / c_wall` outward with `c_wall` the steepest secant
+   INSIDE the bracket (the hump side here), so it undershoots the gentle descent toward the
+   neighbour: probes read 0.54-0.94 of the point against the 0.5 that marks a phantom. That test
+   assumes a cone, carries five calibrated cases, and only a penalty with a floor near the licence
+   defeats it -- so it waits until such a penalty is actually headed for `src/`.
+
+So the multiplicity failures that block a `prec = 1e-14` rule for order 2 (section 10.2) are
+partly the solver's, and one of them is now gone. The other is why order 2 stays parked.

@@ -288,13 +288,24 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
-* **[next]** **The search can report ONE root as several levels.** On the 50*pi^2 triple at
-  `prec = 1e-6`, band 1.3, under a flat-bottomed (order-2, `tau_2 = 2 prec`) objective, `solve`
-  declared 5 of 3: the middle member three times, two of them at 493.47959664 -- 2e-15 apart. The
-  merge policy says an exact degeneracy must merge, whatever the objective. The threshold never
-  produced such a well, which is presumably why it never showed; any smooth regularization can.
-  `notes/smooth_filter.md` sections 10.1-10.2, which also show it is what blocks a `prec = 1e-14`
-  rule for the order-2 penalty.
+* **[later]** **`refine`'s phantom test assumes a cone, and a flat-bottomed well defeats it.** On
+  the 50*pi^2 triple at `prec = 1e-6`, band 1.3, under the order-2 penalty (`tau_2 = 2 prec`), a
+  bracket lying BETWEEN two members converged 2 ulps inside its lower end, on the wall of the
+  member below, and was accepted: 4 of 3. At an end, `refine` probes outward by
+  `sigma / c_wall`, where `c_wall` is the steepest secant INSIDE the bracket -- here the steep
+  hump side -- so the reach undershoots the gentle descent toward the neighbour, and all three
+  probes read 0.54-0.94 of the point against the 0.5 needed to call it a phantom. Only a penalized
+  objective with a floor near the licence produces such a well; the threshold never has. The
+  phantom logic carries five calibrated cases and a documented overshoot trap, so this is a
+  re-derivation, not a constant. Wanted before any penalty whose floor approaches `prec` is
+  built into `src/`. `notes/smooth_filter.md` section 10.3.
+
+  (The same cell ALSO reported one root twice, 1e-12 apart, through a separate defect: the
+  cache wall slope `_slope_from_cache` ignored the floor and read 8.45e6 against a true 0.02-0.08,
+  collapsing the side search's exclusion radius to 1e-13. Fixed 2026-09-22 with a GUARD: a
+  floor-aware estimate is used only where the blind one exceeds it by more than 100x, so the
+  calibrated slope is unchanged bit for bit everywhere else -- applied unconditionally it moved a
+  hump root 2.3x and flipped four calibrated tests. The cell went from 5 of 3 to 4 of 3.)
 
 * **[next]** **The penalty regularization is an option with a stated limit, and five things about
   it are undecided.** `reg="tikhonov_qr"` landed 2026-09-21 (`notes/smooth_filter.md` section 9):
