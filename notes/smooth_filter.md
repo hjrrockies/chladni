@@ -936,3 +936,55 @@ NOT ready at 1e-12 and below. Gate 2 is therefore mandatory rather than advisory
 `prec` range the default converts the bottom rung from honest declines into silent wrong totals.
 And `C * prec` with `C ~ 0.1` is the better rule wherever the penalty is used at all -- same
 floor guarantee, and one to four decades less noise at loose `prec`.
+
+### 10.6 A feasible `tau` DOES exist at 1e-12, and none at 1e-14
+
+2026-09-23, and it corrects 10.5. Asked rule-free -- is there ANY `tau` that clears the cluster
+grid at a given `prec`? -- by sweeping `tau` directly over the 12-cell row:
+
+    prec = 1e-12                             prec = 1e-14
+      threshold      12 / 0 / 0                threshold   8 / 0 / 0
+      tau = 1e-15     1 / 0 / 11 declined      1e-15       1 / 0 / 7 declined
+      tau = 3e-15     3 / 0 /  9 declined      3e-15       0 / 0 / 8 declined
+      tau = 5e-15    10 / 0 /  2 declined      1e-14       0 / 8 / 0 WRONG
+      tau = 7e-15    12 / 0 /  0  CLEAN        3e-14       0 / 8 / 0 WRONG
+      tau = 1e-14    12 / 0 /  0  CLEAN        1e-13       0 / 8 / 0 WRONG
+      tau = 3e-14    12 / 0 /  0  CLEAN
+      tau = 5e-14    12 / 0 /  0  CLEAN
+      tau = 7e-14    11 / 1 /  0
+      tau = 1e-13     9 / 3 /  0
+      tau = 3e-13     6 / 6 /  0
+      tau = 1e-12     2 /10 /  0
+
+**At 1e-12 the clean band is `tau` in [7e-15, 5e-14] -- 0.007 to 0.05 `prec`, about 7x wide --
+and it matches the threshold exactly, 12 of 12.** Bounded below by slope-loop declines on noise
+and above by lost members, which is the floor-versus-noise squeeze with a real gap between the
+jaws. **At 1e-14 there is no gap**: declines up to 3e-15, wrong totals from 1e-14 on.
+
+**So section 10.5's "not ready at 1e-12" was wrong, and avoidably.** It sampled only C = 0.1-0.3,
+because the upper bound derived there (C <= 0.14, borrowed from the order-2 sweep of 10.2) was
+5-10x too generous. The band sits an order of magnitude lower. The lesson is the one this note
+keeps re-learning: a bound carried across from a different penalty order is a hypothesis, and
+the cheap sweep beats it.
+
+**But no single C clears the whole ladder yet.** `tau = 0.02 * prec`, the middle of the 1e-12
+band, over the 12-cell row:
+
+    prec      threshold        penalty, tau = 0.02*prec
+    1e-06     11 / 0 / 1       12 / 0 / 0     better than the threshold
+    1e-08     11 / 0 / 1       12 / 0 / 0     better
+    1e-10     11 / 0 / 1       11 / 1 / 0     ONE WRONG
+    1e-12     12 / 0 / 0       12 / 0 / 0     matches
+
+The one wrong cell is 50*pi^2 band 0.3 at 1e-10: declared 2 of 3, a member lost, floors 2.6e-12
+at the members against a 3e-11 separation -- a 12x margin, so not resolution. It is the same
+sporadic single-cell accounting failure this note has now met at four separate settings
+(10.1, 10.2's C = 0.6 and 0.9, 10.5's 1e-12 cells, and here), always an under-count, never
+explained. That is the thing to chase before a default switches, and it is a SEARCH defect, not
+a regularization one.
+
+**Where gate 2 stands now.** A feasible `tau` exists for `prec >= 1e-12`, one rung lower than
+10.5 concluded, and the penalty BEATS the threshold at 1e-6 and 1e-8 (12 of 12 against 11 and a
+decline). 1e-14 has no feasible `tau` and needs the second-order form or the threshold. What is
+missing for a rule is the band's `prec`-dependence: it is measured at 1e-12 only, and C = 0.02
+is not uniformly clean.

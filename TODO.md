@@ -345,8 +345,12 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
      the second-order form. Say which, in the docstring, before flipping the switch.
      MANDATORY, not advisory: at 1e-14 the shipped rule is silently wrong on every cell of the
      grid (gate 0), so a default without a `prec` range trades honest declines for wrong totals.
-     Measured range: use the penalty at `prec >= 1e-10`, the threshold below it, until the 1e-12
-     under-counts of section 10.5 are explained.
+     Measured range (section 10.6, which corrects 10.5): a feasible `tau` EXISTS for
+     `prec >= 1e-12` -- the clean band at 1e-12 is `tau` in [0.007, 0.05] * `prec`, 12 of 12,
+     matching the threshold -- and NONE exists at 1e-14, where declines and wrong totals meet
+     with no gap. At 1e-6 and 1e-8 the penalty BEATS the threshold, 12 of 12 against 11 and a
+     decline. Missing for a rule: the band's `prec`-dependence, measured at 1e-12 only, and a
+     single C is not yet uniformly clean (`tau = 0.02*prec` loses one cell at 1e-10).
      `notes/smooth_filter.md` sections 10.4-10.5 and `notes/fig_penalty_prec_limit.png` draw it: the
      rule `rtol = sqrt(prec*eps)` was derived for a truncation, whose floor the cutoff barely
      moves, while a penalty's floor IS `tau ~ sqrt(prec)` -- so `floor/prec` grows like
