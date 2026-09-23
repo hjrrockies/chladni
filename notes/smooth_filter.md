@@ -891,6 +891,11 @@ where the basis is working hardest.
 
 ### 10.5 Gate 0, partially run: the `prec`-proportional rule, and what it does not fix
 
+*Sections 10.5 and 10.6 are reproduced by `notes/smooth_filter_tau.py`, modes `noise`, `rules`,
+`sweep`, `band`. Section 10.4's figure has `notes/fig_penalty_prec_limit.py`. The order-2 runners
+of 10.1-10.3 were scratch and are not promoted; their numbers are here and the construction is in
+`notes/tikhonov_derivations.tex`.*
+
 2026-09-23. Section 10.4's fix is `tau = C * prec` in place of `rtol = sqrt(prec*eps)`, so that
 `floor/prec` stays constant instead of growing like `1/sqrt(prec)`. Measured on the objective it
 does exactly that (floor ~ 1.3-1.45 C prec on rect and eq_tri, flat across the ladder), and at
