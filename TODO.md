@@ -125,6 +125,11 @@ and deciding whether Phase D's angle earns its keep.
   (`test_asymp.py` through `test_cluster_totals.py`), which reproduced the failure 3 of 3 at
   about eight minutes a repetition. macOS cannot discriminate -- the threshold passes there
   too -- so that run is what closes this item and the blocking one above.
+
+  **BLOCKED ON A RUNNER, not on the work: the account's free GitHub Actions minutes are spent
+  (2026-09-23).** Nothing else waits on it -- every other claim above was verified locally at
+  every tier -- so this is a pause. When minutes are available again the nine-file scope is the
+  cheap decisive run, not the full suite.
 * **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
   slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
   planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner
