@@ -322,11 +322,12 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
   The gates, in the order they should be cleared:
 
-  0. **The grids have never been run under `"tikhonov_qr"` at its own default `rtol`.** Every
-     measurement in `notes/smooth_filter.md` sections 7 and 10 used hand-set `tau` or the order-2
-     form. Before any default changes, run the cluster-total and decline grids across the whole
-     `prec` ladder with the shipped option and nothing else varied. That is the measurement that
-     either supports this decision or narrows it, and it is cheap.
+  0. **PARTIALLY RUN (2026-09-23, section 10.5), and it narrowed the decision.** Cluster-total
+     rows at 1e-10, 1e-12, 1e-14 under the shipped `rtol`, under `tau = C*prec`, against the
+     threshold. Ready at `prec >= 1e-10` -- 8 of 8, marginally better than the threshold's 7 and
+     a decline. NOT ready at 1e-12 (every variant loses members, 3-6 of 12, where the threshold
+     is 12 of 12) and catastrophic at 1e-14 under the shipped rule: **0 of 18, silently wrong.**
+     Still to run: the decline grid under the same rules, and the 1e-6/1e-8 rows.
 
   1. **Its reach, which is limited by NOISE.** The 9e-14 "saturation" in `notes/smooth_filter.md`
      sections 2 and 7.4 was measured on the literal form and is LAPACK's internal cut. The QR
@@ -342,11 +343,17 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
      shipped form cannot serve the bottom rung; gate 1 is what would. Either the default is
      `prec`-dependent -- penalty above some rung, threshold below -- or the bottom rung waits for
      the second-order form. Say which, in the docstring, before flipping the switch.
-     `notes/smooth_filter.md` section 10.4 and `notes/fig_penalty_prec_limit.png` draw it: the
+     MANDATORY, not advisory: at 1e-14 the shipped rule is silently wrong on every cell of the
+     grid (gate 0), so a default without a `prec` range trades honest declines for wrong totals.
+     Measured range: use the penalty at `prec >= 1e-10`, the threshold below it, until the 1e-12
+     under-counts of section 10.5 are explained.
+     `notes/smooth_filter.md` sections 10.4-10.5 and `notes/fig_penalty_prec_limit.png` draw it: the
      rule `rtol = sqrt(prec*eps)` was derived for a truncation, whose floor the cutoff barely
      moves, while a penalty's floor IS `tau ~ sqrt(prec)` -- so `floor/prec` grows like
      `1/sqrt(prec)` and crosses 1 between 1e-12 and 1e-14. A `prec`-proportional rule for the
-     penalty's `rtol` is the obvious candidate and is unmeasured.
+     penalty's `rtol` is the obvious candidate: measured in 10.5, it holds `floor/prec` constant
+     and is one to four decades quieter at loose `prec`, so `C ~ 0.1` is the better rule wherever
+     the penalty is used -- but it does NOT fix 1e-12, so it is a better rule, not the fix.
 
      Section 7 of the note is the evidence to argue against: it found the regimes cleanly split,
      frozen rank winning narrow windows and a filter winning wide windows with a tight pair, with

@@ -888,3 +888,51 @@ Two honest qualifications. This is OBJECTIVE-LEVEL -- gate 0 (`TODO.md` section 
 measurement nobody has made. And the disk lands at `floor/prec = 1.0` rather than above it: its
 basis is comfortable enough that the floor sits below `tau`, so the limit bites hardest exactly
 where the basis is working hardest.
+
+### 10.5 Gate 0, partially run: the `prec`-proportional rule, and what it does not fix
+
+2026-09-23. Section 10.4's fix is `tau = C * prec` in place of `rtol = sqrt(prec*eps)`, so that
+`floor/prec` stays constant instead of growing like `1/sqrt(prec)`. Measured on the objective it
+does exactly that (floor ~ 1.3-1.45 C prec on rect and eq_tri, flat across the ladder), and at
+loose `prec` it is also far QUIETER than the shipped rule, because `tau` is larger there: on
+eq_tri, noise 4.5e-12 against 1.9e-08 at `prec = 1e-6`, 6.1e-10 against 8.6e-08 at 1e-8,
+2.7e-08 against 9.3e-07 at 1e-10.
+
+Then the cluster-total grid, which is gate 0 (rows, right/wrong/declined):
+
+                  rule     prec  right  wrong  decl   of   worst err/prec
+             threshold    1e-14     17      0     1   18       0.071
+     shipped rtol        1e-14      0     18     0   18         --
+     tau = 0.3*prec      1e-14      3      0    15   18       0.035
+     tau = 0.1*prec      1e-14      1      0    17   18       0.035
+             threshold    1e-12     12      0     0   12       0.043
+     shipped rtol        1e-12      8      4     0   12       0.038
+     tau = 0.3*prec      1e-12      6      6     0   12       0.051
+     tau = 0.1*prec      1e-12      9      3     0   12       0.048
+             threshold    1e-10      7      0     1    8       0.047
+     shipped rtol        1e-10      8      0     0    8       0.079
+     tau = 0.3*prec      1e-10      7      1     0    8       0.048
+     tau = 0.1*prec      1e-10      8      0     0    8       0.075
+
+**The shipped rule at 1e-14 is SILENTLY WRONG on every cell.** 0 of 18, no declines. That is the
+worst outcome available and it is what a default would ship today at the bottom rung. The
+`C * prec` rules turn it into declines -- 0 wrong, 15 and 17 of 18 declined -- which is the
+failure the contract allows. The noise bound predicted that: at 1e-14 the window is empty.
+
+**At 1e-12 the rule does NOT rescue the grid.** Every penalty variant loses members where the
+threshold is 12 of 12, including `C = 0.1`, which sits inside the acceptable window derived from
+floor and noise (floor 0.14 prec, noise 1.4e-5). So that window is NECESSARY, NOT SUFFICIENT, and
+the upper bound borrowed from the order-2 sweep (section 10.2) does not transfer to order 1.
+
+The 1e-12 failures are UNDER-counts, members dropped: `2 of 3` at 50*pi^2 band 0.5, `3 of 4` at
+65*pi^2 bands 1.0 and 1.3, at floors of 1.3e-13 against separations of 5.1e-13 -- about 4x
+nominal resolution margin, so not a raw resolution failure. One of the three flagged itself
+(`n_uncertain = 1`); two were silent. The mechanism is NOT identified, and guessing it a third
+time is how sections 10.1 and the C-window analysis both went wrong.
+
+**Where that leaves the default (`TODO.md` section 4).** Ready at `prec >= 1e-10`, where the
+penalty is clean and marginally better than the threshold (8 of 8 against 7 and a decline), and
+NOT ready at 1e-12 and below. Gate 2 is therefore mandatory rather than advisory: without a
+`prec` range the default converts the bottom rung from honest declines into silent wrong totals.
+And `C * prec` with `C ~ 0.1` is the better rule wherever the penalty is used at all -- same
+floor guarantee, and one to four decades less noise at loose `prec`.
