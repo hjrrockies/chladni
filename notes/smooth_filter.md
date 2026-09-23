@@ -853,3 +853,38 @@ Then re-ask the 1e-14 question. The order-2 construction and its derivation
 
 So the multiplicity failures that block a `prec = 1e-14` rule for order 2 (section 10.2) are
 partly the solver's, and one of them is now gone. The other is why order 2 stays parked.
+
+### 10.4 The prec limit of the SHIPPED option, drawn
+
+2026-09-23. `notes/fig_penalty_prec_limit.py` -> `notes/fig_penalty_prec_limit.png`. The worst
+floor at the true levels under `MPSPencil(reg="tikhonov_qr", prec=P)` -- the shipped path, `rtol`
+derived by its own rule -- against `P`:
+
+    prec      rect(1,1/phi)      disk            eq_tri        floor/prec
+    1e-06     2.24e-10         1.00e-10        1.89e-10          ~0.002
+    1e-08     2.31e-11         1.00e-11        1.91e-11          ~0.002
+    1e-10     2.40e-12         1.00e-12        1.96e-12          ~0.02
+    1e-12     2.43e-13         1.00e-13        2.07e-13          0.10-0.24
+    1e-14     2.43e-14         1.01e-14        2.11e-14          1.0-2.4
+    threshold 1.28e-15         1.65e-15        1.48e-15
+
+**The rule is mismatched to the mechanism, and that is the whole of it.** `rtol = sqrt(prec*eps)`
+was derived for a TRUNCATION, whose floor is set by the basis and barely moves with the cutoff --
+the threshold row is flat at ~1.5e-15 whatever `prec`. A PENALTY's floor IS its `tau`, so it
+scales as `sqrt(prec)` while the requirement scales as `prec`, and `floor/prec` grows like
+`1/sqrt(prec)`. On the rect, `1.45*sqrt(n*eps/prec)` predicts 2.43 against 2.43 measured. It must
+cross 1, and it crosses between 1e-12 and 1e-14.
+
+What that costs, on the 50*pi^2 triple dialled to one merge licence at `prec = 1e-14` (members
+1.0e-14 apart, relative):
+
+    threshold     floor 1.9e-15, barrier/floor 23.6 -- uncertainty BELOW the spacing: resolvable
+    tikhonov_qr   floor 2.5e-14, barrier/floor  2.1 -- uncertainty ABOVE the spacing: not
+
+The three wells are still visible under the penalty; what fails is that its locating uncertainty,
+which section 4 measured as the floor itself, is wider than the spacing it has to resolve.
+
+Two honest qualifications. This is OBJECTIVE-LEVEL -- gate 0 (`TODO.md` section 4) is still the
+measurement nobody has made. And the disk lands at `floor/prec = 1.0` rather than above it: its
+basis is comfortable enough that the floor sits below `tau`, so the limit bites hardest exactly
+where the basis is working hardest.

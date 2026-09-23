@@ -342,6 +342,11 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
      shipped form cannot serve the bottom rung; gate 1 is what would. Either the default is
      `prec`-dependent -- penalty above some rung, threshold below -- or the bottom rung waits for
      the second-order form. Say which, in the docstring, before flipping the switch.
+     `notes/smooth_filter.md` section 10.4 and `notes/fig_penalty_prec_limit.png` draw it: the
+     rule `rtol = sqrt(prec*eps)` was derived for a truncation, whose floor the cutoff barely
+     moves, while a penalty's floor IS `tau ~ sqrt(prec)` -- so `floor/prec` grows like
+     `1/sqrt(prec)` and crosses 1 between 1e-12 and 1e-14. A `prec`-proportional rule for the
+     penalty's `rtol` is the obvious candidate and is unmeasured.
 
      Section 7 of the note is the evidence to argue against: it found the regimes cleanly split,
      frozen rank winning narrow windows and a filter winning wide windows with a tight pair, with
