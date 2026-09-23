@@ -218,7 +218,7 @@ of that norm adds to `family.log_scale(k)` to give the pencil's total per-column
 Columns that underflow to exact zeros keep scale 1 and are left for the regularization to
 drop, rather than dividing by zero -- `lappy` pruned them by hand.
 
-**Regularize.** One function, three modes, and `back` is the map from reduced coordinates to
+**Regularize.** One function, five modes, and `back` is the map from reduced coordinates to
 basis coordinates, produced by whichever mode ran. That is the fix for `lappy`'s
 `nullspace_coef`, which branches on `reg_type` *again* at the recovery site: two places that
 must agree about a transformation only one of them computed.
@@ -226,6 +226,21 @@ must agree about a transformation only one of them computed.
 - `"svd"` (default) -- economic QR of the stack, SVD of `R`, truncate to `r`.
 - `"qrp"` -- column-pivoted QR, truncate to `r`.
 - `None` -- raw pencil.
+- `"tikhonov_qr"` -- no truncation: a penalty `tau^2 ||c||^2` added to the numerator,
+  `tau = rtol * ||[A_B; A_I]||_F` (`rtol * sqrt(n_cols)` on the equilibrated stack). Unpivoted
+  QR of `[A_B; tau*I; A_I]`, and the two row blocks of `Q` go to the GSVD; `back` is `R^-1`.
+  No rank is chosen, so none can change with `k`. Not the default.
+- `"tikhonov"` -- the same penalty handed to the GSVD directly, `([A_B; tau*I], A_I)`.
+  Identical in exact arithmetic but NOT free of rank decisions: `tau*I` makes the stack full
+  rank and does nothing for the interior block, whose rank LAPACK's `?ggsvp3` then decides
+  itself (finite-tension count 33/43/48 at three `lam` on a 126-column pencil, against the QR
+  form's constant 63). Kept as the literal formulation and as an oracle.
+
+A penalty mode refuses `rank=` and `lam_ref=`. `_regularize`'s module docstring records the
+trade and the limit -- the QR form's floor tracks `tau` down to 2e-15, but its noise grows as
+`tau` shrinks (1e-2 relative at the `tau` a 1e-14 floor needs); the 9e-14 "saturation" once
+quoted is the literal form's, and is LAPACK's internal cut -- and `notes/smooth_filter.md`
+carries the measurements.
 
 `lappy`'s `gesdd -> gesvd` fallback is kept, with its warning. Its docstring records one shape
 in roughly 1500 solves raising, taking down an hour-long sweep.
@@ -308,6 +323,19 @@ evidence about MPS.
 **What the frozen rank is still for** is reproducibility and 19% of the per-evaluation cost.
 Both are pinned in `tests/test_regularization.py`, alongside the measurement that the two
 rules agree -- because that is what someone should find when they ask this question again.
+
+**2026-09-21: the argument above holds at the root and fails on the flank.** Both measurements
+here were taken at or across an eigenvalue, where a flip barely moves `sigma_1` (median ratio
+0.986). On a well's FLANK the same flip moves it by up to 3.5x, and a refiner compares
+exactly those points. `notes/session_2026-09-19.md`'s 09-21 trace observes it costing a real
+answer: on Linux/OpenBLAS the threshold rank flips 85 -> 86 at one bracket end, where the
+first dropped singular value sits at 0.89x the cutoff, `sigma_1` there drops 67%, and the
+refiner refuses a true root -- the silent wrong total on the `N65` cluster cell. And the
+threshold's rank does not step at isolated points, it flickers at every scale
+(`notes/smooth_filter.md` section 3: 63-88 changes per 201 samples, spread flat at 4e-3 down to
+2e-10 half-width). So "the curve does not jump" is right about where it was looked for and
+wrong as a statement about the objective. The penalty modes above are the response; the
+replay of the refusal is in `tests/test_regularization.py`.
 
 ## `rtol` derives from `prec`, and lands on lappy's measured constant
 

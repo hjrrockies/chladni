@@ -115,10 +115,16 @@ and deciding whether Phase D's angle earns its keep.
   retained rank also disagrees with `choose_rank`'s `svdvals` rank at 2 of 83 points on ONE
   platform, where `svdvals` puts the kept value 24-37% above the cutoff.
 
-  The remedy is an objective CONTINUOUS in `lam` -- a regularization without discontinuous rank
-  jumps, in progress. The acceptance test for it is this cell in the nine-file scope at default
-  threading (`test_asymp.py` through `test_cluster_totals.py`), which reproduced 3 of 3 at about
-  eight minutes a repetition.
+  The remedy is an objective CONTINUOUS in `lam`, and it exists now as an OPTION:
+  `reg="tikhonov_qr"`, a penalty in place of the truncation, so no rank is chosen and none can
+  flip (`notes/smooth_filter.md` section 9). On macOS it replays this refusal deterministically
+  and fixes it -- with the flip injected `refine` refuses exactly as recorded; under the penalty
+  it accepts, 1e-10 from the root -- and solves the cell 4 of 4
+  (`tests/test_regularization.py`, the "2026-09-21 CI refusal" section). What is NOT done: the
+  acceptance test is this cell on a LINUX runner in the nine-file scope at default threading
+  (`test_asymp.py` through `test_cluster_totals.py`), which reproduced the failure 3 of 3 at
+  about eight minutes a repetition. macOS cannot discriminate -- the threshold passes there
+  too -- so that run is what closes this item and the blocking one above.
 * **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
   slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
   planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner
@@ -203,6 +209,8 @@ and deciding whether Phase D's angle earns its keep.
   as measured by number of GSVD calls, then we should implement a "fast cold start" solver
   which has excellent average-case performance, with guards that can opt back-in to the slower-
   but-air-tight solver.
+* **[later/maybe]** Use coarse and fine bases separately to reduce the cost of the search phase. 
+  See `notes/coarse_to_fine_basis.md`.
 
 ## 2. Generalization and validation debt
 
@@ -279,6 +287,51 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   is already ignored for it.
 
 ## 4. Known gaps in what is built
+
+* **[later]** **`refine`'s phantom test assumes a cone, and a flat-bottomed well defeats it.** On
+  the 50*pi^2 triple at `prec = 1e-6`, band 1.3, under the order-2 penalty (`tau_2 = 2 prec`), a
+  bracket lying BETWEEN two members converged 2 ulps inside its lower end, on the wall of the
+  member below, and was accepted: 4 of 3. At an end, `refine` probes outward by
+  `sigma / c_wall`, where `c_wall` is the steepest secant INSIDE the bracket -- here the steep
+  hump side -- so the reach undershoots the gentle descent toward the neighbour, and all three
+  probes read 0.54-0.94 of the point against the 0.5 needed to call it a phantom. Only a penalized
+  objective with a floor near the licence produces such a well; the threshold never has. The
+  phantom logic carries five calibrated cases and a documented overshoot trap, so this is a
+  re-derivation, not a constant. Wanted before any penalty whose floor approaches `prec` is
+  built into `src/`. `notes/smooth_filter.md` section 10.3.
+
+  (The same cell ALSO reported one root twice, 1e-12 apart, through a separate defect: the
+  cache wall slope `_slope_from_cache` ignored the floor and read 8.45e6 against a true 0.02-0.08,
+  collapsing the side search's exclusion radius to 1e-13. Fixed 2026-09-22 with a GUARD: a
+  floor-aware estimate is used only where the blind one exceeds it by more than 100x, so the
+  calibrated slope is unchanged bit for bit everywhere else -- applied unconditionally it moved a
+  hump root 2.3x and flipped four calibrated tests. The cell went from 5 of 3 to 4 of 3.)
+
+* **[next]** **The penalty regularization is an option with a stated limit, and five things about
+  it are undecided.** `reg="tikhonov_qr"` landed 2026-09-21 (`notes/smooth_filter.md` section 9):
+  no rank chosen, so none flips; verified continuous where the threshold flickers, and immune to
+  the 1e-15 perturbation that flips the threshold. Open, in order:
+
+  1. **Its reach, which is limited by NOISE.** The 9e-14 "saturation" in `notes/smooth_filter.md`
+     sections 2 and 7.4 was measured on the literal form and is LAPACK's internal cut. The QR
+     form's floor tracks `tau` down to 2.1e-15, but its plateau noise grows as `tau` shrinks --
+     1e-2 at the `tau` a 1e-14 floor needs (section 10). A SECOND-ORDER penalty built from QRs
+     (`notes/tikhonov_derivations.tex`) fixes the noise and gets the slope loop through at 1e-14,
+     and `tau_2 = C * prec` is a clean rule down to 1e-10 for C in 0.2-0.9 -- but at 1e-14 no C
+     is robustly free of wrong totals (section 10.2). Parked, and not built into `src/`, until
+     the search's merge defect (below in this section) is fixed and bases are right-sized
+     (`notes/coarse_to_fine_basis.md`).
+  2. **Default or not.** Section 7 of the same note found the regimes cleanly split: frozen rank
+     wins narrow windows, a filter wins wide windows with a tight pair, and on a corner-FB basis
+     nothing differs because the rank does not move. A default has to be argued from that table,
+     and from the 1.5x per-evaluation cost.
+  3. **`calibrate_rtol` under a penalty.** It runs -- raising `rtol` raises the floor either way --
+     but its model is written for a truncation cut and is unmeasured here.
+  4. **A `PrecisionWarning` below its reach**, like `_warn_if_unsafe` for a frozen rank. There is no
+     calibrated threshold to warn at yet.
+  5. **`"tikhonov"`, the literal form, does not remove the rank decision** -- LAPACK's `?ggsvp3`
+     decides the interior block's rank itself (finite count 41-50 over a scan where the QR form
+     holds 50). Kept as an oracle; whether it should stay user-facing is open.
 
 * **[later]** A starved basis DROPS the levels it resolves worst, and for the levels that are
   never BRACKETED no diagnostic added to `solve` can catch it -- `notes/landscape_findings.md`

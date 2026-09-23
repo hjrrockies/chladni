@@ -42,7 +42,7 @@ from .._core import PREC, Frozen, PrecisionWarning, _set, check_prec
 from ..eigensolver import lam_to_k
 from ..helmholtz import check_k
 from . import _gsvd
-from ._regularize import choose_rank, regularize
+from ._regularize import _MODES, _PENALTY, choose_rank, regularize
 
 __all__ = ["MPSPencil", "assemble", "equilibrate", "RankDiagnostics"]
 
@@ -145,12 +145,18 @@ class MPSPencil(Frozen):
     come from a `Quadrature`, since that is what carries the normals and boundary conditions
     `trace` needs.
 
-    The rank is frozen at construction; see `_regularize` for why it is an integer rather
-    than a tolerance. `rtol` defaults to `sqrt(prec * eps)`, the geometric mean of what was
-    asked for and what the arithmetic can do. At the default `prec = 1e-8` that is 1.5e-12,
-    which is where lappy's `rtol` landed after measuring twelve domains -- derived here
-    rather than fitted. It also moves in the right direction, which is easy to invert: a
-    TIGHTER `prec` resolves more independent columns, so the cutoff falls and the rank rises.
+    The rank is re-derived per `lam` at the cutoff `rtol` (THRESHOLD), or frozen at
+    construction by `rank=` or `lam_ref=`; see `_regularize` for the trade. `rtol` defaults to
+    `sqrt(prec * eps)`, the geometric mean of what was asked for and what the arithmetic can
+    do. At the default `prec = 1e-8` that is 1.5e-12, which is where lappy's `rtol` landed after
+    measuring twelve domains -- derived here rather than fitted. It also moves in the right
+    direction, which is easy to invert: a TIGHTER `prec` resolves more independent columns, so
+    the cutoff falls and the rank rises.
+
+    `reg="tikhonov_qr"` (or `"tikhonov"`) replaces the truncation with a penalty of weight
+    `rtol * sqrt(n_cols)` -- the same `rtol`, now setting a strength instead of a cutoff -- and
+    chooses no rank at all, so `rank=` and `lam_ref=` are refused with it. Not the default:
+    see `_regularize` for the noise that limits a plain penalty at tight `prec`.
     """
 
     def __init__(self, bdry, interior, *, reg="svd", rank=None, rtol=None, lam_ref=None,
@@ -169,6 +175,16 @@ class MPSPencil(Frozen):
             )
         prec = check_prec(prec)
         rtol = float(np.sqrt(prec * np.finfo(float).eps)) if rtol is None else float(rtol)
+        if reg not in _MODES:
+            raise ValueError(f"unknown regularization {reg!r}; expected one of {_MODES}")
+        if reg in _PENALTY and (rank is not None or lam_ref is not None):
+            # Refused here, before `lam_ref` would go and choose a rank for a mode with none.
+            raise ValueError(
+                f"reg={reg!r} is a penalty and chooses no rank, so rank= and lam_ref= have "
+                f"nothing to freeze. They belong to the truncating modes 'svd' and 'qrp'."
+            )
+        if reg in _PENALTY and not rtol > 0.0:
+            raise ValueError(f"reg={reg!r} needs rtol > 0 to set its penalty, got {rtol!r}")
 
         lam_ref = _as_lam_ref(lam_ref)
         if rank is None and lam_ref is not None:
@@ -293,6 +309,13 @@ class MPSPencil(Frozen):
             # `rank` columns without regard to conditioning, so LAPACK can still find that
             # stack deficient. The frozen shortcut below would report the wrong number.
             return len(self.tensions(lam))
+        if self.reg in _PENALTY:
+            # Also read off the tension vector, for the same reason: nothing is truncated, so
+            # the count is LAPACK's `k + l`. The penalty makes the stack full rank, so this is
+            # `n_cols` -- and `tests/test_regularization.py` checks that across a scan rather
+            # than assuming it, because a count that moved would be a rank change by the back
+            # door, which is the one thing these modes exist to rule out.
+            return len(self.tensions(lam))
         if self.rank is not None:
             return self.rank
         # A pre-truncating mode derives its rank from its own factorization, so read it back
@@ -301,7 +324,7 @@ class MPSPencil(Frozen):
         return self.regularized(lam).rank
 
     def regularized(self, lam):
-        """The `RegularizedPencil` at `lam`, truncated to `rank_at(lam)`."""
+        """The `RegularizedPencil` at `lam`: truncated to `rank_at(lam)`, or penalized."""
         key = ("reg", float(lam))
         hit = self._cache.get(key)
         if hit is None:
@@ -375,6 +398,7 @@ class MPSPencil(Frozen):
 
         `"svd"` and `"qrp"` both scatter back to `n_cols`, and `None` in threshold mode
         retains every column, so the other five mode/rank combinations return `n_cols` rows.
+        The penalty modes drop nothing and always return `n_cols` rows.
         Padding here too would be a one-line change to `regularize`; it is not made because
         nothing needs it and a silent shape change is worse than a documented one.
         """
@@ -438,6 +462,9 @@ class MPSPencil(Frozen):
         cache[key] = value
 
     def __repr__(self):
-        rank = self.rank if self.rank is not None else "threshold"
+        if self.reg in _PENALTY:
+            tail = f"rtol={self.rtol:.3g}"
+        else:
+            tail = f"rank={self.rank if self.rank is not None else 'threshold'}"
         return (f"MPSPencil(n_cols={self.n_cols}, n_bdry={self.n_bdry}, "
-                f"n_int={self.n_int}, reg={self.reg!r}, rank={rank})")
+                f"n_int={self.n_int}, reg={self.reg!r}, {tail})")

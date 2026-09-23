@@ -431,3 +431,84 @@ def test_the_shipped_pipeline_flags_NOTHING_on_a_clean_cone():
     d = _solve(_cone(lams), prec=1e-8).diagnostics
     assert d.n_rejected == 0 and d.rejected_deep == ()
     assert d.certified_counts
+
+
+# --- the wall slope stage 3 reads from the cache ------------------------------------------
+#
+# `_slope_from_cache` sizes the side search's exclusion radius. It assumed a cone that reaches
+# zero; a well with a floor broke it, and one eigenvalue came back as several levels.
+
+
+def _hyperbolic_well(floor, c, lam0):
+    """sigma(lam) = sqrt(floor^2 + c^2 (lam - lam0)^2): a cone rounded off at `floor`."""
+    return lambda lam: np.sqrt(floor**2 + (c * (np.asarray(lam, float) - lam0))**2)
+
+
+def test_the_cache_slope_is_unchanged_where_there_is_no_floor():
+    """`floor = 0` must be the estimator it replaced, bit for bit, or the reach rule's bounds --
+    calibrated on it -- no longer mean what they were measured to mean."""
+    from chladni.mps.search import _slope_from_cache
+
+    rng = np.random.default_rng(7)
+    lams = np.sort(rng.uniform(0.0, 10.0, 40))
+    vs = rng.uniform(1e-3, 1.0, 40)
+    for lam in (2.5, 5.0, 7.5):
+        left, right = lams[lams < lam], lams[lams > lam]
+        lo, hi = left.max(), right.min()
+        want = (vs[lams == lo][0] + vs[lams == hi][0]) / (hi - lo)
+        assert _slope_from_cache(lams, vs, lam) == want
+        assert _slope_from_cache(lams, vs, lam, floor=0.0) == want
+
+
+def test_a_FLOOR_no_longer_turns_the_cache_slope_into_noise():
+    """The defect, in isolation. A well with a 9.6e-7 floor and a true wall slope of 0.05, cached
+    the way a refinement leaves it -- two samples a few ulps either side of the root, the rest out
+    on the flanks. Blind to the floor, the nearest pair reads `2*floor/(hi - lo)`: the 8.45e6
+    measured at 50*pi^2, prec 1e-6, against a true 0.02-0.08. Aware of it, the pair is skipped as
+    flat bottom and the flanks give the wall."""
+    from chladni.mps.search import _slope_from_cache
+
+    floor, c, lam0 = 9.6e-7, 0.05, 493.4795966366
+    f = _hyperbolic_well(floor, c, lam0)
+    ulp = np.spacing(lam0)
+    lams = np.array([lam0 - 3e-4, lam0 - 1e-4, lam0 - 2 * ulp, lam0 + 2 * ulp,
+                     lam0 + 1e-4, lam0 + 3e-4])
+    vs = f(lams)
+
+    blind = _slope_from_cache(lams, vs, lam0)
+    assert blind > 1e5 * c, "the blind estimate should reproduce the defect it replaces"
+    aware = _slope_from_cache(lams, vs, lam0, floor=floor)
+    assert aware == pytest.approx(c, rel=0.05)
+
+
+def test_the_exclusion_radius_survives_a_floor():
+    """What the slope is FOR. `solve` excludes `r +- half` from the side search with
+    `half = 0.5 * sigma_j / c`, and relies on it: a find inside the sub-brackets is taken to be
+    NOT `r`. With the blind slope that radius was 1e-13 and the side search found `r` again 1e-12
+    away, as a new level -- one eigenvalue reported twice. The radius must stay on the scale of
+    the well, not of the ulps between the refiner's last samples."""
+    from chladni.mps.search import _slope_from_cache
+
+    floor, c, lam0 = 9.6e-7, 0.05, 493.4795966366
+    f = _hyperbolic_well(floor, c, lam0)
+    ulp = np.spacing(lam0)
+    lams = np.array([lam0 - 3e-4, lam0 - 2 * ulp, lam0 + 2 * ulp, lam0 + 3e-4])
+    sigma_j = 1e-5                                  # a second branch a well-width away
+    half = 0.5 * sigma_j / _slope_from_cache(lams, f(lams), lam0, floor=floor)
+    assert half > 1e3 * ulp
+
+
+def test_a_MILD_disagreement_keeps_the_calibrated_blind_slope():
+    """The guard's other half. At a hump top accepted as a root -- 65*pi^2, prec 1e-8, band 0.3,
+    `sigma` 1.35e-8 there is the hump, not a floor -- the floor-aware estimate differs by 2.3x,
+    and applying it flipped four calibrated tests. Below the guard the blind estimate must come
+    back exactly, not merely close."""
+    from chladni.mps.search import _SLOPE_FLOOR_GUARD, _slope_from_cache
+
+    lams = np.array([0.0, 1.0, 3.0, 4.0])
+    vs = np.array([4.0, 3.0, 3.0, 4.0])             # samples well up a gentle bowl
+    blind = _slope_from_cache(lams, vs, 2.0)
+    aware_floor = 1.2                                # a "floor" the samples sit a few times above
+    got = _slope_from_cache(lams, vs, 2.0, floor=aware_floor)
+    assert blind < _SLOPE_FLOOR_GUARD * got or got == blind
+    assert got == blind

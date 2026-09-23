@@ -139,6 +139,19 @@ _SIDE_SEARCH_MAX = MAX_BRANCHES
 #: only two that did were this defect, at `170*pi^2` and `125*pi^2`.
 _SIDE_STANDOFF = 0.3
 
+#: How far above a well's floor a cached sample must sit to carry slope information for
+#: `_slope_from_cache`. Inside the flat bottom `sigma` saturates at the floor, and the cone
+#: identity the estimator rests on fails there; at twice the floor the cone part
+#: `sqrt(v^2 - floor^2)` is already 87% of `v`, so the correction is well conditioned.
+_SLOPE_FLOOR_MARGIN = 2.0
+
+#: How far the blind cache slope may exceed the floor-aware one before it is judged to be
+#: measuring the floor rather than the wall. Wherever the cone model even roughly holds the two
+#: agree within 4x -- measured 1.0 to 3.9 over every root of two cells, a hump top included --
+#: while the defect it guards read 4.6e8 (a secant across 2 ulps of a 9.6e-7 floor). 100 leaves
+#: 25x above the first and 4.6e6 below the second.
+_SLOPE_FLOOR_GUARD = 100.0
+
 
 @dataclass(frozen=True)
 class Level:
@@ -311,7 +324,7 @@ class SolveResult:
         return np.array([x.lam for x in self.levels for _ in range(x.mult)])
 
 
-def _slope_from_cache(lams, vs, lam):
+def _slope_from_cache(lams, vs, lam, floor=0.0):
     """`c = dsigma/dlam` from the two CACHED samples nearest the root, one either side.
 
     Free, which matters: an explicit `lam +/- h` probe costs two evaluations per level, and
@@ -321,15 +334,45 @@ def _slope_from_cache(lams, vs, lam):
     Cancellation-free, as in `isolation`: on a cone the flanks straddle the minimizer, so
     `v_lo = c*(lam* - lo)` and `v_hi = c*(hi - lam*)`, hence `c = (v_lo + v_hi)/(hi - lo)` with
     no subtraction of nearly-equal quantities and no dependence on where the minimum is.
+
+    **Floor-aware, because the cone identity assumes `sigma` reaches zero.** A well that bottoms
+    out at `floor` reads `sqrt(floor^2 + c^2 d^2)` on its flanks, so the sum carries about
+    `2*floor` extra -- and when the nearest samples sit close together, as they do once the
+    refiner has been there, the estimate becomes `2*floor/(hi - lo)` and says nothing about the
+    wall. Measured at 50*pi^2, prec 1e-6, band 1.3, on a penalized objective with a 9.6e-7 floor:
+    8.45e6 against a true 0.02-0.08. `solve` sizes the side search's exclusion radius from this
+    slope, so the radius collapsed to 1e-13, the side search refined against the root itself, and
+    found it again 1e-12 away as a new level -- one eigenvalue reported twice, 5 of 3.
+
+    **So the floor-aware estimate is a GUARD, not a replacement.** It skips samples within
+    `_SLOPE_FLOOR_MARGIN * floor` as flat bottom and reduces each flank value to its cone part
+    `sqrt(v^2 - floor^2)` -- and it is used only when the blind estimate exceeds it by more than
+    `_SLOPE_FLOOR_GUARD`. Everywhere else the blind estimate is returned unchanged, because the
+    reach rule's bounds were calibrated on it: applied unconditionally, the floor-aware estimate
+    moved a HUMP root at 65*pi^2, prec 1e-8, band 0.3 -- `sigma` 1.35e-8 there is the hump top, not
+    a floor -- by 2.3x, and that flipped four calibrated tests. With `floor = 0`, or wherever the
+    guard does not fire, this is the estimator it replaced, bit for bit.
     """
-    left = lams < lam
-    right = lams > lam
+    blind = _cone_slope(lams, vs, lam, np.ones(np.shape(vs), bool), 0.0)
+    floor = max(float(floor), 0.0)
+    if floor <= 0.0:
+        return blind
+    aware = _cone_slope(lams, vs, lam, vs > _SLOPE_FLOOR_MARGIN * floor, floor)
+    return aware if (aware > 0.0 and blind > _SLOPE_FLOOR_GUARD * aware) else blind
+
+
+def _cone_slope(lams, vs, lam, usable, floor):
+    """The cone identity over the nearest `usable` sample either side, floor removed. 0 if none."""
+    left = (lams < lam) & usable
+    right = (lams > lam) & usable
     if not np.any(left) or not np.any(right):
         return 0.0
     i = int(np.argmax(lams[left]))
     j = int(np.argmin(lams[right]))
     lo, v_lo = float(lams[left][i]), float(vs[left][i])
     hi, v_hi = float(lams[right][j]), float(vs[right][j])
+    if floor > 0.0:
+        v_lo, v_hi = np.sqrt(v_lo * v_lo - floor * floor), np.sqrt(v_hi * v_hi - floor * floor)
     return (v_lo + v_hi) / (hi - lo) if hi > lo else 0.0
 
 
@@ -933,7 +976,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     levels = []
     probe_evals = side_evals = 0
     for (r, bracket), n_roots in located:
-        c = _slope_from_cache(lams, svals, r.lam)
+        c = _slope_from_cache(lams, svals, r.lam, floor=r.sigma)
         # The distance to the next eigenvalue, from the free `sigma_2` the search already has.
         # It bounds the wide bracket from ABOVE, so the flanks cannot reach a neighbour and
         # count its branch as one of this level's.

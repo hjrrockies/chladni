@@ -47,16 +47,21 @@ def coef_of(r, mult=1):
     return r.back(Xr)
 
 
-def tensions(A_B, A_I, reg="svd", rank=None):
-    """Regularize and return the ascending tension vector. Raw arrays in, array out."""
-    return tensions_of(regularize(A_B, A_I, reg=reg, rank=rank))
+def tensions(A_B, A_I, reg="svd", rank=None, rtol=np.finfo(float).eps):
+    """Regularize and return the ascending tension vector. Raw arrays in, array out.
+
+    `rtol` is `regularize`'s, and its default is too: machine epsilon, which is a sensible
+    truncation cutoff and a poor penalty -- for `reg="tikhonov_qr"` pass a real one, such as
+    `MPSPencil`'s `sqrt(prec * eps)`.
+    """
+    return tensions_of(regularize(A_B, A_I, reg=reg, rank=rank, rtol=rtol))
 
 
-def coef(A_B, A_I, mult=1, reg="svd", rank=None):
+def coef(A_B, A_I, mult=1, reg="svd", rank=None, rtol=np.finfo(float).eps):
     """Regularize and return the `mult` minimizing coefficient vectors, `(n_cols, mult)`.
 
     `reg=None` with a frozen `rank` returns `(rank, mult)` instead: it keeps the first `rank`
     columns and maps back with the identity, so the vector is in the columns retained rather
     than in the full basis. See `MPSPencil.coef`.
     """
-    return coef_of(regularize(A_B, A_I, reg=reg, rank=rank), mult)
+    return coef_of(regularize(A_B, A_I, reg=reg, rank=rank, rtol=rtol), mult)
