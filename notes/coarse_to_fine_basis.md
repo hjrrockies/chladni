@@ -81,3 +81,8 @@ Measurements that would decide it:
 * how often clusters need splitting in the fine pass;
 * **whether, with bases sized to `n_useful`, the threshold still flickers enough to need the
   penalty at all**. Worth knowing before investing further in order 2.
+
+  **Re-framed 2026-09-23**, when the penalty became the intended default (`TODO.md` section 4):
+  the question is no longer whether to adopt one, but how much right-sized bases reduce what the
+  default has to survive. They bear on the same gates either way -- fewer noise directions means
+  a smaller `tau` is safe, which is exactly what the tight-`prec` rungs need.

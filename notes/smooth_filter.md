@@ -4,7 +4,13 @@
 "a third option that dissolves the dilemma rather than picking a side", and lists what it
 would cost with the note "none of it measured". This is the measurement.
 `notes/smooth_filter.py` reproduces every table and `notes/smooth_filter_figs.py` every figure
-(`fig_filter_tension`, `_jump`, `_shape`, `_trade`). **Nothing in `src/` is touched.**
+(`fig_filter_tension`, `_jump`, `_shape`, `_trade`).
+
+**"Nothing in `src/` is touched" stood here and is no longer true.** Sections 1-8 were written
+that way, against scratch implementations. Section 9 landed `reg="tikhonov_qr"` as an option on
+2026-09-21, and on 2026-09-23 it became the INTENDED DEFAULT (`TODO.md` section 4). Sections 1-8
+are the measurement that decision rests on and are left as they were written; 9 onward are what
+shipped and what is still open.
 
 ## 1. The proposal as stated does not work, and it is worth knowing why
 
@@ -495,7 +501,9 @@ growth is the question this turns into, and it is not measured here.
 Rewritten twice: once after section 7.3, which made the case look dead, and again after 7.4
 and 7.5, which made it regime-dependent. The flat "no" that stood here between those two
 revisions was wrong, and it was wrong because the only wide-window test at the time used
-isolated levels, which cannot discriminate.
+isolated levels, which cannot discriminate. Annotated a third time on 2026-09-23, when the
+project decided the penalty is the intended default (item 6); the measurements are unchanged and
+items 4 and 5 are the ones that decision has to answer.
 
 1. **Section 35's proposal needs restating**: a filter must be a PENALTY, not a weight, by
    right-invariance (section 1). That correction is independent of everything below.
@@ -521,14 +529,30 @@ isolated levels, which cannot discriminate.
    catastrophic above it; filtering is the reverse. A solver that picks one globally is wrong
    half the time, and the quantity that decides is `d(rank)` over the window -- which
    `MPSPencil` can measure before choosing.
+
+   **This is the row the 2026-09-23 decision has to survive**, and it is not yet measured for
+   the mode that ships: the narrow-window numbers above are hand-set `tau` and the order-2 form,
+   never `"tikhonov_qr"` at its own derived `rtol`. `TODO.md` section 4, gate 0.
 5. **Within filtering, the hybrid is the right form and plain Tikhonov is not** (7.4). Tikhonov
    collapses at `prec = 1e-14`, losing half the spectrum, because a penalty saturates near
    9e-14 and cannot deliver a 1.5e-15 floor (section 2). Hard-cutting the null zone buys those
    last two decades, which is what section 6b argued from the objective and what decides four
    cells here. `c = sqrt(prec*eps)` -- `MPSPencil`'s own `rtol` rule -- is the strength, so
    this is not a new parameter.
-6. **Should it replace the incumbents? No -- it should JOIN them, and only if the wide-window
-   regime is one `chladni` actually enters.** On the evidence: keep the frozen rank for narrow
+
+   **Read that as "at `prec = 1e-14`", not in general.** Plain Tikhonov in its QR form is what
+   ships and what is intended as the default; what it cannot do is the bottom rung, where its
+   floor lands above the precision asked for. That is gate 2 in `TODO.md` section 4 -- a
+   `prec`-dependent default, or the bottom rung waiting for the second-order form.
+6. **Should it replace the incumbents? On the evidence below, JOIN them -- but the project has
+   since decided otherwise, and deliberately.** DECIDED 2026-09-23: the penalty is the intended
+   DEFAULT going forward, work remaining and all (`TODO.md` section 4). The argument that beats
+   the table below is not in the table: a threshold rank puts a decision in the hands of rounding,
+   that decision has already cost a real answer on Linux, and no tuning removes it -- while every
+   cost here is a number that can be measured and paid. What follows is the evidence that decision
+   has to live with, which is why it is left standing rather than rewritten.
+
+   On that evidence: keep the frozen rank for narrow
    windows, where it wins outright and the filter cannot help; the filter earns its place only
    where the rank moves a lot across the window, and it pays 45% per evaluation plus a seam
    change through `rank_at`, `coef`, `choose_rank`, `RankDiagnostics`, `n_useful` and
@@ -554,7 +578,8 @@ isolated levels, which cannot discriminate.
 ## 9. Integrated: the plain penalty, as an option
 
 2026-09-21. Landed on branch `regularization/tikhonov` as `reg="tikhonov_qr"` and
-`reg="tikhonov"` on `MPSPencil` and `MPSEigensolver`. **Not the default**, and deliberately the
+`reg="tikhonov"` on `MPSPencil` and `MPSEigensolver`. **Not the default yet -- it is the INTENDED
+default** (decided 2026-09-23, gates in `TODO.md` section 4), and deliberately the
 SIMPLE form: a plain penalty with `tau = rtol * ||[A_B; A_I]||_F`, which on the equilibrated
 stack is exactly `rtol * sqrt(n_cols)`. The hybrid of section 6b is not implemented; it stays
 here, and section 7.4 is the evidence for wanting it later.
@@ -617,7 +642,9 @@ in place.
    passes the cell too. The penalty's solve of the cell is the portable acceptance test, and
    only a Linux run of it closes the blocking item.
 2. Reaching `prec = 1e-14` -- section 10.
-3. Whether a penalty mode should become the default, or reach `Eigenproblem`.
+3. Making it the default, which is now the stated intent rather than an open question. What is
+   open is the gate list in `TODO.md` section 4 -- above all that the grids have never been run
+   under `"tikhonov_qr"` at its own derived `rtol`, only under hand-set `tau`.
 4. `calibrate_rtol` under a penalty: it runs, because raising `rtol` raises the floor either way,
    but its model is written for truncation and is untested here.
 5. A `PrecisionWarning` for a penalty mode at `prec` below its reach -- wanted, but there is no

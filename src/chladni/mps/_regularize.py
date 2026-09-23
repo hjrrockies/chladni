@@ -58,8 +58,10 @@ block's numerical rank with its own tolerance. So `"tikhonov"` does not remove t
 decision, it moves it inside LAPACK: on `rect(1, 1/phi)`'s 126-column pencil its count of
 finite tensions was 33, 43, 48 at `lam = 35.7, 150, 261`, at every `tau` tried. `"tikhonov_qr"`
 hands LAPACK an orthonormal stack, and its count was `n_int = 63` at all three.
-`"tikhonov_qr"` is the mode to use; `"tikhonov"` is kept as the literal formulation and as an
-oracle the QR form must agree with.
+`"tikhonov_qr"` is the mode to use, and the INTENDED DEFAULT going forward (`TODO.md` section 4,
+decided 2026-09-23): a threshold rank leaves a decision to rounding, and that has already cost a
+real answer. It is not the default yet, and the gates are listed there. `"tikhonov"` is kept as
+the literal formulation and as an oracle the QR form must agree with; it is not a candidate.
 
 Both need `tau` above the rounding noise. At the `prec`-derived default `rtol` the two agree
 to 1e-7 or better; at `rtol = 1.5e-15` they part by 1e-3.

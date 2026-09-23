@@ -229,7 +229,8 @@ must agree about a transformation only one of them computed.
 - `"tikhonov_qr"` -- no truncation: a penalty `tau^2 ||c||^2` added to the numerator,
   `tau = rtol * ||[A_B; A_I]||_F` (`rtol * sqrt(n_cols)` on the equilibrated stack). Unpivoted
   QR of `[A_B; tau*I; A_I]`, and the two row blocks of `Q` go to the GSVD; `back` is `R^-1`.
-  No rank is chosen, so none can change with `k`. Not the default.
+  No rank is chosen, so none can change with `k`. Not the default yet, and the INTENDED one:
+  see `TODO.md` section 4 for the decision (2026-09-23) and the gates before the switch.
 - `"tikhonov"` -- the same penalty handed to the GSVD directly, `([A_B; tau*I], A_I)`.
   Identical in exact arithmetic but NOT free of rank decisions: `tau*I` makes the stack full
   rank and does nothing for the interior block, whose rank LAPACK's `?ggsvp3` then decides
@@ -404,6 +405,11 @@ basis planning and the point budget, and whether `k` or `lam` is the better vari
 minimization.
 
 ## The rank must be chosen over a RANGE, and the default is now threshold
+
+**And the threshold is itself meant to go.** A rank re-derived per parameter is decided by
+rounding wherever a singular value sits near the cutoff, and on Linux that cost a real answer
+(`notes/session_2026-09-19.md`). The penalty modes above are the intended default from
+2026-09-23; this section describes what ships today, not where it is headed.
 
 Two corrections to the section above, both found by measuring the objective before designing
 a search for it (`notes/`, not tracked).

@@ -312,10 +312,21 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   calibrated slope is unchanged bit for bit everywhere else -- applied unconditionally it moved a
   hump root 2.3x and flipped four calibrated tests. The cell went from 5 of 3 to 4 of 3.)
 
-* **[next]** **The penalty regularization is an option with a stated limit, and five things about
-  it are undecided.** `reg="tikhonov_qr"` landed 2026-09-21 (`notes/smooth_filter.md` section 9):
-  no rank chosen, so none flips; verified continuous where the threshold flickers, and immune to
-  the 1e-15 perturbation that flips the threshold. Open, in order:
+* **[next]** **The penalty regularization is the INTENDED DEFAULT, and these are the gates.**
+  DECIDED 2026-09-23: `reg="tikhonov_qr"` is where the project means to end up, replacing the
+  threshold rank as `MPSPencil`'s default, even though work remains. It landed 2026-09-21 as an
+  option (`notes/smooth_filter.md` section 9): no rank chosen, so none flips; verified continuous
+  where the threshold flickers, and immune to the 1e-15 perturbation that flips the threshold.
+  The reason to want it is that a rank flip has already cost a real answer -- the blocking item
+  in section 1 -- and no amount of tuning a threshold removes a decision that rounding makes.
+
+  The gates, in the order they should be cleared:
+
+  0. **The grids have never been run under `"tikhonov_qr"` at its own default `rtol`.** Every
+     measurement in `notes/smooth_filter.md` sections 7 and 10 used hand-set `tau` or the order-2
+     form. Before any default changes, run the cluster-total and decline grids across the whole
+     `prec` ladder with the shipped option and nothing else varied. That is the measurement that
+     either supports this decision or narrows it, and it is cheap.
 
   1. **Its reach, which is limited by NOISE.** The 9e-14 "saturation" in `notes/smooth_filter.md`
      sections 2 and 7.4 was measured on the literal form and is LAPACK's internal cut. The QR
@@ -326,17 +337,30 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
      is robustly free of wrong totals (section 10.2). Parked, and not built into `src/`, until
      the search's merge defect (below in this section) is fixed and bases are right-sized
      (`notes/coarse_to_fine_basis.md`).
-  2. **Default or not.** Section 7 of the same note found the regimes cleanly split: frozen rank
-     wins narrow windows, a filter wins wide windows with a tight pair, and on a corner-FB basis
-     nothing differs because the rank does not move. A default has to be argued from that table,
-     and from the 1.5x per-evaluation cost.
+  2. **The `prec` RANGE the default can serve, which is not all of it.** At `prec = 1e-14` the
+     derived `rtol` puts the penalty's floor at 2.4e-14, above the precision asked for, so the
+     shipped form cannot serve the bottom rung; gate 1 is what would. Either the default is
+     `prec`-dependent -- penalty above some rung, threshold below -- or the bottom rung waits for
+     the second-order form. Say which, in the docstring, before flipping the switch.
+
+     Section 7 of the note is the evidence to argue against: it found the regimes cleanly split,
+     frozen rank winning narrow windows and a filter winning wide windows with a tight pair, with
+     nothing to choose on a corner-FB basis because the rank does not move there. A default has
+     to survive that table, and the 1.5x per-evaluation cost -- which section 7.4 suggests may pay
+     for itself in evaluations saved (42k against 82k, 38 spurious brackets against 807), never
+     measured as wall time.
   3. **`calibrate_rtol` under a penalty.** It runs -- raising `rtol` raises the floor either way --
      but its model is written for a truncation cut and is unmeasured here.
   4. **A `PrecisionWarning` below its reach**, like `_warn_if_unsafe` for a frozen rank. There is no
      calibrated threshold to warn at yet.
   5. **`"tikhonov"`, the literal form, does not remove the rank decision** -- LAPACK's `?ggsvp3`
      decides the interior block's rank itself (finite count 41-50 over a scan where the QR form
-     holds 50). Kept as an oracle; whether it should stay user-facing is open.
+     holds 50). Kept as an oracle; whether it should stay user-facing is open. It is NOT a
+     candidate for the default.
+  6. **The refiner's phantom test assumes a cone** (below in this section). It only bites where a
+     well's floor approaches the merge licence, which the shipped `rtol` does not do -- floor
+     1.7e-11 against `prec = 1e-8` -- so it does not gate this default. It WOULD gate any penalty
+     tuned to spend more of `prec` on its floor, the second-order form included.
 
 * **[later]** A starved basis DROPS the levels it resolves worst, and for the levels that are
   never BRACKETED no diagnostic added to `solve` can catch it -- `notes/landscape_findings.md`

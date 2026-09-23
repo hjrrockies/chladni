@@ -155,8 +155,10 @@ class MPSPencil(Frozen):
 
     `reg="tikhonov_qr"` (or `"tikhonov"`) replaces the truncation with a penalty of weight
     `rtol * sqrt(n_cols)` -- the same `rtol`, now setting a strength instead of a cutoff -- and
-    chooses no rank at all, so `rank=` and `lam_ref=` are refused with it. Not the default:
-    see `_regularize` for the noise that limits a plain penalty at tight `prec`.
+    chooses no rank at all, so `rank=` and `lam_ref=` are refused with it. Not the default YET --
+    it is the intended one (`TODO.md` section 4, decided 2026-09-23), because a threshold rank
+    leaves a decision to rounding and that has already cost a real answer. See `_regularize` for
+    the noise that limits a plain penalty at tight `prec`, which is why the switch has gates.
     """
 
     def __init__(self, bdry, interior, *, reg="svd", rank=None, rtol=None, lam_ref=None,
