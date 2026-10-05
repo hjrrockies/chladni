@@ -150,3 +150,37 @@ sizes and the roster, and would extend the penalty's range from 1e-8 to 1e-12 if
 4. **Trace the 1e-12 singles** first: if they are search defects, they are cheap and the 1e-12
    claim firms up regardless of what happens at 1e-14.
 
+## The 1e-12 singles, traced -- three search defects, none of them the regularization
+
+2026-10-05, `notes/trace_posterior.py`. The four single losses at 1e-12 are all band 0.3, the
+tightest. Three mechanisms, each a search defect the posterior's flatter cluster landscape exposes:
+
+1. **The inner-end retry hugs the root** (n = 172, `C = 8`, 50*pi^2, flagged). `smooth_filter.md`
+   section 12's retry -- a refusal at the side sub-bracket's inner end, reading too low for the
+   root's wall, re-searches with a narrower exclusion -- takes that exclusion from the ROOT's own
+   reach, `(sigma / c) / bias_lo`. At a CONVERGED root `sigma` is the floor, so the exclusion is ~1e-12
+   and the retried sub-bracket runs onto the root's own wall, refuses there, and flags the level.
+   This is exactly the trap `_SIDE_STANDOFF` documents for finds, repeated. Fix: the standoff rule
+   for the retry's exclusion too.
+2. **The stage-2 merge swallows a two-member bracket** (n = 172 `C = 30`, and n = 258 `C = 3`,
+   65*pi^2; both SILENT, two members lost each). Stage 1 brackets the quadruple as [m0], [m1, m2],
+   [m3]; the middle bracket's root lands BETWEEN its members (sigma 3e-13, refiner bar 0.44-0.5
+   licences); `_same_point` groups it with a neighbouring root 0.33 licences away because that is
+   within the WIDER bar (capped at the licence); the group reads its multiplicity at the deeper
+   representative, inside THAT root's own bracket, which holds neither m1 nor m2. 2 of 4. The dedup
+   defect's twin, in the merge. Fix candidate: merge within the narrower bar, or when the shallower
+   root's own reach puts the deeper one within the distance (here 0.05 licences against 0.33, so
+   not a duplicate).
+3. **The post-find sub-bracket starts on the hump** (n = 258, `C = 30`, 50*pi^2, SILENT). After
+   finding member 1, the side search resumes 0.3 of the remaining span past it (`_SIDE_STANDOFF`),
+   which lands on the hump between members 1 and 2; `refine` walks to that inner end and refuses,
+   with member 2's well 0.15 licences inside and unsampled. The end reads 1.3e-12 -- exactly member
+   1's wall -- so the low-inner-end signal correctly stays quiet, and the refusal counts as
+   resolved. Fix candidates: sample the sub-bracket before refining it, or probe inward from an
+   inner-end refusal of a sub-bracket that starts at a find.
+
+None of the three is reachable only through the posterior: each is a general shape -- a refiner bar
+wider than a gap, a retry radius taken at a floor, a resume point on a hump -- that the threshold's
+sharper wells happen not to produce on the measured grids. The scatter across `C` is these
+mechanisms landing or not, which is why it is not monotone in `C`.
+

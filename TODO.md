@@ -82,9 +82,19 @@ and deciding whether Phase D's angle earns its keep.
   and a decline -- but a sweep of `tau = C eps sqrt(n)` over three basis sizes showed that was a lucky
   point: at 1e-14 no `C` is clean at every size and the losses are mostly SILENT (same cases, `tau`
   2.0e-14 -> 18/18, 2.3e-14 -> two silent). At 1e-12, `C = 100` was clean on all three sizes and the
-  roster. So: not yet a route to 1e-14; possibly a route to 1e-12. Next, cheapest first: trace the
-  scattered 1e-12 single losses (non-monotone in `C`, so likely search defects); try a larger span
-  than `MAX_BRANCHES`; posterior for refine/count only. The dedup defect the first run found is fixed.
+  roster. So: not yet a route to 1e-14; possibly a route to 1e-12. The dedup defect the first run
+  found is fixed.
+
+  **The 1e-12 single losses are traced: three SEARCH defects** (`notes/posterior_penalty.md`,
+  "The 1e-12 singles, traced"; `notes/trace_posterior.py`). (1) Section 12's inner-end retry takes
+  its exclusion from a converged root's floor, ~1e-12, and refuses on the root's own wall -- use the
+  standoff rule. (2) `_same_point` merges a root from a two-member bracket into a neighbour within
+  the WIDER of their refiner bars, then reads the group's count in the deeper root's bracket, which
+  holds neither member: two lost, silent, twice -- the dedup defect's twin. (3) A post-find
+  sub-bracket resumes on the hump between two members and refuses at that end with the second
+  member inside, unsampled, and the end reads exactly the find's wall, so nothing flags it. Fix
+  those, then rerun the sweep; then a larger span than `MAX_BRANCHES`, and posterior for
+  refine/count only.
 * **[next]** **`basis_sufficiency` decides the DENOMINATOR at a boundary it clears by 6%, and the
   two platforms therefore score different case sets.** macOS calls 10 cells unexercisable where
   Linux calls 7. Two of the four `test_cluster_totals` skips sit on the precondition boundary:
