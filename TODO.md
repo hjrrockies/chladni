@@ -29,46 +29,41 @@ with multiplicities come out. `tests/candidates_v1.py` holds the two adapters th
 What is left here is not construction, and since 2026-09-18 it is not Phase D either. The
 `modes(x)` widening landed, the interior Gram angle is built behind `phase_d=` and measured, and
 the multiplicity contract is stated in `docs/design/search.md`'s As-built section. **There are no
-known wrong totals and no known lost eigenvalues on any measured grid, ON macOS/ACCELERATE AT ANY
-SCOPE** -- including the full suite, measured 2026-09-19. Linux/OpenBLAS has one, and only in the
-full suite; the two platforms also score different case sets. See the two items below. What is
-left is the
+known wrong totals and no known lost eigenvalues on any measured grid, on macOS/Accelerate at any
+scope, and on Linux/OpenBLAS at full-suite scope** -- measured 2026-10-04 on the cluster grids,
+both pencils. The two platforms still score different case sets (below). What is left is the
 constants still inherited from one rectangle family, the rank policy that belongs to the planner,
 and deciding whether Phase D's angle earns its keep.
 
-* **[blocking]** **CI is red on Linux, and one failure is a WRONG TOTAL from a threshold-rank
-  flip.** Everything in this project is measured on
-  macOS/Accelerate; CI runs `ubuntu-latest` against `scipy-openblas32` (`pyproject.toml`), and
-  there `test_the_cluster_total_GRID[N65-1e-06-b2.6]` declares **3 of 4, silently**. Every other
-  cell of all five grids agrees. Blocking because the contract's central claim is stated more
-  broadly than the evidence supports, and because neither platform is the trusted reference:
-  section 4 already tracks an Accelerate fault that corrupts the heap.
+* **[next]** **Four Linux-only failures remain, none a wrong total, all older than the penalty.**
+  One full-suite leg on `ubuntu-latest` / Python 3.13, 2026-10-04 (`diag/acceptance`): 5 failed of
+  2400, and the fifth -- `test_regularization`'s differentiability contrast, which needs the
+  threshold to flicker at a point found on Accelerate -- now skips its contrast half where the
+  rank does not flicker. Each of the four was red on the 2026-09-21 `main` run too:
 
-  Caught by `test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate`, which fails with "1 cell(s)
-  neither right nor declined" -- what it was written to say.
+  1. `test_floor.py::test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window`
+     -- rank 71 of 92 at `lam = 120` against a bound of 0.85 n = 78. Accelerate keeps more.
+  2. `test_refine.py::test_a_genuine_minimum_OFF_CENTRE_in_its_bracket_is_accepted` -- the
+     minimum sits 0.364 of the way in, where the test's premise needs < 0.25.
+  3. `test_refine.py::test_the_start_point_is_the_DEEPEST_SAMPLE_not_the_midpoint` -- converged
+     1e-7 from the root (accepted, `delta_res` 2e-7 covers it) where the test asserts 1e-10.
+  4. `test_solve_interval.py::test_a_tighter_request_costs_more_and_says_what_it_could_not_reach`
+     -- the right COUNT but 7 levels against 6 distinct disk eigenvalues: a degenerate pair
+     reported as two levels. Permitted by the merge policy only if it is not a DETECTABLE exact
+     degeneracy, and a disk's is. The one of the four that may be a real defect.
 
-  **The mechanism is OBSERVED: a rank flip at one bracket end** -- the `[next]` item below has the
-  chain, and `notes/session_2026-09-19.md` the trace. Three things this item said earlier are
-  superseded:
+  1-3 look like premises measured on one LAPACK (a fixture whose geometry the BLAS moves), and
+  the fix is to re-derive the premise, not loosen the claim. Until they are handled, `main` CI is
+  red on Linux for reasons that are not wrong totals.
 
-  * "the mechanism is unknown" -- it was traced on a Linux runner 2026-09-21. The four candidates
-    measured to negative still stand, and none was it: pinning `gsvd4py` onto OpenBLAS, jittering
-    the tension values across eleven orders, moving the rank UNIFORMLY via `rtol` (a different
-    thing from one flip at one point), and the pencil cache. Nor is "a different LAPACK moves the
-    GSVD at 1e-15, and the grid sits at that edge": the members sit 2.60 / 5.72 / 2.60 licences
-    apart.
-  * "needs full-suite scope" and "threading is not it" -- both wrong. Across every Linux run,
-    `OPENBLAS_NUM_THREADS=1` has never failed (0 of ~39), and at default threading the rate moves
-    with scope: 1 of 8 for the module, 3 of 4 for the nine preceding files plus it, 4 of 5 for the
-    full suite. Scope moves the rate by moving where stage 1 puts the bracket end, and a flip only
-    fails the cell if that end lands where direction 86 happens to drop `sigma_1` hard.
-  * the collection-versus-execution experiment it named was run: import-time state is not the
-    trigger, 12 of 12 right with the whole suite collected.
-
-  The rest of the CI board, for scale: 8 failures. Five are pre-existing and all exercise
-  `_collapse_ambiguous`, the cross-check now off by default (`test_solve.py` x4, `test_floor.py`
-  x1) -- they may be measuring a configuration nothing ships, and they pass on macOS. Seven of the
-  eight are Linux-only; the eighth was not, and is fixed.
+  **What closed the former blocking item** -- `test_the_cluster_total_GRID[N65-1e-06-b2.6]`, a
+  wrong total from a threshold-rank flip: the nine-file scope at default threading, 3 of 3 PASS
+  where it reproduced the failure 3 of 3 before (2026-10-04); the default-pencil row for the same
+  cell passed too; and the full-suite leg passed both, with
+  `test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate`. Read that honestly: the suite row is a
+  TRUNCATION at `SUITE_RTOL`, so the flip mechanism is not removed from it -- something earlier in
+  the run moved where stage 1 puts the bracket end, as scope did before. What is removed is the
+  exposure of the DEFAULT path at `prec >= 1e-8`, which has no rank to flip.
 
 * **[next]** **`basis_sufficiency` decides the DENOMINATOR at a boundary it clears by 6%, and the
   two platforms therefore score different case sets.** macOS calls 10 cells unexercisable where
@@ -89,10 +84,10 @@ and deciding whether Phase D's angle earns its keep.
   holds at full-suite scope it takes CI's legs from ~65 minutes toward ~20. NOT measured at
   full-suite scope, and not a claim about Accelerate versus OpenBLAS. `notes/session_2026-09-19.md`.
 
-* **[next]** **A threshold-rank flip at one bracket END makes the refiner refuse a real root.**
+* **[later]** **A threshold-rank flip at one bracket END makes the refiner refuse a real root.**
   OBSERVED on a Linux runner 2026-09-21, bit-identical over 3 repetitions, and reproducible on
-  macOS in a second (`notes/session_2026-09-19.md`, the 09-21 section). This is the mechanism of
-  the blocking item above. `notes/landscape_findings.md` section 37 filed the `125*pi^2` rejection
+  macOS in a second (`notes/session_2026-09-19.md`, the 09-21 section). This was the mechanism of
+  the former blocking CI item. `notes/landscape_findings.md` section 37 filed the `125*pi^2` rejection
   as costing nothing "but ... nothing guarantees it stays harmless"; this is that shape, costing
   the one wrong total CI ever had.
 
@@ -120,25 +115,16 @@ and deciding whether Phase D's angle earns its keep.
   flip (`notes/smooth_filter.md` section 9). On macOS it replays this refusal deterministically
   and fixes it -- with the flip injected `refine` refuses exactly as recorded; under the penalty
   it accepts, 1e-10 from the root -- and solves the cell 4 of 4
-  (`tests/test_regularization.py`, the "2026-09-21 CI refusal" section). What is NOT done: the
-  acceptance test is this cell on a LINUX runner in the nine-file scope at default threading
-  (`test_asymp.py` through `test_cluster_totals.py`), which reproduced the failure 3 of 3 at
-  about eight minutes a repetition. macOS cannot discriminate -- the threshold passes there
-  too -- so that run is what closes this item and the blocking one above.
+  (`tests/test_regularization.py`, the "2026-09-21 CI refusal" section).
 
-  **BLOCKED ON A RUNNER, not on the work: the account's free GitHub Actions minutes are spent
-  (2026-09-23).** Nothing else waits on it -- every other claim above was verified locally at
-  every tier -- so this is a pause. When minutes are available again the nine-file scope is the
-  cheap decisive run, not the full suite.
-
-  **Re-scoped 2026-09-24, now that the penalty is the default at `prec >= 1e-8`.** The failing
-  cell is scored on `rect_suite`'s pencil, a threshold fixed at `SUITE_RTOL`, and an explicit
-  `rtol=` stays a truncation under `reg="auto"` -- so that test still exercises the flip, and the
-  Linux run of it still fails the way it did. What SHIPS for the same cell at 1e-6 is the penalty,
-  scored by `test_the_cluster_total_GRID_on_the_default_pencil[N65-1e-06-b2.6]` and right on
-  macOS. The decisive Linux run is now BOTH: the default-pencil row (should pass, and is the
-  claim), and the suite row (expected to fail until the fixture either moves to the default or
-  records the flip as a strict xfail with this mechanism).
+  **Run on Linux 2026-10-04, and demoted to `[later]`.** The default path at `prec >= 1e-8` is
+  the penalty and has no rank to flip; both rows of the cell passed on Linux at nine-file and
+  full-suite scope (the item above). What stays open is the flip itself, on every TRUNCATION:
+  `reg="auto"` below 1e-8, and any explicit `rtol=`, `rank=` or `lam_ref=`. Its passing on Linux
+  now is a moved bracket end, not a fix, so this item stays until either the penalty's range
+  reaches the bottom rung or the planner owns the rank (the item below). Section 12 of
+  `notes/smooth_filter.md` added a look past a refused bracket END; it does not cover this case,
+  where the root is inside and the flipped end points away from it.
 * **[later]** **One attribution case the evidence cannot decide, FLAGGED by design.** A single
   side-search find admissible to both a counted and an undecided branch: if it is the counted
   branch's member the undecided one's is still out there, and if not, the counted one's lies inside

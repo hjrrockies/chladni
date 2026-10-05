@@ -897,7 +897,12 @@ def test_the_qr_penalty_is_differentiable_where_the_threshold_flickers():
     wide, narrow = _spread(q.tension, x0, 2e-4), _spread(q.tension, x0, 2e-6)
     assert wide / narrow > 50, f"spread {wide:.2e} -> {narrow:.2e}: not shrinking with width"
     assert _spread(q.tension, x0, 2e-8) < 1e-6
-    assert len({p.rank_at(x) for x in x0 + np.linspace(-2e-6, 2e-6, 41)}) >= 2
+    # The CONTRAST needs the threshold to flicker here, and where it does is the BLAS's choice:
+    # this point was found on Accelerate, and on OpenBLAS the rank holds at 39 across it (Linux
+    # CI, 2026-10-04). The penalty's half above is the claim and has already run.
+    if len({p.rank_at(x) for x in x0 + np.linspace(-2e-6, 2e-6, 41)}) < 2:
+        pytest.skip("the threshold does not flicker at this point on this LAPACK; "
+                    "the penalty's smoothness was asserted, the contrast has no subject")
     assert _spread(p.tension, x0, 2e-8) > 1e-3, "the threshold twin should plateau"
 
 
