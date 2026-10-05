@@ -1,7 +1,10 @@
-# A fixed penalty read through posterior tensions clears the cluster grid down to 1e-14
+# A fixed penalty read through posterior tensions: clean at one tau, NOT robust at 1e-14
 
-*Updated 2026-10-05: the one loss below was a search defect, fixed in `search.solve`; with it
-fixed the posterior row is clean at every rung (section "After the fix").*
+*Updated 2026-10-05, twice. First: the one loss was a search defect, fixed in `search.solve`, and
+the row came back clean at every rung. Second, and overriding the first's conclusion: a sweep of
+`tau = C eps sqrt(n)` over three basis sizes and the hard roster (section "The tau sweep") shows
+that clean row was a LUCKY POINT. At 1e-14 no `C` is clean at every basis size, and the losses are
+mostly SILENT. At 1e-12, `C = 100` was clean everywhere it was tried. Read that section first.*
 
 2026-10-05. The question from `notes/moler_payne_vs_tension.md` section 1: the order-1 penalty
 has no feasible `tau` at `prec = 1e-14` when `tau` scales with `prec`, because its floor (~1.4
@@ -93,3 +96,57 @@ Not established:
 3. If both hold: a `reg="posterior"`-style mode on `MPSPencil` (or the posterior as the objective
    `MPSEigensolver` builds), then `PENALTY_PREC_MIN` falls and truncation can retire -- which also
    retires the Linux rank-flip item in `TODO.md` section 1 at its root.
+
+## The tau sweep -- the clean row does not survive
+
+2026-10-05, `notes/posterior_tau_sweep.py` (`size` about 30 minutes, `roster` about 2). `tau = C
+eps sqrt(n)`, `C` in {3, 8, 30, 100}; `C = 8` is about the `tau = 2e-14` above at n = 126. The
+cluster grid rebuilt at three paddings, n = 128, 172, 258 (the rows above were n = 172, at
+`C` = 6.8). Cells: right, then f flagged, s SILENT, d declined.
+
+    prec    n     threshold   C = 3        C = 8          C = 30        C = 100
+    1e-12   128   22/22       22           22             22            22
+            172   22/22       15 + 7d      21 + 1f        21 + 1s       22
+            258   22/22       21 + 1s      22             21 + 1s       22
+    1e-14   128   18/18       16 + 2s      17 + 1f        4  (5f 9s)    0  (10f 8s)
+            172   17 + 1d     13 + 5d      15 + 1f + 2s   7  (5f 6s)    1  (10f 7s)
+            258   17/17       16 + 1s      16 + 1s        6  (4f 7s)    0  (9f 8s)
+
+The hard roster, total count and worst relative error against truth:
+
+* disk (84 cols) and equilateral triangle (90): `C` = 3 and 8 clean at 1e-10, 1e-12 and 1e-14, with
+  errors matching the threshold's (2-7e-16 at 1e-14). At 1e-14, `C = 30` and 100 return the
+  triangle's six eigenvalues as TWO, silently; the disk takes one flagged level at `C = 30`.
+* L-shape (80 pure corner Fourier-Bessel cols): identical at every `C`, and to the threshold, at 1e-10
+  and 1e-12 (3 of 3, 1.6e-14 at 1e-12).
+
+What this says:
+
+* **The 18/18 at 1e-14 was a knife edge.** On the very same n = 172 cases, `tau` 2.0e-14 gave 18/18
+  and 2.3e-14 (`C = 8`) gives 15, one flagged and two SILENT. No `C` is clean across sizes at 1e-14,
+  where the threshold is 17-18 of 17-18 with one honest decline. A posterior mode at 1e-14 would
+  trade the threshold's decline for silent wrong totals -- the trade this project refuses.
+* **Two jaws again, in a different place.** Small `C` sits on the noise jaw and declines or loses a
+  member (`C = 3`: 7 declines at n = 172). Large `C` loses members wholesale at 1e-14: the penalty
+  bends the 8-vector span away from the cluster's eigenspace, and the Rayleigh-Ritz on it cannot
+  recover what the span does not contain. The posterior moved the squeeze; it did not remove it.
+* **At 1e-12, `C = 100` was clean at every size and on the roster**, and the scattered single losses at
+  `C` = 3 and 30 are not monotone in `C` -- the signature of search defects like the dedup one, not of
+  the regularization. Untraced.
+
+## Where that leaves the goal
+
+The penalty-at-every-`prec` goal is NOT established by this route. What is supported, on this
+instrument: a posterior mode at a large fixed `C` (100) matched the threshold at 1e-12 on three basis
+sizes and the roster, and would extend the penalty's range from 1e-8 to 1e-12 if it holds wider. At
+1e-14 the span is the limit, and the candidates are:
+
+1. **A larger span** (`k` beyond `MAX_BRANCHES`): more room for the eigenspace inside a span the
+   penalty has bent. Cheap to try -- one constant in `posterior_tensions`.
+2. **Posterior for refine and count only**, with bracketing on `sigma_tau`: the stage-1 sweep reads
+   many points far from any root, where the posterior buys nothing and its noise may cost.
+3. **A posterior that is not a fixed span**: a second, smaller-`tau` solve restricted to a window
+   around each root, or the second-order penalty (`notes/tikhonov_derivations.tex`) as the span.
+4. **Trace the 1e-12 singles** first: if they are search defects, they are cheap and the 1e-12
+   claim firms up regardless of what happens at 1e-14.
+

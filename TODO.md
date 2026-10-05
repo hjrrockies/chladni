@@ -76,13 +76,15 @@ and deciding whether Phase D's angle earns its keep.
   rather than removing it); and retiring truncation for the penalty everywhere, which removes the
   rank decision itself.
 
-* **[next]** **A FIXED penalty read through POSTERIOR tensions clears the cluster grid at every
-  rung** (`notes/posterior_penalty.md`, 2026-10-05): 22/22 at 1e-10 and 1e-12, 18/18 at 1e-14, where
-  the threshold is 17 and a decline and `sigma_tau` at the same `tau` is 0/18. The one loss the first
-  run had was a search defect, now fixed (the side search's dedup merged two finds within the WIDER
-  of their refiner bars). This is the route to retiring truncation at every `prec`. Next:
-  `tau = C eps sqrt(n)` across basis sizes and the hard roster; then a posterior mode as the
-  default, `PENALTY_PREC_MIN` removed. One family, one `tau`, macOS only so far.
+* **[next]** **The posterior penalty: promising at 1e-12, NOT robust at 1e-14**
+  (`notes/posterior_penalty.md`, 2026-10-05). A fixed `tau` read through posterior (Rayleigh-Ritz)
+  tensions first cleared the cluster grid at every rung -- 18/18 at 1e-14 against the threshold's 17
+  and a decline -- but a sweep of `tau = C eps sqrt(n)` over three basis sizes showed that was a lucky
+  point: at 1e-14 no `C` is clean at every size and the losses are mostly SILENT (same cases, `tau`
+  2.0e-14 -> 18/18, 2.3e-14 -> two silent). At 1e-12, `C = 100` was clean on all three sizes and the
+  roster. So: not yet a route to 1e-14; possibly a route to 1e-12. Next, cheapest first: trace the
+  scattered 1e-12 single losses (non-monotone in `C`, so likely search defects); try a larger span
+  than `MAX_BRANCHES`; posterior for refine/count only. The dedup defect the first run found is fixed.
 * **[next]** **`basis_sufficiency` decides the DENOMINATOR at a boundary it clears by 6%, and the
   two platforms therefore score different case sets.** macOS calls 10 cells unexercisable where
   Linux calls 7. Two of the four `test_cluster_totals` skips sit on the precondition boundary:
