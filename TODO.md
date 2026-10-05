@@ -35,31 +35,29 @@ both pencils. The two platforms still score different case sets (below). What is
 constants still inherited from one rectangle family, the rank policy that belongs to the planner,
 and deciding whether Phase D's angle earns its keep.
 
-* **[next]** **Three Linux-only failures remain, none a wrong count, all older than the penalty.**
-  One full-suite leg on `ubuntu-latest` / Python 3.13, 2026-10-04 (`diag/acceptance`): 5 failed of
-  2400, and the fifth -- `test_regularization`'s differentiability contrast, which needs the
-  threshold to flicker at a point found on Accelerate -- now skips its contrast half where the
-  rank does not flicker. Each of the rest was red on the 2026-09-21 `main` run too, and all four
-  were red, deterministically, on all three legs of the 2026-10-05 `main` run:
+* **[next]** **The four Linux-only failures are handled on macOS; the next Linux run confirms.**
+  All four were red, deterministically, on all three legs of the 2026-10-05 `main` run. None was a
+  wrong count. One was a real defect, three were premises measured on one LAPACK:
 
-  1. `test_floor.py::test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window`
-     -- rank 71 of 92 at `lam = 120` against a bound of 0.85 n = 78. Accelerate keeps more.
-  2. `test_refine.py::test_a_genuine_minimum_OFF_CENTRE_in_its_bracket_is_accepted` -- the
-     minimum sits 0.364 of the way in, where the test's premise needs < 0.25.
-  3. `test_refine.py::test_the_start_point_is_the_DEEPEST_SAMPLE_not_the_midpoint` -- converged
-     1e-7 from the root (accepted, `delta_res` 2e-7 covers it) where the test asserts 1e-10.
+  * `test_solve_interval.py::test_a_tighter_request...` -- an exact double reported as two simple
+    levels. FIXED in `search.solve` (re-centre on a deeper find inside the root's reach);
+    reproduced on Accelerate by `rtol = 1.25 SUITE_RTOL`, 2 of 108 cells before, 0 after.
+  * `test_floor.py::..._BARELY_TRUNCATES_...` -- asserted how many rounding-level directions a
+    `1e-16` cutoff keeps (81 of 92 on Accelerate, 71 on OpenBLAS). Now asserts the block of them
+    a sound cutoff drops, and that the low end truncates.
+  * `test_refine.py::test_a_genuine_minimum_OFF_CENTRE...` -- took its off-centre bracket from
+    stage 1, which puts the level 0.10 in on Accelerate and 0.364 on OpenBLAS, past the old
+    margin. Now BUILDS the bracket at 0.1 and 0.9; mutation-checked: restoring `_accept`'s old
+    `width/4` margin fails it, where the original passed that mutation on OpenBLAS.
+  * `test_refine.py::test_the_start_point_is_the_DEEPEST_SAMPLE...` -- asserted 1e-10 where the
+    contract at `prec = 1e-8` is acceptance, the bar containing the error, and the error inside
+    `prec`; OpenBLAS stops 2e-10 up the triple's wall, legally. Now asserts the contract.
 
-  A fourth, `test_solve_interval.py::test_a_tighter_request_costs_more...` (7 levels against 6,
-  total right), was a real defect and is FIXED, verified on macOS only: the refiner accepted a
-  point up the WALL of an exact double, the read there counted one, and the side search's find of
-  the true root became a second simple level. `solve` now re-centres on a deeper find inside the
-  root's own reach. Reproduced on Accelerate by `rtol = 1.25 SUITE_RTOL` (2 of 108 cells before,
-  0 after; `test_an_exact_degeneracy_is_ONE_level_when_the_refiner_stops_on_its_wall`). The
-  next Linux run is what confirms the CI cell.
-
-  1-3 look like premises measured on one LAPACK (a fixture whose geometry the BLAS moves), and
-  the fix is to re-derive the premise, not loosen the claim. Until they are handled, `main` CI is
-  red on Linux for reasons that are not wrong totals.
+* **[later]** **`test_the_start_point_is_the_DEEPEST_SAMPLE...` no longer guards its defect**, in
+  its original form or the current one: mutating `refine` to start at the midpoint again
+  (`src/chladni/mps/refine.py`, the `_deepest_inside` line) passes it, because a later recovery
+  path rescues the start. Either assert what the deepest-sample start BUYS (evaluations) or
+  retire the test as superseded. Measured 2026-10-05.
 
   **What closed the former blocking item** -- `test_the_cluster_total_GRID[N65-1e-06-b2.6]`, a
   wrong total from a threshold-rank flip: the nine-file scope at default threading, 3 of 3 PASS

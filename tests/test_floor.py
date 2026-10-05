@@ -84,12 +84,22 @@ def test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_windo
 
     What the cutoff COSTS is measured in the next test, and that is the part that matters: not
     the floor, which stays healthy, but hundreds of spurious minima between the eigenvalues.
+
+    HOW MANY it keeps at the top is not a property of the pencil. Past index 60 the singular
+    values at `b` are rounding, 4e-17 to 1.5e-16 relative, and `1e-16` lands inside that band, so
+    the count is decided by how one LAPACK's rounding happens to fall: 81 of 92 on Accelerate,
+    71 on OpenBLAS (Linux CI, 2026-10-04), against 51 at `SUITE_RTOL` on Accelerate. The old bounds,
+    0.85 n and 1.5x the sound rank, were Accelerate's 81 with a margin, and failed on Linux. What
+    holds on both is the phenomenon itself: the cutoff keeps a block of directions that a cutoff
+    above rounding drops -- and every one of them sits below `SUITE_RTOL`, which is rounding.
     """
     a, b = A_WINDOW
     p = rs.pencil_for(1.0, 1.0 / rs.PHI, a, b, rtol=1e-16)
     good = rs.pencil_for(1.0, 1.0 / rs.PHI, a, b, rtol=rs.SUITE_RTOL)
-    assert p.rank_at(b) > 0.85 * p.n_cols, "almost nothing is discarded at the top"
-    assert p.rank_at(b) > 1.5 * good.rank_at(b), "far more than a sound cutoff keeps"
+    extra = p.rank_at(b) - good.rank_at(b)
+    assert extra >= 0.1 * p.n_cols, (
+        f"a cutoff below eps keeps {extra} directions of rounding a sound one drops; expected a "
+        f"block of them (30 on Accelerate)")
     assert p.rank_at(a) < 0.6 * p.n_cols, "while the low end truncates normally"
 
 

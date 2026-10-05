@@ -327,14 +327,19 @@ def test_a_genuine_minimum_OFF_CENTRE_in_its_bracket_is_accepted():
 
     holding = [b for b in res.brackets if b.lo <= true <= b.hi]
     assert holding, "stage 1 must bracket the level at all"
-    b = holding[0]
-    lo, hi = b.lo, b.hi
-    r = refine(obj, lo, hi, prec=1e-8, lam_hint=b.k_hint**2)
-    assert r.accepted, f"rejected a bracket that holds the level: {r.reason}"
-    assert abs(r.lam - true) / true < 1e-9, f"relative error {abs(r.lam - true) / true:.2e}"
+    w = holding[0].hi - holding[0].lo
 
-    off = min(r.lam - lo, hi - r.lam) / (hi - lo)
-    assert off < 0.25, f"the minimum sits {off:.3f} of the way in -- inside the old margin"
+    # The bracket is BUILT off-centre, at stage 1's own width, rather than taken from stage 1:
+    # where stage 1 puts the level inside its bracket is the BLAS's choice -- 0.10 of the way in
+    # on Accelerate, 0.364 on OpenBLAS (Linux CI, 2026-10-04), where the old margin passed it
+    # anyway and this test stopped testing anything. Both ends, since the margin was symmetric.
+    for frac in (0.1, 0.9):
+        lo, hi = true - frac * w, true + (1.0 - frac) * w
+        r = refine(obj, lo, hi, prec=1e-8)
+        assert r.accepted, f"rejected a bracket holding the level {frac:.1f} in: {r.reason}"
+        assert abs(r.lam - true) / true < 1e-9, f"relative error {abs(r.lam - true) / true:.2e}"
+        off = min(r.lam - lo, hi - r.lam) / (hi - lo)
+        assert off < 0.25, f"the minimum sits {off:.3f} of the way in -- inside the old margin"
 
 
 @pytest.mark.slow
@@ -364,8 +369,15 @@ def test_the_start_point_is_the_DEEPEST_SAMPLE_not_the_midpoint():
     assert deep is not None and lo < deep < hi
     assert obj.tension(deep) < obj.tension(0.5 * (lo + hi)), (
         "the deepest sample is deeper than the midpoint, which is why it is the start point")
-    assert abs(refine(obj, lo, hi, prec=1e-8).lam - true) / true < 1e-10, (
-        "and with no explicit hint the refiner now finds it anyway")
+    # And with no explicit hint the refiner finds the well. Asserted at the CONTRACT -- accepted,
+    # its bar containing the error, the error inside `prec` -- not at the 1e-10 Accelerate happens
+    # to reach: on OpenBLAS the refiner stops 2e-10 relative up the triple's wall (sigma 1.7e-9,
+    # bar 4e-10), which is legal (Linux CI, 2026-10-04). The failure this guards against, a
+    # monotone midpoint triple, does not close at all.
+    r = refine(obj, lo, hi, prec=1e-8)
+    assert r.accepted, f"with no hint the refiner refused the level: {r.reason}"
+    assert abs(r.lam - true) <= r.delta_res, "its bar must contain its error"
+    assert abs(r.lam - true) / true < 1e-8, f"relative error {abs(r.lam - true) / true:.2e}"
 
 
 # --- tier 2: a real pencil --------------------------------------------------------------------
