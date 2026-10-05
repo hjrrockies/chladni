@@ -139,28 +139,12 @@ and deciding whether Phase D's angle earns its keep.
   macOS. The decisive Linux run is now BOTH: the default-pencil row (should pass, and is the
   claim), and the suite row (expected to fail until the fixture either moves to the default or
   records the flip as a strict xfail with this mechanism).
-* **[next]** **Two more ways a cluster member is lost, traced and NOT fixed** (2026-09-24,
-  `notes/smooth_filter.md` section 10.7, `notes/trace_undercount.py`). A third, attribution, was
-  found and fixed in `search._claim`. What remains:
-
-  1. **`refine` converges onto a bracket END and refuses it, with the member inside.** 65*pi^2 at
-     `prec = 1e-12`, `tau = 0.1 prec`: band 1.3, member 3 0.1 licences inside its bracket, refused
-     `not_a_minimum` at the lower end -- SILENT, because `_deep_rejections` compares the refusal's
-     `sigma` (1.0e-12) to the worst accepted level (2.6e-13) and it is shallower. Band 1.0: member
-     1 at the join of two brackets, both refused at that end, flagged. Same `_accept` shape as the
-     Linux flip above, with no flip: a flat-bottomed well is enough.
-  2. **The side search's exclusion swallows a member, and an inner-end refusal reads as a
-     rejection.** 50*pi^2 at 1e-12, band 0.3, on the default pencil (the threshold there): the
-     cache slope reads 0.008 against a typical 0.015, so `half = 0.5 sigma_j / c` is 0.32 licences
-     and member 0 at 0.30 is inside it; the sub-bracket beyond refuses `not_a_minimum` at its
-     INNER end, reading 0.18 sigma_j where the root's own wall reads ~0.5, and a `not_a_minimum`
-     counts as resolved. 2 of 3, silent -- under the old default too. Strict xfail in
-     `tests/test_cluster_totals.py` (`WRONG_DEFAULT`). The 0.18-vs-0.5 reading is the signal to
-     build on.
-
-  And one attribution case the evidence cannot decide, now FLAGGED rather than silent: one find
-  admissible to both a counted and an undecided branch (50*pi^2, 1e-10, band 0.3, `tau = 0.02
-  prec` -- the cell that set the default's range at 1e-8).
+* **[later]** **One attribution case the evidence cannot decide, FLAGGED by design.** A single
+  side-search find admissible to both a counted and an undecided branch: if it is the counted
+  branch's member the undecided one's is still out there, and if not, the counted one's lies inside
+  the exclusion where nothing looked. 50*pi^2, 1e-10, band 0.3, `tau = 0.02 prec` reads 2 of 3,
+  flagged (`notes/smooth_filter.md` 10.7). Deciding it needs a search inside the exclusion, the
+  same move section 12's inner-end retry makes; not tried here.
 * **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
   slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
   planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner

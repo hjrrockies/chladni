@@ -1036,6 +1036,9 @@ the pre-existing count and is FLAGGED. The 1e-10 cell is now 2 of 3, loud, where
     65 band 1.3    member 3  0.1 licences INSIDE its bracket; `refine` converged onto   no
                              the lower end and refused it. `_deep_rejections` stays
                              quiet: refusal sigma 1.0e-12, worst level 2.6e-13
+                             [CORRECTED in section 12: 0.1 licences OUTSIDE, below
+                             the lower end. The refusal was right; nothing looked
+                             past it.]
 
 And the default pencil's one remaining wrong cell, 50 band 0.3 at 1e-12, is the THRESHOLD (`"auto"`
 below 1e-8) and was wrong under the old default too: the cache slope reads 0.008 against a typical
@@ -1045,6 +1048,7 @@ the root's own wall would read about 0.5 -- and a `not_a_minimum` counts as a fi
 
 So "a sporadic single-cell under-count" was never one defect. The time box stopped here: the two
 `refine`-end cells and the inner-end refusal are recorded in `TODO.md` section 1 and not fixed.
+(Both fixed 2026-10-04, section 12.)
 
 ## 11. The default: the penalty at `prec >= 1e-8`
 
@@ -1080,3 +1084,41 @@ new default-pencil grid, about 123 s on its own; net of it the two are within a 
 not evidence the penalty is free: nearly every fixture passes an explicit `rtol=` or `lam_ref=` and so
 still runs the threshold. The per-evaluation figure from section 9, about 1.5x, stands as the
 measurement; a wall-clock one needs a solve on the default path, which the planner will provide.
+
+## 12. The two remaining loss mechanisms, fixed
+
+2026-10-04. Both in `search.solve`, both re-traced with `notes/trace_undercount.py` first.
+
+**The side search's inner-end refusal.** 50*pi^2, band 0.3, prec 1e-12, default pencil (the
+threshold there). The side sub-bracket's inner end sits `half = 0.5 sigma_j/c` from the root, where
+the root's own wall reads `0.5 sigma_j` times the slope's bias -- at least `BIAS_LO_CACHE` (0.61),
+by the calibration that set it. The refusal read 0.18 sigma_j, under the 0.305 that implies, so the
+descent was into a well INSIDE the exclusion. Now: such a refusal -- `not_a_minimum`, at the inner
+end, on a sub-bracket off the root rather than off a find, unexplained by a located root, below
+`0.5 BIAS_LO_CACHE sigma_j` -- re-searches that side ONCE with the exclusion the root's own reading
+implies, `(sigma/c)/bias_lo`, the radius a find already gets. If the retry stops at its inner end
+reading low too, the side is undetermined and the level is flagged. No new constant. The cell:
+member 0 found at 2.1e-15, 3 of 3, six more evaluations.
+
+**The refused stage-1 bracket end.** 65*pi^2, band 1.3, prec 1e-12, `tau = 0.1 prec`. Section 10.7
+said member 3 was 0.1 licences inside its bracket. It was OUTSIDE: the fourth stage-1 bracket began
+0.1 licences above it, so the refiner was right to walk to the lower end and refuse it. What was
+missing was a look past the end. Now: a stage-1 bracket refused (`not_a_minimum` or `endpoint`) with
+its best point at one of its own ends gets one refinement one bracket width beyond that end, clipped
+to the interval and to every other stage-1 bracket, so it cannot re-find a root located from its
+own. A find is located like any other and its refusal drops out of `refused`. The cell: 4 of 4,
+three more evaluations. The same rule does NOT address the Linux rank flip (`TODO.md` section 1): there the root
+is inside the bracket and the flipped end points away from it.
+
+**The grid, before and after, every exercisable 50/65*pi^2 cell at 1e-6 to 1e-14 (106 per pencil):**
+
+    pencil     right   wrong   declined   evaluations
+    default    104       1        1         10944       before
+               105       0        1         10986       after   (+0.4%)
+    suite      100       0        6         15388       before
+               100       0        6         15413       after   (+0.2%)
+
+One cell changed anywhere, the one targeted. The default pencil has no wrong total on this grid on
+macOS. Still open from 10.7: 50*pi^2 band 0.5 at 1e-12, `tau = 0.1 prec` -- a member never inside any
+stage-1 bracket, on the diameter = licence boundary, at a `tau` outside the warned reach. Not
+touched.
