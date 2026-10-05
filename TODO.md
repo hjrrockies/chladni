@@ -275,10 +275,16 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   while on the disk plane-wave enrichment from 0.6x to 2.5x `n_useful` moves the floor not at
   all because the rank saturates. More is better until it is not, and where the turn happens is
   a property of the family.
-* **[next]** **Boundary integrals, and Rellich orthonormalization.**
-  `docs/design/boundary_integrals.md` is a seven-line scope note and the layer is unwritten.
-  `Quadrature` already carries the weights for it (`src/chladni/mps/pencil.py:31`). It blocks
-  orthonormal eigenfunctions, and later the Hadamard shape derivatives.
+* **[next]** **Boundary integrals: a Moler-Payne bound on every level, then Rellich
+  orthonormalization.** Scoped as a first slice in `docs/design/boundary_integrals.md` (DRAFT,
+  2026-10-05): Cauchy data at quadrature nodes, composite Gauss-Legendre graded by the basis's
+  `singular_exponents()`, the Rellich norm, the bound on each `Level`; then the Gram matrix for
+  clusters. The evidence (`notes/moler_payne_vs_tension.md`): the shipped default reports a bar of
+  1-2e-10 on errors of 6e-14 to 2.5e-12, and the bound -- with an exact norm, on a rectangle --
+  held on all 15 rows at about 10x tighter than that bar. It decouples certification from the
+  regularizer and is the attained precision the planner needs, so it sits beside the planner, ahead
+  of the second-order penalty. The bound needs a few reliable digits of the norm, so the first
+  slice does not wait on Gauss-Jacobi corner rules; orthonormalization and Hadamard do.
 * **[next]** `Eigenproblem`, the black-box entry point `CLAUDE.md` names as the ultimate goal.
   It does not exist; `Eigensolver` plus `weyl_window` is the intended spine. Blocked on the
   search and the planner.
@@ -287,7 +293,8 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 * **[later]** Corner grading. `grading="corner"` / `_grade_flags` is "a placeholder, not a
   design" (`docs/design/geometry.md:449`): it over-grades right-angled Dirichlet and Neumann
   vertices, and node placement wants the integrand, so a quadrature layer should own the
-  choice and reach in through `panels=`.
+  choice and reach in through `panels=`. That layer is now scoped (the boundary-integrals item
+  above, step 2), and replaces this.
 * **[later]** Interior cubature, deferred until something asks for it
   (`docs/design/geometry.md:260`). Note that `notes/solver_features.md` A6 argues against ever
   making this a project: the interior block wants non-degeneracy, not accuracy, and anything
