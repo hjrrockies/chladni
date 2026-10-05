@@ -10,7 +10,9 @@ once: the free function holds the algorithm, the method holds the defaults.
 
 The eigenvalue search is here too, in four stages -- `bracket`, `refine`, `multiplicity` and
 `search` -- reached through `MPSEigensolver.solve_interval`. `docs/design/search.md` is their
-spec and `mps.md` is this layer's. Rellich orthonormalization is still deferred.
+spec and `mps.md` is this layer's. Every level `MPSEigensolver.search_interval` returns carries a
+Moler-Payne bound from `chladni.integrals` (`docs/design/boundary_integrals.md`); Rellich
+orthonormalization of clusters is milestone M4 there.
 """
 from .._core import PREC, PrecisionWarning
 from ..eigensolver import Eigensolver, Spectrum, k_to_lam, lam_to_k, weyl_window

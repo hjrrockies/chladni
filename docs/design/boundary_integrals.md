@@ -1,5 +1,6 @@
-*Status: design, approved 2026-10-05. M0 (seams), M1 (rules) and M2 (plan, Cauchy data, the
-identity) are in. Package: `chladni.integrals`.*
+*Status: design, approved 2026-10-05. M0 (seams), M1 (rules), M2 (plan, Cauchy data, the
+identity) and M3 (the Moler-Payne bound, wired into the solver) are in. Package:
+`chladni.integrals`.*
 
 # Overview
 `chladni` is going to rely on accurate boundary integration for two key parts of the MPS solve:
@@ -168,7 +169,7 @@ level's one `lam` before their Gram is formed, so no Gram ever divides by `lam_i
     M2  plan, Cauchy data, the identity: non-eigen functions against exact interior rules;
         exact norms of sector (singular), rect, polyomino, disk eigenfunctions;
         a real L-shape candidate against a graded oracle                          [done]
-    M3  Moler-Payne on every level, wired into the solver
+    M3  Moler-Payne on every level, wired into the solver                         [done]
     M4  clusters: Gram, Löwdin, orthonormal eigenfunctions
     M5  Hadamard (after M4)
     M6  later: Neumann and mixed, curved boundaries, a guaranteed maximum, planner integration
@@ -194,6 +195,23 @@ level's one `lam` before their Gram is formed, so no Gram ever divides by `lam_i
   cross-term question of `plan.py`'s docstring did not arise. Off the eigenvalue the norm error
   tracked the tension (1e-9 at tension 2e-9, 1e-6 at 2e-6), which is the boundary-data size, not
   the quadrature: a Moler-Payne bound there is large anyway.
+
+## What M3 measured (2026-10-05)
+
+* **The bound covers the true error on every level tried, and tightly.** On the L-shape (80 corner
+  Fourier-Bessel columns), candidates taken at KNOWN offsets of 1e-11 to 1e-5 from the first and
+  third eigenvalues: the bound is 3.2x the error at the singular first, 3.5x at the smooth third,
+  at every offset. At the tabulated eigenvalue it bottoms out near 1e-14 relative -- the table's
+  own 14 digits, and above the `eps * cancellation` floor it must respect. On `rect(1, 1/phi)` it
+  reproduces the notes' table through the Rellich norm: valid on all 15 rows.
+* **Through the solver**, every level of a five-level L-shape solve carries a finite bound that
+  covers its error against the table, and `Spectrum.bound` is `min(delta_res, mp_bound)`.
+  `Level.attained_prec` and the diagnostics' `unmet` follow the tighter bar.
+* **Cancellation enters the bound as a floor, not a refusal**: the sampled maximum is raised by
+  `4 eps` times the largest term behind it, so a bound below float64's own reach cannot be
+  reported. Measured cancellation on real candidates: 2 to 3.
+* **Refused, with a reason**: any non-Dirichlet boundary (the inclusion needs `u - v` to vanish on
+  all of it), and `eps >= 1`.
 
 # Accuracy: the bound needs few digits, orthonormalization needs many
 

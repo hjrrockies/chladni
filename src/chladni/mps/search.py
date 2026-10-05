@@ -184,6 +184,25 @@ class Level:
     #: Phase D's interior angle; empty means no grouping question arose. It is the difference
     #: between a count that survived a question and one nobody asked.
     count_decided_by: str = ""
+    #: The Moler-Payne bound (`chladni.integrals.certify`), ABSOLUTE: some true eigenvalue lies
+    #: within it of `lam`. NaN where none was computed; infinite where it was refused, with
+    #: `bound_reason` saying why. `mp_eps` is its relative core, `cancellation` the floor the
+    #: candidate's own rounding puts under it. Attached by `MPSEigensolver.search_interval`,
+    #: which holds the pencil and the domain; `solve` sees only an objective and never sets them.
+    mp_bound: float = float("nan")
+    mp_eps: float = float("nan")
+    cancellation: float = float("nan")
+    bound_reason: str = ""
+
+    @property
+    def bound(self):
+        """The error bar reported for this level: the tighter of `delta_res` (the refiner's,
+        from the tension's floor) and `mp_bound` (Moler-Payne, from the candidate itself). Both
+        are upper bounds on the distance to a true eigenvalue, so the tighter one is honest; under
+        the penalty default the second is usually two to three orders tighter
+        (`notes/moler_payne_vs_tension.md`). `delta_res` alone where no bound was computed."""
+        vals = [v for v in (self.delta_res, self.mp_bound) if np.isfinite(v)]
+        return float(min(vals)) if vals else float("nan")
 
     @property
     def width(self):
@@ -212,11 +231,13 @@ class Level:
         `search.md` section 2.4 clause (2): each located value is within `prec` of the truth, OR
         the solver REPORTS that `delta_res > prec*lam` and returns `delta_res` as the attained
         bound. There is no predicted-accuracy constant -- `delta_res` is measured from the
-        parabola fit the refiner already performed.
+        parabola fit the refiner already performed -- or, where `MPSEigensolver` attached one,
+        from the Moler-Payne bound, whichever is tighter (`bound`).
         """
-        if not np.isfinite(self.delta_res) or self.lam == 0.0:
+        b = self.bound
+        if not np.isfinite(b) or self.lam == 0.0:
             return float("nan")
-        return abs(self.delta_res) / abs(self.lam)
+        return abs(b) / abs(self.lam)
 
     def met(self, prec):
         """Clause (2) is an OR -- within `prec`, or the bound reached is REPORTED. A level with
@@ -860,6 +881,15 @@ def _deep_rejections(refused, levels):
                  if not (np.isfinite(r.sigma) and r.sigma > worst))
 
 
+def _precision_summary(levels, prec):
+    """`(unmet, attained)`: the levels short of `prec`, and the worst attained precision. One
+    place, because `MPSEigensolver` recomputes it after attaching Moler-Payne bounds."""
+    unmet = tuple(x.lam for x in levels if not x.met(prec))
+    attained = max((x.attained_prec for x in levels
+                    if np.isfinite(x.attained_prec)), default=prec)
+    return unmet, float(attained)
+
+
 def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
           reach_slope="cache", phase_d="distance"):
     """Locate every eigenvalue in the objective's window, with its multiplicity.
@@ -1332,9 +1362,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     # intermediate set that Phase D or the cross-check may still have folded.
     deep = _deep_rejections(refused, levels)
 
-    unmet = tuple(x.lam for x in levels if not x.met(prec))
-    attained = max((x.attained_prec for x in levels
-                    if np.isfinite(x.attained_prec)), default=prec)
+    unmet, attained = _precision_summary(levels, prec)
 
     return SolveResult(tuple(levels), SolveDiagnostics(
         search=sd, n_brackets=len(res.brackets), n_rejected=rejected, n_merged=merged,
@@ -1350,4 +1378,4 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                             f"larger than the worst located level's, so the total may be short "
                             f"by this eigenvalue (refusal reason: {why})")
                            for lam, sig, why in deep)),
-        prec_requested=prec, attained_prec=float(attained), unmet=unmet))
+        prec_requested=prec, attained_prec=attained, unmet=unmet))

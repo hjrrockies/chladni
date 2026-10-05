@@ -72,8 +72,12 @@ class MPSEigensolver(Eigensolver, Frozen):
 
     def __init__(self, domain, *, basis, bdry_quad=None, int_pts=None, n_bdry=None,
                  n_int=None, reg="auto", rank=None, rtol=None, lam_ref=None, prec=None,
-                 rng=DEFAULT_RNG):
+                 rng=DEFAULT_RNG, certify=True):
         super().__init__(domain, prec=prec)
+        # `certify`: attach a Moler-Payne bound to every level `search_interval` returns
+        # (`certify_levels`). On by default -- the bound is what makes `Spectrum.bound` honest
+        # under the penalty, whose floor overstates the error by two to three orders.
+        _set(self, certify=bool(certify))
 
         if bdry_quad is None:
             if n_bdry is None:
@@ -235,8 +239,63 @@ class MPSEigensolver(Eigensolver, Frozen):
         """
         from .search import solve
 
+        prec = self.prec if prec is None else check_prec(prec)
         obj = self.objective(a, b, prec=prec) if objective is None else objective
-        return solve(obj, prec=self.prec if prec is None else check_prec(prec))
+        res = solve(obj, prec=prec)
+        if not self.certify or not res.levels:
+            return res
+        return self.certify_levels(res, lam_max=float(b), prec=prec)
+
+    def certify_levels(self, res, *, lam_max, prec):
+        """`res` with a Moler-Payne bound on every level (`chladni.integrals.certify`), and its
+        precision summary recomputed from the tighter of each level's two bars.
+
+        Per level: the `mult` minimizing vectors at the level's `lam`, their Cauchy data on an
+        integral rule sized for `lam_max` and `prec`, a Rellich norm, and the bound per vector;
+        the level carries the WORST of them. Columns are certified separately, as lappy did --
+        whether a cluster's subspace admits a sharper bound is an open question
+        (`docs/design/boundary_integrals.md`). Off a Dirichlet boundary the bound does not
+        apply, and each level says so in `bound_reason` and keeps `delta_res`.
+        """
+        from dataclasses import replace
+
+        from ..integrals import cauchy, certify, integral_quad
+        from .search import _precision_summary
+
+        p = self._pencil
+        if np.any(np.asarray(p.bdry.bc) != 0.0):
+            why = "Moler-Payne needs a Dirichlet condition on the whole boundary"
+            levels = tuple(replace(L, bound_reason=why) for L in res.levels)
+        else:
+            key = (float(lam_max), float(prec))
+            cache = getattr(self, "_integral_quads", None)
+            if cache is None:
+                _set(self, _integral_quads={})
+                cache = self._integral_quads
+            if key not in cache:
+                cache[key] = integral_quad(self.domain, lam_max, prec=prec)
+            iq = cache[key]
+            origins = certify.x0_probes(self.domain, iq.x0)
+            levels = []
+            for L in res.levels:
+                fc = p.family_coef(L.lam, p.coef(L.lam, int(L.mult)))
+                cd = cauchy.cauchy_data(p.basis, fc, L.lam, iq.quad)
+                k = lam_to_k(L.lam)
+
+                def evaluate(z, fc=fc, k=k):
+                    V = p.basis.values(k, z)
+                    return V @ fc, np.abs(V) @ np.abs(fc)
+
+                mp = certify.moler_payne(cd, evaluate, self.domain, origins)
+                levels.append(replace(L, mp_bound=float(np.max(mp.abs)),
+                                      mp_eps=float(np.max(mp.eps)),
+                                      cancellation=float(np.max(mp.cancellation)),
+                                      bound_reason=mp.reason))
+            levels = tuple(levels)
+        unmet, attained = _precision_summary(levels, prec)
+        return replace(res, levels=levels,
+                       diagnostics=replace(res.diagnostics, unmet=unmet,
+                                           attained_prec=attained))
 
     def solve_interval(self, a, b):
         """The `Spectrum` of `[a, b]` -- `Eigensolver`'s contract, over `search_interval`.
@@ -296,7 +355,7 @@ class MPSEigensolver(Eigensolver, Frozen):
             )
         lam = np.array([x.lam for x in res.levels], dtype=float)
         mult = np.array([x.mult for x in res.levels], dtype=int)
-        bound = np.array([x.delta_res for x in res.levels], dtype=float)
+        bound = np.array([x.bound for x in res.levels], dtype=float)
         order = np.argsort(lam)
         return Spectrum(lam[order], mult[order], bound[order], prec=self.prec)
 
