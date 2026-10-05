@@ -4,7 +4,10 @@
 the row came back clean at every rung. Second, and overriding the first's conclusion: a sweep of
 `tau = C eps sqrt(n)` over three basis sizes and the hard roster (section "The tau sweep") shows
 that clean row was a LUCKY POINT. At 1e-14 no `C` is clean at every basis size, and the losses are
-mostly SILENT. At 1e-12, `C = 100` was clean everywhere it was tried. Read that section first.*
+mostly SILENT. At 1e-12, `C = 100` was clean everywhere it was tried. Read that section first.
+Third: the 1e-12 single losses were three search defects, now fixed (`e469740`); with them fixed,
+EVERY `C` from 8 to 100 is clean at 1e-12 on all three basis sizes and the roster ("After the three
+fixes", the last section). 1e-14 is unchanged: not robust.*
 
 2026-10-05. The question from `notes/moler_payne_vs_tension.md` section 1: the order-1 penalty
 has no feasible `tau` at `prec = 1e-14` when `tau` scales with `prec`, because its floor (~1.4
@@ -183,4 +186,33 @@ None of the three is reachable only through the posterior: each is a general sha
 wider than a gap, a retry radius taken at a floor, a resume point on a hump -- that the threshold's
 sharper wells happen not to produce on the measured grids. The scatter across `C` is these
 mechanisms landing or not, which is why it is not monotone in `C`.
+
+## After the three fixes -- a 12x-wide window at 1e-12, nothing new at 1e-14
+
+2026-10-05, both sweeps rerun after `e469740` (the retry tight-then-standoff, the merge's wall
+test, the post-find resample). Cluster grid, right of 22 at 1e-12 and of 17-18 at 1e-14:
+
+    prec    n     threshold   C = 3        C = 8          C = 30        C = 100
+    1e-12   128   22          22           22             22            22
+            172   22          15 + 7d      22             22            22
+            258   22          22           22             22            22
+    1e-14   128   18          16 + 2s      17 + 1f        4  (5f 9s)    0  (9f 9s)
+            172   17 + 1d     13 + 5d      16 + 1f + 1s   7  (5f 6s)    1  (10f 7s)
+            258   17          16 + 1s      16 + 1s        6  (4f 7s)    0  (9f 8s)
+
+The roster is unchanged: at 1e-10 and 1e-12 every `C` matches the threshold's count and accuracy on
+the disk, the equilateral triangle and the L-shape; at 1e-14 `C` = 3 and 8 are clean on the disk and
+triangle, and `C` = 30 and 100 return the triangle's six as two, silently.
+
+* **At 1e-12 the window is `C` in [8, 100] -- 12x wide, clean at every basis size and on the
+  roster.** The four single losses were all the search; with them fixed nothing in that window
+  loses a member. `C = 3` is the noise jaw and declines honestly (7 of 22 at n = 172), never
+  silently. `C = 30`, the window's geometric middle, is the candidate default.
+* **At 1e-14 nothing changed**, as expected: those losses are the span, not the search. Small `C` loses
+  members silently to noise; large `C` loses them wholesale because the penalty bends the 8-vector
+  span off the cluster's eigenspace.
+
+So the posterior penalty is ready, on this evidence, to take `reg="auto"` from 1e-8 down to 1e-12:
+truncation would then be needed only at the 1e-14 rung, and only until the span problem is solved.
+That would retire the rank decision -- and the Linux flip with it -- for every `prec >= 1e-12`.
 

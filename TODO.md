@@ -76,25 +76,19 @@ and deciding whether Phase D's angle earns its keep.
   rather than removing it); and retiring truncation for the penalty everywhere, which removes the
   rank decision itself.
 
-* **[next]** **The posterior penalty: promising at 1e-12, NOT robust at 1e-14**
-  (`notes/posterior_penalty.md`, 2026-10-05). A fixed `tau` read through posterior (Rayleigh-Ritz)
-  tensions first cleared the cluster grid at every rung -- 18/18 at 1e-14 against the threshold's 17
-  and a decline -- but a sweep of `tau = C eps sqrt(n)` over three basis sizes showed that was a lucky
-  point: at 1e-14 no `C` is clean at every size and the losses are mostly SILENT (same cases, `tau`
-  2.0e-14 -> 18/18, 2.3e-14 -> two silent). At 1e-12, `C = 100` was clean on all three sizes and the
-  roster. So: not yet a route to 1e-14; possibly a route to 1e-12. The dedup defect the first run
-  found is fixed.
-
-  **The 1e-12 single losses are traced: three SEARCH defects** (`notes/posterior_penalty.md`,
-  "The 1e-12 singles, traced"; `notes/trace_posterior.py`). (1) Section 12's inner-end retry takes
-  its exclusion from a converged root's floor, ~1e-12, and refuses on the root's own wall -- use the
-  standoff rule. (2) `_same_point` merges a root from a two-member bracket into a neighbour within
-  the WIDER of their refiner bars, then reads the group's count in the deeper root's bracket, which
-  holds neither member: two lost, silent, twice -- the dedup defect's twin. (3) A post-find
-  sub-bracket resumes on the hump between two members and refuses at that end with the second
-  member inside, unsampled, and the end reads exactly the find's wall, so nothing flags it. Fix
-  those, then rerun the sweep; then a larger span than `MAX_BRANCHES`, and posterior for
-  refine/count only.
+* **[next]** **The posterior penalty: READY at 1e-12, not robust at 1e-14**
+  (`notes/posterior_penalty.md`, 2026-10-05). A fixed `tau = C eps sqrt(n)` read through posterior
+  (Rayleigh-Ritz) tensions on the 8 lowest penalized vectors. After four search defects it exposed
+  were fixed (`463ef6d`, `e469740`), every `C` in [8, 100] is clean at 1e-12 on three basis sizes
+  (n = 128-258) and the hard roster, matching the threshold; `C = 3` is the noise jaw and declines
+  honestly. At 1e-14 no `C` is clean at every size and losses are SILENT: the penalty bends the
+  span off the eigenspace (large `C`) or noise wins (small `C`). Next:
+  1. A posterior mode in `src/` at `C = 30`, and `reg="auto"` extended from `prec >= 1e-8` to
+     `prec >= 1e-12` -- retiring truncation, and the Linux rank flip, everywhere but 1e-14. Needs:
+     the cost (2-2.7x wall time per evaluation), and the reach warning's message, which still says
+     no penalty serves below ~150 eps sqrt(n).
+  2. The 1e-14 span: a larger span than `MAX_BRANCHES`; posterior for refine/count only; a
+     second, smaller-`tau` solve in a window around each root.
 * **[next]** **`basis_sufficiency` decides the DENOMINATOR at a boundary it clears by 6%, and the
   two platforms therefore score different case sets.** macOS calls 10 cells unexercisable where
   Linux calls 7. Two of the four `test_cluster_totals` skips sit on the precondition boundary:
