@@ -288,6 +288,10 @@ class Domain(Frozen):
             by_bdry = {}
             for pan in panels:
                 by_bdry.setdefault(int(pan.bdry_idx), []).append(pan)
+            missing = [k for k in range(len(bs)) if k not in by_bdry]
+            if missing:
+                raise ValueError(f"the panel plan leaves boundary {missing[0]} uncovered: a "
+                                 f"domain rule must integrate over every boundary")
             return Quadrature.concat([
                 bs[k].quad(panels=by_bdry[k], bdry_idx=k, weight_family=weight_family)
                 for k in sorted(by_bdry)

@@ -1,5 +1,5 @@
-*Status: scope note, with a DRAFT scope for the first slice (2026-10-05). The layer is not
-written yet.*
+*Status: design, approved 2026-10-05. Milestone M0 (seams and docs) is in; the layer itself is
+not written yet. Package: `chladni.integrals`.*
 
 # Overview
 `chladni` is going to rely on accurate boundary integration for two key parts of the MPS solve:
@@ -45,8 +45,16 @@ so the interior norm is a boundary integral of the Cauchy data:
 Derived here 2026-10-05, and CHECKED numerically on `rect(1, 1/phi)` at `lam = 50`, away from
 any eigenvalue, for a Helmholtz-exact `u` far from zero on the boundary (six random plane waves):
 the boundary integral matches an exact interior tensor rule to 3e-15, independently of the origin
-`x0` (three origins, identical to all printed digits). Not yet checked against a published form,
-nor at a corner. Where `u = 0` on
+`x0` (three origins, identical to all printed digits). Written in normal and tangential
+derivatives (`x . grad u = r_N u_N + r_T u_T`, `|grad u|^2 = u_N^2 + u_T^2`) it is exactly lappy's
+"master identity" (`lappy/docs/rellich.md:27`):
+
+    ||u||^2 = (1/2 lam) oint r_N [u_N^2 - u_T^2 + lam u^2] ds  +  (1/2 lam) oint r_T [2 u_T u_N] ds,
+
+with `r = x - x0`, `r_N = r . N`, `r_T = r . T`. lappy then DROPPED the `r_T` term and the
+boundary-data terms, which vanish only for an exact eigenfunction; `chladni` keeps the full form,
+so the norm is exact for every candidate and the identity needs no boundary condition at all.
+Not yet checked at a corner. Where `u = 0` on
 `dOmega` this is the familiar `||u||^2 = (1 / 2 lam) oint (x . n) (d_n u)^2 ds`, but the general form
 is the one needed: a candidate is not zero on the boundary, and the bound is ABOUT how far from
 zero it is. It is exact for Helmholtz-exact `u`, so it inherits no error from the approximation
@@ -55,51 +63,121 @@ quality of `u` -- only from the quadrature.
 The Gram matrix of candidates at one `lam` is the symmetric bilinear form obtained by polarizing
 the right-hand side. For two candidates at DIFFERENT `lam_i != lam_j`, Green's identity gives
 `(lam_i - lam_j) int u_i u_j = oint (u_i d_n u_j - u_j d_n u_i) ds`, which divides by a small
-number inside a cluster -- see the open questions.
+number inside a cluster -- so it is never used: a cluster's members are re-solved at one `lam`
+first (Wiring, below).
 
 **Integrability at corners.** Near a corner where `u ~ r^nu`, `|grad u|^2 ~ r^(2 nu - 2)`, which is
 integrable for `nu > 0` and singular for `nu < 1` -- exactly the re-entrant corners, where
 `nu = pi / alpha` is in `(1/2, 1)` for Dirichlet. That is the `r^(2 nu - 2)` weight `Quadrature`'s
 docstring already names, and the reason `weight_family` exists.
 
-# The first slice (DRAFT)
+# The design
 
-**Goal: a Moler-Payne bound on every reported Dirichlet level on polygons, validated against an
-exact interior rule.** In order:
+The plan of record is lappy's measured design (`lappy/eigfun_integrals.py`, `lappy/quad.py`,
+`lappy/benchmarks/reference/certify.py`; docs `corner_quadrature.tex`,
+`corner_integrand_dirichlet.tex`), keeping what lappy measured to work, dropping what it measured
+not to, and closing two gaps it left (the full identity above, and the cancellation check below).
 
-1. **Cauchy data at quadrature nodes.** For a coefficient vector `x` from `MPSPencil.coef` at
-   `lam`: `u`, `d_n u` and `d_t u` at the nodes of a `Quadrature`, through the families'
-   `values_and_grad`, with the pencil's equilibration scale divided out -- the same composition
-   `notes/moler_payne_vs_tension.py` uses (`u_at`). A container for it, since the norm, the Gram
-   matrix and Hadamard all consume the same data.
+## What lappy measured, and this layer adopts
 
-2. **Composite Gauss-Legendre on polygon edges, graded toward corners.** Geometric panels toward
-   each vertex, with the grading driven by the basis's own `singular_exponents()`
-   (`helmholtz._core.SingularStructure`) and delivered through `Domain.bdry_quad(panels=...)`, the
-   seam built for it. This replaces `grading="corner"`, which `docs/design/geometry.md:449` calls
-   "a placeholder, not a design". Gauss-Jacobi panels at singular corners are the refinement,
-   not the first step: see "Accuracy" below.
+1. **Evaluate first, sandwich never.** Contract the basis with the coefficient vectors at the
+   nodes, THEN integrate an `m x m` block (`m` the cluster size). A basis-sized Gram was off by
+   ~1e-4 on a basis of condition 1e16, and corner rules lose 2-4 orders on columns centred at OTHER
+   corners, so no node set serves a basis-sized Gram.
+2. **Corner rules are substitution nodes with fitted weights -- NOT geometric grading.** Nodes
+   from Gauss-Jacobi in `t` with `r = t^(1/nu)` (lappy `cornerjacgauss`); weights refit by least
+   squares on the actual exponent set, `{gamma + j nu + 2q}` on a straight edge and
+   `{gamma + j nu + m}` on a curved one, with `n_exp = order // 2` (the square system reaches
+   condition 1e19). Kress sigmoid grading was retired: its tau floor truncates the integral (a
+   2.2e-7 plateau from 565 to 6790 nodes). `chladni`'s own `grading="corner"` puts about two nodes
+   on its 1/256 corner panel, and is not a substitute either.
+3. **Singular is not re-entrant.** A corner needs the corner rule when `gamma = 2 nu - 2` is not
+   an integer AND plain Gauss misses the target on `r^gamma`. A 135-degree corner (`nu = 4/3`,
+   `r^(2/3)`) needs it; giving it to every non-integer `nu` made some corners worse. `nu` must be
+   EXACT: 0.667 for 2/3 costs about ten digits.
+4. **Size from closed-form model integrands; certify by refinement.** Per panel, the order is the
+   largest of an oscillation requirement (`k = 2 sqrt(lam_max) L`, since a product of
+   eigenfunctions oscillates at twice the wavenumber), a corner model (scanned, taking the
+   ARGMIN -- accuracy is not monotone in order), and a geometry self-check
+   (`oint r . N ds = 2 |Omega|`). A corner panel is at most 0.9x the corner's clearance; dropping
+   that cap cost up to 12 orders. The sizing is a model bound. The certificate is `verify`: shrink
+   the corner panels by `2^depth`, difference the Gram; it tracked the true error within 6.3x.
+5. **Two corner families, chosen by the WEIGHT's parity.** `'even'` (substitution exponent `nu`)
+   for the Rellich and Gram integrals; `'integer'` (exponent 1/2) for a Hadamard weight
+   `V . n = O(r)` at a moving corner. Not interchangeable in either direction (L-shape: 4.0e-15
+   against 1.4e-5 on `r^0`; 2.5e-9 against 1.5e-13 on `r^1`).
+6. **One primitive.** `weighted_integral(cd, kernel, w)`, kernels `uv`, `NN`, `TT` and the cross
+   term; every identity is a fixed combination of calls.
+7. **The origin.** Default `x0` at the singular corner of smallest `nu`, which zeroes `r_N` on both
+   of its straight edges. The spread over several `x0` is a DETECTOR, not an error bar (it carries
+   the eigenvalue's own error). Never put `x0` on the diagonal of a 3pi/2 corner, where the corner
+   contribution cancels exactly; report the corner/edge split.
+8. **Löwdin, not Cholesky,** with a deficiency guard. Only the cluster's spectrum is promised,
+   never a particular orthonormal basis of it.
+9. **Moler-Payne,** `eps = sqrt|Omega| max |u|_dOmega / ||u||`, inclusion
+   `|lam - lam_k| <= lam eps / (1 - eps)`. The maximum from graded dense sampling, re-done at
+   double density and inflated by the drift; the norm as a CONSERVATIVE under-estimate (the
+   minimum over several `x0`, less their spread).
 
-3. **The Rellich norm** of one candidate, from 1 and 2.
+Limits inherited and NOT solved here: Zaremba (Dirichlet/Neumann) corners with `nu < 1`, where
+`(d_N u)^2 ~ r^(nu - 2)` and the identity diverges (refused); pure-Neumann singular corners, whose
+`uv` and `TT` kernels want different node sets (smooth fallback, reported); `nu -> 1/2`, where the
+interpolatory rule tops out near 1e-10; eccentric curved boundaries.
 
-4. **The bound**, `sqrt(A) max |u| / ||u||`, attached to each `Level` beside `delta_res`, as an
-   attained precision the caller and the planner can read. Reported, not acted on: whether the
-   search should stop on it is the planner's decision.
+## Modules
 
-5. **Then the Gram matrix and orthonormalization** for clusters, and the subspace form of the
-   bound.
+`chladni.integrals` depends on `geometry` and `helmholtz`; `mps` depends on it, never the reverse,
+so `douse` can take the Hadamard half without the solver.
 
-**Not in this slice:** Neumann and mixed conditions (the inclusion bound differs), curved
-boundaries (`Quadrature` supports them; the grading rule is polygon-specific), and Hadamard
-derivatives.
+    rules.py       Gauss-Jacobi; the corner substitution and interpolatory rules; corner
+                   exponent sets; closed-form model errors; order selection (corner, smooth,
+                   geometry); the order cap (innermost node * scale > 1e-9)
+    plan.py        corner classification from `Domain.corners` (omega, bc, clearance, segments):
+                   singular / integer-gamma / demoted / refused; panels through
+                   `Domain.bdry_quad(panels=...)`; `IntegralQuad` = the rule plus family, x0,
+                   sizing precision, shortfalls, corners
+    cauchy.py      `CauchyData(quad, lam, u, u_n, u_t)`, evaluate-first through
+                   `Sampling.values_and_grad` on FAMILY coefficients (`MPSPencil.family_coef`),
+                   and the cancellation ratio from the same data
+    identities.py  `weighted_integral`; `gram` (the full identity); norms; `lowdin`
+    certify.py     the boundary maximum; `moler_payne`; `verify`
+    hadamard.py    (M5) normal velocity, vertex velocity, shape derivative
+
+## Precision
+
+The quadrature is sized to `integral_prec = max(0.1 * prec, 1e-14)`, overridable. The bound
+reuses it and is never the binding constraint (below). A corner that cannot reach the target is
+reported in `shortfalls`, with its achievable precision, never silently.
+
+## Wiring
+
+`MPSEigensolver.search_interval` post-processes the levels -- it holds the pencil and the domain,
+and `search.solve` sees only an `Objective`. Per level: `coef(lam, mult)`, Cauchy data, Gram,
+Löwdin, then a bound per column. A level gains `mp_eps`, `mp_bound` (absolute), the norm's
+quadrature error, the cancellation ratio and a `bound_reason`; `Spectrum.bound` becomes
+`min(delta_res, mp_bound)` -- both are valid upper bounds, so the tighter one is honest -- and
+stays `delta_res` where the bound is refused. Members of a merged level are re-solved at the
+level's one `lam` before their Gram is formed, so no Gram ever divides by `lam_i - lam_j`.
+`MPSEigensolver.eigenfunctions(level)` returns the orthonormal family coefficients and the rule.
+
+## Milestones
+
+    M0  seams and docs: plan tiling check, Quadrature family semantics, family_coef, reference
+        gradients, this document                                                  [done]
+    M1  rules.py, with lappy's test_quad contracts
+    M2  plan, Cauchy data, the identity: non-eigen functions against exact interior rules;
+        exact norms of sector (singular), rect, polyomino, disk eigenfunctions
+    M3  Moler-Payne on every level, wired into the solver
+    M4  clusters: Gram, Löwdin, orthonormal eigenfunctions
+    M5  Hadamard (after M4)
+    M6  later: Neumann and mixed, curved boundaries, a guaranteed maximum, planner integration
 
 # Accuracy: the bound needs few digits, orthonormalization needs many
 
-**This is what makes the first slice cheap.** The bound is an inequality whose smallness lives in
-`max |u|`, not in the norm: an error of 1% in `||u||` moves a 1e-12 bound to 1.01e-12. So for
-step 4 the norm needs only a few RELIABLE digits, plus a safety factor -- robust convergence
-matters, high order does not. Composite Gauss-Legendre with geometric grading converges on
-`r^(2 nu - 2)` without knowing `nu` exactly.
+**The bound is never the binding constraint.** It is an inequality whose smallness lives in
+`max |u|`, not in the norm: an error of 1% in `||u||` moves a 1e-12 bound to 1.01e-12. So the bound
+needs only a few RELIABLE digits of the norm, which is why the conservative under-estimate (item 9)
+is affordable.
 
 **Cancellation is a precondition, and it is checkable.** `u` is evaluated as `sum_j c_j psi_j`, so
 its rounding error is about `eps * sum_j |c_j| |psi_j|`, and a bound below that is not a bound. At
@@ -110,10 +188,7 @@ moved 1e-4 under refinement and the Rellich value moved with the origin. So the 
 cancellation ratio from the same Cauchy data and REFUSES a bound below `eps` times it.
 
 Orthonormal eigenfunctions are different: Hadamard derivatives and a cluster's Gram matrix need the
-integrals to near `prec`. That is where Gauss-Jacobi panels matched to each corner's exponent earn
-their keep (the `'even'` and `'integer'` weight families lappy found "not interchangeable in either
-direction"), and it belongs to step 5, not step 4. Tolerances are `prec`-aware either way, per
-`CLAUDE.md`.
+integrals to near `prec`, which is what the corner rules and the sizing of items 2-4 deliver.
 
 # Validation oracles
 
@@ -126,26 +201,27 @@ accurate belongs on these boundary integrals.
 * **Disk:** polar tensor rule; smooth boundary, a check on the curved-boundary path even before it
   is in scope.
 * **L-shape:** three unit squares, tensor rules geometrically graded toward the re-entrant corner.
-  The first oracle with a singular corner (`nu = 2/3`), and the one that tests step 2's grading.
-* **Exact eigenfunctions** of the rectangle, disk and equilateral triangle, where `||u||` is known
-  in closed form.
+  An oracle with a singular corner (`nu = 2/3`) for NON-eigen Helmholtz functions.
+* **Exact eigenfunctions,** where `||u||` is known in closed form (`chladni.reference`):
+  `sector_eigfun` -- the sharpest, one corner-adapted column, singular at a re-entrant apex; then
+  `rect_eigfun`, `polyomino_eigfun` (smooth at its re-entrant corners: a control, not a corner
+  test) and `disk_eigfun`, each with an analytic gradient. There is NO equilateral-triangle
+  eigenfunction in `reference` -- an earlier draft of this note claimed one -- and none for the
+  L-shape, whose eigenvalues are a 14-digit table.
+* **References are closed-form or Beta-function integrals only.** lappy found `mpmath.quad` wrong
+  by 4e-2 at 40 digits near the slit limit, producing fake plateaus.
 
-The acceptance test is the bound against the known error, on the rectangle, disk, equilateral
-triangle and L-shape: valid on every level, and within a stated factor of the error.
+The acceptance test is the bound against the known error, on the rectangle, disk, sector and
+L-shape (against `L_shape_eigs`): valid on every level, and within a stated factor of the error.
 
 # Open questions
 
-* **A guaranteed maximum.** `max |u|` over 8000 sampled points served for measurement. A bound
-  needs either a guarantee between nodes (per panel, from the tangential derivative or a
-  Chebyshev-tail estimate) or the `L2(dOmega)` form of the inclusion bound, which replaces the
-  maximum with a boundary integral the same quadrature computes. Which form, and its constant, is
-  to be sourced, not derived here.
-* **Clusters.** Which subspace form of the inclusion bound to use, and how to form the Gram matrix
-  of candidates located at slightly different `lam` without dividing by `lam_i - lam_j`. One
-  option: re-solve all members at a common `lam` and use the Rellich bilinear form there.
-* **Where the layer lives.** It needs geometry (panels), helmholtz (Cauchy data and exponents) and
-  mps (coefficient vectors and equilibration scales). `chladni.mps` is the natural owner unless
-  the Hadamard work, which is `douse`'s consumer, argues for its own package.
+* **A guaranteed maximum.** lappy's sampled maximum with drift inflation is an estimate, good to
+  0.16 digits against the full bound over 150 cells, but not a guarantee. A guarantee needs either
+  a bound between nodes (per panel, from the tangential derivative or a Chebyshev-tail estimate) or
+  the `L2(dOmega)` form of the inclusion bound. Which form, and its constant, is to be sourced, not
+  derived. M6.
+* **The subspace form of the bound** for a cluster: lappy certified each column separately and
+  reported the worst. Whether a sharper multi-function bound is worth having is open.
 * **Cost.** `coef` needs a separate-mode GSVD per level, and the Cauchy data one evaluation of the
-  basis on the quadrature nodes. Per reported level, not per search step, so likely small --
-  unmeasured.
+  basis on the quadrature nodes -- per reported level, not per search step. Unmeasured.

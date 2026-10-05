@@ -300,6 +300,45 @@ def test_the_basis_is_required_while_planning_is_deferred(poly):
 # --- the candidate eigenfunction, on a fixed shared point set -------------------------------
 
 
+# --- the coefficient vector, in the FAMILY's coordinates -------------------------------------
+
+
+def test_family_coef_names_the_function_off_the_collocation_set(pencil):
+    """`coef` is in the EQUILIBRATED space, which is the pencil's. A consumer that evaluates the
+    function on points of its own -- boundary quadrature nodes for the Rellich integrals --
+    needs it in the coordinates of the family's own (pre-scaled) columns, and that is
+    `family_coef`: the pencil's per-column equilibration divided out, nothing else. Checked on
+    the pencil's own interior points, where both evaluations exist, for one vector and for a
+    block of them."""
+    # The two products differ only by rounding, which scales with the TERMS summed, not with
+    # the result: these minimizing vectors cancel by ~1e3.
+    _, I = pencil.pencil(LAM)
+    V = pencil.basis.values(K, pencil.int_pts)
+    for mult in (1, 3):
+        x = pencil.coef(LAM, mult)
+        fc = pencil.family_coef(LAM, x)
+        terms = (np.abs(V) @ np.abs(fc)).max()
+        assert np.allclose(V @ fc, I @ x, rtol=0, atol=EXACT * terms)
+    x1 = pencil.coef(LAM, 1)[:, 0]
+    assert pencil.family_coef(LAM, x1).shape == (pencil.n_cols,)
+
+
+def test_family_coef_scatters_the_SHORT_frozen_rank_vector(pencil):
+    """`coef`'s one shape exception -- `reg=None` with a frozen rank returns `rank` rows in the
+    retained columns -- must not leak: the family has `n_cols` columns, and the short vector
+    names the same function once zero-padded (`test_regularization.py`)."""
+    r = 12
+    p = MPSPencil(pencil.bdry, pencil.interior, reg=None, rank=r)
+    x = p.coef(LAM)
+    assert x.shape == (r, 1)
+    fc = p.family_coef(LAM, x)
+    assert fc.shape == (p.n_cols, 1) and np.all(fc[r:] == 0.0)
+    _, I = p.pencil(LAM)
+    V = p.basis.values(K, p.int_pts)
+    terms = (np.abs(V) @ np.abs(fc)).max()
+    assert np.allclose(V @ fc, I[:, :r] @ x, rtol=0, atol=EXACT * terms)
+
+
 def test_the_interior_image_has_the_SAME_LENGTH_at_every_lam(pencil):
     """The property the whole `modes(x)` seam rests on. The coefficient vector's width moves
     with `lam` under a threshold rank, so vectors from `coef` cannot be compared across `lam`;

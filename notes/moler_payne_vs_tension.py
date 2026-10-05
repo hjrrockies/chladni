@@ -60,10 +60,9 @@ def parts(q, lam):
 
 
 def u_at(q, lam, x, pts):
-    """The function `x` names, at arbitrary points. A column of the equilibrated pencil is the
-    family's column divided by the pencil's equilibration scale, so divide `x` by it."""
-    scale = np.exp(q._equilibrated(lam)[2])
-    return FAM.at(pts).values(lam_to_k(lam)) @ (x / scale)
+    """The function `x` names, at arbitrary points: `MPSPencil.family_coef` puts it in the
+    family's own coordinates."""
+    return FAM.at(pts).values(lam_to_k(lam)) @ q.family_coef(lam, x)
 
 
 def posterior():

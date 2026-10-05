@@ -280,16 +280,25 @@ The central new abstraction, and the main structural correction to `lappy`.
 
 ## What the weights integrate
 
-`integrate(f)` is always `(f(pts) * wts).sum()`. What that *equals* depends on the rule:
+`integrate(f)` is always `(f(pts) * wts).sum()`, and in every family it approximates
+`oint f ds` -- the measure is always arclength. The family names the class of integrands the
+rule is EXACT on:
 
-- `weight_family == 'arclength'` -- the weight function is 1, so `integrate(f) == oint f ds`
-  and `wts.sum() == length`. Everything geometry builds is in this family, `grading`
-  included: grading relocates nodes, it does not change the measure.
-- any other family -- the rule has a singular weight `w` folded in, so
-  `integrate(f) == oint f w ds` and `wts.sum() == oint w ds`, which is **not** the
-  perimeter. The caller supplies `f = (full integrand)/w`.
+- `weight_family == 'arclength'` -- smooth integrands, and `wts.sum() == length`. Everything
+  geometry builds is in this family, `grading` included: grading relocates nodes, it does not
+  change the class.
+- `'even'` and `'integer'` -- corner rules built one layer up (`chladni.integrals`), exact on
+  the singular integrands at a corner. Their weights carry the substitution's Jacobian with the
+  Jacobi weight divided OUT, so the caller passes the raw integrand; they are not exact on
+  constants, so `wts.sum()` is **not** the perimeter, by design.
 
-The second case is what the Rellich boundary integrals need: near a singular corner the
+*Corrected 2026-10-05.* This section used to say a non-arclength rule had a singular weight `w`
+"folded in", with `integrate(f) == oint f w ds` and the caller passing `f = integrand / w`. That
+is not what lappy built, nor what `chladni.integrals` builds: lappy's `cornerjacgauss` divides the
+Jacobi weight out (`lappy/quad.py:29-37`, `:186-233`), so the rule integrates the raw integrand
+and the family only labels its exactness. Nothing in `chladni` ever relied on the folded form.
+
+The corner families are what the Rellich boundary integrals need: near a singular corner the
 integrand carries `r^(2*nu-2)`, and the only rules that resolve it to working precision are
 Gauss-Jacobi rules built around that exponent. Those rules need `nu`, so they are built one
 layer up -- but they are returned as `Quadrature`, which is why `weight_family` lives on this

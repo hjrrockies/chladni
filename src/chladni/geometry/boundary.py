@@ -604,6 +604,7 @@ class Boundary(Frozen):
         by_seg = {}
         for pan in panels:
             by_seg.setdefault(int(pan.seg_idx), []).append(pan)
+        _check_tiling(by_seg, len(self.segments), bdry_idx)
         panel0 = 0
         blocks, spans = [], []
         for i in sorted(by_seg):
@@ -681,3 +682,38 @@ class Boundary(Frozen):
 
     def __repr__(self):
         return f"Boundary({len(self.segments)} segments, length={self.length:.6g})"
+
+
+#: How far apart two panel ends may be and still meet, in tau. A plan computes its edges in
+#: floating point (`0.9 * clearance / length`, a geometric ladder), so exact equality would
+#: refuse correct plans; a gap of this size moves no integral at any precision `chladni` serves.
+_TILE_ATOL = 1e-13
+
+
+def _check_tiling(by_seg, n_seg, bdry_idx):
+    """Refuse a panel plan that does not cover every segment's `[0, 1]` exactly once.
+
+    A segment with no panel used to drop out of the rule silently, and a gap or an overlap
+    shortens or double-counts a stretch of the boundary in every integral built on it. The
+    Rellich and Hadamard integrals sum over whatever nodes they are handed, so they cannot
+    notice; this is the one place that can.
+    """
+    for i in range(n_seg):
+        plan = sorted(by_seg.get(i, ()), key=lambda q: q.tau0)
+        if not plan:
+            raise ValueError(f"the panel plan leaves boundary {bdry_idx}, segment {i} uncovered")
+        edge = 0.0
+        for pan in plan:
+            if abs(float(pan.tau0) - edge) > _TILE_ATOL:
+                kind = "a gap" if pan.tau0 > edge else "an overlap"
+                raise ValueError(
+                    f"the panel plan has {kind} on boundary {bdry_idx}, segment {i}: a panel "
+                    f"starts at tau={pan.tau0!r} where the previous one ended at {edge!r}")
+            edge = float(pan.tau1)
+        if abs(edge - 1.0) > _TILE_ATOL:
+            raise ValueError(f"the panel plan stops at tau={edge!r} on boundary {bdry_idx}, "
+                             f"segment {i}, short of its end")
+    extra = sorted(set(by_seg) - set(range(n_seg)))
+    if extra:
+        raise ValueError(f"the panel plan names segments {extra} that boundary {bdry_idx} "
+                         f"does not have")

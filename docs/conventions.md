@@ -196,7 +196,7 @@ single docstrings, so each of the other two is spelled out in full, every time:
 |---|---|---|
 | singular (bare), singular corner, `singular_exponents()` | the eigenfunction is non-smooth there | `helmholtz`, `mps` |
 | **generalized** singular value / vector | the GSVD of the pencil `(A_B, A_I)` | `mps` |
-| singular **weight** | a weight function `w` folded into a quadrature rule's `wts` | `geometry.quadrature` |
+| singular **integrand**, corner **rule** | a quadrature rule exact on a corner's singular integrands (`weight_family` `'even'`/`'integer'`); its weights carry the Jacobi weight divided out, so the measure is still arclength | `geometry.quadrature`, `integrals` |
 
 The corner sense is settled by `CornerModes.is_singular`: the orders `(l + offset)*nu` are not all
 integers. It needs the offset, which comes from the BC pair through Grisvard's Robin rule, so it is
@@ -210,6 +210,22 @@ bound: every singular corner satisfies `not is_reflection_closed or is_bc_juncti
 `np.angle((z - c.z)/c.t_out) % (2*np.pi)` is wrong: a point that should sit at `theta = 0` comes out
 of `np.angle` as `-1e-17` and wraps to `6.283`, so the Dirichlet family evaluates to `0.11` on the
 ray where it must vanish identically. Written correctly, that ray gives *structurally* exact `0.0`.
+
+---
+
+# Boundary integrals
+
+Names fixed for `chladni.integrals` (2026-10-05), so the Rellich, Gram and Hadamard code reads the
+same everywhere:
+
+| name | meaning |
+|---|---|
+| `u, u_n, u_t` | Cauchy data at quadrature nodes: the value, the OUTWARD normal derivative, the tangential derivative along `T` (CCW on outer boundaries). Arrays `(n_nodes, m)`, one column per function. |
+| `x0` | the Rellich origin. `r = x - x0`, with `r_n = r . N` (`Quadrature.radial(x0)`) and `r_t = r . T`. |
+| `family_coef` | a coefficient vector in the coordinates of the family's own pre-scaled columns (`MPSPencil.family_coef`), the only form a consumer off the collocation set can use. |
+| `cancellation` | `max sum_j |c_j| |psi_j| / rms(u)`: how far below its own terms a function sits, so `eps * cancellation` is the floor of anything computed from it. |
+| `integral_prec` | the precision the integral quadrature is sized to, `max(0.1 * prec, 1e-14)` by default. |
+| licence | `prec * lam`, the width within which two eigenvalues MAY be reported as one level (British spelling, as in `search.py`). |
 
 ---
 

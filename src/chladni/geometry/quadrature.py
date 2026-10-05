@@ -33,25 +33,27 @@ _MAX_PANEL_ORDER = 32
 class Quadrature:
     """A boundary quadrature rule, with every node's provenance.
 
-    `integrate(f)` is always ``sum(f(pts) * wts)``. What that equals depends on the rule:
+    `integrate(f)` is always ``sum(f(pts) * wts)``, and in EVERY family it approximates
+    ``oint f ds``: the measure is always arclength. What the family names is the class of
+    integrands the rule is EXACT on.
 
-    * ``weight_family == 'arclength'`` -- the weight function is 1, so ``integrate(f)`` is
-      ``oint f ds`` and ``wts.sum()`` is the boundary length. Everything the geometry layer
+    * ``weight_family == 'arclength'`` -- smooth integrands. Everything the geometry layer
       builds is in this family, grading included: grading relocates nodes, it does not
-      change the measure.
-    * any other family -- a singular weight ``w`` is folded into the weights, so
-      ``integrate(f)`` is ``oint f w ds`` and ``wts.sum()`` is ``oint w ds``, NOT the
-      perimeter. The caller supplies ``f = integrand / w``.
+      change the class. ``wts.sum()`` is the boundary length.
+    * ``'even'`` and ``'integer'`` -- corner rules built one layer up, in
+      `chladni.integrals`, around the singular integrands at a corner: ``r^(2 nu - 2)`` times
+      a series in ``r^nu`` and ``r^2`` (``'even'``, substitution exponent ``nu``, for the
+      Rellich and Gram integrals), or times integer powers of ``r`` (``'integer'``,
+      substitution exponent ``1/2``, for a Hadamard weight ``V.n = O(r)`` at a moving corner).
+      Their weights already carry the substitution's Jacobian and the Jacobi weight divided
+      OUT, so the caller passes the raw integrand. They are NOT exact on constants, so
+      ``wts.sum()`` differs from the length -- by design, and ``wts.sum() - length`` per corner
+      panel is a self-diagnostic, never something to renormalize away.
 
-    The second case is what the Rellich boundary integrals need: near a singular corner the
-    integrand carries ``r^(2 nu - 2)``, and only a Gauss-Jacobi rule built around that
-    exponent resolves it. Such rules need ``nu``, so they are built one layer up -- but they
-    come back as a `Quadrature`, which is why `weight_family` lives here rather than in the
-    layer that sets it. lappy reached the same conclusion; its values ``'even'``
-    (``sub = nu``, matched to the eigenfunction's own exponent family) and ``'integer'``
-    (``sub = 1/2``, exact on the integer powers a corner-moving shape velocity supplies)
-    carry over unchanged, and its comment records that the two "are not interchangeable in
-    either direction".
+    lappy reached the same split, and its comment records that the two corner families "are
+    not interchangeable in either direction": ``'even'`` loses ~10 digits on ``r^1``, and
+    ``'integer'`` ~10 on the eigenfunction's own series. The family is chosen by the WEIGHT's
+    parity, not by the eigenfunction.
     """
 
     pts: np.ndarray

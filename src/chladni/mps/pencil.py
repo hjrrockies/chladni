@@ -454,6 +454,30 @@ class MPSPencil(Frozen):
         c = _gsvd.coef_of(self.regularized(lam), mult)
         return c if c.ndim == 2 else c[:, None]
 
+    def family_coef(self, lam, x):
+        """`x` from `coef(lam)` in the coordinates of the FAMILY's own columns.
+
+        A column of the equilibrated pencil is the family's column divided by this pencil's
+        per-column norm over its collocation points, so `basis.at(pts).values(k) @
+        family_coef(lam, x)` is the function `x` names, on ANY points -- what a consumer needs
+        to evaluate an eigenfunction off the collocation set, as the boundary integrals do on
+        their own quadrature nodes. Only the pencil's own scale is divided out: the family's
+        `log_scale` is already out of its columns, and adding it again is the double count the
+        scaled-column convention exists to prevent (`conventions.md`).
+
+        `x` is `(n, )` or `(n, m)`. `coef`'s one shape exception -- `reg=None` with a frozen
+        rank, `rank` rows in the retained columns -- is scattered back to `n_cols` rows here,
+        so the result always matches the family.
+        """
+        x = np.asarray(x)
+        own = self._equilibrated(float(lam))[2]
+        if x.shape[0] != own.size:
+            full = np.zeros((own.size,) + x.shape[1:], dtype=x.dtype)
+            full[:x.shape[0]] = x
+            x = full
+        scale = np.exp(-own)
+        return x * (scale if x.ndim == 1 else scale[:, None])
+
     def interior_image(self, lam):
         """The candidate eigenfunction at `lam`, sampled on the interior points. `(n_int,)`, unit.
 

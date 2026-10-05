@@ -29,9 +29,9 @@ from scipy.special import jv
 from ._core import exact
 from .closed_form import bessel_zero
 
-__all__ = ["rect_eigfun", "iso_right_tri_eigfun", "polyomino_eigfun",
-           "polyomino_eigfun_grad", "disk_eigfun", "sector_eigfun", "sector_eigfun_grad",
-           "normalized_eigfun"]
+__all__ = ["rect_eigfun", "rect_eigfun_grad", "iso_right_tri_eigfun", "polyomino_eigfun",
+           "polyomino_eigfun_grad", "disk_eigfun", "disk_eigfun_grad", "sector_eigfun",
+           "sector_eigfun_grad", "normalized_eigfun"]
 
 
 def normalized_eigfun(eigfun_result):
@@ -56,6 +56,25 @@ def rect_eigfun(m, n, L=1.0, H=1.0, bc="dir"):
         u = lambda z: np.cos(m * np.pi * z.real / L) * np.cos(n * np.pi * z.imag / H)
         return u, (L if m == 0 else L / 2) * (H if n == 0 else H / 2)
     raise ValueError(f"bc must be 'dir' or 'neu', got {bc!r}")
+
+
+@exact("closed form on rect(L, H), corner at the origin")
+def rect_eigfun_grad(m, n, L=1.0, H=1.0, bc="dir"):
+    """`g(z) = du_dx + 1j*du_dy` for `rect_eigfun`. A bare callable, not a pair."""
+    m, n, L, H = int(m), int(n), float(L), float(H)
+    rect_eigfun(m, n, L, H, bc)                  # the same index and bc checks, one place
+    a, b = m * np.pi / L, n * np.pi / H
+
+    if bc == "dir":
+        def g(z):
+            x, y = z.real, z.imag
+            return a * np.cos(a * x) * np.sin(b * y) + 1j * (b * np.sin(a * x) * np.cos(b * y))
+    else:
+        def g(z):
+            x, y = z.real, z.imag
+            return -a * np.sin(a * x) * np.cos(b * y) - 1j * (b * np.cos(a * x) * np.sin(b * y))
+
+    return g
 
 
 @exact("closed form on iso_right_tri(l), right angle at the origin")
@@ -132,6 +151,35 @@ def disk_eigfun(m, n, r=1.0, parity="cos"):
 
     angular = 2 * np.pi if m == 0 else np.pi
     return u, angular * (r**2 / 2) * jv(m + 1, z0) ** 2
+
+
+@exact("closed form on disk(r), centred at the origin")
+def disk_eigfun_grad(m, n, r=1.0, parity="cos"):
+    """`g(z) = du_dx + 1j*du_dy` for `disk_eigfun`. A bare callable.
+
+    In polar form `grad u = (u_rho + 1j * u_theta / rho) * exp(1j*theta)`. The angular term
+    carries `J_m(k rho) / rho`, which is 0/0 at the centre; its limit is `k/2` for `m = 1` and 0
+    for `m >= 2` (and the term is absent at `m = 0`), so the centre is finite and is returned as
+    such rather than as NaN.
+    """
+    m, n, r = int(m), int(n), float(r)
+    disk_eigfun(m, n, r, parity)                 # the same checks, one place
+    k = bessel_zero(m, n) / r
+    trig = np.cos if parity == "cos" else np.sin
+    dtrig = (lambda t: -np.sin(t)) if parity == "cos" else np.cos
+
+    def g(zz):
+        zz = np.asarray(zz, dtype=complex)
+        rho, th = np.abs(zz), np.angle(zz)
+        jp = 0.5 * (jv(m - 1, k * rho) - jv(m + 1, k * rho)) if m > 0 else -jv(1, k * rho)
+        u_r = k * jp * trig(m * th)
+        at0 = rho == 0
+        safe = np.where(at0, 1.0, rho)
+        j_over_rho = np.where(at0, (k / 2 if m == 1 else 0.0), jv(m, k * rho) / safe)
+        u_t = m * j_over_rho * dtrig(m * th)
+        return (u_r + 1j * u_t) * np.exp(1j * th)
+
+    return g
 
 
 @exact("closed form on disk_sector(r, omega), apex at the origin")

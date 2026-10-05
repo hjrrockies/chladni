@@ -28,8 +28,8 @@ from .closed_form import (
     sector_eig, sector_eigs, sector_spectrum,
 )
 from .eigenfunctions import (
-    disk_eigfun, iso_right_tri_eigfun, normalized_eigfun, polyomino_eigfun,
-    polyomino_eigfun_grad, rect_eigfun, sector_eigfun, sector_eigfun_grad,
+    disk_eigfun, disk_eigfun_grad, iso_right_tri_eigfun, normalized_eigfun, polyomino_eigfun,
+    polyomino_eigfun_grad, rect_eigfun, rect_eigfun_grad, sector_eigfun, sector_eigfun_grad,
 )
 from .tables import (
     H_shape_eigs, L_shape_eigs, chevron_eigs, cut_square_eigs, ellipse_eigs,
@@ -48,6 +48,7 @@ __all__ = [
     "polyomino_eig", "polyomino_spectrum",
     "gww_eigs", "L_shape_eigs", "ellipse_eigs", "reg_ngon_eigs", "cut_square_eigs",
     "mushroom_eigs", "H_shape_eigs", "chevron_eigs", "iso_tri_eigs",
-    "rect_eigfun", "iso_right_tri_eigfun", "polyomino_eigfun", "polyomino_eigfun_grad",
-    "disk_eigfun", "sector_eigfun", "sector_eigfun_grad", "normalized_eigfun",
+    "rect_eigfun", "rect_eigfun_grad", "iso_right_tri_eigfun", "polyomino_eigfun",
+    "polyomino_eigfun_grad", "disk_eigfun", "disk_eigfun_grad", "sector_eigfun",
+    "sector_eigfun_grad", "normalized_eigfun",
 ]

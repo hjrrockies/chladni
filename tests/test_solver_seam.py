@@ -98,6 +98,41 @@ def test_a_plan_spans_holes(holed):
     assert (q.radial(0j) * q.wts).sum() == pytest.approx(2 * holed.area, rel=1e-8)
 
 
+def test_a_plan_that_leaves_a_SEGMENT_uncovered_is_refused(l_shape):
+    """A segment with no panel used to vanish from the rule silently, and every integral over
+    the boundary came back short by that segment's share. The integral layer sums Rellich
+    terms over whatever nodes it is handed, so a hole in the plan must be an error, not a
+    smaller boundary."""
+    n_seg = len(l_shape.outer.segments)
+    plan = [Panel(0, i, 0.0, 1.0, legendre_nodes(16)) for i in range(n_seg - 1)]
+    with pytest.raises(ValueError, match="segment 5"):
+        l_shape.bdry_quad(panels=plan)
+
+
+@pytest.mark.parametrize("spans", [
+    [(0.0, 0.4), (0.5, 1.0)],          # a gap
+    [(0.0, 0.6), (0.5, 1.0)],          # an overlap
+    [(0.1, 1.0)],                      # misses the corner end
+    [(0.0, 0.9)],                      # misses the other end
+])
+def test_a_plan_must_TILE_each_segment(l_shape, spans):
+    """Panels on a segment must cover `[0, 1]` exactly once: a gap drops a stretch of the
+    boundary and an overlap counts one twice, and both are silent in every integral."""
+    n_seg = len(l_shape.outer.segments)
+    plan = [Panel(0, i, 0.0, 1.0, legendre_nodes(16)) for i in range(1, n_seg)]
+    plan += [Panel(0, 0, a, b, legendre_nodes(8)) for a, b in spans]
+    with pytest.raises(ValueError, match="segment 0"):
+        l_shape.bdry_quad(panels=plan)
+
+
+def test_a_plan_that_leaves_a_BOUNDARY_uncovered_is_refused(holed):
+    """The same hole one level up: a domain plan with no panels on the hole."""
+    plan = [Panel(0, si, 0.0, 1.0, legendre_nodes(20))
+            for si in range(len(holed.boundaries[0].segments))]
+    with pytest.raises(ValueError, match="boundary 1"):
+        holed.bdry_quad(panels=plan)
+
+
 def test_weights_come_back_in_tau_and_geometry_only_converts_to_ds(l_shape):
     """The homogeneity of a singular weight under panel rescaling belongs to whoever chose
     it, so geometry multiplies by length and does nothing else."""

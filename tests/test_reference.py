@@ -352,3 +352,59 @@ def test_a_closed_form_predicts_two_tabulated_entries():
     assert ref.L_shape_eigs(3)[2] == ref.polyomino_eig(1, 1)
     assert ref.H_shape_eigs(7)[6] == ref.polyomino_eig(1, 1)
     assert ref.polyomino_eig(1, 1) == ref.rect_eigs(1, 1.0, 1.0)[0]
+
+
+# --- gradients: analytic, checked against differences away from any corner ----------------
+
+def _fd_grad(u, z, h=1e-6):
+    """Central difference of `u` at `z`, as `du_dx + 1j*du_dy`. Interior points only: the
+    analytic gradients exist because a difference step crosses a corner near the apex."""
+    return ((u(z + h) - u(z - h)) + 1j * (u(z + 1j * h) - u(z - 1j * h))) / (2 * h)
+
+
+def _interior(rng, n, sampler):
+    return np.array([sampler(rng) for _ in range(n)])
+
+
+GRAD_CASES = [
+    ("rect dir", lambda: ref.rect_eigfun(2, 3, L=1.3, H=0.7)[0],
+     lambda: ref.rect_eigfun_grad(2, 3, L=1.3, H=0.7),
+     lambda g: 1.3 * g.uniform(0.05, 0.95) + 0.7j * g.uniform(0.05, 0.95)),
+    ("rect neu", lambda: ref.rect_eigfun(2, 0, L=1.3, H=0.7, bc="neu")[0],
+     lambda: ref.rect_eigfun_grad(2, 0, L=1.3, H=0.7, bc="neu"),
+     lambda g: 1.3 * g.uniform(0.05, 0.95) + 0.7j * g.uniform(0.05, 0.95)),
+    ("disk m=0", lambda: ref.disk_eigfun(0, 2)[0], lambda: ref.disk_eigfun_grad(0, 2),
+     lambda g: g.uniform(0.1, 0.9) * np.exp(2j * np.pi * g.uniform())),
+    ("disk m=3 cos", lambda: ref.disk_eigfun(3, 1)[0], lambda: ref.disk_eigfun_grad(3, 1),
+     lambda g: g.uniform(0.1, 0.9) * np.exp(2j * np.pi * g.uniform())),
+    ("disk m=1 sin", lambda: ref.disk_eigfun(1, 2, parity="sin")[0],
+     lambda: ref.disk_eigfun_grad(1, 2, parity="sin"),
+     lambda g: g.uniform(0.1, 0.9) * np.exp(2j * np.pi * g.uniform())),
+    ("polyomino", lambda: ref.polyomino_eigfun(2, 1, 3)[0], lambda: ref.polyomino_eigfun_grad(2, 1),
+     lambda g: g.uniform(0.05, 0.95) + 1j * g.uniform(0.05, 0.95)),
+    ("sector 3pi/2", lambda: ref.sector_eigfun(1, 1, omega=1.5 * np.pi)[0],
+     lambda: ref.sector_eigfun_grad(1, 1, omega=1.5 * np.pi),
+     lambda g: g.uniform(0.1, 0.9) * np.exp(1j * 1.5 * np.pi * g.uniform(0.05, 0.95))),
+]
+
+
+@pytest.mark.parametrize("name, u_fn, g_fn, sampler", GRAD_CASES, ids=[c[0] for c in GRAD_CASES])
+def test_every_analytic_gradient_agrees_with_a_difference(name, u_fn, g_fn, sampler):
+    """The Rellich identity integrates `|grad u|^2` against `(x - x0).n`, so a wrong gradient is
+    a wrong norm with no other symptom. Each analytic gradient is checked here against a central
+    difference of its own `u`, at points where the difference is valid."""
+    u, g = u_fn(), g_fn()
+    z = _interior(np.random.default_rng(3), 25, sampler)
+    want = _fd_grad(u, z)
+    scale = np.abs(want).max()
+    assert np.allclose(g(z), want, rtol=0, atol=1e-8 * scale), name
+
+
+def test_the_disk_gradient_is_finite_at_the_centre():
+    """`J_m(k rho) / rho` is 0/0 at the centre; the limit is `k/2` for `m = 1` and 0 above. The
+    integral layer evaluates on the boundary, but an interior check must not meet a NaN."""
+    for m, parity in ((0, "cos"), (1, "cos"), (1, "sin"), (2, "cos")):
+        g = ref.disk_eigfun_grad(m, 1, parity=parity)(np.array([0j]))
+        assert np.all(np.isfinite(g)), (m, parity)
+        near = ref.disk_eigfun_grad(m, 1, parity=parity)(np.array([1e-9 + 0j, 1e-9j]))
+        assert np.allclose(g[0], near, atol=1e-7), (m, parity)

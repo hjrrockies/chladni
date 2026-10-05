@@ -247,8 +247,10 @@ def test_a_singular_family_is_representable(square):
 
 
 def test_integrate_is_literal_regardless_of_family(square):
-    """integrate(f) is always sum(f(pts) * wts). It equals oint f ds only in the arclength
-    family; for a singular rule it is oint f w ds, and the caller supplies f = integrand/w."""
+    """integrate(f) is always sum(f(pts) * wts), in every family. The families differ in
+    which integrands that sum is EXACT on, not in the measure -- a corner rule's weights carry
+    their Jacobi weight divided out -- and a corner rule is not exact on constants, which is
+    what the halved weights here stand in for."""
     plain = square.bdry_quad(64)
     singular = dataclasses.replace(plain, wts=plain.wts * 0.5, weight_family="even")
     one = lambda z: np.ones_like(z, dtype=float)
