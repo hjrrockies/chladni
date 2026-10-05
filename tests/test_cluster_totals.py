@@ -67,6 +67,7 @@ import bracket_score as bs
 import hard_roster as hr
 import rect_suite as rs
 from basis_sufficiency import sufficient
+from chladni.mps._regularize import _AVOID_GEQRF
 from chladni.mps.multiplicity import multiplicity
 from chladni.mps.search import solve
 
@@ -328,7 +329,9 @@ def test_the_MULTIPLICITY_precondition_holds_at_both_ends_of_the_ladder():
 @pytest.mark.slow
 @pytest.mark.parametrize("band", [
     1.3, 1.6,
-    pytest.param(2.0, marks=pytest.mark.xfail(strict=True, reason=(
+    # Only where the QR route is taken: on OpenBLAS the cell reads right (XPASS on Linux CI,
+    # 2026-09-21 and 2026-10-04), so a strict xfail there fails for the wrong reason.
+    pytest.param(2.0, marks=pytest.mark.xfail(_AVOID_GEQRF, strict=True, reason=(
         "the previous configuration now DECLINES here at stage 1, cross-check on or off -- 'the "
         "slope estimate never settled' -- since the QR route around Accelerate's dgeqrf moved the "
         "objective; the promoted defaults read this cell right (4 of 4)"))),
