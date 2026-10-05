@@ -26,10 +26,13 @@ from chladni.reference import disk_eig, eq_tri_eig, rect_eig
 
 
 def pencil(d, lam_hi, pad=1.3, seed=0):
+    """A THRESHOLD pencil, explicitly. `calibrate_rtol` moves a truncation cut, and every number
+    here was measured on one; since 2026-09-24 the default at `prec = 1e-8` is the penalty, where
+    loosening `rtol` raises `tau` past its reach and warns (`TODO.md` section 4, item 2)."""
     nw = int(pad * PlaneWave.n_useful(np.sqrt(lam_hi) * d.diameter))
     return MPSPencil.from_basis(
         PlaneWave.uniform(nw, radius=d.diameter), d.bdry_quad(max(8 * nw, 900)),
-        d.interior_pts(max(3 * nw, 450), rng=np.random.default_rng(seed)))
+        d.interior_pts(max(3 * nw, 450), rng=np.random.default_rng(seed)), reg="svd")
 
 
 def wall_slope(p, lam_star):

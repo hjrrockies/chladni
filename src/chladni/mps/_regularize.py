@@ -58,13 +58,18 @@ block's numerical rank with its own tolerance. So `"tikhonov"` does not remove t
 decision, it moves it inside LAPACK: on `rect(1, 1/phi)`'s 126-column pencil its count of
 finite tensions was 33, 43, 48 at `lam = 35.7, 150, 261`, at every `tau` tried. `"tikhonov_qr"`
 hands LAPACK an orthonormal stack, and its count was `n_int = 63` at all three.
-`"tikhonov_qr"` is the mode to use, and the INTENDED DEFAULT going forward (`TODO.md` section 4,
-decided 2026-09-23): a threshold rank leaves a decision to rounding, and that has already cost a
-real answer. It is not the default yet, and the gates are listed there. `"tikhonov"` is kept as
-the literal formulation and as an oracle the QR form must agree with; it is not a candidate.
+`"tikhonov_qr"` is the mode to use, and the DEFAULT at `prec >= PENALTY_PREC_MIN` (1e-8), through
+`reg="auto"` on `MPSPencil` and `MPSEigensolver` (decided 2026-09-23, ranged 09-24): a threshold
+rank leaves a decision to rounding, and that has already cost a real answer. On the cluster grid
+it ties the threshold rather than beating it, so what it buys is the removal of that hazard, not a
+better score. Below 1e-8 `"auto"` is the threshold. `"tikhonov"` is kept as the literal
+formulation and as an oracle the QR form must agree with; it is not a candidate.
 
-Both need `tau` above the rounding noise. At the `prec`-derived default `rtol` the two agree
-to 1e-7 or better; at `rtol = 1.5e-15` they part by 1e-3.
+**`tau = C_PEN * prec`, not `sqrt(prec*eps)`.** A penalty's floor is its `tau`, so the truncation's
+`rtol` rule put the floor at 2.4 prec by 1e-14. `MPSPencil` derives the penalty's `rtol` as
+`C_PEN * prec / sqrt(n_cols)`, and warns (`PrecisionWarning`) when an explicit penalty's `tau`
+falls outside its reach -- above `_REACH_FLOOR * prec`, or within `_REACH_ROUNDING`x of rounding.
+Both realizations need `tau` above the rounding noise; at `rtol = 1.5e-15` they part by 1e-3.
 
 **What limits the penalty at tight `prec` is NOISE, not the floor.** The literal form's floor
 saturates near 9e-14 -- that is LAPACK's internal cut, and it is where the claim that "a plain
@@ -100,6 +105,33 @@ _PENALTY = ("tikhonov", "tikhonov_qr")
 #: Every mode `regularize` accepts, so a caller can refuse a bad one at construction rather
 #: than on first use.
 _MODES = ("svd", "qrp", None) + _PENALTY
+
+#: The penalty's `tau`, as a fraction of `prec`, absolute on the equilibrated pencil. A penalty's
+#: floor IS its `tau` (about 1.4 tau measured), so `tau` must scale with `prec`: the truncation's
+#: `rtol = sqrt(prec*eps)` it replaces put the floor at 2.4 prec by 1e-14 and was silently wrong on
+#: every cluster cell there (`notes/smooth_filter.md` 10.4-10.5). 0.02 is the middle of the band
+#: that cleared the 12-cell cluster grid at 1e-12, [0.007, 0.05] prec (10.6). At 1e-6 and 1e-8 it
+#: scored 12 of 12 against the SUITE pencil's 11 and a decline, and ties the threshold at its own
+#: derived `rtol`, 22 of 22 on the full 50/65*pi^2 grid (section 11). Measured on one rectangle
+#: family.
+C_PEN = 0.02
+
+#: The tightest `prec` at which `reg="auto"` chooses the penalty. Below it `"auto"` is the
+#: threshold, whose floor is set by the basis and not by `prec`. Measured on the 50/65*pi^2
+#: cluster grid against the threshold at its OWN derived `rtol` -- what `"auto"` falls back to, and
+#: what shipped before -- (`notes/smooth_filter.md` section 11): 22 of 22 each at 1e-6 and 1e-8,
+#: but at 1e-10 the penalty lost a member where the threshold did not (50*pi^2, band 0.3, flagged).
+#: A feasible `tau` still exists down to 1e-12 (10.6); this is where it is measured NOT WORSE.
+PENALTY_PREC_MIN = 1e-8
+
+#: The penalty's REACH, the two jaws `tau` must sit between (`notes/penalty_prec_limit_explained.md`
+#: section 6). Above `_REACH_FLOOR * prec` the floor blurs members `prec` apart: members were lost
+#: from 0.07 prec up at 1e-12 (10.6). Below `_REACH_ROUNDING * eps * ||A||_F` the minimizer leans on
+#: directions whose content is rounding and the slope loop declines: the clean band's lower edge,
+#: 7e-15 at n = 126, is 3.0 eps sqrt(n). Together they put the default rule's reach at about
+#: `prec >= 150 eps sqrt(n)` -- 4e-13 at n = 126, which is why 1e-12 is feasible and 1e-14 is not.
+_REACH_FLOOR = 0.05
+_REACH_ROUNDING = 3.0
 
 
 def _lapack_is_accelerate():

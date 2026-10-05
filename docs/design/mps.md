@@ -223,14 +223,18 @@ basis coordinates, produced by whichever mode ran. That is the fix for `lappy`'s
 `nullspace_coef`, which branches on `reg_type` *again* at the recovery site: two places that
 must agree about a transformation only one of them computed.
 
-- `"svd"` (default) -- economic QR of the stack, SVD of `R`, truncate to `r`.
+- `"auto"` (default) -- `"tikhonov_qr"` at `prec >= 1e-8`, `"svd"` below it or whenever `rtol=`,
+  `rank=` or `lam_ref=` is passed. Resolved at construction; `reg` reports the mode it chose.
+- `"svd"` -- economic QR of the stack, SVD of `R`, truncate to `r`.
 - `"qrp"` -- column-pivoted QR, truncate to `r`.
 - `None` -- raw pencil.
 - `"tikhonov_qr"` -- no truncation: a penalty `tau^2 ||c||^2` added to the numerator,
   `tau = rtol * ||[A_B; A_I]||_F` (`rtol * sqrt(n_cols)` on the equilibrated stack). Unpivoted
   QR of `[A_B; tau*I; A_I]`, and the two row blocks of `Q` go to the GSVD; `back` is `R^-1`.
-  No rank is chosen, so none can change with `k`. Not the default yet, and the INTENDED one:
-  see `TODO.md` section 4 for the decision (2026-09-23) and the gates before the switch.
+  No rank is chosen, so none can change with `k`. Its `rtol` defaults to
+  `C_PEN * prec / sqrt(n_cols)`, so `tau = 0.02 prec`: a penalty's floor is its `tau`, and the
+  truncation's `sqrt(prec*eps)` rule put it above `prec` by 1e-14. The default at `prec >= 1e-8`
+  (2026-09-24); `notes/smooth_filter.md` section 11 has why the range stops there.
 - `"tikhonov"` -- the same penalty handed to the GSVD directly, `([A_B; tau*I], A_I)`.
   Identical in exact arithmetic but NOT free of rank decisions: `tau*I` makes the stack full
   rank and does nothing for the interior block, whose rank LAPACK's `?ggsvp3` then decides
@@ -429,7 +433,9 @@ Choosing the rank over the range instead gives 31, and one minimum.
 its whole Weyl window; and `rank_diagnostics` warns when the frozen rank has reached the noise
 floor at an evaluated `lam`.
 
-**The default rank rule is now threshold**, re-derived at every `lam`. It cannot make the above
+**The default rank rule is now threshold**, re-derived at every `lam` -- the rule for every
+TRUNCATION, which since 2026-09-24 is the default only below `prec = 1e-8` (above it the default
+is the penalty, which chooses no rank). It cannot make the above
 mistake, because it reads the spectrum actually in front of it. The comparison, on the recall
 metric that matters:
 

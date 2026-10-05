@@ -42,7 +42,8 @@ from .._core import PREC, Frozen, PrecisionWarning, _set, check_prec
 from ..eigensolver import lam_to_k
 from ..helmholtz import check_k
 from . import _gsvd
-from ._regularize import _MODES, _PENALTY, choose_rank, regularize
+from ._regularize import (_MODES, _PENALTY, _REACH_FLOOR, _REACH_ROUNDING, C_PEN,
+                          PENALTY_PREC_MIN, choose_rank, regularize)
 
 __all__ = ["MPSPencil", "assemble", "equilibrate", "RankDiagnostics"]
 
@@ -78,6 +79,33 @@ class RankDiagnostics(tuple):
 
     rank = property(lambda self: self[0])
     s = property(lambda self: self[1])
+
+
+def _warn_if_out_of_reach(tau, prec, n_cols):
+    """Warn when a penalty's `tau` is outside the band that can deliver `prec`.
+
+    Two jaws (`_regularize._REACH_FLOOR`, `_REACH_ROUNDING`): a floor too high to separate
+    members `prec` apart, or a `tau` so near rounding that the tension is noise. Warned rather
+    than refused -- a penalty below its reach is what the caller asked for, and `reg="auto"`
+    never builds one. The constants are one rectangle family's, and the message says so.
+    """
+    eps = np.finfo(float).eps
+    if tau > _REACH_FLOOR * prec:
+        why = (f"its floor, about 1.4 tau = {1.4 * tau:.1e}, is too high to separate eigenvalues "
+               f"prec apart (tau above {_REACH_FLOOR} prec lost cluster members)")
+    elif tau < _REACH_ROUNDING * eps * np.sqrt(n_cols):
+        why = (f"tau = {tau:.1e} is within {_REACH_ROUNDING:g}x of rounding "
+               f"(eps sqrt(n) = {eps * np.sqrt(n_cols):.1e}), where the tension is noise the "
+               f"search cannot read slopes from")
+    else:
+        return
+    warnings.warn(
+        f"a penalty regularization at prec={prec:.0e} is outside its measured reach: {why}. "
+        f"No penalty tau serves prec much below 150 eps sqrt(n); use reg='svd' or 'auto' there. "
+        f"(Reach measured on one rectangle family: notes/penalty_prec_limit_explained.md.)",
+        PrecisionWarning,
+        stacklevel=3,
+    )
 
 
 def _as_lam_ref(lam_ref):
@@ -154,14 +182,19 @@ class MPSPencil(Frozen):
     the cutoff falls and the rank rises.
 
     `reg="tikhonov_qr"` (or `"tikhonov"`) replaces the truncation with a penalty of weight
-    `rtol * sqrt(n_cols)` -- the same `rtol`, now setting a strength instead of a cutoff -- and
-    chooses no rank at all, so `rank=` and `lam_ref=` are refused with it. Not the default YET --
-    it is the intended one (`TODO.md` section 4, decided 2026-09-23), because a threshold rank
-    leaves a decision to rounding and that has already cost a real answer. See `_regularize` for
-    the noise that limits a plain penalty at tight `prec`, which is why the switch has gates.
+    `tau = rtol * sqrt(n_cols)`, and chooses no rank at all, so `rank=` and `lam_ref=` are refused
+    with it. Its `rtol` defaults to `C_PEN * prec / sqrt(n_cols)`, so `tau = C_PEN * prec`: a
+    penalty's floor IS its `tau`, and the truncation's `sqrt(prec * eps)` put it at 2.4 prec by
+    1e-14. An explicit penalty outside its measured reach warns (`PrecisionWarning`) and runs.
+
+    **The default, `reg="auto"`, is `"tikhonov_qr"` at `prec >= 1e-8` and the threshold below.**
+    A threshold rank leaves a decision to rounding, and that has already cost a real answer
+    (`notes/session_2026-09-19.md`); below 1e-8 the penalty measured worse than the threshold it
+    would replace. Passing `rtol=`, `rank=` or `lam_ref=` asks for a truncation and gets one.
+    See `_regularize` for both.
     """
 
-    def __init__(self, bdry, interior, *, reg="svd", rank=None, rtol=None, lam_ref=None,
+    def __init__(self, bdry, interior, *, reg="auto", rank=None, rtol=None, lam_ref=None,
                  prec=PREC):
         if getattr(bdry, "normals", None) is None or getattr(bdry, "bc", None) is None:
             raise ValueError(
@@ -176,9 +209,21 @@ class MPSPencil(Frozen):
                 "columns is not a pencil"
             )
         prec = check_prec(prec)
-        rtol = float(np.sqrt(prec * np.finfo(float).eps)) if rtol is None else float(rtol)
-        if reg not in _MODES:
-            raise ValueError(f"unknown regularization {reg!r}; expected one of {_MODES}")
+        if reg not in _MODES + ("auto",):
+            raise ValueError(f"unknown regularization {reg!r}; expected one of "
+                             f"{_MODES + ('auto',)}")
+        if reg == "auto":
+            # A truncation knob asks for a truncation; so does a `prec` below the penalty's range.
+            explicit = rtol is not None or rank is not None or lam_ref is not None
+            reg = ("tikhonov_qr" if not explicit and prec >= PENALTY_PREC_MIN else "svd")
+        n_cols = len(bdry.family)
+        if rtol is None:
+            # A penalty's floor is its `tau`, so `tau` scales with `prec`; a truncation's floor is
+            # the basis's, and its cutoff sits between `prec` and the arithmetic. `_regularize`
+            # forms `tau = rtol * ||A||_F`, which is `rtol * sqrt(n_cols)` once equilibrated.
+            rtol = (C_PEN * prec / np.sqrt(n_cols) if reg in _PENALTY
+                    else float(np.sqrt(prec * np.finfo(float).eps)))
+        rtol = float(rtol)
         if reg in _PENALTY and (rank is not None or lam_ref is not None):
             # Refused here, before `lam_ref` would go and choose a rank for a mode with none.
             raise ValueError(
@@ -187,6 +232,8 @@ class MPSPencil(Frozen):
             )
         if reg in _PENALTY and not rtol > 0.0:
             raise ValueError(f"reg={reg!r} needs rtol > 0 to set its penalty, got {rtol!r}")
+        if reg in _PENALTY:
+            _warn_if_out_of_reach(rtol * np.sqrt(n_cols), prec, n_cols)
 
         lam_ref = _as_lam_ref(lam_ref)
         if rank is None and lam_ref is not None:

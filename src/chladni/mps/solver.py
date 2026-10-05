@@ -71,7 +71,7 @@ class MPSEigensolver(Eigensolver, Frozen):
     """
 
     def __init__(self, domain, *, basis, bdry_quad=None, int_pts=None, n_bdry=None,
-                 n_int=None, reg="svd", rank=None, rtol=None, lam_ref=None, prec=None,
+                 n_int=None, reg="auto", rank=None, rtol=None, lam_ref=None, prec=None,
                  rng=DEFAULT_RNG):
         super().__init__(domain, prec=prec)
 
@@ -84,8 +84,9 @@ class MPSEigensolver(Eigensolver, Frozen):
                 raise ValueError("pass either int_pts or n_int")
             int_pts = domain.interior_pts(n_int, rng=np.random.default_rng(rng))
 
-        # No lam_ref by default: the rank is re-derived per lam (threshold), which is the
-        # only rule that cannot pick an unsafe rank. Pass lam_ref=(lo, hi) to freeze it.
+        # `reg="auto"` by default: the penalty at `prec >= 1e-8`, the per-lam threshold below
+        # (`MPSPencil`). Passing rtol=, rank= or lam_ref= asks for a truncation; lam_ref=(lo, hi)
+        # freezes its rank.
 
         _set(self, _pencil=MPSPencil.from_basis(
             basis, bdry_quad, int_pts, reg=reg, rank=rank, rtol=rtol,

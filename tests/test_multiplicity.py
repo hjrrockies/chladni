@@ -301,8 +301,10 @@ def _starved_pencil(ndir, delta):
     la, lb = rect_eig(2, 1, L, 1.0), rect_eig(1, 2, L, 1.0)
     lam1 = min(la, lb)
     basis = PlaneWave.uniform(ndir, radius=dom.diameter)
+    # The threshold, explicitly: `eps` here is the BASIS's floor, which a penalty would replace
+    # with its own `tau` (the default at prec 1e-8 since 2026-09-24).
     p = MPSPencil.from_basis(basis, dom.bdry_quad(3 * ndir),
-                             dom.interior_pts(ndir, rng=np.random.default_rng(0)))
+                             dom.interior_pts(ndir, rng=np.random.default_rng(0)), reg="svd")
     eps = p.tension(lam1)
     h = 0.02 * lam1
     c = 0.5 * (p.tension(lam1 + h) + p.tension(lam1 - h)) / h

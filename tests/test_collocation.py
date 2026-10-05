@@ -102,11 +102,12 @@ def test_the_two_samplings_must_share_a_column_space():
                   other.at(poly.interior_pts(40, rng=np.random.default_rng(RNG))), lam_ref=LAM)
 
 
-def test_the_default_rank_rule_is_threshold():
-    """No `rank`, no `lam_ref`: the rank is re-derived at every `lam` from `rtol`.
+def test_the_default_truncation_rule_is_threshold():
+    """A truncation with no `rank` and no `lam_ref`: the rank is re-derived at every `lam`.
 
-    This is the default because it is the only rule that cannot pick an UNSAFE rank. The
-    pencil's numerical rank grows with `lam` -- 31 to 47 across a disk scan -- so any fixed
+    Of the truncating rules this is the one used whenever a truncation is (`reg="auto"` below
+    `prec = 1e-8`, or `reg="svd"`), because it is the only one that cannot pick an UNSAFE rank.
+    The pencil's numerical rank grows with `lam` -- 31 to 47 across a disk scan -- so any fixed
     integer is too large somewhere, and a rank sitting at machine epsilon turns the tension
     rough: 85 spurious local minima in a window holding one eigenvalue. Threshold
     re-derives from the spectrum actually in front of it and cannot make that mistake.
@@ -114,10 +115,21 @@ def test_the_default_rank_rule_is_threshold():
     poly = Polygon(L_SHAPE)
     b = basis_for(poly)
     p = MPSPencil(b.at(poly.bdry_quad(200)),
-                  b.at(poly.interior_pts(80, rng=np.random.default_rng(RNG))))
+                  b.at(poly.interior_pts(80, rng=np.random.default_rng(RNG))), reg="svd")
     assert p.rank is None and not p.is_frozen
     assert p.rank_at(LAM) == len(p.tensions(LAM))
     assert "threshold" in repr(p)
+
+
+def test_the_default_at_the_default_prec_chooses_no_rank_at_all():
+    """`reg="auto"` at `prec = 1e-8` is the penalty (`tests/test_regularization.py` has the
+    range): nothing to freeze and nothing re-derived, and every column yields a tension."""
+    poly = Polygon(L_SHAPE)
+    b = basis_for(poly)
+    p = MPSPencil(b.at(poly.bdry_quad(200)),
+                  b.at(poly.interior_pts(80, rng=np.random.default_rng(RNG))))
+    assert p.reg == "tikhonov_qr" and p.rank is None and not p.is_frozen
+    assert p.rank_at(LAM) == len(p.tensions(LAM)) == p.n_cols
 
 
 def test_a_frozen_rank_still_needs_a_reference_or_a_value():

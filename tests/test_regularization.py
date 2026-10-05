@@ -586,12 +586,12 @@ def test_the_SAME_over_enriched_basis_is_safe_and_SILENT_under_a_threshold_rank(
     # for the wrong reason -- measured: it passed while the guard was still installed.
     with warnings.catch_warnings():
         warnings.simplefilter("error", PrecisionWarning)
-        cold = MPSPencil.from_basis(b, q, pts)
+        cold = MPSPencil.from_basis(b, q, pts, reg="svd")
         for lam in lams:
             cold.tension(lam)
             cold.rank_diagnostics(lam)
 
-    p = MPSPencil.from_basis(b, q, pts)          # no rank, no lam_ref: threshold rank
+    p = MPSPencil.from_basis(b, q, pts, reg="svd")   # no rank, no lam_ref: threshold rank
     assert p.rank is None
     assert p.rank_at(5.5225) < p.rank_at(32.49), "the cut must track k"
 
@@ -751,6 +751,86 @@ def test_an_unknown_mode_is_refused_at_construction(pencil):
         MPSPencil(pencil.bdry, pencil.interior, reg="bogus")
 
 
+# --- the default: a penalty where it is measured clean, the threshold below ---------------
+#
+# `notes/smooth_filter.md` sections 10.4-10.7 and `notes/penalty_prec_limit_explained.md`. A
+# penalty's floor IS its `tau`, so `tau` must scale with `prec`; rounding sets a floor under
+# `tau` that does not. The two meet between 1e-12 and 1e-14. `"auto"` stops at 1e-8, the
+# tightest `prec` at which the penalty measured no worse than the threshold it replaces.
+
+
+def test_the_default_is_auto_on_both_the_pencil_and_the_solver():
+    import inspect
+
+    from chladni.mps import MPSEigensolver
+    assert inspect.signature(MPSPencil.__init__).parameters["reg"].default == "auto"
+    assert inspect.signature(MPSEigensolver.__init__).parameters["reg"].default == "auto"
+
+
+@pytest.mark.parametrize("prec, want", [(1e-6, "tikhonov_qr"), (1e-8, "tikhonov_qr"),
+                                        (1e-9, "svd"), (1e-10, "svd"),
+                                        (1e-12, "svd"), (1e-14, "svd")])
+def test_auto_is_the_penalty_down_to_1e_8_and_the_threshold_below(pencil, prec, want):
+    """What `reg` reports is the RESOLVED mode, so a caller can see which one it got."""
+    p = MPSPencil(pencil.bdry, pencil.interior, prec=prec)
+    assert p.reg == want
+
+
+@pytest.mark.parametrize("knob", [{"rtol": 1e-12}, {"rank": 30}, {"lam_ref": LAM}])
+def test_auto_with_a_truncation_knob_is_the_threshold(pencil, knob):
+    """`rtol=`, `rank=` and `lam_ref=` are the truncation's settings, so passing one asks for a
+    truncation. It is also what keeps every fixture built at `rect_suite.SUITE_RTOL`, and every
+    constant calibrated on one, exactly as it was measured."""
+    assert MPSPencil(pencil.bdry, pencil.interior, prec=1e-8, **knob).reg == "svd"
+
+
+@pytest.mark.parametrize("reg", PENALTY + ["auto"])
+@pytest.mark.parametrize("prec", [1e-6, 1e-8, 1e-10])
+def test_a_penalty_s_default_tau_is_proportional_to_prec(pencil, reg, prec):
+    """`tau = C_PEN * prec`, absolute on the equilibrated pencil: the middle of the clean band
+    [0.007, 0.05] prec measured at 1e-12 (section 10.6). The shipped rule it replaces,
+    `sqrt(prec*eps)`, was a truncation's, and put the floor at 2.4 prec by 1e-14 (10.4)."""
+    if reg == "auto" and prec < regmod.PENALTY_PREC_MIN:
+        pytest.skip("auto is the threshold here")
+    p = MPSPencil(pencil.bdry, pencil.interior, reg=reg, prec=prec)
+    assert p.regularized(LAM).tau == pytest.approx(regmod.C_PEN * prec, rel=1e-12)
+    assert regmod.C_PEN == 0.02
+
+
+def test_the_threshold_s_rtol_rule_is_unchanged(pencil):
+    p = MPSPencil(pencil.bdry, pencil.interior, reg="svd", prec=1e-8)
+    assert p.rtol == pytest.approx(np.sqrt(1e-8 * np.finfo(float).eps), rel=1e-15)
+
+
+@pytest.mark.parametrize("reg", PENALTY)
+def test_a_penalty_below_its_reach_WARNS_and_still_runs(pencil, reg):
+    """At 1e-14 no `tau` clears the cluster grid (section 10.6): `C_PEN * prec` is 2e-16, deep
+    in the rounding regime. Asked for explicitly it is the caller's call -- warned, not refused."""
+    from chladni.mps import PrecisionWarning
+    with pytest.warns(PrecisionWarning, match="rounding"):
+        p = MPSPencil(pencil.bdry, pencil.interior, reg=reg, prec=1e-14)
+    assert np.all(np.isfinite(p.tensions(LAM)[:3]))
+
+
+def test_a_penalty_whose_floor_would_blur_prec_WARNS(pencil):
+    """The other jaw. The old rule at 1e-12 put `tau` at 0.1 prec on this pencil and lost 4 of 12
+    cluster cells (section 10.5); above 0.05 prec members are lost (10.6)."""
+    from chladni.mps import PrecisionWarning
+    rtol = np.sqrt(1e-12 * np.finfo(float).eps)
+    with pytest.warns(PrecisionWarning, match="floor"):
+        MPSPencil(pencil.bdry, pencil.interior, reg="tikhonov_qr", prec=1e-12, rtol=rtol)
+
+
+@pytest.mark.parametrize("prec", [1e-6, 1e-8, 1e-10, 1e-12])
+def test_a_penalty_inside_its_reach_is_silent(pencil, prec):
+    import warnings
+
+    from chladni.mps import PrecisionWarning
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", PrecisionWarning)
+        MPSPencil(pencil.bdry, pencil.interior, reg="tikhonov_qr", prec=prec)
+
+
 # --- penalty modes: no rank change, and what that buys ------------------------------------
 
 
@@ -772,7 +852,7 @@ def test_the_qr_penalty_never_changes_rank_and_the_literal_one_does():
     poly = Polygon(L_SHAPE, bc="dir")
     b = basis_for(poly)
     base = MPSPencil.from_basis(b, poly.bdry_quad(400),
-                                poly.interior_pts(150, rng=np.random.default_rng(0)))
+                                poly.interior_pts(150, rng=np.random.default_rng(0)), reg="svd")
     lams = np.linspace(9.0, 60.0, 24)
     assert len({base.rank_at(lam) for lam in lams}) >= 2, "the scan must exercise flips"
 

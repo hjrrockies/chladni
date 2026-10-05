@@ -144,6 +144,84 @@ def test_the_cluster_total_GRID(N, m, prec, band):
     _assert_total(N, m, prec, band)
 
 
+# --- the same grid on the pencil that SHIPS ------------------------------------------------
+#
+# Every cell above is scored on `rect_suite`'s pencil, fixed at `SUITE_RTOL` -- a threshold, and
+# under `reg="auto"` an explicit `rtol=` stays one. So the grid above never exercises the default:
+# the penalty at `prec >= 1e-8` (`tau = C_PEN * prec`), the threshold at its own derived `rtol`
+# below. These rows rebuild each case's pencil with no regularization knob at all, which is what
+# `MPSEigensolver` builds. Same cells, same precondition, same scoring.
+
+#: Wrong totals on the default pencil, keyed `(N, prec, band)`. Measured 2026-09-24.
+#:
+#: `(50, 1e-12, 0.3)` is the THRESHOLD at its own derived `rtol` (`"auto"` below 1e-8), and it
+#: was wrong under the old default too -- not a cost of the penalty. 2 of 3, SILENT. Traced
+#: (`notes/trace_undercount.py 1e-12 auto 50 0.3`, `notes/smooth_filter.md` section 10.7): the
+#: root lands on the middle member, the cache slope reads 0.008 against a typical 0.015, so the
+#: undecided branch's estimate is 0.645 licences against a true 0.3 and the side search's
+#: exclusion `half` swallows member 0. The sub-bracket beyond it refuses `not_a_minimum` at its
+#: INNER end, reading 0.18 sigma_j where the root's own wall would read ~0.5 -- and a refusal
+#: there counts as a firm rejection, so nothing flags it.
+WRONG_DEFAULT = {(50, 1e-12, 0.3)}
+
+_WHY_DEFAULT = ("the threshold at its derived rtol, 50*pi^2 band 0.3 at 1e-12: a low cache slope "
+                "widens the side search's exclusion past a member, and the inner-end refusal "
+                "reads as a rejection -- 2 of 3, silent; old default too (smooth_filter.md 10.7)")
+
+_SOLVES_DEFAULT = {}
+
+
+def _solve_default(N, m, band, prec):
+    from chladni.mps import MPSPencil
+    from chladni.mps.objective import Objective
+
+    key = (N, band, prec)
+    if key not in _SOLVES_DEFAULT:
+        case = cluster(N, m, band, prec)
+        q = MPSPencil(case.pencil.bdry, case.pencil.interior, prec=prec)
+        base = bs.objective_for(case, prec)
+        obj = Objective(lambda x: q.tensions(float(x)), base.lo, base.hi, prec=prec,
+                        variable=case.variable, expected_count=base.expected_count)
+        _SOLVES_DEFAULT[key] = (case, solve(obj, prec=prec))
+    return _SOLVES_DEFAULT[key]
+
+
+def _default_cells(precs, bands, marks):
+    for N, m in (EVEN, UNEVEN):
+        for prec in precs:
+            for band in bands:
+                xf = ([pytest.mark.xfail(strict=True, reason=_WHY_DEFAULT)]
+                      if (N, prec, band) in WRONG_DEFAULT else [])
+                yield pytest.param(N, m, prec, band, marks=marks + xf,
+                                   id=f"N{N}-{prec:.0e}-b{band:g}")
+
+
+def _assert_total_default(N, m, prec, band):
+    suff = sufficient(cluster(N, m, band, prec), prec)
+    if not suff.multiplicity:
+        pytest.skip(f"UNEXERCISABLE: the basis cannot resolve this cluster's multiplicity at "
+                    f"prec={prec:.0e} -- {'; '.join(suff.reasons)}")
+    _, res = _solve_default(N, m, band, prec)
+    if res.declined:
+        assert res.diagnostics.decline_reason.strip(), "a decline must carry its reason"
+        return
+    assert sum(x.mult for x in res.levels) == m, (
+        f"declared {sum(x.mult for x in res.levels)} of {m}; "
+        f"n_uncertain={res.diagnostics.n_uncertain}")
+
+
+@pytest.mark.parametrize("N, m, prec, band",
+                         list(_default_cells((1e-8, 1e-10), SLOW_BANDS, [pytest.mark.slow])))
+def test_the_cluster_total_SLICE_on_the_default_pencil(N, m, prec, band):
+    _assert_total_default(N, m, prec, band)
+
+
+@pytest.mark.parametrize("N, m, prec, band",
+                         list(_default_cells(PRECS, BANDS, [pytest.mark.robust])))
+def test_the_cluster_total_GRID_on_the_default_pencil(N, m, prec, band):
+    _assert_total_default(N, m, prec, band)
+
+
 def _wrong_cells(tier):
     """Wrong cells for `tier`: the slice's own cells for "slow", every one for "robust"."""
     mark = pytest.mark.slow if tier == "slow" else pytest.mark.robust
