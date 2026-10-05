@@ -431,3 +431,40 @@ def test_a_side_search_that_finds_NOTHING_leaves_a_correct_count_correct():
     there is none -- and the total must not move."""
     total, truth, _ = _cluster_total(65, 4, 0.5, 1e-12)
     assert total == truth
+
+
+@pytest.mark.slow
+def test_a_wide_refiner_bar_does_not_swallow_a_found_neighbour():
+    """50*pi^2, band 0.3, prec 1e-10, searched on POSTERIOR tensions -- the unpenalized
+    Rayleigh-Ritz tensions on the 8 lowest vectors of a penalty at tau = 2e-14
+    (`notes/posterior_penalty.md`). The side search found all three members; the dedup then
+    discarded the third because it lay within the second find's refiner bar (0.24 licences,
+    against a 0.22-licence gap) -- the WIDER of the two bars. 2 of 3, silent. Merging only within
+    the narrower bar keeps it; a true duplicate is still caught by the find's own reach."""
+    import scipy.linalg as la
+
+    import bracket_score as bs
+    import rect_suite as rs
+    from chladni.mps import MPSPencil
+    from chladni.mps.objective import Objective
+
+    prec = 1e-10
+    (case,) = rs.split_degeneracy_cases(prec, bands=(0.3,), levels={50: 3})
+    p = case.pencil
+    q = MPSPencil(p.bdry, p.interior, reg="tikhonov_qr", prec=prec,
+                  rtol=2e-14 / np.sqrt(p.n_cols))
+
+    def posterior(lam, k=8):
+        pen = q.tensions(float(lam))
+        B, I = q.pencil(float(lam))
+        X = q.coef(float(lam), k)
+        _, R = la.qr(I @ X, mode="economic")
+        post = np.sort(la.svdvals(la.solve_triangular(R, (B @ X).T, trans="T").T))
+        return np.concatenate([post, pen[k:]])
+
+    base = bs.objective_for(case, prec)
+    obj = Objective(posterior, base.lo, base.hi, prec=prec, variable=case.variable,
+                    expected_count=base.expected_count)
+    res = solve(obj, prec=prec)
+    assert not res.declined
+    assert sum(L.mult for L in res.levels) == 3

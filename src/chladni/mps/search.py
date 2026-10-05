@@ -1201,11 +1201,19 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                             r2.reason != "not_a_minimum" and not explained
                             and r2.sigma < SIDE_RATIO * float(t_here[j]))
                         continue
+                    # Already a located root, from its own bracket -- within the NARROWER of the two
+                    # bars, never the wider. One wide bar used to swallow a genuine neighbour: 50*pi^2,
+                    # band 0.3, prec 1e-10, on posterior tensions (`notes/posterior_penalty.md`), the
+                    # side search found all three members and discarded the third, 0.22 licences from
+                    # the second, because the second's refiner bar was 0.24 licences. 2 of 3, silent.
+                    # The same shape `r`'s own bar has, which is why `r` is not in `taken`. A true
+                    # duplicate does not need the wide bar: re-found on the same well, its reading puts
+                    # that well within its reach, and the check below discards it.
                     if any(abs(r2.lam - q.lam) <= max(
-                            r2.delta_res if np.isfinite(r2.delta_res) else 0.0,
-                            q.delta_res if np.isfinite(q.delta_res) else 0.0,
+                            min(r2.delta_res if np.isfinite(r2.delta_res) else 0.0,
+                                q.delta_res if np.isfinite(q.delta_res) else 0.0),
                             4.0 * np.spacing(abs(r2.lam))) for q in taken):
-                        continue                    # already a located root, from its own bracket
+                        continue
                     # Found AGAIN, by distance. A find's own reading says how far the nearest
                     # eigenvalue can be -- `sigma/c`, at the calibrated bound -- and a root already
                     # located within that reach IS that eigenvalue. The bars above are not enough:

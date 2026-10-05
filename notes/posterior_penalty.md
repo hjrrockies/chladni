@@ -1,5 +1,8 @@
 # A fixed penalty read through posterior tensions clears the cluster grid down to 1e-14
 
+*Updated 2026-10-05: the one loss below was a search defect, fixed in `search.solve`; with it
+fixed the posterior row is clean at every rung (section "After the fix").*
+
 2026-10-05. The question from `notes/moler_payne_vs_tension.md` section 1: the order-1 penalty
 has no feasible `tau` at `prec = 1e-14` when `tau` scales with `prec`, because its floor (~1.4
 tau) must stay under the licence while its noise jaw (~3 eps sqrt(n)) is fixed by the arithmetic.
@@ -49,11 +52,26 @@ excluded from `taken` for exactly this reason): a parabola-fit bar wide enough t
 neighbour. The posterior objective produces wider refiner bars, which is why it surfaces here; the
 threshold's narrower bars hide it. Not fixed in this experiment.
 
+## After the fix
+
+The dedup now merges two finds only within the NARROWER of their refiner bars; a true duplicate is
+still caught by the find's own reach (`(sigma / c) / bias_lo`). Regression:
+`tests/test_rule_seam.py::test_a_wide_refiner_bar_does_not_swallow_a_found_neighbour`, which fails
+without the fix. On every exercisable 50/65*pi^2 cell from 1e-6 to 1e-14, on the default and the
+suite pencils (106 each), the fix changes nothing -- totals and evaluation counts identical. The
+grid, rerun:
+
+    prec      threshold            fixed tau                    posterior
+    1e-10     22/22                22/22                        22/22
+    1e-12     22/22                22/22                        22/22
+    1e-14     17/18 + 1 declined   0/18 (10 flagged, 8 silent)  18/18
+
+The threshold and fixed-tau rows are identical to the first run, evaluation counts included.
+
 ## What this does and does not establish
 
 Established, on this instrument: a fixed `tau` near the noise jaw, read through posterior tensions,
-counts the cluster grid correctly at 1e-12 and 1e-14 and loses one member at 1e-10 to a dedup defect
-that has a named mechanism. The squeeze of `penalty_prec_limit_explained.md` is a property of
+counts the cluster grid correctly at 1e-10, 1e-12 and 1e-14, beating the threshold at 1e-14. The squeeze of `penalty_prec_limit_explained.md` is a property of
 reading `sigma_tau`, not of the penalty.
 
 Not established:
@@ -61,8 +79,6 @@ Not established:
 * **One `tau`, one family.** 2e-14 on 126-column plane-wave rectangles -- the family the reach
   constants were fitted on. The noise jaw scales with `eps sqrt(n)`, so `tau` should too; unchecked
   across basis sizes, corner bases, curved boundaries.
-* **The dedup defect.** Until the bar-swallows-neighbour rule is fixed, the posterior row has a
-  known silent loss.
 * **Whether the reach rule's calibrated constants transfer.** `COUNT_BELOW_CACHE` and its kin were
   calibrated on threshold tensions; they were not re-derived for posterior ones, and the row
   happened to pass.
@@ -71,8 +87,7 @@ Not established:
 
 ## Next, if this is pursued
 
-1. Fix the dedup: two converged finds should not merge on the WIDER of their bars when both read
-   at the floor (compare depths, or use the narrower bar), with this cell as the regression.
+1. ~~Fix the dedup~~ -- done: the narrower bar.
 2. `tau = C eps sqrt(n)`, and the same grid across basis sizes and on the hard roster (L-shape,
    GWW, disk), the posterior row against the threshold.
 3. If both hold: a `reg="posterior"`-style mode on `MPSPencil` (or the posterior as the objective
