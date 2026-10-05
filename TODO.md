@@ -74,7 +74,16 @@ and deciding whether Phase D's angle earns its keep.
   Two ways on, not exclusive: `OPENBLAS_NUM_THREADS=1` in CI (0 failures in ~39 single-thread
   Linux runs, and 2.5-3.2x faster at module scope -- deterministic CI, but it hides the flip
   rather than removing it); and retiring truncation for the penalty everywhere, which removes the
-  rank decision itself (`notes/posterior_penalty.py`, in progress).
+  rank decision itself.
+
+* **[next]** **A FIXED penalty read through POSTERIOR tensions cleared the cluster grid at 1e-14**
+  (`notes/posterior_penalty.md`, 2026-10-05): 18/18 where the threshold is 17 and a decline and
+  `sigma_tau` at the same `tau` is 0/18; 22/22 at 1e-12; 21/22 at 1e-10, the one silent loss a
+  traced SEARCH defect (the side search's dedup merges two finds within the WIDER of their two
+  refiner bars, and a 0.24-licence bar swallowed a member 0.22 licences away). This is the route
+  to retiring truncation at every `prec`. In order: fix that dedup with the cell as regression;
+  `tau = C eps sqrt(n)` across basis sizes and the hard roster; then a posterior mode as the
+  default, `PENALTY_PREC_MIN` removed. One family, one `tau`, macOS only so far.
 
 * **[next]** **`basis_sufficiency` decides the DENOMINATOR at a boundary it clears by 6%, and the
   two platforms therefore score different case sets.** macOS calls 10 cells unexercisable where
