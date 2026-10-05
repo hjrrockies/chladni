@@ -246,6 +246,46 @@ def test_the_traced_under_count_cell_is_never_SILENTLY_wrong():
         f"{total} of 3 and SILENT: the one outcome this cell must not have")
 
 
+def _cluster_solve(N, m, band, prec, tau=None):
+    """Solve one cluster cell; `tau=None` is the DEFAULT pencil, else an explicit penalty."""
+    import bracket_score as bs
+    import rect_suite as rs
+    from chladni.mps import MPSPencil
+    from chladni.mps.objective import Objective
+
+    (case,) = rs.split_degeneracy_cases(prec, bands=(band,), levels={N: m})
+    p = case.pencil
+    q = (MPSPencil(p.bdry, p.interior, prec=prec) if tau is None else
+         MPSPencil(p.bdry, p.interior, reg="tikhonov_qr", prec=prec,
+                   rtol=tau / np.sqrt(p.n_cols)))
+    base = bs.objective_for(case, prec)
+    obj = Objective(lambda x: q.tensions(float(x)), base.lo, base.hi, prec=prec,
+                    variable=case.variable, expected_count=base.expected_count)
+    res = solve(obj, prec=prec)
+    assert not res.declined
+    return sum(L.mult for L in res.levels)
+
+
+@pytest.mark.slow
+def test_an_INNER_END_refusal_too_low_for_the_roots_own_wall_is_searched_past():
+    """50*pi^2, band 0.3, prec 1e-12, the default pencil (the threshold below 1e-8): a cache slope
+    half the typical one put the side search's exclusion at 0.32 licences, member 0 at 0.27 was
+    inside it, and the side's refusal at its inner end -- reading 0.18 sigma_j, where the root's
+    own wall reads at least 0.3 -- counted as a rejection. 2 of 3, silent, under the old default
+    too (`notes/smooth_filter.md` 10.7)."""
+    assert _cluster_solve(50, 3, 0.3, 1e-12) == 3
+
+
+@pytest.mark.slow
+@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")   # tau = 0.1 prec, on purpose
+def test_a_stage_1_bracket_refused_at_its_END_is_searched_one_width_past_it():
+    """65*pi^2, band 1.3, prec 1e-12, `tau = 0.1 prec`: the fourth stage-1 bracket began 0.1
+    licences ABOVE member 3, the refiner walked to that end and refused it -- the minimum was
+    outside -- and nothing looked beyond. 3 of 4, silent (`notes/smooth_filter.md` 10.7). Outside
+    the penalty's reach, which is why it warns, but the defect is the search's, not the pencil's."""
+    assert _cluster_solve(65, 4, 1.3, 1e-12, tau=0.1 * 1e-12) == 4
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize("N, m, band, prec", [(50, 3, 0.8, 1e-8), (65, 4, 0.3, 1e-8),
                                               (50, 3, 0.3, 1e-8), (170, 4, 0.3, 1e-12)])

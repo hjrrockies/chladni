@@ -929,7 +929,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     # Stage 2. `bracket_interval` returns brackets in the objective's OWN variable, so this
     # converts once, here, to the `lam` the refiner works in.
     mark = obj.n_evals
-    located, refused = [], []
+    located, refused, ends = [], [], []
     for b in res.brackets:
         lo, hi = obj.in_lam_bracket(b.lo, b.hi)
         hint = obj.in_lam(b.k_hint) if np.isfinite(b.k_hint) else None
@@ -955,6 +955,37 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
             # flipped end, above every located level. The depth test cannot tell that from an
             # empty bracket; only an objective continuous in `lam` removes it.
             refused.append(r)
+            ends.append((r, (lo, hi)))
+    # A bracket refused AT ITS OWN END, with the descent leading out of it, can hold the wall of
+    # a member stage 1 placed just outside. 65*pi^2, band 1.3, prec 1e-12, `tau = 0.1 prec`: the
+    # fourth bracket began 0.1 licences above member 3, the refiner walked to its lower end and
+    # refused it -- correctly, the minimum was outside -- and nothing looked there. 3 of 4, and
+    # silent, since the refusal read 1.0e-12 against located levels down to 2.6e-13.
+    #
+    # So step out once, one bracket width past that end, clipped to the interval and to every
+    # other stage-1 bracket so the step cannot re-find a root located from its own. An empty
+    # region stays refused at the cost of one more refinement; a find is located like any other.
+    spans = [obj.in_lam_bracket(b.lo, b.hi) for b in res.brackets]
+    edge_lo, edge_hi = obj.in_lam_bracket(obj.lo, obj.hi)
+    for r, (lo, hi) in ends:
+        w = hi - lo
+        if not (r.reason in ("not_a_minimum", "endpoint") and w > 0):
+            continue
+        others = [s for s in spans if s != (lo, hi)]
+        if abs(r.lam - lo) <= 0.01 * w:
+            a = max([lo - w, edge_lo] + [s_hi for s_lo, s_hi in others if s_hi <= lo])
+            b = lo
+        elif abs(r.lam - hi) <= 0.01 * w:
+            a = hi
+            b = min([hi + w, edge_hi] + [s_lo for s_lo, s_hi in others if s_lo >= hi])
+        else:
+            continue
+        if not b - a > 4.0 * np.spacing(abs(r.lam)):
+            continue
+        r_out = refine(obj, a, b, prec=prec, interior=(a, b))
+        if r_out.accepted:
+            located.append((r_out, (a, b)))
+            refused.remove(r)               # explained: the end was this find's wall
     rejected = len(refused)
     refine_evals = obj.n_evals - mark
 
@@ -1083,7 +1114,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                 # refining there fits a parabola to rounding -- the phantom class the reach dedup
                 # below records at 65*pi^2, prec 1e-10, band 1.0.
                 sides = [(bracket[0], r.lam - half, -1), (r.lam + half, bracket[1], +1)]
-                budget = _SIDE_SEARCH_MAX
+                budget, narrowed = _SIDE_SEARCH_MAX, set()
                 while sides and budget > 0:
                     a, b2, side = sides.pop(0)
                     if not (np.isfinite(half) and a < b2):
@@ -1111,8 +1142,31 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                         reach_side = (r2.sigma / c_out) / BIAS_LO_CACHE + 2.0 * (b2 - a)
                         explained = any(abs(q.lam - r2.lam) <= reach_side
                                         for q in taken if q is not r)
-                        inconclusive |= (r2.reason != "not_a_minimum" and not explained
-                                         and r2.sigma < SIDE_RATIO * float(t_here[j]))
+                        # A refusal at the INNER end is not a rejection when it reads too LOW for
+                        # `r`'s own wall. The end sits `half = 0.5 sigma_j/c` from `r`, where that
+                        # wall reads `0.5 sigma_j` times the slope's bias -- at least BIAS_LO_CACHE.
+                        # Lower than that, the descent is into a well INSIDE the exclusion: 50*pi^2,
+                        # band 0.3, prec 1e-12, a cache slope half the typical one put `half` at
+                        # 0.32 licences, member 0 at 0.27 was inside it, and the inner end read
+                        # 0.18 sigma_j. Counted as resolved, the total was 2 of 3, silent. Search
+                        # the side once more with the exclusion `r`'s own reading implies -- the
+                        # radius a find gets below -- and if that too stops at its inner end
+                        # reading low, the side is undetermined.
+                        inner = b2 if side < 0 else a
+                        off_r = abs(inner - r.lam) <= half + 4.0 * np.spacing(abs(r.lam))
+                        low_inner = (r2.reason == "not_a_minimum" and not explained and off_r
+                                     and abs(r2.lam - inner) <= 0.01 * (b2 - a)
+                                     and r2.sigma < 0.5 * BIAS_LO_CACHE * float(t_here[j]))
+                        if low_inner and side not in narrowed:
+                            narrowed.add(side)
+                            near = max((r.sigma / c_out) / bias_lo_eff,
+                                       4.0 * np.spacing(abs(r.lam)))
+                            sides.insert(0, (a, r.lam - near, side) if side < 0
+                                         else (r.lam + near, b2, side))
+                            continue
+                        inconclusive |= low_inner or (
+                            r2.reason != "not_a_minimum" and not explained
+                            and r2.sigma < SIDE_RATIO * float(t_here[j]))
                         continue
                     if any(abs(r2.lam - q.lam) <= max(
                             r2.delta_res if np.isfinite(r2.delta_res) else 0.0,
