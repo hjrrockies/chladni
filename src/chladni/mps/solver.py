@@ -18,6 +18,7 @@ Basis planning is deferred (`docs/design/particular_solutions.md`, "Still deferr
 from __future__ import annotations
 
 import concurrent.futures as cf
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -27,7 +28,7 @@ from .._core import Frozen, PrecisionWarning, _set, check_prec
 from ..eigensolver import Eigensolver, Spectrum, lam_to_k, weyl_window
 from .pencil import MPSPencil
 
-__all__ = ["MPSEigensolver", "DEFAULT_RNG"]
+__all__ = ["MPSEigensolver", "Eigenfunctions", "DEFAULT_RNG"]
 
 #: How many eigenvalues the default reference window is sized for, when `lam_ref` is not
 #: given. Only sets where the rank is chosen, so it wants to be a typical scan rather than a
@@ -53,6 +54,22 @@ _REF_MODES = 10
 #: domain, and section 17 names the L-shape's thin-protrusion rejection case as the test to run
 #: before the METHOD changes. `method="random"` therefore stands.
 DEFAULT_RNG = 0
+
+
+@dataclass(frozen=True)
+class Eigenfunctions:
+    """A level's eigenfunctions: `coef`, `(n_cols, mult)` in the FAMILY's coordinates, so
+    `basis.values(lam_to_k(lam), pts) @ coef` evaluates them anywhere; L2(Omega)-orthonormal
+    when `orthonormal`. `rule` is the `IntegralQuad` the Gram was formed on -- the node set a
+    Hadamard derivative will want -- and `gram_residual` the orthonormality defect at a second
+    Rellich origin."""
+
+    lam: float
+    coef: np.ndarray
+    rule: object
+    orthonormal: bool
+    gram_residual: float
+    reason: str = ""
 
 
 class MPSEigensolver(Eigensolver, Frozen):
@@ -259,7 +276,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         """
         from dataclasses import replace
 
-        from ..integrals import cauchy, certify, integral_quad
+        from ..integrals import cauchy, certify
         from .search import _precision_summary
 
         p = self._pencil
@@ -267,14 +284,7 @@ class MPSEigensolver(Eigensolver, Frozen):
             why = "Moler-Payne needs a Dirichlet condition on the whole boundary"
             levels = tuple(replace(L, bound_reason=why) for L in res.levels)
         else:
-            key = (float(lam_max), float(prec))
-            cache = getattr(self, "_integral_quads", None)
-            if cache is None:
-                _set(self, _integral_quads={})
-                cache = self._integral_quads
-            if key not in cache:
-                cache[key] = integral_quad(self.domain, lam_max, prec=prec)
-            iq = cache[key]
+            iq = self._integral_quad(lam_max, prec)
             origins = certify.x0_probes(self.domain, iq.x0)
             levels = []
             for L in res.levels:
@@ -296,6 +306,54 @@ class MPSEigensolver(Eigensolver, Frozen):
         return replace(res, levels=levels,
                        diagnostics=replace(res.diagnostics, unmet=unmet,
                                            attained_prec=attained))
+
+    def _integral_quad(self, lam_max, prec):
+        """The integral rule for `lam` up to `lam_max` at `prec`, built once per pair. A rule is
+        a function of geometry, `lam_max` and `prec` alone, so it serves every level of a solve."""
+        from ..integrals import integral_quad
+
+        key = (float(lam_max), float(prec))
+        cache = getattr(self, "_integral_quads", None)
+        if cache is None:
+            _set(self, _integral_quads={})
+            cache = self._integral_quads
+        if key not in cache:
+            cache[key] = integral_quad(self.domain, lam_max, prec=prec)
+        return cache[key]
+
+    def eigenfunctions(self, level, *, prec=None):
+        """The level's eigenfunctions, L2(Omega)-orthonormal, as `Eigenfunctions`.
+
+        The `mult` minimizing vectors at the level's ONE `lam` -- a merged level's members are
+        never combined across different `lam`, where a Gram would need Green's identity and divide
+        by their difference -- are put in the family's coordinates, their Cauchy data evaluated
+        on an integral rule (evaluate first, sandwich never), their Gram formed from the full
+        Rellich identity, and the columns Löwdin-orthonormalized. Only the span is promised, not
+        which orthonormal basis of it.
+
+        A DEFICIENT Gram -- columns nearly dependent, so the multiplicity is likely wrong -- is
+        not orthonormalized: the columns come back normalized one by one, `orthonormal` is False
+        and `reason` says why. `gram_residual` is `max |G - I|` recomputed at a SECOND Rellich
+        origin, the check a caller can make without an interior oracle.
+        """
+        from ..integrals import cauchy, certify, identities
+
+        prec = self.prec if prec is None else check_prec(prec)
+        lam, m = float(level.lam), int(level.mult)
+        p = self._pencil
+        fc = p.family_coef(lam, p.coef(lam, m))
+        iq = self._integral_quad(lam, prec)
+        cd = cauchy.cauchy_data(p.basis, fc, lam, iq.quad)
+        G = identities.gram(cd, iq.x0)
+        try:
+            out, ok, why = fc @ identities.lowdin(G), True, ""
+        except ValueError as err:
+            out, ok, why = fc / np.sqrt(np.abs(np.diag(G))), False, str(err)
+        check = certify.x0_probes(self.domain, iq.x0, n=1)[1]
+        G2 = identities.gram(cauchy.cauchy_data(p.basis, out, lam, iq.quad), check)
+        resid = float(np.abs(G2 - np.eye(m)).max())
+        return Eigenfunctions(lam=lam, coef=out, rule=iq, orthonormal=ok, gram_residual=resid,
+                              reason=why)
 
     def solve_interval(self, a, b):
         """The `Spectrum` of `[a, b]` -- `Eigensolver`'s contract, over `search_interval`.

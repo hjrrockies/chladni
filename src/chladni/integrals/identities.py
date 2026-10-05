@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["KERNELS", "weighted_integral", "gram", "norms"]
+__all__ = ["KERNELS", "LOWDIN_GUARD", "weighted_integral", "gram", "norms", "lowdin"]
 
 #: The four bilinear Cauchy-data kernels. `'cr'` is the symmetrized cross term.
 KERNELS = ("uv", "NN", "TT", "cr")
@@ -74,3 +74,32 @@ def norms(cd, x0):
     d = np.diag(gram(cd, x0))
     with np.errstate(invalid="ignore"):
         return np.where(d >= 0, np.sqrt(np.abs(d)), np.nan)
+
+
+#: The smallest eigenvalue ratio `w_min / w_max` of a cluster's Gram matrix that `lowdin` will
+#: invert. Below it the columns are nearly dependent -- the cluster has the wrong multiplicity --
+#: and `w^(-1/2)` would amplify a near-zero (or rounding-negative) eigenvalue through every column.
+#: lappy's `ttol`.
+LOWDIN_GUARD = 1e-3
+
+
+def lowdin(G, guard=LOWDIN_GUARD):
+    """The symmetric (Löwdin) orthonormalizing transform `D = Q diag(w^(-1/2)) Q^T` of a small Gram
+    matrix `G = Q diag(w) Q^T`: for coefficient columns `C` whose Gram is `G`, `C @ D` is
+    orthonormal.
+
+    Symmetric rather than Cholesky because it treats the columns alike, so no member of a cluster
+    is privileged by its position. Only the cluster's SPAN is meaningful; which orthonormal basis
+    of it comes back is not promised (lappy states the same contract).
+
+    Raises when `w_min / w_max < guard`: the cluster is deficient, and orthonormalizing it would
+    manufacture a direction from rounding.
+    """
+    G = np.asarray(G, dtype=float)
+    w, Q = np.linalg.eigh(0.5 * (G + G.T))
+    if not (w[0] > 0 and w[0] / w[-1] >= guard):
+        raise ValueError(
+            f"the Gram matrix is deficient (eigenvalue ratio {w[0] / w[-1]:.2e} < {guard:.0e}): "
+            f"the cluster's columns are nearly dependent, so its multiplicity is likely wrong")
+    return (Q * w ** -0.5) @ Q.T
+

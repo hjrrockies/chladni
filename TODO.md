@@ -279,8 +279,8 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   2026-10-05 in `docs/design/boundary_integrals.md`, on lappy's measured design: corner
   substitution rules with fitted weights, sizing from closed-form models, refine-and-difference as
   the certificate, evaluate-first Gram, Löwdin, a Moler-Payne bound on every level with
-  `Spectrum.bound = min(delta_res, mp_bound)`. M0-M3 done (seams, rules, the identity, the bound
-  on every Dirichlet level); next, M4: Gram, Löwdin, orthonormal cluster eigenfunctions. Still
+  `Spectrum.bound = min(delta_res, mp_bound)`. M0-M4 done (seams, rules, the identity, the bound
+  on every Dirichlet level, orthonormal cluster eigenfunctions); next, M5: Hadamard. Still
   open from M2: a candidate whose basis mixes smooth columns with corner ones.
   The evidence (`notes/moler_payne_vs_tension.md`): the shipped default reports a bar of 1-2e-10
   on errors of 6e-14 to 2.5e-12, and the bound held on all 15 rows at about 10x tighter. It sits

@@ -1,6 +1,6 @@
 *Status: design, approved 2026-10-05. M0 (seams), M1 (rules), M2 (plan, Cauchy data, the
-identity) and M3 (the Moler-Payne bound, wired into the solver) are in. Package:
-`chladni.integrals`.*
+identity), M3 (the Moler-Payne bound, wired into the solver) and M4 (orthonormal cluster
+eigenfunctions) are in; M5 (Hadamard) is next. Package: `chladni.integrals`.*
 
 # Overview
 `chladni` is going to rely on accurate boundary integration for two key parts of the MPS solve:
@@ -170,7 +170,7 @@ level's one `lam` before their Gram is formed, so no Gram ever divides by `lam_i
         exact norms of sector (singular), rect, polyomino, disk eigenfunctions;
         a real L-shape candidate against a graded oracle                          [done]
     M3  Moler-Payne on every level, wired into the solver                         [done]
-    M4  clusters: Gram, Löwdin, orthonormal eigenfunctions
+    M4  clusters: Gram, Löwdin, orthonormal eigenfunctions                        [done]
     M5  Hadamard (after M4)
     M6  later: Neumann and mixed, curved boundaries, a guaranteed maximum, planner integration
 
@@ -212,6 +212,25 @@ level's one `lam` before their Gram is formed, so no Gram ever divides by `lam_i
   reported. Measured cancellation on real candidates: 2 to 3.
 * **Refused, with a reason**: any non-Dirichlet boundary (the inclusion needs `u - v` to vanish on
   all of it), and `eps >= 1`.
+
+## What M4 measured (2026-10-05)
+
+* **Clusters come back orthonormal against INTERIOR oracles**, not the identity they were formed
+  with: the unit square's exact double at `5 pi^2` (tensor Gauss, `|G - I| < 1e-10`) and the
+  disk's `m = 1` pair (polar rule, `< 1e-9`). `MPSEigensolver.eigenfunctions(level)` forms them at
+  the level's one `lam` and reports `gram_residual` at a second Rellich origin; a deficient Gram
+  comes back normalized column by column and FLAGGED.
+* **"Sandwich never" did not reproduce, and the reason is the scaling.** lappy measured a
+  basis-sized Gram `c^T G c` off by ~1e-4 on a basis of condition 1e16 with raw coefficients. Here,
+  on the L-shape corner basis (Gram condition 1e8) and on plane-wave bases from 20 to 120 columns
+  under both regularizations, the sandwich and evaluate-first agree to 1e-14: both regularizers
+  keep the minimizing coefficients bounded (cancellation 2-4 throughout), so there is nothing for
+  the sandwich to amplify. Evaluate-first stays -- it forms an `m x m` block instead of `n x n`, and
+  lappy's OTHER reason, corner rules losing 2-4 orders on columns centred at other corners, is not
+  yet measured here (a multi-corner basis) -- but no test claims the sandwich fails.
+* Seen in passing, not this layer's: with 16 plane-wave directions the unit square's search
+  returns NO level in [45, 55] and does not decline (24 directions find the double). That is the
+  starved-basis loss `TODO.md` section 4 already records.
 
 # Accuracy: the bound needs few digits, orthonormalization needs many
 

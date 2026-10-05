@@ -40,7 +40,7 @@ def _bound(p, lam, x, domain, prec=1e-12):
     return M.moler_payne(cd, evaluate, domain, M.x0_probes(domain, iq.x0))
 
 
-# --- the notes table, through the layer ------------------------------------------------------------
+# --- the notes table, through the layer -----------------------------------------------------------
 
 def _rect_case():
     import rect_suite as rs
@@ -74,7 +74,7 @@ def test_the_bound_covers_the_true_error_on_every_rectangle_level(which):
             assert mp.abs[0] <= 10 * max(err, 1e-15 * lam0), (lam0, mp.abs[0], err)
 
 
-# --- a singular corner, at known offsets ------------------------------------------------------------
+# --- a singular corner, at known offsets ----------------------------------------------------------
 
 @pytest.mark.parametrize("index", [1, 3])
 @pytest.mark.parametrize("offset", [1e-11, 1e-8, 1e-5])
@@ -112,7 +112,7 @@ def test_at_the_eigenvalue_the_bound_reaches_the_rounding_floor_and_no_further()
     assert mp.rel[0] >= floor
 
 
-# --- what it refuses ----------------------------------------------------------------------------------
+# --- what it refuses ------------------------------------------------------------------------------
 
 def test_a_neumann_boundary_is_refused_with_a_reason():
     """The inclusion rests on `u - v` vanishing on the whole boundary. Not Dirichlet: no bound."""
@@ -141,7 +141,7 @@ def test_a_candidate_far_from_any_eigenvalue_gets_no_finite_bound():
     assert mp.abs[0] >= min(abs(lam - float(e)) for e in ref.L_shape_eigs(3))
 
 
-# --- wired into the solver --------------------------------------------------------------------------
+# --- wired into the solver ------------------------------------------------------------------------
 
 def _l_solver(certify=True):
     from hard_roster import recipe_basis
