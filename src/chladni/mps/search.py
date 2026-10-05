@@ -1040,7 +1040,9 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     lams, svals = _samples(obj)
     levels = []
     probe_evals = side_evals = 0
-    for (r, bracket), n_roots in located:
+    queue = [(r, bracket, n_roots, False) for (r, bracket), n_roots in located]
+    while queue:
+        r, bracket, n_roots, recentred = queue.pop(0)
         c = _slope_from_cache(lams, svals, r.lam, floor=r.sigma)
         # The distance to the next eigenvalue, from the free `sigma_2` the search already has.
         # It bounds the wide bracket from ABOVE, so the flanks cannot reach a neighbour and
@@ -1102,6 +1104,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                 # unflagged. A find that is really `r`'s own wall is a phantom at the inner end,
                 # which the refiner's end probe rejects.
                 taken = [p[0][0] for p in located if p[0][0] is not r]
+                finds = []
                 found, inconclusive = 0, not np.isfinite(half)
                 # A WORK LIST per side, not one interval each. Refining each side exactly once
                 # left a member unfound wherever a side held two: 170*pi^2, band 0.3, prec 1e-12,
@@ -1184,6 +1187,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                     if any(abs(r2.lam - q.lam) <= reach_find for q in taken):
                         continue
                     taken.append(r2)
+                    finds.append(r2)
                     found += 1
                     extra.append(Level(lam=r2.lam, mult=1, sigma=r2.sigma,
                                        delta_res=r2.delta_res, bracket=(a, b2), n_roots=1))
@@ -1216,6 +1220,25 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                         reads = [float(np.atleast_1d(tens(z))[0]) for z in towards]
                         drop = max(reads) < _HUMP_RATIO * r.sigma
                 side_evals += obj.n_evals - side_mark
+                # RE-CENTRE when `r` is a find's WALL. The refiner may accept a point off the
+                # bottom whenever its bar covers the error, and the read taken there is a read of
+                # the wrong point: the disk's double at 57.58, prec 1e-8, `rtol = 1.25
+                # SUITE_RTOL`, accepted `r` 0.0245 licences up the wall at sigma 1.2e-9, counted
+                # one, left the partner branch undecided -- and the side search found the true
+                # root at sigma 1.5e-15, which that branch then owned. One exact double came back
+                # as two simple levels, total right, the solver contract broken (Linux CI, the
+                # same shape). `r`'s own reading puts the nearest eigenvalue within
+                # `(sigma/c)/bias_lo`, so a DEEPER find inside that reach is what `r` was reading:
+                # the find replaces `r`, and the whole read is redone there. Once per entry.
+                reach_r = (r.sigma / c_out) / bias_lo_eff
+                walls = [q for q in finds if q.sigma < r.sigma and abs(q.lam - r.lam) <= reach_r]
+                if walls and not recentred:
+                    q = min(walls, key=lambda q: q.sigma)
+                    located = [(p, k) if p[0] is not r else ((q, bracket), k)
+                               for p, k in located]
+                    lams, svals = _samples(obj)
+                    queue.insert(0, (q, bracket, n_roots, True))
+                    continue
             # ATTRIBUTION. A branch the read counted INSIDE the bracket and a level located inside
             # the same bracket can be the same eigenvalue, and until now nothing compared them --
             # so the member was reported twice (170*pi^2, band 0.3, prec 1e-8: 9 of 8, certified).

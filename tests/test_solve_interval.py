@@ -107,6 +107,36 @@ def test_a_tighter_request_costs_more_and_says_what_it_could_not_reach():
     assert np.allclose(lams[0], lams[-1], rtol=1e-6, atol=0), "the answers must agree"
 
 
+@pytest.mark.parametrize("seed, f, prec", [(0, 1.25, 1e-8), (11, 1.25, 1e-6)])
+def test_an_exact_degeneracy_is_ONE_level_when_the_refiner_stops_on_its_wall(seed, f, prec):
+    """The solver contract, not a scoring rule: a detectable exact degeneracy comes back as one
+    level with its full multiplicity. Linux CI broke it in the test above -- 7 levels against
+    6, total right -- on every leg, and these are the same failure reproduced on Accelerate by
+    moving what a BLAS moves, the threshold rank: `rtol = 1.25 SUITE_RTOL`, two of 108 seed /
+    `rtol` / `prec` cells.
+
+    The mechanism (seed 0, the double at 57.58): the refiner accepted a point 0.0245 licences up
+    the WALL of the double, sigma 1.2e-9 against a floor of 1.5e-15 -- legal, its bar covered
+    the error -- the read there counted one and left the partner undecided, and the side search
+    found the true root, which that undecided branch then owned. Two simple levels. `solve` now
+    re-centres on a deeper find inside the root's own reach and reads the multiplicity there."""
+    from chladni.helmholtz import PlaneWave
+    from chladni.mps import MPSEigensolver
+    from rect_suite import SUITE_RTOL
+
+    a, b, dom = 8.0, 60.0, disk(1.0)
+    basis = PlaneWave.uniform(int(1.3 * PlaneWave.n_useful(np.sqrt(b) * dom.diameter)),
+                              radius=dom.diameter)
+    n = len(basis)
+    s = MPSEigensolver(dom, basis=basis, n_bdry=3 * n, n_int=n, rtol=f * SUITE_RTOL,
+                       rng=np.random.default_rng(seed), prec=prec)
+    spec = s.solve_interval(a, b)
+    truth = np.sort(disk_spectrum(a, b, 1.0))
+    want = np.unique(truth, return_counts=True)[1]
+    assert spec.count == len(truth)
+    assert np.array_equal(spec.mult, want), f"multiplicities {spec.mult} against truth {want}"
+
+
 def test_a_request_the_basis_cannot_serve_is_REPORTED_not_met_silently():
     """Clause (3) at the point it bites. A deliberately STARVED plane-wave basis on the disk --
     22 columns, `pad = 0.35`, on the roster's fixed `SUITE_RTOL` -- cannot serve

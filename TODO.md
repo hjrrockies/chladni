@@ -35,11 +35,12 @@ both pencils. The two platforms still score different case sets (below). What is
 constants still inherited from one rectangle family, the rank policy that belongs to the planner,
 and deciding whether Phase D's angle earns its keep.
 
-* **[next]** **Four Linux-only failures remain, none a wrong total, all older than the penalty.**
+* **[next]** **Three Linux-only failures remain, none a wrong count, all older than the penalty.**
   One full-suite leg on `ubuntu-latest` / Python 3.13, 2026-10-04 (`diag/acceptance`): 5 failed of
   2400, and the fifth -- `test_regularization`'s differentiability contrast, which needs the
   threshold to flicker at a point found on Accelerate -- now skips its contrast half where the
-  rank does not flicker. Each of the four was red on the 2026-09-21 `main` run too:
+  rank does not flicker. Each of the rest was red on the 2026-09-21 `main` run too, and all four
+  were red, deterministically, on all three legs of the 2026-10-05 `main` run:
 
   1. `test_floor.py::test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window`
      -- rank 71 of 92 at `lam = 120` against a bound of 0.85 n = 78. Accelerate keeps more.
@@ -47,10 +48,14 @@ and deciding whether Phase D's angle earns its keep.
      minimum sits 0.364 of the way in, where the test's premise needs < 0.25.
   3. `test_refine.py::test_the_start_point_is_the_DEEPEST_SAMPLE_not_the_midpoint` -- converged
      1e-7 from the root (accepted, `delta_res` 2e-7 covers it) where the test asserts 1e-10.
-  4. `test_solve_interval.py::test_a_tighter_request_costs_more_and_says_what_it_could_not_reach`
-     -- the right COUNT but 7 levels against 6 distinct disk eigenvalues: a degenerate pair
-     reported as two levels. Permitted by the merge policy only if it is not a DETECTABLE exact
-     degeneracy, and a disk's is. The one of the four that may be a real defect.
+
+  A fourth, `test_solve_interval.py::test_a_tighter_request_costs_more...` (7 levels against 6,
+  total right), was a real defect and is FIXED, verified on macOS only: the refiner accepted a
+  point up the WALL of an exact double, the read there counted one, and the side search's find of
+  the true root became a second simple level. `solve` now re-centres on a deeper find inside the
+  root's own reach. Reproduced on Accelerate by `rtol = 1.25 SUITE_RTOL` (2 of 108 cells before,
+  0 after; `test_an_exact_degeneracy_is_ONE_level_when_the_refiner_stops_on_its_wall`). The
+  next Linux run is what confirms the CI cell.
 
   1-3 look like premises measured on one LAPACK (a fixture whose geometry the BLAS moves), and
   the fix is to re-derive the premise, not loosen the claim. Until they are handled, `main` CI is
