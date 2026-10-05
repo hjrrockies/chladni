@@ -993,3 +993,90 @@ a regularization one.
 decline). 1e-14 has no feasible `tau` and needs the second-order form or the threshold. What is
 missing for a rule is the band's `prec`-dependence: it is measured at 1e-12 only, and C = 0.02
 is not uniformly clean.
+
+**Qualified 2026-09-24 (section 11): "BEATS the threshold" is against the SUITE pencil**, fixed at
+`SUITE_RTOL = 1.5e-15`, which is what `smooth_filter_tau.py`'s threshold row uses. Against the
+threshold at its OWN derived `rtol` -- what the default shipped -- the full 50/65*pi^2 grid is 22 of
+22 either way at 1e-6 and 1e-8.
+
+### 10.7 The under-count, traced: three mechanisms, not one
+
+2026-09-24. `notes/trace_undercount.py` wraps the names `search.solve` calls (`bracket_interval`,
+`refine`, `multiplicity`, `_slope_from_cache`, `_claim`) and prints each stage against the true
+members. Nothing in `src/` is touched to trace. The cell 10.6 lost, 50*pi^2 band 0.3 at 1e-10 under
+`tau = 0.02 prec`, reproduces deterministically in about a second.
+
+**That cell is ATTRIBUTION, not the side search.** One bracket holds all three members. The root
+lands on member 2. The reach read counts branch 1 (d_est 0.384 licences, member 1 truly 0.3 away),
+leaves branch 2 UNDECIDED (0.836, member 0 truly 0.6 away), so `mu = 2`, ambiguous. The side search,
+aimed at branch 2, finds member 0 at 0.56 licences -- correctly. Then `_claim`, which allowed only
+COUNTED branches as targets, gave the find to branch 1: 0.56 lies in branch 1's bias band
+[0.17, 0.63] and wins the log-match 0.38 to 0.40. `mu` became 1, member 1 was dropped, and because a
+find clears the side search's doubt, the loss was SILENT. The hypothesis this plan led with -- the
+side search's exclusion radius sized off a floor -- was not it.
+
+**The first fix was wrong, and the default grid caught it.** Preferring an undecided branch outright
+fixed that cell and broke 50*pi^2 band 0.3 at 1e-6 on the default pencil, 4 of 3: two finds (0.291
+and 0.575 licences) against a counted branch at 0.319 and an undecided one at 0.574, and the nearer
+find took the undecided branch. What `_claim` does now: undecided branches are TARGETS but never
+SUBTRACTIONS; every assignment that owns each branch once and keeps ORDER on a side (a nearer
+eigenvalue has the smaller `sigma_j`) is enumerated, and those matching the most finds kept. Two
+finds then have one reading. ONE find admissible to a counted and an undecided branch has two, and
+nothing in the trace decides between them -- if it is branch 1's member, branch 2's is still out
+there; if branch 2's, branch 1's lies inside the exclusion where nothing looked. So that case keeps
+the pre-existing count and is FLAGGED. The 1e-10 cell is now 2 of 3, loud, where it was silent.
+
+**The three 1e-12 cells of 10.5 (`tau = 0.1 prec`) are different mechanisms, and none is attribution:**
+
+    cell           lost      where                                                  flagged
+    50 band 0.5    member 0  never inside a stage-1 bracket; the diameter = licence    no
+                             boundary cell (`rect_suite.cluster_diameter_ratio`)
+    65 band 1.0    member 1  at the join of two brackets; both refined to that end      yes
+                             and refused `not_a_minimum`
+    65 band 1.3    member 3  0.1 licences INSIDE its bracket; `refine` converged onto   no
+                             the lower end and refused it. `_deep_rejections` stays
+                             quiet: refusal sigma 1.0e-12, worst level 2.6e-13
+
+And the default pencil's one remaining wrong cell, 50 band 0.3 at 1e-12, is the THRESHOLD (`"auto"`
+below 1e-8) and was wrong under the old default too: the cache slope reads 0.008 against a typical
+0.015, so the side search's exclusion `half = 0.5 sigma_j / c` (0.32 licences) swallows member 0 at
+0.30; the sub-bracket beyond refuses `not_a_minimum` at its INNER end reading 0.18 sigma_j -- where
+the root's own wall would read about 0.5 -- and a `not_a_minimum` counts as a firm rejection. Silent.
+
+So "a sporadic single-cell under-count" was never one defect. The time box stopped here: the two
+`refine`-end cells and the inner-end refusal are recorded in `TODO.md` section 1 and not fixed.
+
+## 11. The default: the penalty at `prec >= 1e-8`
+
+2026-09-24. `reg="auto"` is now the default on `MPSPencil` and `MPSEigensolver`: `"tikhonov_qr"`
+with `tau = C_PEN * prec`, `C_PEN = 0.02`, at `prec >= PENALTY_PREC_MIN = 1e-8`, and the threshold at
+its derived `rtol = sqrt(prec*eps)` below. An explicit `rtol=`, `rank=` or `lam_ref=` asks for a
+truncation, which keeps every `rect_suite` fixture and every constant calibrated on one as measured.
+An explicit penalty outside its reach -- `tau > 0.05 prec`, or `tau < 3 eps sqrt(n)` -- warns
+`PrecisionWarning` and runs (`notes/penalty_prec_limit_explained.md` section 6 is the derivation).
+
+**The range was set by the stop condition, against the right baseline.** The full 50/65*pi^2
+cluster grid, 22 exercisable cells per rung, with the `_claim` fix of 10.7 in place:
+
+    prec     old default (threshold, derived rtol)     penalty, tau = 0.02 prec
+    1e-06          22 right                                  22 right
+    1e-08          22 right                                  22 right
+    1e-10          22 right                                  21 right, 1 wrong (flagged)
+    1e-12          21 right, 1 wrong (silent)                (threshold)
+
+At 1e-10 the penalty is worse than what it would replace, so `"auto"` stops at 1e-8. Section 10.6's
+"beats the threshold at 1e-6 and 1e-8" was against the SUITE pencil (`SUITE_RTOL = 1.5e-15`); against
+the threshold at its own `rtol` it is a tie. **So the default is justified by the hazard it removes
+-- a rank decision made by rounding, which has cost one real answer on Linux -- and not by a better
+score.** That is the honest version of the 09-23 decision.
+
+`tests/test_cluster_totals.py` now scores this grid on the default pencil as well as the suite's
+(`..._on_the_default_pencil`, slow slice at 1e-8/1e-10, robust grid at every rung), with the 1e-12
+threshold cell a strict xfail carrying its traced cause.
+
+**Cost, and why the suite cannot measure it.** Full suite, all tiers, `-W error::UserWarning`, same
+machine: 765 s on `main` (2232 passed), 883 s here (2388 run). The difference is almost entirely the
+new default-pencil grid, about 123 s on its own; net of it the two are within a few percent. That is
+not evidence the penalty is free: nearly every fixture passes an explicit `rtol=` or `lam_ref=` and so
+still runs the threshold. The per-evaluation figure from section 9, about 1.5x, stands as the
+measurement; a wall-clock one needs a solve on the default path, which the planner will provide.

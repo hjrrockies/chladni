@@ -130,6 +130,37 @@ and deciding whether Phase D's angle earns its keep.
   (2026-09-23).** Nothing else waits on it -- every other claim above was verified locally at
   every tier -- so this is a pause. When minutes are available again the nine-file scope is the
   cheap decisive run, not the full suite.
+
+  **Re-scoped 2026-09-24, now that the penalty is the default at `prec >= 1e-8`.** The failing
+  cell is scored on `rect_suite`'s pencil, a threshold fixed at `SUITE_RTOL`, and an explicit
+  `rtol=` stays a truncation under `reg="auto"` -- so that test still exercises the flip, and the
+  Linux run of it still fails the way it did. What SHIPS for the same cell at 1e-6 is the penalty,
+  scored by `test_the_cluster_total_GRID_on_the_default_pencil[N65-1e-06-b2.6]` and right on
+  macOS. The decisive Linux run is now BOTH: the default-pencil row (should pass, and is the
+  claim), and the suite row (expected to fail until the fixture either moves to the default or
+  records the flip as a strict xfail with this mechanism).
+* **[next]** **Two more ways a cluster member is lost, traced and NOT fixed** (2026-09-24,
+  `notes/smooth_filter.md` section 10.7, `notes/trace_undercount.py`). A third, attribution, was
+  found and fixed in `search._claim`. What remains:
+
+  1. **`refine` converges onto a bracket END and refuses it, with the member inside.** 65*pi^2 at
+     `prec = 1e-12`, `tau = 0.1 prec`: band 1.3, member 3 0.1 licences inside its bracket, refused
+     `not_a_minimum` at the lower end -- SILENT, because `_deep_rejections` compares the refusal's
+     `sigma` (1.0e-12) to the worst accepted level (2.6e-13) and it is shallower. Band 1.0: member
+     1 at the join of two brackets, both refused at that end, flagged. Same `_accept` shape as the
+     Linux flip above, with no flip: a flat-bottomed well is enough.
+  2. **The side search's exclusion swallows a member, and an inner-end refusal reads as a
+     rejection.** 50*pi^2 at 1e-12, band 0.3, on the default pencil (the threshold there): the
+     cache slope reads 0.008 against a typical 0.015, so `half = 0.5 sigma_j / c` is 0.32 licences
+     and member 0 at 0.30 is inside it; the sub-bracket beyond refuses `not_a_minimum` at its
+     INNER end, reading 0.18 sigma_j where the root's own wall reads ~0.5, and a `not_a_minimum`
+     counts as resolved. 2 of 3, silent -- under the old default too. Strict xfail in
+     `tests/test_cluster_totals.py` (`WRONG_DEFAULT`). The 0.18-vs-0.5 reading is the signal to
+     build on.
+
+  And one attribution case the evidence cannot decide, now FLAGGED rather than silent: one find
+  admissible to both a counted and an undecided branch (50*pi^2, 1e-10, band 0.3, `tau = 0.02
+  prec` -- the cell that set the default's range at 1e-8).
 * **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
   slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
   planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner
@@ -303,7 +334,8 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   objective with a floor near the licence produces such a well; the threshold never has. The
   phantom logic carries five calibrated cases and a documented overshoot trap, so this is a
   re-derivation, not a constant. Wanted before any penalty whose floor approaches `prec` is
-  built into `src/`. `notes/smooth_filter.md` section 10.3.
+  built into `src/`. The shipped default does not: its floor is about 1.4 `C_PEN` prec = 0.03
+  prec, a thirtieth of the licence. `notes/smooth_filter.md` section 10.3.
 
   (The same cell ALSO reported one root twice, 1e-12 apart, through a separate defect: the
   cache wall slope `_slope_from_cache` ignored the floor and read 8.45e6 against a true 0.02-0.08,
@@ -312,71 +344,39 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   calibrated slope is unchanged bit for bit everywhere else -- applied unconditionally it moved a
   hump root 2.3x and flipped four calibrated tests. The cell went from 5 of 3 to 4 of 3.)
 
-* **[next]** **The penalty regularization is the INTENDED DEFAULT, and these are the gates.**
-  DECIDED 2026-09-23: `reg="tikhonov_qr"` is where the project means to end up, replacing the
-  threshold rank as `MPSPencil`'s default, even though work remains. It landed 2026-09-21 as an
-  option (`notes/smooth_filter.md` section 9): no rank chosen, so none flips; verified continuous
-  where the threshold flickers, and immune to the 1e-15 perturbation that flips the threshold.
-  The reason to want it is that a rank flip has already cost a real answer -- the blocking item
-  in section 1 -- and no amount of tuning a threshold removes a decision that rounding makes.
+* **[next]** **The penalty is the default at `prec >= 1e-8`; what is still open about it.**
+  SHIPPED 2026-09-24: `reg="auto"` on `MPSPencil` and `MPSEigensolver` is `"tikhonov_qr"` with
+  `tau = C_PEN * prec` (`C_PEN = 0.02`) at `prec >= 1e-8`, and the threshold at its derived `rtol`
+  below; an explicit `rtol=`, `rank=` or `lam_ref=` means truncation. An explicit penalty outside
+  its measured reach warns and runs. `notes/smooth_filter.md` section 11 has the grid, and
+  `tests/test_cluster_totals.py` now scores the default pencil beside the suite's.
 
-  The gates, in the order they should be cleared:
+  **What it buys is the removal of a hazard, not a better score.** Against the threshold at its
+  OWN derived `rtol` -- what shipped before -- the 50/65*pi^2 cluster grid is 22 of 22 either way
+  at 1e-6 and 1e-8. The "beats the threshold" rows of section 10.6 were against the suite pencil's
+  fixed `SUITE_RTOL`. At 1e-10 the penalty lost a member the threshold kept (flagged), which is
+  why the range stops at 1e-8 and not at 1e-10 or 1e-12, where a feasible `tau` exists.
 
-  0. **PARTIALLY RUN (2026-09-23, section 10.5), and it narrowed the decision.** Cluster-total
-     rows at 1e-10, 1e-12, 1e-14 under the shipped `rtol`, under `tau = C*prec`, against the
-     threshold. Ready at `prec >= 1e-10` -- 8 of 8, marginally better than the threshold's 7 and
-     a decline. NOT ready at 1e-12 (every variant loses members, 3-6 of 12, where the threshold
-     is 12 of 12) and catastrophic at 1e-14 under the shipped rule: **0 of 18, silently wrong.**
-     Still to run: the decline grid under the same rules, and the 1e-6/1e-8 rows.
+  Still open:
 
-  1. **Its reach, which is limited by NOISE.** The 9e-14 "saturation" in `notes/smooth_filter.md`
-     sections 2 and 7.4 was measured on the literal form and is LAPACK's internal cut. The QR
-     form's floor tracks `tau` down to 2.1e-15, but its plateau noise grows as `tau` shrinks --
-     1e-2 at the `tau` a 1e-14 floor needs (section 10). A SECOND-ORDER penalty built from QRs
-     (`notes/tikhonov_derivations.tex`) fixes the noise and gets the slope loop through at 1e-14,
-     and `tau_2 = C * prec` is a clean rule down to 1e-10 for C in 0.2-0.9 -- but at 1e-14 no C
-     is robustly free of wrong totals (section 10.2). Parked, and not built into `src/`, until
-     the search's merge defect (below in this section) is fixed and bases are right-sized
-     (`notes/coarse_to_fine_basis.md`).
-  2. **The `prec` RANGE the default can serve, which is not all of it.** At `prec = 1e-14` the
-     derived `rtol` puts the penalty's floor at 2.4e-14, above the precision asked for, so the
-     shipped form cannot serve the bottom rung; gate 1 is what would. Either the default is
-     `prec`-dependent -- penalty above some rung, threshold below -- or the bottom rung waits for
-     the second-order form. Say which, in the docstring, before flipping the switch.
-     MANDATORY, not advisory: at 1e-14 the shipped rule is silently wrong on every cell of the
-     grid (gate 0), so a default without a `prec` range trades honest declines for wrong totals.
-     Measured range (section 10.6, which corrects 10.5): a feasible `tau` EXISTS for
-     `prec >= 1e-12` -- the clean band at 1e-12 is `tau` in [0.007, 0.05] * `prec`, 12 of 12,
-     matching the threshold -- and NONE exists at 1e-14, where declines and wrong totals meet
-     with no gap. At 1e-6 and 1e-8 the penalty BEATS the threshold, 12 of 12 against 11 and a
-     decline. Missing for a rule: the band's `prec`-dependence, measured at 1e-12 only, and a
-     single C is not yet uniformly clean (`tau = 0.02*prec` loses one cell at 1e-10).
-     `notes/smooth_filter.md` sections 10.4-10.5 and `notes/fig_penalty_prec_limit.png` draw it: the
-     rule `rtol = sqrt(prec*eps)` was derived for a truncation, whose floor the cutoff barely
-     moves, while a penalty's floor IS `tau ~ sqrt(prec)` -- so `floor/prec` grows like
-     `1/sqrt(prec)` and crosses 1 between 1e-12 and 1e-14. A `prec`-proportional rule for the
-     penalty's `rtol` is the obvious candidate: measured in 10.5, it holds `floor/prec` constant
-     and is one to four decades quieter at loose `prec`, so `C ~ 0.1` is the better rule wherever
-     the penalty is used -- but it does NOT fix 1e-12, so it is a better rule, not the fix.
-
-     Section 7 of the note is the evidence to argue against: it found the regimes cleanly split,
-     frozen rank winning narrow windows and a filter winning wide windows with a tight pair, with
-     nothing to choose on a corner-FB basis because the rank does not move there. A default has
-     to survive that table, and the 1.5x per-evaluation cost -- which section 7.4 suggests may pay
-     for itself in evaluations saved (42k against 82k, 38 spurious brackets against 807), never
-     measured as wall time.
-  3. **`calibrate_rtol` under a penalty.** It runs -- raising `rtol` raises the floor either way --
-     but its model is written for a truncation cut and is unmeasured here.
-  4. **A `PrecisionWarning` below its reach**, like `_warn_if_unsafe` for a frozen rank. There is no
-     calibrated threshold to warn at yet.
-  5. **`"tikhonov"`, the literal form, does not remove the rank decision** -- LAPACK's `?ggsvp3`
-     decides the interior block's rank itself (finite count 41-50 over a scan where the QR form
-     holds 50). Kept as an oracle; whether it should stay user-facing is open. It is NOT a
-     candidate for the default.
-  6. **The refiner's phantom test assumes a cone** (below in this section). It only bites where a
-     well's floor approaches the merge licence, which the shipped `rtol` does not do -- floor
-     1.7e-11 against `prec = 1e-8` -- so it does not gate this default. It WOULD gate any penalty
-     tuned to spend more of `prec` on its floor, the second-order form included.
+  1. **The second-order penalty** (`notes/tikhonov_derivations.tex`), the only form measured to
+     get the slope loop through at 1e-14. Parked until the search defects below are fixed and
+     bases are right-sized (`notes/coarse_to_fine_basis.md`).
+  2. **`calibrate_rtol` under a penalty.** `findability(calibrate=True)` on a default pencil at
+     `prec >= 1e-8` now calibrates a PENALTY's `rtol` with a model written for a truncation cut.
+     Not on the solve path (`src/chladni/mps/solver.py:178`); unmeasured -- except that the
+     reach warning now fires when the calibration loosens `rtol` past it, which is how
+     `tests/test_calibrate.py` found this (its pencils are now explicitly `reg="svd"`).
+  3. **The reach constants are one family's.** `_REACH_FLOOR`, `_REACH_ROUNDING`, `C_PEN` and
+     `PENALTY_PREC_MIN` in `src/chladni/mps/_regularize.py` were measured on near-square
+     rectangles with plane waves. The lower jaw should scale with `eps * sqrt(n)`; unchecked
+     across basis sizes, and the planner will change `n`.
+  4. **`"tikhonov"`, the literal form, does not remove the rank decision** -- LAPACK's `?ggsvp3`
+     decides the interior block's rank itself. Kept as an oracle; whether it stays user-facing is
+     open.
+  5. **Cost.** 1.5x per evaluation on the objective (section 9). NOT measured as wall time on the
+     default path: suite time moved 765 s -> 883 s, almost all of it the new default-pencil grid,
+     because nearly every fixture still pins a truncation (section 11).
 
 * **[later]** A starved basis DROPS the levels it resolves worst, and for the levels that are
   never BRACKETED no diagnostic added to `solve` can catch it -- `notes/landscape_findings.md`
