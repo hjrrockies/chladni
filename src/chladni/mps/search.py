@@ -140,6 +140,12 @@ _SIDE_SEARCH_MAX = MAX_BRANCHES
 #: only two that did were this defect, at `170*pi^2` and `125*pi^2`.
 _SIDE_STANDOFF = 0.3
 
+#: Interior samples taken in a sub-bracket that starts at a find and was refused at that end,
+#: before it is refined once more. Evenly spaced: the second member's well is somewhere inside and
+#: nothing says where; four put a sample within a tenth of the span of any point. Spent only on a
+#: refusal of that one shape, so it costs nothing where it does not fire.
+_RESAMPLE = 4
+
 #: How far above a well's floor a cached sample must sit to carry slope information for
 #: `_slope_from_cache`. Inside the flat bottom `sigma` saturates at the floor, and the cone
 #: identity the estimator rests on fails there; at twice the floor the cone part
@@ -1050,10 +1056,28 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
         licence = prec * max(abs(r.lam), 1.0)
         if merge == "licence":
             return abs(r.lam - first.lam) <= licence
-        tol = max(first.delta_res if np.isfinite(first.delta_res) else 0.0,
-                  r.delta_res if np.isfinite(r.delta_res) else 0.0,
-                  4.0 * np.spacing(abs(r.lam)))
-        return abs(r.lam - first.lam) <= min(tol, licence)
+        d = abs(r.lam - first.lam)
+        if d > licence:
+            return False
+        bars = [x.delta_res for x in (first, r) if np.isfinite(x.delta_res)]
+        if d <= max(min(bars, default=0.0), 4.0 * np.spacing(abs(r.lam))):
+            return True
+        if d > max(bars, default=0.0):
+            return False
+        # Within the WIDER bar only. A refiner bar can be wider than the gap to a genuine
+        # neighbour: 65*pi^2, band 0.3, 1e-12, posterior tensions, a root landed BETWEEN the two
+        # members of its bracket with a bar of ~0.5 licences, merged into a root 0.33 licences
+        # away, and the group read its count in the OTHER root's bracket -- 2 of 4, silent, twice
+        # (`notes/posterior_penalty.md`, "The 1e-12 singles"). So the wide bar merges only a
+        # SHALLOWER root that sits on the deeper one's wall: its own reading, at the calibrated
+        # bound, must reach the deeper root -- the side search's "found again" test. Where no slope
+        # can be read the old reading stands.
+        deep, shallow = (first, r) if first.sigma <= r.sigma else (r, first)
+        lams_, svals_ = _samples(obj)
+        c_deep = _slope_from_cache(lams_, svals_, deep.lam, floor=deep.sigma)
+        if c_deep is None or not c_deep > 0:
+            return True
+        return d <= (shallow.sigma / c_deep) / BIAS_LO_CACHE
 
     groups = []
     for r, bracket in sorted(located, key=lambda p: p[0].lam):
@@ -1147,7 +1171,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                 # refining there fits a parabola to rounding -- the phantom class the reach dedup
                 # below records at 65*pi^2, prec 1e-10, band 1.0.
                 sides = [(bracket[0], r.lam - half, -1), (r.lam + half, bracket[1], +1)]
-                budget, narrowed = _SIDE_SEARCH_MAX, set()
+                budget, narrowed, post_find, resampled = _SIDE_SEARCH_MAX, {}, set(), set()
                 while sides and budget > 0:
                     a, b2, side = sides.pop(0)
                     if not (np.isfinite(half) and a < b2):
@@ -1190,12 +1214,44 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                         low_inner = (r2.reason == "not_a_minimum" and not explained and off_r
                                      and abs(r2.lam - inner) <= 0.01 * (b2 - a)
                                      and r2.sigma < 0.5 * BIAS_LO_CACHE * float(t_here[j]))
-                        if low_inner and side not in narrowed:
-                            narrowed.add(side)
+                        tries = narrowed.get(side, 0)
+                        if low_inner and tries < 2:
+                            narrowed[side] = tries + 1
+                            # Two retries, tight first. The FIRST excludes only `r`'s own reach,
+                            # which at a converged root is the floor: the retry runs up to `r`, and
+                            # where `r`'s wall is all there is it converges ON `r` and the dedup
+                            # resolves the side -- the reading every shipped path relied on
+                            # (default pencil, 50*pi^2, 1e-6, band 1.0, where an over-read cache
+                            # slope makes the inner end read falsely low). The SECOND, only if the
+                            # first also stops low at its inner end, uses the standoff rule finds
+                            # use: 50*pi^2, band 0.3, 1e-12, posterior tensions, the tight retry
+                            # refused on `r`'s own wall and flagged a level whose member lay inside
+                            # (`notes/posterior_penalty.md`, "The 1e-12 singles") -- the trap
+                            # `_SIDE_STANDOFF` documents. Then the side is undetermined.
+                            outer = a if side < 0 else b2
                             near = max((r.sigma / c_out) / bias_lo_eff,
                                        4.0 * np.spacing(abs(r.lam)))
-                            sides.insert(0, (a, r.lam - near, side) if side < 0
-                                         else (r.lam + near, b2, side))
+                            if tries == 1:
+                                near = max(near, _SIDE_STANDOFF * abs(r.lam - outer))
+                            if near < half:
+                                sides.insert(0, (a, r.lam - near, side) if side < 0
+                                             else (r.lam + near, b2, side))
+                                continue
+                        # A sub-bracket that STARTS AT A FIND, refused at that inner end: the
+                        # resume point can land on the hump between the find and the next member,
+                        # whose well is inside and unsampled, and the end then reads exactly the
+                        # find's wall, so nothing above can tell it from an empty side. 50*pi^2,
+                        # band 0.3, 1e-12, posterior tensions: member 2 0.15 licences inside, 2 of
+                        # 3, silent (`notes/posterior_penalty.md`). Sample the interior once --
+                        # `refine` starts from the deepest cached sample -- and refine it again.
+                        key = (a, b2)
+                        if (key in post_find and key not in resampled
+                                and r2.reason == "not_a_minimum"
+                                and abs(r2.lam - inner) <= 0.01 * (b2 - a)):
+                            resampled.add(key)
+                            for z in a + (b2 - a) * np.arange(1, _RESAMPLE + 1) / (_RESAMPLE + 1):
+                                tens(z)
+                            sides.insert(0, (a, b2, side))
                             continue
                         inconclusive |= low_inner or (
                             r2.reason != "not_a_minimum" and not explained
@@ -1238,6 +1294,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                     nxt = (a, r2.lam - excl) if side < 0 else (r2.lam + excl, b2)
                     if nxt[1] - nxt[0] > 4.0 * np.spacing(abs(r2.lam)):
                         sides.append((nxt[0], nxt[1], side))
+                        post_find.add((nxt[0], nxt[1]))
                 uncertain = inconclusive and found == 0
                 # Is `r` itself a minimum, or the HUMP between two members? 65*pi^2, prec 1e-8,
                 # band 0.3: a bracket narrower than the licence held two members, the refiner
