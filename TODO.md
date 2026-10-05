@@ -59,14 +59,22 @@ and deciding whether Phase D's angle earns its keep.
   path rescues the start. Either assert what the deepest-sample start BUYS (evaluations) or
   retire the test as superseded. Measured 2026-10-05.
 
-  **What closed the former blocking item** -- `test_the_cluster_total_GRID[N65-1e-06-b2.6]`, a
-  wrong total from a threshold-rank flip: the nine-file scope at default threading, 3 of 3 PASS
-  where it reproduced the failure 3 of 3 before (2026-10-04); the default-pencil row for the same
-  cell passed too; and the full-suite leg passed both, with
-  `test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate`. Read that honestly: the suite row is a
-  TRUNCATION at `SUITE_RTOL`, so the flip mechanism is not removed from it -- something earlier in
-  the run moved where stage 1 puts the bracket end, as scope did before. What is removed is the
-  exposure of the DEFAULT path at `prec >= 1e-8`, which has no rank to flip.
+  **The former blocking item is NOT closed -- corrected 2026-10-05.** It was called closed on
+  three nine-file runs and one full-suite leg, all passing. The next `main` run (37264631559, commit
+  a25ae7b, before any integrals work) failed the same 7 tests on Python 3.11 AND 3.13 and passed on
+  3.12: `test_the_cluster_total_GRID[N65-1e-06-b2.6]` ("declared 3 of 4", the rank-flip wrong
+  total), `test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate`,
+  `test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]` ("assert 4 < 4" -- the
+  conditional xfail's body, which XPASSed on earlier runs), and four `test_solve.py` cross-check
+  tests. That is the run-to-run nondeterminism this file already recorded for the threshold path
+  at OpenBLAS's default threading (scope- and state-dependent, 4 of 5 at full-suite scope), not a
+  regression -- and four passing runs were never evidence against a 4-in-5 rate. Every one of the
+  seven scores a TRUNCATION (an explicit `rtol=`, or the cross-check on a suite pencil).
+
+  Two ways on, not exclusive: `OPENBLAS_NUM_THREADS=1` in CI (0 failures in ~39 single-thread
+  Linux runs, and 2.5-3.2x faster at module scope -- deterministic CI, but it hides the flip
+  rather than removing it); and retiring truncation for the penalty everywhere, which removes the
+  rank decision itself (`notes/posterior_penalty.py`, in progress).
 
 * **[next]** **`basis_sufficiency` decides the DENOMINATOR at a boundary it clears by 6%, and the
   two platforms therefore score different case sets.** macOS calls 10 cells unexercisable where
@@ -120,9 +128,9 @@ and deciding whether Phase D's angle earns its keep.
   it accepts, 1e-10 from the root -- and solves the cell 4 of 4
   (`tests/test_regularization.py`, the "2026-09-21 CI refusal" section).
 
-  **Run on Linux 2026-10-04, and demoted to `[later]`.** The default path at `prec >= 1e-8` is
-  the penalty and has no rank to flip; both rows of the cell passed on Linux at nine-file and
-  full-suite scope (the item above). What stays open is the flip itself, on every TRUNCATION:
+  **Run on Linux 2026-10-04, and demoted to `[later]` -- PREMATURELY (see the item above, 10-05:
+  the suite row failed again on two of three legs).** The default path at `prec >= 1e-8` is
+  the penalty and has no rank to flip. What stays open is the flip itself, on every TRUNCATION:
   `reg="auto"` below 1e-8, and any explicit `rtol=`, `rank=` or `lam_ref=`. Its passing on Linux
   now is a moved bracket end, not a fix, so this item stays until either the penalty's range
   reaches the bottom rung or the planner owns the rank (the item below). Section 12 of
