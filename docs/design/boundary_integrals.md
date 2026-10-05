@@ -1,5 +1,5 @@
-*Status: design, approved 2026-10-05. Milestone M0 (seams and docs) is in; the layer itself is
-not written yet. Package: `chladni.integrals`.*
+*Status: design, approved 2026-10-05. M0 (seams), M1 (rules) and M2 (plan, Cauchy data, the
+identity) are in. Package: `chladni.integrals`.*
 
 # Overview
 `chladni` is going to rely on accurate boundary integration for two key parts of the MPS solve:
@@ -164,13 +164,36 @@ level's one `lam` before their Gram is formed, so no Gram ever divides by `lam_i
 
     M0  seams and docs: plan tiling check, Quadrature family semantics, family_coef, reference
         gradients, this document                                                  [done]
-    M1  rules.py, with lappy's test_quad contracts
+    M1  rules.py, with lappy's test_quad contracts                                [done]
     M2  plan, Cauchy data, the identity: non-eigen functions against exact interior rules;
-        exact norms of sector (singular), rect, polyomino, disk eigenfunctions
+        exact norms of sector (singular), rect, polyomino, disk eigenfunctions;
+        a real L-shape candidate against a graded oracle                          [done]
     M3  Moler-Payne on every level, wired into the solver
     M4  clusters: Gram, Löwdin, orthonormal eigenfunctions
     M5  Hadamard (after M4)
     M6  later: Neumann and mixed, curved boundaries, a guaranteed maximum, planner integration
+
+## What M2 measured (2026-10-05)
+
+* **The full identity holds to rounding on functions that are NOT eigenfunctions**: plane waves on
+  a rectangle at `lam = 50` (Gram, off-diagonal included, to 1e-13 at three origins), and a random
+  combination of the re-entrant corner's Fourier-Bessel columns on the L-shape (1e-12 against a
+  graded interior oracle, three origins).
+* **Exact sector norms meet lappy's leg-1 bars** at every apex angle tried (1.25pi to 1.9pi), and
+  the rectangle, L-polyomino and disk norms meet 1e-13.
+* **The clearance cap is load-bearing** on the 1 x 16 strip: machine precision with it, worse
+  than 1e-6 without.
+* **`SMOOTH_SAFETY = 2`, not lappy's 1.** On the first L-shape eigenfunction from an 80-column
+  corner basis, the smooth panels sized at 1x missed a 1e-13 target by 180x (1.8e-11) while the
+  corner panel was exact; 2x gives 3.3e-15 for 19% more nodes (`plan.SMOOTH_SAFETY`).
+* **Cancellation must be measured against the INTERIOR size of `u`.** Against its boundary rms
+  it read 1e15 at an exact eigenvalue -- a good Dirichlet candidate is near zero on the boundary
+  by design. Against `||u|| / sqrt|Omega|` the same candidate reads about 2.
+* **Not yet measured: a candidate with smooth columns beside the corner ones.** The L-shape recipe
+  basis is pure corner Fourier-Bessel, so its candidate is inside the corner family and the
+  cross-term question of `plan.py`'s docstring did not arise. Off the eigenvalue the norm error
+  tracked the tension (1e-9 at tension 2e-9, 1e-6 at 2e-6), which is the boundary-data size, not
+  the quadrature: a Moler-Payne bound there is large anyway.
 
 # Accuracy: the bound needs few digits, orthonormalization needs many
 

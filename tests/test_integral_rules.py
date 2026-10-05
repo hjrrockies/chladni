@@ -245,7 +245,7 @@ def test_the_exponent_set_respects_the_edge_type():
     assert np.any(np.isclose(Ec, gamma + 1.0)) and not np.any(np.isclose(Es, gamma + 1.0))
 
 
-# --- which rule, and how many nodes ----------------------------------------------------------------
+# --- which rule, and how many nodes ---------------------------------------------------------------
 
 def test_the_substitution_rule_is_chosen_only_where_it_is_exact():
     """The plain substitution wins only on a STRAIGHT edge with `2/nu` an integer -- among

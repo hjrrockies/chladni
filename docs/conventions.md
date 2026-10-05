@@ -223,7 +223,7 @@ same everywhere:
 | `u, u_n, u_t` | Cauchy data at quadrature nodes: the value, the OUTWARD normal derivative, the tangential derivative along `T` (CCW on outer boundaries). Arrays `(n_nodes, m)`, one column per function. |
 | `x0` | the Rellich origin. `r = x - x0`, with `r_n = r . N` (`Quadrature.radial(x0)`) and `r_t = r . T`. |
 | `family_coef` | a coefficient vector in the coordinates of the family's own pre-scaled columns (`MPSPencil.family_coef`), the only form a consumer off the collocation set can use. |
-| `cancellation` | `max sum_j |c_j| |psi_j| / rms(u)`: how far below its own terms a function sits, so `eps * cancellation` is the floor of anything computed from it. |
+| `cancellation` | `max sum_j |c_j| |psi_j| / (||u|| / sqrt|Omega|)`: how far the terms behind a value exceed the function's typical INTERIOR size, so `eps * cancellation` is the floor of anything computed from it. Never the boundary rms, which a good Dirichlet candidate drives to zero by design. |
 | `integral_prec` | the precision the integral quadrature is sized to, `max(0.1 * prec, 1e-14)` by default. |
 | licence | `prec * lam`, the width within which two eigenvalues MAY be reported as one level (British spelling, as in `search.py`). |
 
