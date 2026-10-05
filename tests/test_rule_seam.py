@@ -179,6 +179,73 @@ def test_each_claimant_takes_at_most_one_branch():
     assert _claim(two, 10.0, [10.0 + 1.0], 0.61, 2.21)[0] == 1
 
 
+def test_ONE_find_a_counted_and_an_undecided_branch_both_admit_is_AMBIGUOUS():
+    """The traced cell's ratios (`notes/smooth_filter.md` section 10.7: 50*pi^2, band 0.3, prec
+    1e-10, `tau = 0.02 prec`): counted branch 1 at d_est 1.90e-8, undecided branch 2 at 4.12e-8,
+    one find at 2.77e-8 on their side. Both bands admit it. If it is branch 1's member, branch 2's
+    is still out there; if it is branch 2's, branch 1's lies inside the side search's exclusion,
+    where nothing looked. Nothing decides between them, and the old best-match rule chose one
+    SILENTLY -- 2 of 3, wrong. The count keeps its pre-existing reading and says it is undecided."""
+    b1 = Branch(index=1, sigma=1.0, d_est=1.0, side=-1, verdict="counted")
+    b2 = Branch(index=2, sigma=2.17, d_est=2.17, side=-1, verdict="undecided")
+    assert _claim((b1, b2), 10.0, [10.0 - 1.46], 0.61, 2.21,
+                  with_ambiguity=True) == (1, (1,), True)
+
+
+def test_TWO_finds_against_a_counted_and_an_undecided_branch_are_decided_by_ORDER():
+    """50*pi^2, band 0.3, prec 1e-6 on the default pencil: counted branch 1 at 0.319 licences,
+    undecided branch 2 at 0.574, finds at 0.291 and 0.575, all on one side. On one side a nearer
+    eigenvalue has the smaller `sigma_j`, so the nearer find is branch 1's and the further branch
+    2's -- one reading, not ambiguous. Preferring the undecided branch outright gave the nearer
+    find to it and came back 4 of 3; this is the test that caught that."""
+    b1 = Branch(index=1, sigma=0.319, d_est=0.319, side=1, verdict="counted")
+    b2 = Branch(index=2, sigma=0.574, d_est=0.574, side=1, verdict="undecided")
+    assert _claim((b1, b2), 10.0, [10.0 + 0.291, 10.0 + 0.575], 0.61, 2.21,
+                  with_ambiguity=True) == (1, (1,), False)
+
+
+def test_a_find_ONLY_a_counted_branch_admits_still_claims_it():
+    """A find outside the undecided branch's band is the counted branch's member located again --
+    the 9-of-8 double count `_claim` exists for -- and it is not ambiguous."""
+    b1 = Branch(index=1, sigma=1.0, d_est=1.0, side=-1, verdict="counted")
+    b2 = Branch(index=2, sigma=5.0, d_est=5.0, side=-1, verdict="undecided")
+    assert _claim((b1, b2), 10.0, [10.0 - 1.0], 0.61, 2.21,
+                  with_ambiguity=True) == (1, (1,), False)
+
+
+def test_a_find_ONLY_an_undecided_branch_admits_subtracts_nothing():
+    b1 = Branch(index=1, sigma=0.3, d_est=0.3, side=-1, verdict="counted")
+    b2 = Branch(index=2, sigma=2.0, d_est=2.0, side=-1, verdict="undecided")
+    assert _claim((b1, b2), 10.0, [10.0 - 2.0], 0.61, 2.21,
+                  with_ambiguity=True) == (0, (), False)
+
+
+@pytest.mark.slow
+def test_the_traced_under_count_cell_is_never_SILENTLY_wrong():
+    """The cell `notes/trace_undercount.py` traced: 2 of 3, silent, because one side-search find
+    was admissible to a counted and an undecided branch and the best-match rule gave it the
+    counted one. The evidence there does not decide the total, so the contract is the one that
+    can be met: right, or flagged. `tau = 0.02 prec` is the rule the default adopts."""
+    import bracket_score as bs
+    import rect_suite as rs
+    from chladni.mps import MPSPencil
+    from chladni.mps.objective import Objective
+
+    prec = 1e-10
+    (case,) = rs.split_degeneracy_cases(prec, bands=(0.3,), levels={50: 3})
+    p = case.pencil
+    q = MPSPencil(p.bdry, p.interior, reg="tikhonov_qr", prec=prec,
+                  rtol=0.02 * prec / np.sqrt(p.n_cols))
+    base = bs.objective_for(case, prec)
+    obj = Objective(lambda x: q.tensions(float(x)), base.lo, base.hi, prec=prec,
+                    variable=case.variable, expected_count=base.expected_count)
+    res = solve(obj, prec=prec)
+    assert not res.declined
+    total = sum(L.mult for L in res.levels)
+    assert total == 3 or res.diagnostics.n_uncertain > 0, (
+        f"{total} of 3 and SILENT: the one outcome this cell must not have")
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize("N, m, band, prec", [(50, 3, 0.8, 1e-8), (65, 4, 0.3, 1e-8),
                                               (50, 3, 0.3, 1e-8), (170, 4, 0.3, 1e-12)])

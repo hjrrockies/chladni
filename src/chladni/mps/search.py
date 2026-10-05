@@ -70,6 +70,7 @@ grids and nowhere else that is currently measured.
 """
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass, field, replace
 
 import numpy as np
@@ -398,10 +399,11 @@ def _slope_outside(lams, vs, lam, min_dist):
     return (v_lo + v_hi) / (hi - lo) if hi > lo else None
 
 
-def _claim(branches, lam_root, claimants, bias_lo, bias_hi):
+def _claim(branches, lam_root, claimants, bias_lo, bias_hi, *, with_ambiguity=False):
     """Which branches the read counted are ALREADY ACCOUNTED FOR by a located level.
 
-    Returns `(n_claimed, claimed)`, `claimed` the indices claimed, one per claimant at most.
+    Returns `(n_claimed, claimed)`, `claimed` the COUNTED indices claimed, one per claimant at
+    most; with `with_ambiguity=True`, `(n_claimed, claimed, ambiguous)`.
 
     # The defect this exists for
 
@@ -416,8 +418,16 @@ def _claim(branches, lam_root, claimants, bias_lo, bias_hi):
     (4 of 3 at `50*pi^2`, 1e-12, band 0.3) -- safe now, because a second find CLAIMS a branch
     instead of adding to the total. Capping the root's count at what the search could not reach
     lost a member the search then failed to find (2 of 3 at 1e-6) -- not done here, because only
-    a branch the read actually counted can be claimed, so nothing the read did not put in can be
-    taken out.
+    a branch the read actually counted can be SUBTRACTED, so nothing the read did not put in can
+    be taken out.
+
+    # Undecided branches are targets, not subtractions
+
+    The side search runs only where the read left a branch undecided, and is aimed at it. So an
+    undecided branch can OWN a find -- which subtracts nothing, since `mu` never held it -- and
+    that stops the find taking a counted member out. Counted-only targets did exactly that:
+    50*pi^2, band 0.3, prec 1e-10, `tau = 0.02 prec`, a find of the undecided member claimed the
+    counted one's branch and the total came back 2 of 3, SILENT (`notes/smooth_filter.md` 10.7).
 
     # The predicate, and why it needs no new constant
 
@@ -434,39 +444,63 @@ def _claim(branches, lam_root, claimants, bias_lo, bias_hi):
     Without that exclusion a claimant a few ulps out could claim the root's own existence. With
     it, `mu - n_claimed >= 1` holds by construction, since `mu` is `1 + |counted j>=1|`.
 
-    # Matching, deliberately greedy
+    # Matching: every admissible assignment, and ORDER
 
     With the cache bias pair the admissible band spans 3.6x, so one claimant can admit two
-    branches and one branch two claimants. Claimants are taken nearest-first, each keeping the
-    unclaimed admissible branch whose estimate best matches its offset in the LOG -- scale-free,
-    so a 0.45x and a 1.64x match are compared fairly -- ties by lowest index. An optimal
-    assignment is over-engineering: the read examines at most `MAX_BRANCHES` branches and no
-    bracket on any measured grid held more than four members.
+    branches and one branch two claimants, and a best-match rule then guesses. Two facts decide
+    more than a match can. Each branch is owned once. And on one side of the root, a nearer
+    eigenvalue has the smaller `sigma_j`, so claimants on one side, taken outward, own branches
+    in increasing index. Every assignment consistent with both is enumerated -- at most
+    `MAX_BRANCHES` branches and a handful of finds, so a few hundred -- and those matching the
+    most claimants kept. Two finds against a counted and an undecided branch then have one
+    reading (50*pi^2, band 0.3, prec 1e-6: the counted one's member nearer, the undecided one's
+    further), where greedy preference for either kind got 4 of 3 or 2 of 3.
+
+    Where the kept assignments disagree on how many COUNTED branches they take, the evidence does
+    not decide the total -- one find, admissible to a counted and an undecided branch, is either
+    -- and `ambiguous` says so. The count returned is then the largest, the pre-existing reading,
+    so a total that was right stays right and one that was wrong is now flagged rather than
+    silent.
     """
-    usable = [b for b in branches if b.verdict == "counted" and b.index >= 1 and b.d_est > 0]
-    if not usable:
-        return 0, ()
-    claimed, taken = [], set()
-    for lam_q in sorted(claimants, key=lambda q: abs(q - lam_root)):
-        off = abs(lam_q - lam_root)
-        if not off > 0:
+    usable = [b for b in branches if b.verdict in ("counted", "undecided")
+              and b.index >= 1 and b.d_est > 0]
+    qs = sorted((q for q in claimants if abs(q - lam_root) > 0),
+                key=lambda q: abs(q - lam_root))
+    options = []
+    for q in qs:
+        off, side = abs(q - lam_root), (1 if q > lam_root else -1)
+        options.append([None] + [b for b in usable if b.side in (0, side)
+                                 and b.d_est / bias_hi <= off <= b.d_est / bias_lo])
+
+    def consistent(combo):
+        owned = [b.index for b in combo if b is not None]
+        if len(set(owned)) < len(owned):
+            return False
+        for i in range(len(qs)):
+            for j in range(i + 1, len(qs)):       # qs is sorted by distance, so i is nearer
+                bi, bj = combo[i], combo[j]
+                if bi is None or bj is None or (qs[i] > lam_root) != (qs[j] > lam_root):
+                    continue
+                if bi.index > bj.index:
+                    return False
+        return True
+
+    kept, most = [], -1
+    for combo in itertools.product(*options):
+        if not consistent(combo):
             continue
-        side = 1 if lam_q > lam_root else -1
-        best, best_key = None, None
-        for b in usable:
-            if b.index in taken:
-                continue
-            if b.side != 0 and b.side != side:
-                continue
-            if not (b.d_est / bias_hi <= off <= b.d_est / bias_lo):
-                continue
-            key = (abs(np.log(b.d_est / off)), b.index)
-            if best_key is None or key < best_key:
-                best, best_key = b, key
-        if best is not None:
-            taken.add(best.index)
-            claimed.append(best.index)
-    return len(claimed), tuple(claimed)
+        n = sum(b is not None for b in combo)
+        if n > most:
+            kept, most = [combo], n
+        elif n == most:
+            kept.append(combo)
+    readings = {tuple(sorted(b.index for b in combo if b is not None and b.verdict == "counted"))
+                for combo in kept}
+    claimed = max(readings, key=lambda t: (len(t), [-i for i in t])) if readings else ()
+    ambiguous = len({len(t) for t in readings}) > 1
+    if with_ambiguity:
+        return len(claimed), claimed, ambiguous
+    return len(claimed), claimed
 
 
 def _gram(obj, a, b):
@@ -984,7 +1018,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
         nb = (s2 / c) if (c > 0 and np.isfinite(s2)) else None
         wb = wide_bracket_for(lams, r.lam, r.sigma, c, prec=prec, neighbour=nb)
         tens = (lambda z: obj.tensions(obj.from_lam(z)))
-        extra, uncertain, drop = [], None, False
+        extra, uncertain, drop, claim_reason = [], None, False, ""
         if rule == "reach":
             # `mu*(B)` needs the EMITTED bracket and a slope from outside it; the wide bracket plays
             # no part in the count and is carried only as the record of what "gap" would have seen.
@@ -1152,7 +1186,14 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
             # 493.480220054315, with the member 1.5e-10 further in). Fix that first; the wider
             # claimant source is then a strict improvement rather than a trade.
             claimants = [q.lam for q in extra if bracket[0] <= q.lam <= bracket[1]]
-            n_claimed, _ = _claim(m.branches, r.lam, claimants, bias_lo_eff, bias_hi_eff)
+            n_claimed, _, claim_amb = _claim(m.branches, r.lam, claimants, bias_lo_eff,
+                                             bias_hi_eff, with_ambiguity=True)
+            if claim_amb:
+                # A find both a counted and an undecided branch admit: the total is one of two
+                # and nothing here decides which. Say so rather than guess (section 10.7).
+                uncertain, claim_reason = True, (
+                    "a side-search find is admissible to both a counted and an undecided branch, "
+                    "so whether it adds to this level's count or duplicates it is not decided")
             mu = int(m.mu) - n_claimed
             assert mu >= 1, (f"attribution took the root's own branch: mu={m.mu}, "
                              f"claimed={n_claimed}")
@@ -1173,6 +1214,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                                 count_uncertain=(bool(m.ambiguous) if uncertain is None
                                                  else uncertain),
                                 uncertain_reason=(
+                                    claim_reason or
                                     "the multiplicity estimator declined: a branch's estimated "
                                     "distance landed where the inside and outside populations "
                                     "overlap, so the evidence does not decide whether that "
