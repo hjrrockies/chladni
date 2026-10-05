@@ -19,6 +19,28 @@ Priorities are `[blocking]` (something else waits on it), `[next]`, `[later]`.
 
 ---
 
+## 0. What `chladni` is for -- read first
+
+`chladni` exists to fix the `lappy` failures that hurt `douse`: dropped eigenvalues and lost
+precision (reorientation of 2026-10-05, `notes/session_2026-10-05.md`). Every section below is
+judged against that, and the two items here come before them.
+
+* **[blocking]** **Write down what `douse` needs, and build a `douse`-shaped acceptance
+  benchmark.** Nothing in this repository records `douse`'s requirements -- precision, eigenvalue
+  indices, the domain classes it generates, eigenfunctions and shape derivatives, a per-solve
+  time budget -- and most recent work was judged on a synthetic cluster grid of near-square
+  rectangles instead. The benchmark: domains `douse` actually generates, the `lappy` failure cases
+  among them, through `lappy` and `chladni`, scored on dropped eigenvalues, CERTIFIED precision
+  (the Moler-Payne bound, `chladni.integrals`) and wall time, with a 1e-14 tier on representative
+  domains. It is the instrument every item below is prioritized by.
+* **[next]** **The black-box path, in order: the basis planner (section 3), `Eigenproblem`, M5
+  Hadamard, speed.** `douse` cannot call `chladni` on a domain it generates until the planner
+  exists. The certified bound is the planner's stopping signal: solve, read the bound, enrich until
+  it meets `prec`.
+
+Precision research beyond what `douse` asks for -- the posterior penalty to 1e-12, the 1e-14 span,
+the second-order penalty -- is PARKED until a benchmark case needs it (section 1).
+
 ## 1. The eigenvalue search
 
 The search SHIPS. `chladni.mps.{bracket,refine,multiplicity,search}` are the four stages and
@@ -76,7 +98,7 @@ and deciding whether Phase D's angle earns its keep.
   rather than removing it); and retiring truncation for the penalty everywhere, which removes the
   rank decision itself.
 
-* **[next]** **The posterior penalty: READY at 1e-12, not robust at 1e-14**
+* **[later -- parked, see section 0]** **The posterior penalty: READY at 1e-12, not robust at 1e-14**
   (`notes/posterior_penalty.md`, 2026-10-05). A fixed `tau = C eps sqrt(n)` read through posterior
   (Rayleigh-Ritz) tensions on the 8 lowest penalized vectors. After four search defects it exposed
   were fixed (`463ef6d`, `e469740`), every `C` in [8, 100] is clean at 1e-12 on three basis sizes
