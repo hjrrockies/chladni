@@ -25,6 +25,10 @@ Priorities are `[blocking]` (something else waits on it), `[next]`, `[later]`.
 precision (reorientation of 2026-10-05, `notes/session_2026-10-05.md`). Every section below is
 judged against that, and the two items here come before them.
 
+**Paused (2026-10-06): the user's understanding of the code comes first.** No new code, modules or
+design scope until the user says otherwise; reading, explaining, and correcting wrong docs are in
+scope (`notes/session_2026-10-06.md`).
+
 * **[blocking]** **Build the `douse`-shaped acceptance benchmark.** `douse`'s requirements and the
   interface across the line are written down in `docs/design/douse_requirements.md` (2026-10-06).
   The benchmark is a backend seam in `douse` (`solve`, `plan`, `hadamard`) with `lappy` and
