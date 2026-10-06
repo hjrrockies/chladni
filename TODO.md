@@ -29,8 +29,8 @@ judged against that, and the two items here come before them.
   interface across the line are written down in `docs/design/douse_requirements.md` (2026-10-06).
   The benchmark is a backend seam in `douse` (`solve`, `plan`, `hadamard`) with `lappy` and
   `chladni` implementations, run on domains `douse` actually generates -- `douse/benchmarks`,
-  `douse/tests`, and the `lappy` failure cases to be collected from `douse/jupyter_notebooks` and
-  `douse/archive`, `reg_ngon_6` among them -- scored on dropped eigenvalues, CERTIFIED precision
+  `douse/tests`, and the `lappy` failure cases catalogued in `docs/design/douse_failure_cases.md`
+  (tiered by reproducibility and ground truth; most Tier 2 shapes still need reference spectra) -- scored on dropped eigenvalues, CERTIFIED precision
   (the Moler-Payne bound) and wall time, with a 1e-14 tier on representative domains. It is the
   instrument every item below is prioritized by.
 * **[next]** **The black-box path, in order: the basis planner (section 3), `Eigenproblem`, M5

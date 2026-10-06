@@ -184,7 +184,8 @@ Read 2026-10-06: `evaluate.py`, `derivative.py`, `certify.py`, `cluster_opt.py`,
 
 * Whether `douse` wants interior eigenfunction evaluation for anything (answered "no" for the
   inner loop).
-* Which `lappy` failure cases hurt most -- to be collected, not assumed.
+* Which `lappy` failure cases hurt most. They are collected in `douse_failure_cases.md`
+  (2026-10-06); the ranking is not yet made.
 * `objective.py`, `optimize.py`, `constraints.py`, `sampling.py` and `polygon.py` were not read for
   solver needs; `polygon.py` uses `lappy.Polygon` and `lappy.utils` geometry, which `chladni.geometry`
   would have to cover.
