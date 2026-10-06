@@ -142,7 +142,9 @@ so `douse` can take the Hadamard half without the solver.
                    and the cancellation ratio from the same data
     identities.py  `weighted_integral`; `gram` (the full identity); norms; `lowdin`
     certify.py     the boundary maximum; `moler_payne`; `verify`
-    hadamard.py    (M5) normal velocity, vertex velocity, shape derivative
+    hadamard.py    (M5) shape-derivative integrals for a per-curve normal velocity V(curve, t);
+                   no parameterization assumed -- vertex velocities stay in `douse`
+                   (`douse_requirements.md`)
 
 ## Precision
 

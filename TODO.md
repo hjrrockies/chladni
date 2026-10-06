@@ -25,16 +25,20 @@ Priorities are `[blocking]` (something else waits on it), `[next]`, `[later]`.
 precision (reorientation of 2026-10-05, `notes/session_2026-10-05.md`). Every section below is
 judged against that, and the two items here come before them.
 
-* **[blocking]** **Write down what `douse` needs, and build a `douse`-shaped acceptance
-  benchmark.** Nothing in this repository records `douse`'s requirements -- precision, eigenvalue
-  indices, the domain classes it generates, eigenfunctions and shape derivatives, a per-solve
-  time budget -- and most recent work was judged on a synthetic cluster grid of near-square
-  rectangles instead. The benchmark: domains `douse` actually generates, the `lappy` failure cases
-  among them, through `lappy` and `chladni`, scored on dropped eigenvalues, CERTIFIED precision
-  (the Moler-Payne bound, `chladni.integrals`) and wall time, with a 1e-14 tier on representative
-  domains. It is the instrument every item below is prioritized by.
+* **[blocking]** **Build the `douse`-shaped acceptance benchmark.** `douse`'s requirements and the
+  interface across the line are written down in `docs/design/douse_requirements.md` (2026-10-06).
+  The benchmark is a backend seam in `douse` (`solve`, `plan`, `hadamard`) with `lappy` and
+  `chladni` implementations, run on domains `douse` actually generates -- `douse/benchmarks`,
+  `douse/tests`, and the `lappy` failure cases to be collected from `douse/jupyter_notebooks` and
+  `douse/archive`, `reg_ngon_6` among them -- scored on dropped eigenvalues, CERTIFIED precision
+  (the Moler-Payne bound) and wall time, with a 1e-14 tier on representative domains. It is the
+  instrument every item below is prioritized by. First: read the `douse` modules the requirements
+  doc lists as unread (`certify`, `cluster_opt`, `spectral_guard`, `quasi_newton`, `opt`).
 * **[next]** **The black-box path, in order: the basis planner (section 3), `Eigenproblem`, M5
-  Hadamard, speed.** `douse` cannot call `chladni` on a domain it generates until the planner
+  Hadamard, speed** -- to the interface in `docs/design/douse_requirements.md`: a frozen `Plan`
+  realized per iterate, re-planned on a `prec` change; a sorted, certified `Spectrum` whose `warm=`
+  path carries the cold-solve contract; Hadamard integrals for a per-curve normal velocity, with no
+  parameterization assumed. `douse` cannot call `chladni` on a domain it generates until the planner
   exists. The certified bound is the planner's stopping signal: solve, read the bound, enrich until
   it meets `prec`.
 
