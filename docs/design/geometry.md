@@ -171,7 +171,14 @@ A frozen object per junction, replacing `lappy`'s four parallel arrays.
         is_geometric: bool    # abs(omega - pi) > angle_atol
         is_reentrant: bool    # omega > pi
         is_bc_junction: bool  # bc_in != bc_out
-        is_singular: bool     # is_geometric or is_bc_junction
+        is_reflection_closed: bool  # omega = pi/m; an angle fact, not "singular"
+
+A `Corner` exists exactly where `is_geometric or is_bc_junction`: where the boundary turns, or
+where the boundary condition changes. A BC junction on a straight edge is a NON-GEOMETRIC corner
+(`omega == pi`, `is_geometric` False) and is listed in `Domain.corners` like any other. A smooth
+join between segments carrying the same condition is not a corner. There is no `is_singular` here:
+whether a corner is singular depends on the BC offset, and `helmholtz.CornerModes.is_singular`
+answers it (`docs/conventions.md`).
 
 with `omega = np.angle(-t_in/t_out) % (2*np.pi)` and `angle_atol = max(prec, 1e-12)`, exposed on
 `Boundary` rather than buried as a literal.
@@ -185,8 +192,9 @@ Three deliberate breaks from `lappy`:
 2. **A boundary-condition junction is a corner.** `lappy`'s test is `abs(turning_angle) > 1e-10`,
    purely geometric. A straight edge where Dirichlet meets Neumann carries a genuine singularity and
    is invisible to that test; `lappy` only discovers it three layers up, in
-   `eigfun_integrals.corner_specs`, as a bail-out reason. Here `is_singular` accounts for it at the
-   layer that holds both facts.
+   `eigfun_integrals.corner_specs`, as a bail-out reason. Here it is a corner, flagged by
+   `is_bc_junction`, at the layer that holds both facts; whether it is singular is decided one
+   layer up, by `CornerModes.is_singular`.
 3. **`clearance` and `branch_angle` come home.** `corner_clearance` currently lives in
    `eigfun_integrals.py` and `corner_branch_cut_rays` in `geometry.py`, both hand-rolling the same
    `polyline()` + owner-mask pattern. Both are purely geometric. Computed once, on the corner.

@@ -35,7 +35,9 @@ _MAX_WALK_STEPS = 400
 
 @dataclass(frozen=True)
 class Corner:
-    """A junction between two boundary segments, or between two boundary conditions.
+    """A domain corner: where the boundary turns (`is_geometric`), where the boundary condition
+    changes (`is_bc_junction`), or both. A BC junction on a straight edge is a non-geometric
+    corner, `omega == pi`. A smooth join between segments with the same condition is not a corner.
 
     Being a corner is not the same as mattering to the solution: a square's right angles are
     corners, and an eigenfunction is analytic at every one of them.
@@ -334,7 +336,8 @@ class Boundary(Frozen):
 
     @cached_property
     def corners(self):
-        """Every junction, singular or not, built in a batch.
+        """Every corner -- every segment join that turns or changes boundary condition --
+        singular or not, built in a batch.
 
         Every step is vectorized over corners. Done one corner at a time -- a distance
         against every non-adjacent segment, then a blocked-arc scan over the whole polyline

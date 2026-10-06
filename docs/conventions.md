@@ -180,6 +180,12 @@ it disagreed with the thesis this work belongs to.
 | `beta` | the branch-cut direction in the same relative measure, in `(omega, 2*pi)`. |
 | `sigma` | per-column log scale. A returned column is `psi * exp(-sigma)`. |
 
+**A domain corner is where the boundary turns or the boundary condition changes.** `Corner`
+records both: a geometric corner (`is_geometric`) and a BC junction (`is_bc_junction`). A junction
+on a straight edge is a non-geometric corner, with `omega == pi`, and appears in `Domain.corners`
+like any other. A smooth join between segments with the same condition is not a corner. So
+"corner" in this project includes non-geometric corners wherever there is a BC junction.
+
 **`geometry` stops at `omega` and the BC pair. It may classify the ANGLE; it never treats
 `pi/omega` as an exponent.** `Corner.is_reflection_closed` asks whether `omega = pi/m`, which is a
 fact about the wedge -- the reflections in its two edges generate a finite group that tiles a
