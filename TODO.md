@@ -355,6 +355,19 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
+* **[next]** **`Spectrum.bound` under-reports the error on a starved basis: `delta_res` is not an
+  upper bound there, and `bound = min(delta_res, mp_bound)` passes it through.** The L-shape with
+  14 Fourier-Bessel terms at each of six corners, at `prec = 1e-12` (tension floor ~4e-9, so out of
+  reach): the search flags 6 of 7 levels as unmet, correctly, but on 4 of 7 the reported bound is
+  below the true error -- `lam = 29.52167` is wrong by 1.9e-4 with `delta_res = 4.4e-11`, ~4e6x
+  under -- and `attained_prec` reads 3.4e-10. The Moler-Payne bound covers every level. `min` is
+  honest only if both bars are upper bounds (`mps/search.py`, `Level.bound`); `delta_res =
+  DELTA_SAFETY * eps / c` (`mps/refine.py`) evidently is not when the floor is the basis's and the
+  well is mislocated. Matters for `douse`, which is promised certified bounds and will drift
+  starved on a frozen plan (`docs/design/douse_requirements.md`). Repro:
+  `notes/delta_res_undercover.py` (2026-10-06). Not established: adequate bases (every row in
+  `examples/lshape_tour.ipynb` held), the penalty path (`prec >= 1e-8`; this basis held there),
+  other domains. Paused with the rest of new work (section 0) until the user lifts it.
 * **[later]** **`refine`'s phantom test assumes a cone, and a flat-bottomed well defeats it.** On
   the 50*pi^2 triple at `prec = 1e-6`, band 1.3, under the order-2 penalty (`tau_2 = 2 prec`), a
   bracket lying BETWEEN two members converged 2 ulps inside its lower end, on the wall of the
