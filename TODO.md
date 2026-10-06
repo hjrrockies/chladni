@@ -32,8 +32,7 @@ judged against that, and the two items here come before them.
   `douse/tests`, and the `lappy` failure cases to be collected from `douse/jupyter_notebooks` and
   `douse/archive`, `reg_ngon_6` among them -- scored on dropped eigenvalues, CERTIFIED precision
   (the Moler-Payne bound) and wall time, with a 1e-14 tier on representative domains. It is the
-  instrument every item below is prioritized by. First: read the `douse` modules the requirements
-  doc lists as unread (`certify`, `cluster_opt`, `spectral_guard`, `quasi_newton`, `opt`).
+  instrument every item below is prioritized by.
 * **[next]** **The black-box path, in order: the basis planner (section 3), `Eigenproblem`, M5
   Hadamard, speed** -- to the interface in `docs/design/douse_requirements.md`: a frozen `Plan`
   realized per iterate, re-planned on a `prec` change; a sorted, certified `Spectrum` whose `warm=`

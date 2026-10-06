@@ -12,9 +12,9 @@ API -- but it keeps everything that depends on HOW a domain is parameterized.
 
 | | |
 |---|---|
-| **Domains** | Polygons: convex small-`n`, non-convex with several reentrant corners (angles toward `2 pi`), near-regular and exactly symmetric. Iterates get short edges, near-collinear vertices (angles near `pi`), and high aspect ratio. Curved boundaries are not needed yet. |
+| **Domains** | Polygons up to N = 16: convex, non-convex with several reentrant corners (angles toward `2 pi`), near-regular and exactly symmetric. Iterates get short edges, near-collinear vertices (angles near `pi`), and high aspect ratio. Curved boundaries are not needed yet. |
 | **Indices** | `lam_k` up to `k ~ 10-30`. |
-| **Precision** | Chosen by `douse` per solve and tightened as the optimizer converges. Not one fixed target. |
+| **Precision** | Chosen by `douse` per solve and tightened as the optimizer converges. Not one fixed target. Today's working default is 1e-13. |
 | **Outputs** | Eigenvalues with multiplicities; a certified bound per level; Hadamard shape-derivative integrals, as an `m x m` matrix per velocity field for a group of levels. Eigenfunctions are needed only as the input to those integrals. |
 | **Time** | 10 s to 1 min per solve is acceptable. Reliability comes first. |
 | **Failures to fix** | All of: dropped eigenvalues, lost precision, wrong multiplicities near degeneracies, and solver exceptions that abort a run. |
@@ -52,6 +52,21 @@ behaviour they work around. Each is a missing solver-side contract:
   eigenfunctions: `eigenfunction_coef(mult=m)` returns an arbitrary basis, and adding the splitting
   `Lambda = diag(lam_i - lam_k)` in a mismatched basis gave trust-region ratios of -0.2 to -1.2.
 
+`SpectrumEvaluator` (`evaluate.py`) adds three more, each from a lost run:
+
+* **Spurious values.** A stalled run carried `58.1948` as its `lam_3` at a tension of 0.62 -- not an
+  eigenvalue under any basis -- while reporting `worst_sigma = 1.3e-09`, because `worst_sigma` was
+  measured at `lams[0]` only. `spurious_tol = 1e-4` now checks the tension at EVERY returned value
+  and escalates to a full solve.
+* **Missed modes.** A run optimized `lam_3/lam_1` for 92 iterations believing it was `lam_2/lam_1`
+  (ratio 2.62, above PPW): `lam_2` was absent, and every returned value was a genuine eigenvalue.
+  `douse.spectral_guard` audits the count against Weyl's three-term law with corner terms
+  (`lappy.asymp.weyl_count_poly`) at mid-gap cuts, and escalates, re-plans, then refuses. A dropped
+  mode plus a spurious one preserves the count, which is why both guards exist.
+* **Re-planning on drift.** A frozen plan that stops resolving the shape shows up as rising
+  tension; `replan_tol = 1e-9` re-plans at the current shape. `cluster_opt._degeneracy_move` also
+  re-plans at a trial shape. Re-planning is routine in a run, not only a `prec`-change event.
+
 The interface below is designed so that each of these is removed from `douse` -- once the `chladni`
 backend passes the benchmark without them, not before.
 
@@ -69,6 +84,16 @@ backend passes the benchmark without them, not before.
   implementation detail, not a mode the caller has to verify.
 * A shortfall -- a frozen plan that no longer resolves the shape, a corner the quadrature cannot
   reach, a count that cannot be certified -- is a flag and an honest bound, never an exception.
+* **Every returned level is certified, not just the first.** The bound is per level; a value that
+  is not an eigenvalue cannot come back with a clean flag (the `spurious_tol` failure).
+* **The count is part of the contract.** `solve(n)` returns `lam_1 .. lam_n` with nothing skipped,
+  or flags that it cannot say so. Weyl's corner-corrected count is a `Domain` quantity, so
+  `chladni` provides it (`weyl_count(dom, lam)`, as `lappy.asymp.weyl_count_poly` does); `douse`'s
+  guard keeps running on it as an independent audit during migration.
+* **A level straddling `n` is returned whole.** `solve(5)` on the square returns
+  `[2, 5, 5, 8, 10, 10] pi^2` and says the last level has multiplicity 2, rather than truncating a
+  degenerate cluster. `douse` drives shapes toward degeneracy, so this is the common case
+  (`spectral_guard.py`: truncation made a clean set and a set missing a mode indistinguishable).
 
 ### Plans: plan once, realize per iterate
 
@@ -81,7 +106,12 @@ and the objective is continuous (`evaluate.py`, "Plan once, realize per iterate"
 * `plan.realize(dom)` gives the same basis size on any nearby domain with the same corner
   structure. Source placement is relative to the realized shape, so there is no
   `SourcesInsideDomain`.
-* The certified bound is how `douse` learns that a frozen plan has stopped resolving the shape.
+* The certified bound is how `douse` learns that a frozen plan has stopped resolving the shape,
+  replacing `replan_tol` on the tension. Re-planning happens many times in a run -- on drift, on a
+  degeneracy move, on a Weyl shortfall -- so `ep.plan` must be cheap next to a solve.
+* A `Plan` is recordable: `douse` logs refused shapes with the shape their plan was built at, so a
+  refusal can be re-solved off-line. Pickling the `Plan` (or rebuilding it from its domain and
+  `prec`) must reproduce it exactly.
 * **Changing `prec` is an explicit re-plan** (decided 2026-10-06). A plan is sized for one `prec`;
   a solve with a tighter `prec` than its plan reports the shortfall in its bound and flags rather
   than silently enriching. `douse` re-plans when it tightens `prec` and accepts one discontinuity
@@ -111,7 +141,13 @@ and the objective is continuous (`evaluate.py`, "Plan once, realize per iterate"
   that is stated in the docstring, as `douse` states it now.
 * **A bound on the integrals** -- from the eigenfunction residual and the quadrature error -- is
   WANTED but not yet derived or measured. M3 bounds eigenvalues only. Do not promise it until it is
-  measured.
+  measured. It matters: `certify.first_order_report` tests `tr M = 0` and `grad lam_1 = 0` at
+  `tol = 1e-8` relative, and those facts were measured to 1e-13, so the integrals need roughly
+  `prec` relative accuracy to be useful there.
+* **No second derivatives.** `quasi_newton` builds BFGS curvature from gradients, and
+  `certify.second_order_probe` differences the objective along null directions. Neither needs a
+  Hessian from `chladni`, but the probe needs eigenvalues accurate well below its differences
+  (~3e-4 at `t = 0.02`).
 
 ## Migration and the benchmark
 
@@ -124,11 +160,30 @@ and the objective is continuous (`evaluate.py`, "Plan once, realize per iterate"
 * The workarounds listed above are removed from `douse` one at a time, each after the benchmark
   shows the `chladni` backend no longer needs it.
 
+## What the `douse` code says about scale and precision
+
+Read 2026-10-06: `evaluate.py`, `derivative.py`, `certify.py`, `cluster_opt.py`,
+`spectral_guard.py`, `quasi_newton.py`, `opt.py`.
+
+* **Precision in use today is 1e-13.** `SpectrumEvaluator` defaults to `prec = 1e-13` and a basis
+  `target = 1e-14`, because finite-difference checks are limited by the tension floor. A 1e-13
+  tier on ordinary (non-clustered) levels is therefore `douse`'s working default, not a stretch
+  goal.
+* **Clusters are wide.** `cluster_opt` treats levels split by ~1e-3 as one eps-active cluster, with
+  the width set by the trust radius. `hadamard(levels, V)` must accept well-separated members; it
+  is not limited to levels `chladni` merged.
+* **Polygons up to N = 16** (`n_p = 28`, `quasi_newton.py`).
+* **A solve is ~300 ms today** (`cluster_opt.py`, `quasi_newton.py`), and a run is hundreds of
+  iterations (92, >250, 400-iterate starts). The 10 s - 1 min budget agreed above is per solve;
+  at a few hundred solves per run that is 1-7 hours per start. To be confirmed with the user.
+* `opt.py` is dead: it imports `.param` and `.evp`, which no longer exist. `PolygonEVP` is not a
+  requirement.
+
 ## Not yet established
 
-* Only `evaluate.py`'s docstring and `derivative.py` were read. `certify.py`, `cluster_opt.py`,
-  `spectral_guard.py` (which uses `lappy.asymp.weyl_count_poly`), `quasi_newton.py` and `opt.py`
-  (`PolygonEVP`) may need more -- e.g. Weyl counts, or second-order information.
 * Whether `douse` wants interior eigenfunction evaluation for anything (answered "no" for the
   inner loop).
 * Which `lappy` failure cases hurt most -- to be collected, not assumed.
+* `objective.py`, `optimize.py`, `constraints.py`, `sampling.py` and `polygon.py` were not read for
+  solver needs; `polygon.py` uses `lappy.Polygon` and `lappy.utils` geometry, which `chladni.geometry`
+  would have to cover.
