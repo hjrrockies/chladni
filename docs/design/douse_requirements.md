@@ -16,7 +16,7 @@ API -- but it keeps everything that depends on HOW a domain is parameterized.
 | **Indices** | `lam_k` up to `k ~ 10-30`. |
 | **Precision** | Chosen by `douse` per solve and tightened as the optimizer converges. Not one fixed target. Today's working default is 1e-13. |
 | **Outputs** | Eigenvalues with multiplicities; a certified bound per level; Hadamard shape-derivative integrals, as an `m x m` matrix per velocity field for a group of levels. Eigenfunctions are needed only as the input to those integrals. |
-| **Time** | 10 s to 1 min per solve is acceptable. Reliability comes first. |
+| **Time** | 10 s to 1 min per solve is acceptable -- 1-7 hours per optimization start at a few hundred solves (confirmed 2026-10-06). Reliability comes first. |
 | **Failures to fix** | All of: dropped eigenvalues, lost precision, wrong multiplicities near degeneracies, and solver exceptions that abort a run. |
 | **On a shortfall** | Return the best result, an honest bound and flags; `douse` decides. Exceptions only for invalid input. |
 
@@ -175,7 +175,8 @@ Read 2026-10-06: `evaluate.py`, `derivative.py`, `certify.py`, `cluster_opt.py`,
 * **Polygons up to N = 16** (`n_p = 28`, `quasi_newton.py`).
 * **A solve is ~300 ms today** (`cluster_opt.py`, `quasi_newton.py`), and a run is hundreds of
   iterations (92, >250, 400-iterate starts). The 10 s - 1 min budget agreed above is per solve;
-  at a few hundred solves per run that is 1-7 hours per start. To be confirmed with the user.
+  at a few hundred solves per run that is 1-7 hours per start. **Confirmed acceptable by the user
+  (2026-10-06)**: reliability is bought with time, up to that envelope.
 * `opt.py` is dead: it imports `.param` and `.evp`, which no longer exist. `PolygonEVP` is not a
   requirement.
 
