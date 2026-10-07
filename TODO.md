@@ -38,6 +38,16 @@ because the benchmark scores certified precision.
   (tiered by reproducibility and ground truth; most Tier 2 shapes still need reference spectra) -- scored on dropped eigenvalues, CERTIFIED precision
   (the Moler-Payne bound) and wall time, with a 1e-14 tier on representative domains. It is the
   instrument every item below is prioritized by.
+
+  **Built so far (2026-10-07, `benchmarks/douse/scoreboard.md`)**: the 41 Tier 1/2 shapes as exact
+  vertices (`cases.json`); reference spectra with multiplicities by three chladni bases plus FEM
+  counts (322 certified, 44 FEM-resolved, 51 provisional levels; <= 2.4e-13 against every
+  independent truth available); lappy's cold solve on each, fresh and frozen; a scorer. **Still
+  missing**: the seam in `douse` itself (and with it tracking and douse's own guards), the user's
+  ranking of the cases, a chladni row that is a planner rather than a fixed basis, and a precision
+  tier -- the references' Moler-Payne bounds are 1e-6..3e-5 relative on these polygons, so they
+  vouch for counts and ~1e-8 values, not 1e-13. The weak references (regular 12-/16-gons,
+  T2.6-N3k2, T2.8-N6s1) want a better basis before they score anything.
 * **[next]** **The black-box path, in order: the basis planner (section 3), `Eigenproblem`, M5
   Hadamard, speed** -- to the interface in `docs/design/douse_requirements.md`: a frozen `Plan`
   realized per iterate, re-planned on a `prec` change; a sorted, certified `Spectrum` whose `warm=`

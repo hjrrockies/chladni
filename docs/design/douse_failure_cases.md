@@ -235,3 +235,27 @@ distinct shapes. Stored refusal records: 71, about 45 unique shapes (about 40 of
 * T2.2 and T2.3 are classified from the returned spectra alone; T2.3 is wrong by theorem (a simple
   `lam_1`), T2.2 only by implausibility.
 * Which of these hurt `douse` most is the user's ranking, not yet made.
+
+## Reproduced, with references (2026-10-07)
+
+`benchmarks/douse/` now holds every Tier 1/2 shape above as exact vertices (`cases.json`, with the
+discrepancies against this catalogue in each case's `notes`), reference spectra for all of them
+(`references.json`), and lappy's cold solve on each (`lappy_runs.json`). See
+`benchmarks/douse/scoreboard.md`. What changes here:
+
+* **Reproduced from the stored shapes**: T1.1 (all three shapes, to the catalogue's 4 decimals),
+  T1.2 on the frozen plan (the invented double `lam_1`), T2.3 (doubled `lam_1` on the frozen plan;
+  fresh correct at the endpoint, wrong at both pre-rerun refusals), T2.5 (fresh and frozen return
+  `[77.3959 x2, 199.76, ...]` where the truth is `29.2430, 60.9012, 77.4130, ...`, all simple:
+  `lam_1` and `lam_2` dropped and a value near `lam_3` doubled -- the catalogue's "`lam_1 ~ 39`"
+  was itself a lappy number), T2.8-kink (`IndexError`), and doubled or dropped levels across T2.6
+  and T2.7.
+* **T1.3's reference list is missing `lam_9 = 916.0816`** (three chladni bases; FEM 917.39 at
+  refine 6). The list's 1020.40 is `lam_10`.
+* **T2.2's recorded lappy output does not belong to the stored shape**: on it `lam_1 = 37.1831`
+  (three bases and FEM), and a fresh lappy solve gives `[34.4924 x3, 41.3688]` -- a spurious triple
+  below `lam_1`, so the catalogue's verdict (spurious triple) stands, the numbers differ.
+* **T2.3 now has ground truth**: `20.3376533, 48.6883582, 52.9825808, 79.8345375, ...`, all simple.
+* **T2.6 `N5k5_contested_run3`**: `lam_1` is simple by theorem, so the at-shape output
+  `[20.2672, 20.2672, ...]` is the wrong one, not the frozen plan's. (The reference has one level
+  at 20.26722 but marks it provisional: the three runs did not agree on its count flags.)
