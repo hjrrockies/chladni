@@ -868,13 +868,27 @@ where it stops.
                         near where `sigma_j/c` puts it, or else by the root. Only a COUNTED
                         branch with `index >= 1` is claimable, so `mult >= 1` holds by
                         construction and nothing the read did not put in can be taken out.
+    (C2) backstop       a COUNTED branch whose `sigma_j` does not dip at the root, to
+                        PROMINENCE, against the cached wide bracket is uncounted (2026-10-07).
+                        The reach rule's distance `sigma_j/c` is only as good as `c`; on a noisy
+                        floor the cache slope read 14000x steep and O(1) branches counted x8.
     side search         when the read declines, the partner is LOCATED instead of guessed at,
                         searching outward past each find. What it adds is exactly what no branch
                         owns.
+    (C2) for the        a declined branch the side search leaves UNACCOUNTED (nothing found, no
+    unaccounted         located root within its reach) is counted if it dips at the root -- a
+                        copy AT the root, which the side search cannot find -- and otherwise
+                        leaves the level flagged (2026-10-07). An exact double at the floor was
+                        certified simple before this.
     phase_d="distance"  roots inside one licence are read ONCE per group, which recounts by
                         construction rather than summing.
 
 ### What is guaranteed
+
+**Off the rectangle grids this guarantee was first tested on 2026-10-07, and failed twice**
+(`tests/test_floor_multiplicity.py`): an exact double at the floor certified simple, and a simple
+level certified x8. Both are fixed by the two (C2) entries above; a third, the L-shape's
+`10 pi^2` at `prec = 1e-13` coming back x0, x3 or x4, is open (`TODO.md` section 4).
 
 **Nothing is silently wrong about a count that is certified.** Every disagreement the pipeline
 can detect between two readings of a multiplicity reaches `SolveDiagnostics.n_uncertain`, and

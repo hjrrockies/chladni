@@ -71,9 +71,10 @@ What is left here is not construction, and since 2026-09-18 it is not Phase D ei
 the multiplicity contract is stated in `docs/design/search.md`'s As-built section. **There were no
 known wrong totals and no known lost eigenvalues on any measured grid, on macOS/Accelerate at any
 scope, and on Linux/OpenBLAS at full-suite scope** -- measured 2026-10-04 on the cluster grids,
-both pencils, all rectangles. **Off rectangles that no longer holds** (2026-10-07, section 4): the
-L-shape's exact double `10 pi^2` comes back x0..x4 unflagged on its reference basis, and `douse`'s
-spike triangle gets a simple level counted x8. The grids were one family. The two platforms still score different case sets (below). What is left is the
+both pencils, all rectangles. **Off rectangles it did not hold** (2026-10-07, section 4): the
+L-shape's exact double `10 pi^2` came back x0..x4 unflagged on its reference basis, and `douse`'s
+spike triangle got a simple level counted x8. The (C2) fixes cure both at `prec = 1e-12`; the
+1e-13 miscounts of `10 pi^2` remain. The grids were one family. The two platforms still score different case sets (below). What is left is the
 constants still inherited from one rectangle family, the rank policy that belongs to the planner,
 and deciding whether Phase D's angle earns its keep.
 
@@ -395,33 +396,21 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   entry-wise accuracy" as a design choice, so the criterion is the user's decision. Audit the other
   `PrecisionWarning` sites against the same rule. Repro: `notes/precision_warning_entrywise.py`.
   Not established: branch C (Olver/Debye); other domains.
-* **[next]** **The reach rule counts a simple level x8 when the cache hands it a wall slope read
-  inside the floor.** `douse`'s spike triangle (catalogue T1.3), Fourier-Bessel at every corner plus
-  an offset source layer, window [124.33, 966.95], `prec = 1e-12`: `807.0076 x8`, unflagged,
-  Moler-Payne refused (`inf`) for the 8 vectors so `bound` fell back to `delta_res = 6e-10`. The
-  slope handed to `multiplicity(rule="reach")` was 47.7 against a true wall slope of 3.40e-3
-  (measured directly), so `sigma_2 .. sigma_8 = 0.22 .. 0.83` read as distances 0.005 .. 0.017
-  inside a 4.3-wide locator bracket, and all `MAX_BRANCHES` were counted. A second basis on the same
-  shape gives x8 at three levels. The sibling of the `_slope_from_cache` floor defect recorded in
-  the phantom item below. Its guard DOES run here and is defeated: the floor is noisy (cached
-  readings within 5e-9 of the root span 1.10e-8 .. 2.37e-8, non-monotone), so two samples clear the
-  "flat bottom" margin of 2x floor and the floor-aware estimate reads 36.3 -- within 100x of the
-  blind 47.7, so the guard does not fire (traced 2026-10-07). Two cheap guards suggest themselves
-  -- an O(1) `sigma_j` is never a branch at a root, and a level whose count exceeds Weyl's
-  expectation for its neighbourhood is flagged -- but neither is measured, and the search's
-  special cases are already a maintenance concern (`notes/session_2026-10-05.md`). Repro:
-  `notes/spike_x8.py` (2026-10-07). One shape, two bases.
-* **[next]** **An exact double at the floor is returned with multiplicity 0..4, unflagged, on an
-  ADEQUATE basis.** The L-shape's `10 pi^2` on the 80-term recipe (tension 1.5e-13 there,
-  `sigma_3 = 0.09`): count 1 at `prec = 1e-12` on [5, 100] and [5, 110]; 2 as two simple levels on
-  [90, 105]; 3 and 4 at 1e-13 on [5, 100] and [5, 110]; 0 at 1e-13 on [90, 105] and [95, 100] --
-  never flagged. At 1e-12 the reach rule DECLINES branch 2 (`d_est = 1.4e-11` against a bracket
-  reaching 1.2e-11 on its near side), and the side search, built to LOCATE a distinct partner at the
-  bracket edge, finds none -- the partner is the root itself -- and clears the flag. The minimal
-  honest change: after the side search, a declined branch with no located root within its reach
-  keeps the level `count_uncertain`. Not made: it needs the gate and the robust tier re-run, and the
-  0-count cases at 1e-13 are a different mechanism (not traced). `douse` drives shapes into exact
-  degeneracy, so this class is its core case. Repro: `notes/double_10pi2.py` (2026-10-07).
+* **[next]** **At `prec = 1e-13` the L-shape's exact double `10 pi^2` comes back x0, x3 or x4,
+  unflagged, on its ADEQUATE basis** (80-term recipe; tension 1.5e-13 there). x3 and x4 on [5, 100]
+  and [5, 110]: separate simple levels 1e-13..5e-12 apart, roots located inside the floor-flat
+  region -- the refiner's phantom class at the floor. x0 on [90, 105] and [95, 100]: not traced.
+  At `prec = 1e-12` this double is now counted 2 in every window (the (C2) fixes below).
+  Repro: `notes/double_10pi2.py`.
+* **[later]** **The two (C2) fixes of 2026-10-07 are measured on two shapes.** `search.solve` now
+  (i) uncounts a reach-counted branch that does not dip at the root against the cached wide
+  bracket, and (ii) counts a declined branch the side search left unaccounted when it does dip,
+  else flags the level (`_c2_holds`; `tests/test_floor_multiplicity.py`). They fixed the spike
+  triangle's x8 (`notes/spike_x8.py`: a cache slope read 14000x steep inside a noisy floor) and the
+  10 pi^2 double certified simple at 1e-12, and the full suite including the gate and the robust
+  tier is unchanged. The cache slope itself is still wrong on a noisy floor -- the guard in
+  `_slope_from_cache` is defeated when the floor's noise exceeds its 2x flat-bottom margin -- and
+  other consumers of `c` (the side search's exclusion radii, `wide_bracket_for`) still read it.
 * **[later]** **`delta_res` still under-covers by up to 2.6x on met levels near the float floor.**
   `notes/bound_coverage.md`: after `c1c3f53` (a `delta_res` short of `prec` is no longer admitted
   into `Level.bound`) the bound covers every unmet level of a 715-level grid, and misses 10 met

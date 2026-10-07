@@ -77,8 +77,8 @@ import numpy as np
 
 from .bracket import bracket_interval
 from .multiplicity import (BIAS_HI, BIAS_HI_CACHE, BIAS_LO, BIAS_LO_CACHE, COUNT_BELOW_CACHE,
-                           MAX_BRANCHES, REJECT_ABOVE_CACHE, SIDE_RATIO, SLOPE_STANDOFF,
-                           TAU_GRAM, WIDE_FACTOR, multiplicity, wide_bracket_for)
+                           MAX_BRANCHES, PROMINENCE, REJECT_ABOVE_CACHE, SIDE_RATIO,
+                           SLOPE_STANDOFF, TAU_GRAM, WIDE_FACTOR, multiplicity, wide_bracket_for)
 from .refine import refine
 
 __all__ = ["Level", "SolveResult", "SolveDiagnostics", "solve"]
@@ -365,6 +365,30 @@ class SolveResult:
     def unfolded(self):
         """Every eigenvalue with multiplicity, which is what truth is stated as."""
         return np.array([x.lam for x in self.levels for _ in range(x.mult)])
+
+
+def _c2_holds(tens, x, wb, j):
+    """(C2) for branch `j` at `x`: does `sigma_j` have a local minimum here, to `PROMINENCE`,
+    against the wide bracket `wb`? `None` when it cannot be read (no wide bracket, or the branch
+    is past what the tension vector carries).
+
+    `multiplicity.py` calls (C2) "the whole definition" of a level's multiplicity. The reach rule
+    reads `sigma_j/c` as a distance instead, which is right on a cone and wrong in two places
+    measured off the rectangle grids (`tests/test_floor_multiplicity.py`): at an exact double
+    `sigma_2` at the root is its FLOOR, not a distance, and on a noisy floor the cache slope `c`
+    can read 14000x steep, so O(1) branches read as inside the bracket. On the wide bracket --
+    cached points past `eps/c`, where the cone has risen above the floor -- a branch belonging to
+    this level has risen (18x on the L-shape's `10 pi^2`) and an O(1) branch has not (1.0x on the
+    spike triangle). Reads the cache: free on a shared objective.
+    """
+    if not wb or len(wb) != 2:
+        return None
+    t = np.atleast_1d(np.asarray(tens(x), dtype=float))
+    tl = np.atleast_1d(np.asarray(tens(wb[0]), dtype=float))
+    tr = np.atleast_1d(np.asarray(tens(wb[1]), dtype=float))
+    if j >= min(t.size, tl.size, tr.size) or not (t[j] > 0):
+        return None
+    return bool(min(tl[j], tr[j]) >= PROMINENCE * t[j])
 
 
 def _slope_from_cache(lams, vs, lam, floor=0.0):
@@ -1121,6 +1145,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
         wb = wide_bracket_for(lams, r.lam, r.sigma, c, prec=prec, neighbour=nb)
         tens = (lambda z: obj.tensions(obj.from_lam(z)))
         extra, uncertain, drop, claim_reason = [], None, False, ""
+        count_decided_by = ""
         if rule == "reach":
             # `mu*(B)` needs the EMITTED bracket and a slope from outside it; the wide bracket plays
             # no part in the count and is carried only as the record of what "gap" would have seen.
@@ -1147,6 +1172,18 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
             m = multiplicity(tens, r.lam, bracket=bracket, c=c_out, prec=prec, rule="reach",
                              reach_bounds=bounds, counter=obj)
             probe_evals += int(m.evaluations)
+            # (C2) BACKSTOP on every branch the reach rule COUNTED. A counted branch whose sigma
+            # does not dip at this root is not this level's: the spike triangle's 807.0076 came
+            # back x8 because a slope read inside a noisy floor made `sigma_2..8 = 0.22..0.83`
+            # read as distances 0.005..0.017 (`_c2_holds`). Only a branch that FAILS is
+            # uncounted; one that cannot be read keeps the rule's verdict.
+            c2_cut = [b.index for b in m.branches
+                      if b.verdict == "counted" and b.index > 0
+                      and _c2_holds(tens, r.lam, wb, b.index) is False]
+            if c2_cut:
+                m = replace(m, mu=int(m.mu) - len(c2_cut), branches=tuple(
+                    replace(b, verdict="c2_rejected") if b.index in c2_cut else b
+                    for b in m.branches))
             if m.ambiguous:
                 # The rule could not place a branch inside the bracket or out. Every wrong total it
                 # left on the cluster grid was this: one bracket holding two DISTINCT eigenvalues,
@@ -1384,6 +1421,33 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
             mu = int(m.mu) - n_claimed
             assert mu >= 1, (f"attribution took the root's own branch: mu={m.mu}, "
                              f"claimed={n_claimed}")
+            # A DECLINED branch the side search left UNACCOUNTED -- nothing found, and no located
+            # root anywhere within its reach -- is either a copy AT this root or an eigenvalue
+            # nobody located. The side search can only find the second kind; an exact double at
+            # the floor is the first (the L-shape's `10 pi^2`: `sigma_2` at the root is its own
+            # floor, its `d_est` lands at the bracket edge, both sides come back empty, and the
+            # level was certified simple). (C2) tells them apart: a copy at the root makes
+            # `sigma_j` dip HERE. Count it, and any branch above it that also dips; a branch that
+            # does not dip, or cannot be read, leaves the count flagged rather than guessed.
+            undecided = [b for b in m.branches if b.verdict == "undecided"]
+            if m.ambiguous and undecided and not uncertain and found == 0:
+                j0 = undecided[0].index
+                reach_j = undecided[0].d_est / bias_lo_eff + 2.0 * width
+                accounted = any(abs(q.lam - r.lam) <= reach_j for q in taken if q is not r)
+                if not accounted:
+                    j, added = j0, 0
+                    t_x = np.atleast_1d(np.asarray(tens(r.lam), dtype=float))
+                    while j < min(t_x.size, MAX_BRANCHES) and _c2_holds(tens, r.lam, wb, j):
+                        added += 1
+                        j += 1
+                    if added:
+                        mu += added
+                        count_decided_by = "c2"
+                    else:
+                        uncertain, claim_reason = True, (
+                            "a declined branch is unaccounted -- no root located within its reach "
+                            "-- and does not dip at this root, so it is either a dropped "
+                            "eigenvalue or the estimate was noise; not decided")
             m = replace(m, mu=mu)
         elif wb is None:
             levels.append(Level(lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res,
@@ -1395,6 +1459,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
             levels.append(Level(lam=r.lam, mult=m.mu, sigma=r.sigma, delta_res=r.delta_res,
                                 bracket=bracket, wide_bracket=wb or (), gap_ratio=m.gap_ratio,
                                 c2_rejected=m.c2_rejected, n_roots=n_roots,
+                                count_decided_by=count_decided_by,
                                 # The estimator's own DECLINE, carried through. Dropping it made every
                                 # wrong total under the reach rule silent on the wip branch -- 0 of 15
                                 # flagged -- which was a wiring omission, not a property of the rule.
