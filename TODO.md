@@ -403,7 +403,10 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   (measured directly), so `sigma_2 .. sigma_8 = 0.22 .. 0.83` read as distances 0.005 .. 0.017
   inside a 4.3-wide locator bracket, and all `MAX_BRANCHES` were counted. A second basis on the same
   shape gives x8 at three levels. The sibling of the `_slope_from_cache` floor defect recorded in
-  the phantom item below, whose guard does not reach this path. Two cheap guards suggest themselves
+  the phantom item below. Its guard DOES run here and is defeated: the floor is noisy (cached
+  readings within 5e-9 of the root span 1.10e-8 .. 2.37e-8, non-monotone), so two samples clear the
+  "flat bottom" margin of 2x floor and the floor-aware estimate reads 36.3 -- within 100x of the
+  blind 47.7, so the guard does not fire (traced 2026-10-07). Two cheap guards suggest themselves
   -- an O(1) `sigma_j` is never a branch at a root, and a level whose count exceeds Weyl's
   expectation for its neighbourhood is flagged -- but neither is measured, and the search's
   special cases are already a maintenance concern (`notes/session_2026-10-05.md`). Repro:

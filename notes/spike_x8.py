@@ -16,7 +16,11 @@ floor (`sigma_1` floors at 1.1e-8 here, so readings 1e-9 apart give slopes ~13-4
 (`inf`), so `bound` falls back to `delta_res` = 6e-10.
 
 The sibling of the 2026-09-22 `_slope_from_cache` floor defect (`TODO.md` section 4, the
-"phantom" item), which was fixed with a guard; that guard does not reach this path. Not run
+"phantom" item), which was fixed with a guard. The guard runs here and is defeated (traced
+2026-10-07): the eight cached samples within 5e-9 of the root read 1.10e-8 .. 2.37e-8,
+non-monotone -- the floor is NOISY by ~2x, not flat -- so the two at 5e-10 clear the guard's
+flat-bottom margin (`_SLOPE_FLOOR_MARGIN * floor` = 2.2e-8), the floor-aware estimate reads 36.3,
+and the guard fires only when the blind 47.7 exceeds it by 100x. Not run
 past this one case. Basis A on the same shape gives x8 at three levels (807, 887, 916), so it is
 not one basis's accident.
 
