@@ -1,0 +1,3744 @@
+{
+ "generated_by": "benchmarks/douse/extract_cases.py (douse 7c4d022, lappy 3f05fa7); case ids from docs/design/douse_failure_cases.md",
+ "perim_convention": "VertexPolygon(N, perim=4.0): p = [x_1..x_{N-2}, y_1..y_{N-2}], vertices = douse.polygon.polygon_vertices(p, 4.0) (last vertex at the origin, closing edge on +x). Cases with p null store vertices from their source as-is (perim null where the source is not perimeter-4). Vertices are CCW; angles in degrees.",
+ "cases": [
+  {
+   "id": "T1.1-bad",
+   "tier": 1,
+   "kinds": [
+    "a",
+    "b",
+    "c"
+   ],
+   "N": 3,
+   "perim": 4.0,
+   "p": [
+    1.02885517693507,
+    0.4136014913917629
+   ],
+   "vertices": [
+    [
+     1.914059323641436,
+     0.0
+    ],
+    [
+     1.02885517693507,
+     0.4136014913917629
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.02885517693507,
+     0.4136014913917629
+    ],
+    "vertices": [
+     [
+      1.914059323641436,
+      0.0
+     ],
+     [
+      1.02885517693507,
+      0.4136014913917629
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/missing_mode/cache.npz [p_bad, lams_bad, fem_bad]; same p as LED/N3_k2.jsonl L8 refusals[0]",
+   "n_eigs_requested": 4,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    93.0732747875521,
+    198.46107809918723,
+    256.2322747057128,
+    381.88133271036764
+   ],
+   "lappy_note": "21.9/25.0/133.1 deg triangle, plan built at the shape: returned true indices 1,3,4,7 at tension 2.8e-14, no warning; F 2.7530 vs true 2.1346; Weyl deficit +2.02. Same shape at n_eigs=6 raises UnresolvedSpectrum (spurious value, tension 5.07e-4).",
+   "claimed_truth": {
+    "values": [
+     93.16051542381457,
+     148.00229414968376,
+     198.86018498132054,
+     256.8979022485801,
+     306.82974765125965,
+     328.5484279819204,
+     383.36209029557483,
+     436.1271545680871,
+     456.47345457096463,
+     522.433139923601,
+     540.1233853962293,
+     612.5446616329524,
+     635.6889663349698,
+     668.4907091463251,
+     704.2661694427061,
+     746.7657562803856,
+     797.7053031739293,
+     832.3035835086033,
+     878.536873551258,
+     902.7150192939891,
+     943.3069265843759,
+     995.6628079566281,
+     1022.6525791176667,
+     1066.7315225484658,
+     1117.2155258845014,
+     1151.1556862409518,
+     1168.3912354498457,
+     1201.3745560015575,
+     1240.971463636673,
+     1302.7429283249116,
+     1337.1939649854287,
+     1363.3952898733635,
+     1418.0954618571122,
+     1442.4024279533533,
+     1495.3376461618,
+     1500.6544768029057,
+     1564.9460561310723,
+     1587.5723740793624,
+     1638.8199182617266,
+     1665.123773818934,
+     1721.4976925779188
+    ],
+    "kind": "FEM P1 upper bound",
+    "source": "benchmarks/run/missing_mode/cache.npz fem_bad (conforming P1, 2704 dofs, fem_hfrac=150)"
+   },
+   "interior_angles_deg": [
+    25.043793817777456,
+    133.0559970556943,
+    21.900209126528285
+   ],
+   "area": 0.39582889543520344,
+   "perimeter": 4.000000000000001,
+   "min_edge": 0.9770632400349715,
+   "notes": "cache stores fem_bad with 41 values; the catalogue says \"44\" -- the 44-value list is meta[\"bad_n6\"][\"fem\"] (same mesh, same values to 1e-12, three more). Stored edges/angles in meta[\"bad\"]."
+  },
+  {
+   "id": "T1.1-bisection",
+   "tier": 1,
+   "kinds": [
+    "a",
+    "c"
+   ],
+   "N": 3,
+   "perim": 4.0,
+   "p": [
+    0.9402286697638149,
+    0.42818182971442903
+   ],
+   "vertices": [
+    [
+     1.908313898670591,
+     0.0
+    ],
+    [
+     0.9402286697638149,
+     0.42818182971442903
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     0.9402286697638149,
+     0.42818182971442903
+    ],
+    "vertices": [
+     [
+      1.908313898670591,
+      0.0
+     ],
+     [
+      0.9402286697638149,
+      0.42818182971442903
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/missing_mode/cache.npz meta[\"bracket\"][\"trail\"] entry t=0.875",
+   "n_eigs_requested": 4,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    88.02181475544333,
+    88.02191445587601,
+    141.160260933114,
+    190.25522747251776
+   ],
+   "lappy_note": "on the bisection toward the clean partner: lam_1 returned twice (88.0218/88.0219), true lam_4 dropped; Weyl deficit -0.49 and FEM deficit 0 -- both count statistics fooled.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    23.859694349113905,
+    131.65570049316634,
+    24.48460515771974
+   ],
+   "area": 0.4085526684011246,
+   "perimeter": 4.0,
+   "min_edge": 1.033135823957058,
+   "notes": "no FEM eigenvalues stored for this shape (only fem_deficit=0). A simple lam_1 is a theorem, so the returned pair 88.0218/88.0219 is certainly wrong."
+  },
+  {
+   "id": "T1.1-good",
+   "tier": 1,
+   "kinds": [],
+   "N": 3,
+   "perim": 4.0,
+   "p": [
+    0.9291503563674081,
+    0.4300043720047623
+   ],
+   "vertices": [
+    [
+     1.907496988574266,
+     0.0
+    ],
+    [
+     0.9291503563674081,
+     0.4300043720047623
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     0.9291503563674081,
+     0.4300043720047623
+    ],
+    "vertices": [
+     [
+      1.907496988574266,
+      0.0
+     ],
+     [
+      0.9291503563674081,
+      0.4300043720047623
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/missing_mode/cache.npz [p_good, lams_good, fem_good]",
+   "n_eigs_requested": 4,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    87.43382802520647,
+    140.37533439676378,
+    189.31562822251772,
+    246.08728509225938
+   ],
+   "lappy_note": "clean partner (control): complete spectrum, FEM deficit 0, tension 2.3e-14.",
+   "claimed_truth": {
+    "values": [
+     87.5099300013646,
+     140.57259477905197,
+     189.6738339541844,
+     246.6944005395585,
+     288.78415123259583,
+     314.42385267119664,
+     368.68669835405245,
+     414.06613800343035,
+     438.88577024826174,
+     500.91708590602775,
+     516.7716446730573,
+     596.1517409209675,
+     604.4842033019618,
+     624.4004406979177,
+     685.8548570710475,
+     711.4386631822802,
+     778.4516398628598,
+     786.7055473652566,
+     838.0228020232728,
+     879.5622071405377,
+     890.7417359571702,
+     961.296740234067,
+     988.9179491996529,
+     1013.4390287091147,
+     1078.367979737314,
+     1094.2504565782488,
+     1119.627296474014
+    ],
+    "kind": "FEM P1 upper bound",
+    "source": "benchmarks/run/missing_mode/cache.npz fem_good (2844 dofs)"
+   },
+   "interior_angles_deg": [
+    23.72652088894348,
+    131.43910523496422,
+    24.834373876092297
+   ],
+   "area": 0.4101160223364263,
+   "perimeter": 3.9999999999999996,
+   "min_edge": 1.023828181230079,
+   "notes": "control case, not a failure."
+  },
+  {
+   "id": "T1.2",
+   "tier": 1,
+   "kinds": [
+    "a",
+    "c"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.1435595499110436,
+    0.018357857128594054,
+    -0.2604038511922998,
+    0.7673689570952481,
+    0.8177310649409012,
+    0.4149675028210711
+   ],
+   "vertices": [
+    [
+     1.1263812840336591,
+     0.0
+    ],
+    [
+     1.1435595499110436,
+     0.7673689570952481
+    ],
+    [
+     0.018357857128594054,
+     0.8177310649409012
+    ],
+    [
+     -0.2604038511922998,
+     0.4149675028210711
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.047213595499958,
+     0.39999999999999997,
+     -0.24721359549995797,
+     0.7608452130361231,
+     1.2310734148701015,
+     0.7608452130361232
+    ],
+    "vertices": [
+     [
+      0.7999999999999992,
+      0.0
+     ],
+     [
+      1.047213595499958,
+      0.7608452130361231
+     ],
+     [
+      0.39999999999999997,
+      1.2310734148701015
+     ],
+     [
+      -0.24721359549995797,
+      0.7608452130361232
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/pre_plateau_fix/N5_k2.jsonl L1 (start 0) field x",
+   "n_eigs_requested": 4,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    21.57523253952739,
+    39.4871086041133,
+    68.85367366468056,
+    88.4589307327845
+   ],
+   "lappy_note": "recorded run (track_set, frozen plan) returned one copy of the double 68.8536 and jumped to lam_5=88.46 at tension 1.6e-10, deficit +0.683; FEM deficit +1 at 1984-49842 dofs. A full solve on a plan frozen at the REGULAR pentagon returns [21.5752, 21.5752, 39.4871, 68.8537]: an invented double lam_1, F 1.8302 vs 3.1913, passing every guard (tension 2.9e-8, Weyl -0.79, FEM deficit 0).",
+   "claimed_truth": {
+    "values": [
+     21.575211135401954,
+     39.487155515672924,
+     68.85360507659279,
+     68.85360513807979
+    ],
+    "kind": "certified lappy",
+    "source": "benchmarks/run/ratio_multistart/N5_k2.jsonl L5 (start 5, verified, worst_sigma 5.0e-11) -- the values quoted as \"certified\" in LAPPY_WISHLIST.md:323, HANDOFF.md:503, docs/todo.md:712. CAUTION: this is a NEARBY shape, not this one (sorted edges differ by 2.5e-04); trust it to ~5-6 digits here, and the multiplicity pattern [1,1,2]"
+   },
+   "interior_angles_deg": [
+    91.28240498060313,
+    91.2803459365103,
+    122.12522767159699,
+    113.2025869433135,
+    122.10943446797609
+   ],
+   "area": 1.002972591396664,
+   "perimeter": 3.9999999999999996,
+   "min_edge": 0.48982300578620985,
+   "notes": "HOW THE PLAN WAS FROZEN is not recorded. The sources say only \"plan at the REGULAR pentagon\" (LAPPY_WISHLIST.md:338, docs/todo.md:777); lappy cold_start Leg 3 swept a frozen regular-pentagon plan and could not reproduce. plan_at here is the exact regular pentagon of perimeter 4 in the VertexPolygon gauge, param_vector(regular(5), 4.0). The other candidate is the run's own start shape (this row has n_replans=0, so its plan was frozen at start_shape(5, 0), a jittered regular pentagon): p = [1.0641972806129616, 0.4110250172133394, -0.23991418982575446, 0.7404542389502263, 1.2191205360370385, 0.7544938931603411]. Note a frozen plan maps corner blocks by vertex index, and the labelling of the regular pentagon relative to x is a choice (all labellings are congruent for the regular pentagon itself).; row's stored edges 0.0e+00 and angles 1.4e-14 deg reproduced (max abs diff)"
+  },
+  {
+   "id": "T1.3",
+   "tier": 1,
+   "kinds": [
+    "a",
+    "d"
+   ],
+   "N": 3,
+   "perim": 4.0,
+   "p": [
+    1.1756103887576692,
+    0.23218091730644705
+   ],
+   "vertices": [
+    [
+     1.972069685870855,
+     0.0
+    ],
+    [
+     1.1756103887576692,
+     0.23218091730644705
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.1756103887576692,
+     0.23218091730644705
+    ],
+    "vertices": [
+     [
+      1.972069685870855,
+      0.0
+     ],
+     [
+      1.1756103887576692,
+      0.23218091730644705
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks.ratio_multistart.start_shape(3, 4) -> param_vector(., 4.0); equals catalogue p and repro_N3_k2_s4.jsonl L1 p bit-for-bit",
+   "n_eigs_requested": 4,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    248.65341947436792,
+    344.59017180321564,
+    518.6158017529756,
+    611.3374161055224
+   ],
+   "lappy_note": "11.2/16.3/152.6 deg spike, fresh plan: result depends on n_eigs. n_eigs=4 drops 430.38; =5 drops lam_1 248.65; =6 drops 248.65 and 344.59; =7 drops 248.65 and 887.47. Later code raises EigensolverFailure (\"f has too many local minima\").",
+   "claimed_truth": {
+    "values": [
+     248.65341947436778,
+     344.59017180321564,
+     430.3800057083007,
+     518.6158017529757,
+     611.3374161055222,
+     705.7496638432732,
+     807.0076098165387,
+     887.4724412448254,
+     1020.3976799718512
+    ],
+    "kind": "consensus",
+    "source": "cluster medians of every stored spectrum at this p: repro L1 (n_eigs=4, clean); pre_rerun/N3_k2.jsonl L1 refusals[0]; pre_rerun/N3_k3.jsonl L1 refusals[0]; pre_rerun/N3_k4.jsonl L1 refusals[0]; pre_rerun/N3_k5.jsonl L4 refusals[0]. Max relative spread within a cluster 2.3e-14. Values above 887.47 rest on one record each (1020.39768 only on N3_k5)."
+   },
+   "interior_angles_deg": [
+    16.252267766781927,
+    152.57569610360318,
+    11.172036129614892
+   ],
+   "area": 0.228938474328866,
+   "perimeter": 4.000000000000001,
+   "min_edge": 0.8296115900343325,
+   "notes": "catalogue cites repro_N3_k2_s4.jsonl for the 9-value reference, but that file holds only the first 4 (L1); values 5-9 come from the pre_rerun N3_k3..k5 refusal records (p == plan_at). lappy_returned is the n_eigs=4 refusal. Others: n_eigs=4: [248.6534, 344.5902, 518.6158, 611.3374]; n_eigs=5: [344.5902, 430.38, 518.6158, 611.3374, 705.7497]; n_eigs=6: [430.38, 518.6158, 611.3374, 705.7497, 807.0076, 887.4724]; n_eigs=7: [344.5902, 430.38, 518.6158, 611.3374, 705.7497, 807.0076, 1020.3977]. N3_k1 L3 (n_eigs=3) is a crash row with no shape."
+  },
+  {
+   "id": "T1.4-hex",
+   "tier": 1,
+   "kinds": [
+    "c"
+   ],
+   "N": 6,
+   "perim": null,
+   "p": null,
+   "vertices": [
+    [
+     1.0,
+     0.0
+    ],
+    [
+     0.5000000000000001,
+     0.8660254037844386
+    ],
+    [
+     -0.49999999999999983,
+     0.8660254037844387
+    ],
+    [
+     -1.0,
+     1.2246467991473532e-16
+    ],
+    [
+     -0.5000000000000004,
+     -0.8660254037844384
+    ],
+    [
+     0.49999999999999933,
+     -0.866025403784439
+    ]
+   ],
+   "plan_at": null,
+   "source": "lappy.geometry.reg_ngon(6) (lappy/lappy/geometry.py:2155-2158), unit circumradius",
+   "n_eigs_requested": 10,
+   "prec_requested": null,
+   "lappy_returned": null,
+   "lappy_note": "reference-pipeline failure, not a cold solve: symsolve.solve_sym reducing D6 by its proper subgroup D2 under-counted a sector -- reg_ngon_6 listed the double 32.45185751 once; reg_ngon_8 was missing lam_1 = 6.4849335. Still open in lappy's per-sector path.",
+   "claimed_truth": {
+    "values": [
+     7.155339133926042,
+     18.131677865530694,
+     18.131677865530694,
+     32.45185751440048,
+     32.45185751440048,
+     37.49135287679824,
+     47.62936577385704,
+     52.63789013914339,
+     60.10511209416662,
+     60.10511209416662
+    ],
+    "kind": "certified lappy",
+    "source": "lappy/benchmarks/suite/run/reference_values.py REFERENCE[\"reg_ngon_6\"] (corrected, full-domain, certified_digits=12.1)"
+   },
+   "interior_angles_deg": [
+    119.99999999999999,
+    120.00000000000001,
+    120.00000000000001,
+    120.00000000000001,
+    120.00000000000001,
+    119.99999999999999
+   ],
+   "area": 2.598076211353316,
+   "perimeter": 6.0,
+   "min_edge": 0.9999999999999996,
+   "notes": "unit circumradius, perimeter 6, NOT 4. lappy's full-domain cold path measured correct multiplicities here (lappy benchmarks/cold_start/run/NOTEBOOK.md Leg 3)."
+  },
+  {
+   "id": "T1.4-oct",
+   "tier": 1,
+   "kinds": [
+    "c"
+   ],
+   "N": 8,
+   "perim": null,
+   "p": null,
+   "vertices": [
+    [
+     1.0,
+     0.0
+    ],
+    [
+     0.7071067811865476,
+     0.7071067811865475
+    ],
+    [
+     6.123233995736766e-17,
+     1.0
+    ],
+    [
+     -0.7071067811865475,
+     0.7071067811865476
+    ],
+    [
+     -1.0,
+     1.2246467991473532e-16
+    ],
+    [
+     -0.7071067811865477,
+     -0.7071067811865475
+    ],
+    [
+     -1.8369701987210297e-16,
+     -1.0
+    ],
+    [
+     0.7071067811865474,
+     -0.7071067811865477
+    ]
+   ],
+   "plan_at": null,
+   "source": "lappy.geometry.reg_ngon(8) (lappy/lappy/geometry.py:2155-2158), unit circumradius",
+   "n_eigs_requested": 10,
+   "prec_requested": null,
+   "lappy_returned": null,
+   "lappy_note": "reference-pipeline failure, not a cold solve: symsolve.solve_sym reducing D8 by its proper subgroup D2 under-counted a sector -- reg_ngon_6 listed the double 32.45185751 once; reg_ngon_8 was missing lam_1 = 6.4849335. Still open in lappy's per-sector path.",
+   "claimed_truth": {
+    "values": [
+     6.48493349372267,
+     16.45611903018437,
+     16.45611903018437,
+     29.54056472809668,
+     29.54056472809668,
+     34.12447528574973,
+     45.529751487864296,
+     45.529751487864296,
+     55.04974355085233,
+     55.04974355085233
+    ],
+    "kind": "certified lappy",
+    "source": "lappy/benchmarks/suite/run/reference_values.py REFERENCE[\"reg_ngon_8\"] (corrected, full-domain, certified_digits=10.45)"
+   },
+   "interior_angles_deg": [
+    135.0,
+    135.0,
+    135.0,
+    135.00000000000003,
+    135.00000000000003,
+    135.0,
+    135.00000000000003,
+    135.0
+   ],
+   "area": 2.82842712474619,
+   "perimeter": 6.122934917841437,
+   "min_edge": 0.7653668647301795,
+   "notes": "unit circumradius, perimeter 6.12293491784144, NOT 4. lappy's full-domain cold path measured correct multiplicities here (lappy benchmarks/cold_start/run/NOTEBOOK.md Leg 3)."
+  },
+  {
+   "id": "T1.5-r1.633",
+   "tier": 1,
+   "kinds": [
+    "c"
+   ],
+   "N": 4,
+   "perim": 4.0,
+   "p": null,
+   "vertices": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     1.2404101785036081,
+     0.0
+    ],
+    [
+     1.2404101785036081,
+     0.759589821496392
+    ],
+    [
+     0.0,
+     0.759589821496392
+    ]
+   ],
+   "plan_at": null,
+   "source": "lappy/benchmarks/cold_start/truth.py:26-35 rect_of_ratio(1.633); failure in lappy/docs/WORK_ORDER_solver_reliability.md:54-62",
+   "n_eigs_requested": 12,
+   "prec_requested": null,
+   "lappy_returned": null,
+   "lappy_note": "lappy cold path (Eigenproblem(dom).solve(12), default precision, weyl_audit on): 94.0813 (lam_5) returned twice after a false Weyl alarm re-scan; fixed in lappy (MERGE_RTOL).",
+   "claimed_truth": {
+    "values": [
+     23.52031741914719,
+     42.76409627725094,
+     74.83706104075719,
+     74.83749081848502,
+     94.08126967658876,
+     119.73921170966594,
+     126.15423444009501,
+     160.36611315071474,
+     171.05638510900377,
+     177.47054828397717,
+     179.60989200881846,
+     211.68285677232473
+    ],
+    "kind": "closed form",
+    "source": "pi^2 (m^2/L^2 + n^2/H^2), H = 4/(2(1+r)), L = r H"
+   },
+   "interior_angles_deg": [
+    90.0,
+    90.0,
+    90.0,
+    90.0
+   ],
+   "area": 0.9422029460718634,
+   "perimeter": 4.0,
+   "min_edge": 0.759589821496392,
+   "notes": "full returned arrays are not stored; the work order quotes the first 7 at r=1.633: [23.5203 42.7641 74.8371 74.8375 94.0813 94.0813 119.7392]. The 74.8371/74.8375 pair is a near-double because 1.633 is close to sqrt(8/3)."
+  },
+  {
+   "id": "T1.5-r2",
+   "tier": 1,
+   "kinds": [
+    "c"
+   ],
+   "N": 4,
+   "perim": 4.0,
+   "p": null,
+   "vertices": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     1.3333333333333333,
+     0.0
+    ],
+    [
+     1.3333333333333333,
+     0.6666666666666666
+    ],
+    [
+     0.0,
+     0.6666666666666666
+    ]
+   ],
+   "plan_at": null,
+   "source": "lappy/benchmarks/cold_start/truth.py:26-35 rect_of_ratio(2); failure in lappy/docs/WORK_ORDER_solver_reliability.md:54-62",
+   "n_eigs_requested": 22,
+   "prec_requested": null,
+   "lappy_returned": null,
+   "lappy_note": "lappy cold path (Eigenproblem(dom).solve(22), default precision, weyl_audit on): 72.171482 (lam_3) returned twice after a false Weyl alarm re-scan; fixed in lappy (MERGE_RTOL).",
+   "claimed_truth": {
+    "values": [
+     27.75826237806382,
+     44.41321980490211,
+     72.17148218296593,
+     94.37809208541698,
+     111.03304951225527,
+     111.03304951225527,
+     138.7913118903191,
+     160.99792179277014,
+     177.65287921960845,
+     205.41114159767227,
+     222.06609902451055,
+     222.06609902451055,
+     227.61775150012332,
+     249.82436140257437,
+     288.6859287318637,
+     288.6859287318637,
+     294.23758120747647,
+     338.6508010123786,
+     360.85741091482964,
+     360.85741091482964,
+     377.5123683416679,
+     377.5123683416679
+    ],
+    "kind": "closed form",
+    "source": "pi^2 (m^2/L^2 + n^2/H^2), H = 4/(2(1+r)), L = r H"
+   },
+   "interior_angles_deg": [
+    90.0,
+    90.0,
+    90.0,
+    90.0
+   ],
+   "area": 0.8888888888888888,
+   "perimeter": 3.9999999999999996,
+   "min_edge": 0.6666666666666666,
+   "notes": "full returned array not stored."
+  },
+  {
+   "id": "T2.1-pass1",
+   "tier": 2,
+   "kinds": [
+    "a"
+   ],
+   "N": 6,
+   "perim": 4.0,
+   "p": [
+    0.796102460003105,
+    1.0430649234606624,
+    0.3045509941484931,
+    -0.2964947023033227,
+    0.114354480800215,
+    0.862628738987791,
+    1.2240136818145162,
+    0.6424560268310093
+   ],
+   "vertices": [
+    [
+     0.6897584791286667,
+     0.0
+    ],
+    [
+     0.796102460003105,
+     0.114354480800215
+    ],
+    [
+     1.0430649234606624,
+     0.862628738987791
+    ],
+    [
+     0.3045509941484931,
+     1.2240136818145162
+    ],
+    [
+     -0.2964947023033227,
+     0.6424560268310093
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": null,
+   "source": "benchmarks/run/ratio_multistart/pre_rerun_2026-08-27/N6_k1_s2_second_pass.json[0] field x",
+   "n_eigs_requested": 3,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    17.08283210803435,
+    44.76243820186462,
+    74.09086452580246
+   ],
+   "lappy_note": "N6_k1 start 2: true lam_2 = 41.49929 absent at tension 1.3e-9; 92 iterations on lam_2/lam_1 reported 2.6203 > PPW 2.5387. Fresh ratio 2.4293.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    132.92129748542433,
+    155.34379917554708,
+    97.80928930666555,
+    109.86970189660161,
+    109.28249668486586,
+    114.77341545089561
+   ],
+   "area": 1.109462088671167,
+   "perimeter": 4.0,
+   "min_edge": 0.15616014071237783,
+   "notes": "plan_at not stored (n_replans=1). tests/test_spectral_guard.py:20 holds the same x rounded to 12 digits; the JSON value is used.; row's stored edges 0.0e+00 and angles 2.8e-14 deg reproduced (max abs diff)"
+  },
+  {
+   "id": "T2.1-rerun",
+   "tier": 2,
+   "kinds": [
+    "a",
+    "b"
+   ],
+   "N": 6,
+   "perim": 4.0,
+   "p": [
+    0.8300863845610853,
+    1.0168320441056298,
+    0.2616207685576051,
+    -0.2738745089535891,
+    0.09877538603178447,
+    0.8481198008326098,
+    1.2263414807342083,
+    0.6759723357386134
+   ],
+   "vertices": [
+    [
+     0.7705250731549693,
+     0.0
+    ],
+    [
+     0.8300863845610853,
+     0.09877538603178447
+    ],
+    [
+     1.0168320441056298,
+     0.8481198008326098
+    ],
+    [
+     0.2616207685576051,
+     1.2263414807342083
+    ],
+    [
+     -0.2738745089535891,
+     0.6759723357386134
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": null,
+   "source": "benchmarks/run/ratio_multistart/rerun/N6_k1_start2.jsonl L1 field x",
+   "n_eigs_requested": 3,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    17.058998938679043,
+    43.1361436165151,
+    58.19482523360248
+   ],
+   "lappy_note": "rerun shape: 58.1948 returned at tension 0.62 (not an eigenvalue) under worst_sigma 1.3e-9; Weyl 0.470 -- one dropped plus one spurious balances the count. The origin of spurious_tol.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    121.08987221690096,
+    162.90387295737676,
+    102.60868372415877,
+    107.61279860061205,
+    113.72912777870356,
+    112.0556447222479
+   ],
+   "area": 1.1087466331793459,
+   "perimeter": 4.0,
+   "min_edge": 0.11534351608193832,
+   "notes": "plan_at not stored.; row's stored edges 0.0e+00 and angles 1.4e-14 deg reproduced (max abs diff)"
+  },
+  {
+   "id": "T2.2",
+   "tier": 2,
+   "kinds": [
+    "c"
+   ],
+   "N": 6,
+   "perim": 4.0,
+   "p": [
+    1.5524069062968155,
+    1.421770613638599,
+    0.5304091124623859,
+    0.5053978611322578,
+    0.16141219015262093,
+    0.727170479679781,
+    0.5527920320397105,
+    0.13976052872357242
+   ],
+   "vertices": [
+    [
+     0.9283181171480571,
+     0.0
+    ],
+    [
+     1.5524069062968155,
+     0.16141219015262093
+    ],
+    [
+     1.421770613638599,
+     0.727170479679781
+    ],
+    [
+     0.5304091124623859,
+     0.5527920320397105
+    ],
+    [
+     0.5053978611322578,
+     0.13976052872357242
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.5524069062968155,
+     1.421770613638599,
+     0.5304091124623859,
+     0.5053978611322578,
+     0.16141219015262093,
+     0.727170479679781,
+     0.5527920320397105,
+     0.13976052872357242
+    ],
+    "vertices": [
+     [
+      0.9283181171480571,
+      0.0
+     ],
+     [
+      1.5524069062968155,
+      0.16141219015262093
+     ],
+     [
+      1.421770613638599,
+      0.727170479679781
+     ],
+     [
+      0.5304091124623859,
+      0.5527920320397105
+     ],
+     [
+      0.5053978611322578,
+      0.13976052872357242
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/N6_k2.jsonl L8 (start 1) fields x, plan_at",
+   "n_eigs_requested": 4,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    31.618296656701382,
+    34.467345990537844,
+    34.467345990537844,
+    34.467345990537844
+   ],
+   "lappy_note": "bit-identical TRIPLE 34.467345990537844 on an asymmetric hexagon (15.5..251.1 deg), verified=True; F 1.090 vs cell 3.198; tension 3.3e-7, deficit 0.23 -- passed every guard. Suspected, from implausibility only.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    165.49897985501204,
+    91.49902992540065,
+    91.93292478016635,
+    104.53439761935068,
+    251.07664831789648,
+    15.458019502173812
+   ],
+   "area": 0.622105595870395,
+   "perimeter": 4.000000000000001,
+   "min_edge": 0.41378809241529396,
+   "notes": "row's stored edges 0.0e+00 and angles 2.8e-14 deg reproduced (max abs diff)"
+  },
+  {
+   "id": "T2.3-endpoint",
+   "tier": 2,
+   "kinds": [
+    "c"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.140762202468147,
+    1.1755294518610977,
+    0.1733365453807047,
+    0.8699528913419473,
+    0.9625912717260715,
+    0.9977382294314255
+   ],
+   "vertices": [
+    [
+     1.0050919067339488,
+     0.0
+    ],
+    [
+     1.140762202468147,
+     0.8699528913419473
+    ],
+    [
+     1.1755294518610977,
+     0.9625912717260715
+    ],
+    [
+     0.1733365453807047,
+     0.9977382294314255
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.1372669029230877,
+     1.1832845943683745,
+     0.17362433929807233,
+     0.8706462620713892,
+     0.9646772873780338,
+     0.9888514079425813
+    ],
+    "vertices": [
+     [
+      0.9999809762634494,
+      0.0
+     ],
+     [
+      1.1372669029230877,
+      0.8706462620713892
+     ],
+     [
+      1.1832845943683745,
+      0.9646772873780338
+     ],
+     [
+      0.17362433929807233,
+      0.9888514079425813
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/N5_k4.jsonl L8 (start 5) fields x, plan_at",
+   "n_eigs_requested": 6,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    20.33765341129639,
+    20.337653411564297,
+    48.68835863702287,
+    48.6883586374217,
+    79.83453884595369,
+    103.20268104380746
+   ],
+   "lappy_note": "double ground state lam_1 = lam_2 = 20.33765341129639/20.337653411564297 (rel gap 1.3e-11) and lam_3 = lam_4 = 48.6884 on an irregular pentagon; F 3.9255 vs cell 5.0433; verified=True, excluded only on worst_sigma 4.9e-5. Wrong by theorem (simple lam_1).",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    98.863952743444,
+    191.70719593021005,
+    71.43739414244416,
+    97.84705525574273,
+    80.14440192815903
+   ],
+   "area": 0.9779167661620152,
+   "perimeter": 4.0,
+   "min_edge": 0.0989476182156262,
+   "notes": "row's stored edges 0.0e+00 and angles 1.4e-14 deg reproduced (max abs diff)"
+  },
+  {
+   "id": "T2.3-pre-ref0",
+   "tier": 2,
+   "kinds": [
+    "a",
+    "c"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.0681114462545445,
+    1.1005435324538326,
+    0.08527281612580861,
+    0.8913578471877018,
+    0.9769926764761047,
+    1.0009447319911557
+   ],
+   "vertices": [
+    [
+     0.9938607147243607,
+     0.0
+    ],
+    [
+     1.0681114462545445,
+     0.8913578471877018
+    ],
+    [
+     1.1005435324538326,
+     0.9769926764761047
+    ],
+    [
+     0.08527281612580861,
+     1.0009447319911557
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.0681114462545445,
+     1.1005435324538326,
+     0.08527281612580861,
+     0.8913578471877018,
+     0.9769926764761047,
+     1.0009447319911557
+    ],
+    "vertices": [
+     [
+      0.9938607147243607,
+      0.0
+     ],
+     [
+      1.0681114462545445,
+      0.8913578471877018
+     ],
+     [
+      1.1005435324538326,
+      0.9769926764761047
+     ],
+     [
+      0.08527281612580861,
+      1.0009447319911557
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/pre_rerun_2026-08-27/N5_k4.jsonl L4 (start 5) refusals[0] fields p, plan_at",
+   "n_eigs_requested": 6,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    20.12775109791801,
+    49.2664679858415,
+    80.12220281525737,
+    100.59877973669896,
+    101.03072973560883,
+    127.19366530618741
+   ],
+   "lappy_note": "pre-rerun refusal: drops the ~51.35 mode (deficit 1.31); fresh plan (p == plan_at); deficit 1.3121.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    94.76178475863563,
+    195.98116557532748,
+    70.60850908481763,
+    93.51794409899783,
+    85.13059648222145
+   ],
+   "area": 0.9833584140934615,
+   "perimeter": 3.9999999999999996,
+   "min_edge": 0.09157054222014824,
+   "notes": "from_full_solve=True."
+  },
+  {
+   "id": "T2.3-pre-ref3",
+   "tier": 2,
+   "kinds": [
+    "a",
+    "c"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.0703241046627965,
+    1.1005521351089143,
+    0.08961052199874446,
+    0.8909676836139592,
+    0.9793479514181316,
+    0.9992505099084587
+   ],
+   "vertices": [
+    [
+     0.9983231009551595,
+     0.0
+    ],
+    [
+     1.0703241046627965,
+     0.8909676836139592
+    ],
+    [
+     1.1005521351089143,
+     0.9793479514181316
+    ],
+    [
+     0.08961052199874446,
+     0.9992505099084587
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.0681114462545445,
+     1.1005435324538326,
+     0.08527281612580861,
+     0.8913578471877018,
+     0.9769926764761047,
+     1.0009447319911557
+    ],
+    "vertices": [
+     [
+      0.9938607147243607,
+      0.0
+     ],
+     [
+      1.0681114462545445,
+      0.8913578471877018
+     ],
+     [
+      1.1005435324538326,
+      0.9769926764761047
+     ],
+     [
+      0.08527281612580861,
+      1.0009447319911557
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/pre_rerun_2026-08-27/N5_k4.jsonl L4 (start 5) refusals[3] fields p, plan_at",
+   "n_eigs_requested": 6,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    20.104529724289932,
+    49.1660488454333,
+    79.9967701733343,
+    100.93836008976801,
+    126.88684132570656,
+    170.88086651226612
+   ],
+   "lappy_note": "pre-rerun refusal: also collapses the 100.5/101.0 pair (deficit 3.05); plan frozen at refusals[0].p; deficit 3.0457.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    94.62015445299865,
+    194.26168203509,
+    72.24600838211931,
+    93.99660307273949,
+    84.87555205705254
+   ],
+   "area": 0.9845521772701691,
+   "perimeter": 3.9999999999999996,
+   "min_edge": 0.09340666765166529,
+   "notes": "from_full_solve=True."
+  },
+  {
+   "id": "T2.4-N5-L4",
+   "tier": 2,
+   "kinds": [
+    "c"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.1394387990959465,
+    0.5710084791334753,
+    -0.09439623476234157,
+    0.7336073496995219,
+    1.1924907749737272,
+    0.7539338954293914
+   ],
+   "vertices": [
+    [
+     0.9566833045833911,
+     0.0
+    ],
+    [
+     1.1394387990959465,
+     0.7336073496995219
+    ],
+    [
+     0.5710084791334753,
+     1.1924907749737272
+    ],
+    [
+     -0.09439623476234157,
+     0.7539338954293914
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": null,
+   "source": "benchmarks/run/ratio_stall/N5.jsonl L4 (it=3) field p",
+   "n_eigs_requested": 3,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    17.427760522054506,
+    45.562488458821555,
+    45.56248845797463
+   ],
+   "lappy_note": "lam_2 duplicated as a bit-identical pair 45.5625 (ratio 2.614 > PPW); true lam_2 gone",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    103.98872275450023,
+    114.92458201456081,
+    107.69850090903374,
+    116.25161771795051,
+    97.13657660395474
+   ],
+   "area": 1.0923867146279282,
+   "perimeter": 4.0,
+   "min_edge": 0.730538860461252,
+   "notes": "ratio_stall stores p (not vertices), perimeter 4; no plan stored."
+  },
+  {
+   "id": "T2.4-N5-L5",
+   "tier": 2,
+   "kinds": [
+    "c"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.191814519933441,
+    0.6016919572915403,
+    -0.12796055129039452,
+    0.755826607071409,
+    1.1659695245960717,
+    0.7250963234325205
+   ],
+   "vertices": [
+    [
+     0.8717364074979272,
+     0.0
+    ],
+    [
+     1.191814519933441,
+     0.755826607071409
+    ],
+    [
+     0.6016919572915403,
+     1.1659695245960717
+    ],
+    [
+     -0.12796055129039452,
+     0.7250963234325205
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": null,
+   "source": "benchmarks/run/ratio_stall/N5.jsonl L5 (it=4) field p",
+   "n_eigs_requested": 3,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    17.58872279305148,
+    47.90997178983389,
+    47.90997178988745
+   ],
+   "lappy_note": "lam_2 duplicated, 47.9100 x2 (ratio 2.724 > PPW); true lam_2 gone",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    112.95172848257582,
+    101.84807851999493,
+    114.0588345783513,
+    111.13319649734865,
+    100.00816192172933
+   ],
+   "area": 1.0896044594987861,
+   "perimeter": 4.0,
+   "min_edge": 0.7186528033304304,
+   "notes": "ratio_stall stores p (not vertices), perimeter 4; no plan stored."
+  },
+  {
+   "id": "T2.4-N5-L28",
+   "tier": 2,
+   "kinds": [
+    "c"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.0798422440002735,
+    0.5536841194440465,
+    -0.06633209491345625,
+    0.7324770779208299,
+    1.217954192217748,
+    0.7930644351538766
+   ],
+   "vertices": [
+    [
+     0.9997822162927464,
+     0.0
+    ],
+    [
+     1.0798422440002735,
+     0.7324770779208299
+    ],
+    [
+     0.5536841194440465,
+     1.217954192217748
+    ],
+    [
+     -0.06633209491345625,
+     0.7930644351538766
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": null,
+   "source": "benchmarks/run/ratio_stall/N5.jsonl L28 (it=27) field p",
+   "n_eigs_requested": 3,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    17.67093473800931,
+    44.447663530324384,
+    76.84759511589068
+   ],
+   "lappy_note": "from iterate 17 (line 18) the 44.4468/44.4470 pair has lost a member: returned [17.6709, 44.4477, 76.8476]; the run stalled at 2.51530 against the regular pentagon's 2.52684",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    96.23768981106045,
+    126.45950882319036,
+    102.88042289303303,
+    119.64127438429422,
+    94.78110408842196
+   ],
+   "area": 1.0809258274893632,
+   "perimeter": 3.9999999999999996,
+   "min_edge": 0.7159122855089085,
+   "notes": "ratio_stall stores p (not vertices), perimeter 4; no plan stored. Representative of lines 18-28 (all have the pair collapsed; L28 is the stalled endpoint)."
+  },
+  {
+   "id": "T2.4-N4-L25",
+   "tier": 2,
+   "kinds": [
+    "c"
+   ],
+   "N": 4,
+   "perim": 4.0,
+   "p": [
+    1.0351559114967142,
+    0.0653475521647772,
+    0.9619129384058261,
+    1.0357964078044692
+   ],
+   "vertices": [
+    [
+     1.0275828876470194,
+     0.0
+    ],
+    [
+     1.0351559114967142,
+     0.9619129384058261
+    ],
+    [
+     0.0653475521647772,
+     1.0357964078044692
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": null,
+   "source": "benchmarks/run/ratio_stall/N4.jsonl L25 (it=24) field p",
+   "n_eigs_requested": 3,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    19.773482708894086,
+    49.42243851002559,
+    49.42243861250941
+   ],
+   "lappy_note": "near-double 49.42243851/49.42243861 (gap 2.1e-9) on a non-square quadrilateral; run then stopped on 40 failed backtracks",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    90.45107340072731,
+    93.9055085671972,
+    89.25337768377322,
+    86.39004034830225
+   ],
+   "area": 0.9988986968187485,
+   "perimeter": 4.0,
+   "min_edge": 0.9619427486928517,
+   "notes": "ratio_stall stores p (not vertices), perimeter 4; no plan stored."
+  },
+  {
+   "id": "T2.5",
+   "tier": 2,
+   "kinds": [
+    "a",
+    "b",
+    "c",
+    "d",
+    "e"
+   ],
+   "N": 6,
+   "perim": 4.0,
+   "p": [
+    1.6312897734785867,
+    0.9117377758429616,
+    0.6231789069106254,
+    0.2840791568565929,
+    0.2333524495837802,
+    0.904778806970504,
+    0.6638056912940102,
+    0.17752397373425044
+   ],
+   "vertices": [
+    [
+     1.3346391360754035,
+     0.0
+    ],
+    [
+     1.6312897734785867,
+     0.2333524495837802
+    ],
+    [
+     0.9117377758429616,
+     0.904778806970504
+    ],
+    [
+     0.6231789069106254,
+     0.6638056912940102
+    ],
+    [
+     0.2840791568565929,
+     0.17752397373425044
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.6312897734785867,
+     0.9117377758429616,
+     0.6231789069106254,
+     0.2840791568565929,
+     0.2333524495837802,
+     0.904778806970504,
+     0.6638056912940102,
+     0.17752397373425044
+    ],
+    "vertices": [
+     [
+      1.3346391360754035,
+      0.0
+     ],
+     [
+      1.6312897734785867,
+      0.2333524495837802
+     ],
+     [
+      0.9117377758429616,
+      0.904778806970504
+     ],
+     [
+      0.6231789069106254,
+      0.6638056912940102
+     ],
+     [
+      0.2840791568565929,
+      0.17752397373425044
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks.ratio_multistart.start_shape(6, 5) -> param_vector(., 4.0); equals catalogue p",
+   "n_eigs_requested": 5,
+   "prec_requested": 1e-13,
+   "lappy_returned": null,
+   "lappy_note": "reflex hexagon (203 deg): fails at every k. k=3 (n_eigs=5): UnresolvedSpectrum at the start (deficit 5.21), later a spurious value at 5.02e-4. k=2: one copy of the near-double 77.41 dropped, F inflated 37%. k=1: lam_1 ~ 39 dropped entirely.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    141.81056764012882,
+    81.20787987544423,
+    97.11657563200518,
+    164.754270181328,
+    203.1090219068389,
+    32.0016847642549
+   ],
+   "area": 0.7690374874324725,
+   "perimeter": 4.0,
+   "min_edge": 0.3349861618197856,
+   "notes": "plan_at = the shape (the fresh plan a start uses). k=2 and k=1 failures are at run endpoints, not this start: pre_rerun/N6_k2.jsonl L6 x and pre_rerun/N6_k1.jsonl L8 x (pre-rerun plans not stored)."
+  },
+  {
+   "id": "T2.6-N6k3-L4-ref0",
+   "tier": 2,
+   "kinds": [
+    "a",
+    "c"
+   ],
+   "N": 6,
+   "perim": 4.0,
+   "p": [
+    1.1756232925046135,
+    0.6552913803076038,
+    0.4282430912418486,
+    0.16845488205943807,
+    0.5086196309956869,
+    1.2155255078996217,
+    0.9799062565507082,
+    0.6192569372109016
+   ],
+   "vertices": [
+    [
+     1.1996093777515335,
+     0.0
+    ],
+    [
+     1.1756232925046135,
+     0.5086196309956869
+    ],
+    [
+     0.6552913803076038,
+     1.2155255078996217
+    ],
+    [
+     0.4282430912418486,
+     0.9799062565507082
+    ],
+    [
+     0.16845488205943807,
+     0.6192569372109016
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.4770233276455924,
+     0.768904707169282,
+     0.4944046123855538,
+     0.3097124797489037,
+     0.5795478077046817,
+     0.8207276996568711,
+     0.9132095619330113,
+     0.7117197876528284
+    ],
+    "vertices": [
+     [
+      1.3094777358776841,
+      0.0
+     ],
+     [
+      1.4770233276455924,
+      0.5795478077046817
+     ],
+     [
+      0.768904707169282,
+      0.8207276996568711
+     ],
+     [
+      0.4944046123855538,
+      0.9132095619330113
+     ],
+     [
+      0.3097124797489037,
+      0.7117197876528284
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/pre_rerun_2026-08-27/N6_k3.jsonl L4 (start 7) refusals[0] fields p, plan_at",
+   "n_eigs_requested": 5,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    21.230430768574234,
+    50.91297650700729,
+    51.928975821898604,
+    93.71285099174577,
+    146.4656127275198
+   ],
+   "lappy_note": "convex sliver; full solve on the frozen plan drops lam_5 = 94.7242 (deficit 1.98); a FRESH plan agrees bit-for-bit (HANDOFF.md:657-667), so not only staleness. lappy's missed-modes audit recovers it. Stored deficit 1.9769.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    87.29997838227925,
+    146.3443675169302,
+    80.29436546975175,
+    171.82780250218997,
+    159.45127695731838,
+    74.78220917153052
+   ],
+   "area": 0.9637785766765289,
+   "perimeter": 4.0,
+   "min_edge": 0.3272114869223102,
+   "notes": "FROZEN plan (plan_at != p); from_full_solve=True; max interior angle 171.8 deg, edge ratio min/max 0.273 (catalogue: 171.8 deg, 0.27); 94.7242 itself is not stored; it is quoted in HANDOFF.md:665 and LAPPY_WISHLIST.md:211"
+  },
+  {
+   "id": "T2.6-N5k5run3-ref0",
+   "tier": 2,
+   "kinds": [
+    "a",
+    "c"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.1851358534372778,
+    0.5398116903746308,
+    -0.23889969945365203,
+    0.7446794355166224,
+    0.9068299230368948,
+    0.8159711795149689
+   ],
+   "vertices": [
+    [
+     0.904643810836425,
+     0.0
+    ],
+    [
+     1.1851358534372778,
+     0.7446794355166224
+    ],
+    [
+     0.5398116903746308,
+     0.9068299230368948
+    ],
+    [
+     -0.23889969945365203,
+     0.8159711795149689
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.0032645543296717,
+     0.569506748325746,
+     -0.1522992350260823,
+     0.8380473495797545,
+     0.8885826247558676,
+     0.8809985517413319
+    ],
+    "vertices": [
+     [
+      1.1033894324969602,
+      0.0
+     ],
+     [
+      1.0032645543296717,
+      0.8380473495797545
+     ],
+     [
+      0.569506748325746,
+      0.8885826247558676
+     ],
+     [
+      -0.1522992350260823,
+      0.8809985517413319
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/rerun/N5_k5_contested_run3.jsonl L2 (start 1) refusals[0] fields p, plan_at",
+   "n_eigs_requested": 7,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    20.267224566478195,
+    42.63392683824144,
+    59.12567543940665,
+    77.22959630643804,
+    84.60608525896035,
+    122.8017092612249,
+    122.82112695637439
+   ],
+   "lappy_note": "frozen plan returns [20.2672, 42.6339, 59.1257, 77.2296, ...] at deficit +0.51; a plan built AT this shape returns [20.2672, 20.2672, 42.6339, 59.1257, ...] at -0.73 (douse/evaluate.py:464-469). Stored deficit 0.5063.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    110.63945786268216,
+    83.46524082357735,
+    159.24021705470335,
+    80.33613108916438,
+    106.31895316987277
+   ],
+   "area": 1.001755905032331,
+   "perimeter": 4.0,
+   "min_edge": 0.6653841417073056,
+   "notes": "FROZEN plan (plan_at != p); from_full_solve=False; CAUTION: douse/evaluate.py:469 and the catalogue read this as \"lam_1 is DOUBLE and the frozen plan returned one copy\". lam_1 of a connected domain is simple, so the at-shape result [20.2672, 20.2672, ...] is the one that is wrong (an invented duplicate, as in T1.2); the frozen-plan set may instead be missing a copy of the near-double at ~122.8 (it returns 122.8017/122.8211). Unsettled -- see T2.7.; rerun/N5_k5_contested.jsonl L2 is the same record (the two rerun files differ only in \"seconds\")"
+  },
+  {
+   "id": "T2.6-N5k4-L7-ref0",
+   "tier": 2,
+   "kinds": [
+    "a"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    0.9856527374474692,
+    -0.028623292781943352,
+    -0.00636487044304024,
+    0.9930622053478585,
+    0.9947451069949207,
+    0.9038187671276539
+   ],
+   "vertices": [
+    [
+     0.9951625642805837,
+     0.0
+    ],
+    [
+     0.9856527374474692,
+     0.9930622053478585
+    ],
+    [
+     -0.028623292781943352,
+     0.9947451069949207
+    ],
+    [
+     -0.00636487044304024,
+     0.9038187671276539
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     0.9856527374474692,
+     -0.028623292781943352,
+     -0.00636487044304024,
+     0.9930622053478585,
+     0.9947451069949207,
+     0.9038187671276539
+    ],
+    "vertices": [
+     [
+      0.9951625642805837,
+      0.0
+     ],
+     [
+      0.9856527374474692,
+      0.9930622053478585
+     ],
+     [
+      -0.028623292781943352,
+      0.9947451069949207
+     ],
+     [
+      -0.00636487044304024,
+      0.9038187671276539
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/pre_rerun_2026-08-27/N5_k4.jsonl L7 (start 3) refusals[0] fields p, plan_at",
+   "n_eigs_requested": 6,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    19.982589371235328,
+    49.82275579894027,
+    79.919312801861,
+    99.91382386765807,
+    99.91502897379785,
+    129.4316499531875
+   ],
+   "lappy_note": "near-degenerate pentagon (start 3): ~50.04 dropped, deficit 1.32; fresh plan. Stored deficit 1.3187.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    89.4513372036623,
+    90.6437287057692,
+    76.14964967200149,
+    193.35180288166734,
+    90.40348153689966
+   ],
+   "area": 0.9888087166635203,
+   "perimeter": 4.0,
+   "min_edge": 0.09361109254075982,
+   "notes": "plan_at == p (fresh plan); from_full_solve=True"
+  },
+  {
+   "id": "T2.6-N5k4-L7-ref3",
+   "tier": 2,
+   "kinds": [
+    "a"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    0.986174186916328,
+    -0.02801813357287628,
+    -0.007164131071995272,
+    0.9936024649423921,
+    0.9951174775533156,
+    0.90317471703628
+   ],
+   "vertices": [
+    [
+     0.9946863888723919,
+     0.0
+    ],
+    [
+     0.986174186916328,
+     0.9936024649423921
+    ],
+    [
+     -0.02801813357287628,
+     0.9951174775533156
+    ],
+    [
+     -0.007164131071995272,
+     0.90317471703628
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     0.9856527374474692,
+     -0.028623292781943352,
+     -0.00636487044304024,
+     0.9930622053478585,
+     0.9947451069949207,
+     0.9038187671276539
+    ],
+    "vertices": [
+     [
+      0.9951625642805837,
+      0.0
+     ],
+     [
+      0.9856527374474692,
+      0.9930622053478585
+     ],
+     [
+      -0.028623292781943352,
+      0.9947451069949207
+     ],
+     [
+      -0.00636487044304024,
+      0.9038187671276539
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/pre_rerun_2026-08-27/N5_k4.jsonl L7 (start 3) refusals[3] fields p, plan_at",
+   "n_eigs_requested": 6,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    19.963955687969875,
+    49.77837657045794,
+    79.84506200103644,
+    99.82128742536526,
+    99.82129904708432,
+    129.31820367308026
+   ],
+   "lappy_note": "same start, plan frozen at refusals[0].p: ~50.04 dropped, deficit 1.32. Stored deficit 1.3187.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    89.50915850906914,
+    90.57643054755712,
+    77.13508195243796,
+    192.3248589332917,
+    90.45447005764412
+   ],
+   "area": 0.9896723929506883,
+   "perimeter": 4.0,
+   "min_edge": 0.09427810261030765,
+   "notes": "FROZEN plan (plan_at != p); from_full_solve=True"
+  },
+  {
+   "id": "T2.6-N3k2-L8-ref0",
+   "tier": 2,
+   "kinds": [
+    "a",
+    "c"
+   ],
+   "N": 3,
+   "perim": 4.0,
+   "p": [
+    1.4203910690393304,
+    0.7573397448207918
+   ],
+   "vertices": [
+    [
+     1.6096814444784342,
+     0.0
+    ],
+    [
+     1.4203910690393304,
+     0.7573397448207918
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.4203910690393304,
+     0.7573397448207918
+    ],
+    "vertices": [
+     [
+      1.6096814444784342,
+      0.0
+     ],
+     [
+      1.4203910690393304,
+      0.7573397448207918
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/pre_rerun_2026-08-27/N3_k2.jsonl L8 (start 6) refusals[0] fields p, plan_at",
+   "n_eigs_requested": 4,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    44.145714226552236,
+    80.93860964607373,
+    125.17241656413013,
+    177.21107619764342
+   ],
+   "lappy_note": "one copy of the near-double 125.166/125.170 lost; deficit 0.84. Stored deficit 0.8427.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    75.96692947021631,
+    75.96693277049285,
+    28.066137759290864
+   ],
+   "area": 0.6095378672020304,
+   "perimeter": 3.9999999999999996,
+   "min_edge": 0.7806371342173641,
+   "notes": "plan_at == p (fresh plan); from_full_solve=True; all 4 refusals on this row are identical"
+  },
+  {
+   "id": "T2.6-N3k5-L6-ref0",
+   "tier": 2,
+   "kinds": [
+    "a",
+    "c"
+   ],
+   "N": 3,
+   "perim": 4.0,
+   "p": [
+    0.5916329724353734,
+    0.8554222804215743
+   ],
+   "vertices": [
+    [
+     1.62128492477109,
+     0.0
+    ],
+    [
+     0.5916329724353734,
+     0.8554222804215743
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     0.5916329724353734,
+     0.8554222804215743
+    ],
+    "vertices": [
+     [
+      1.62128492477109,
+      0.0
+     ],
+     [
+      0.5916329724353734,
+      0.8554222804215743
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/pre_rerun_2026-08-27/N3_k5.jsonl L6 (start 5) refusals[0] fields p, plan_at",
+   "n_eigs_requested": 7,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    35.341749708545265,
+    70.91594329578265,
+    92.6851495584641,
+    118.1696352447046,
+    146.6558875648098,
+    177.4582277246077,
+    212.08729341840484
+   ],
+   "lappy_note": "one copy of the near-double 177.458172/177.458199 lost; deficit 0.68. Stored deficit 0.6766.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    39.719388854885985,
+    84.94938389548449,
+    55.33122724962954
+   ],
+   "area": 0.6934416237804032,
+   "perimeter": 3.999999999999999,
+   "min_edge": 1.040085021483514,
+   "notes": "plan_at == p (fresh plan); from_full_solve=True; all 4 refusals on this row are identical"
+  },
+  {
+   "id": "T2.6-N3k4-L8-ref0",
+   "tier": 2,
+   "kinds": [
+    "a"
+   ],
+   "N": 3,
+   "perim": 4.0,
+   "p": [
+    1.0352995627987067,
+    0.3312315145786663
+   ],
+   "vertices": [
+    [
+     1.9449369595930033,
+     0.0
+    ],
+    [
+     1.0352995627987067,
+     0.3312315145786663
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.0352995627987067,
+     0.3312315145786663
+    ],
+    "vertices": [
+     [
+      1.9449369595930033,
+      0.0
+     ],
+     [
+      1.0352995627987067,
+      0.3312315145786663
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/N3_k4.jsonl L8 (start 4) refusals[0] fields p, plan_at",
+   "n_eigs_requested": 6,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    134.14717017673868,
+    329.8350538120249,
+    477.5271245193035,
+    554.9485224850471,
+    611.4568278226096,
+    717.7465439392586
+   ],
+   "lappy_note": "thin triangle, deficit +4.64: about four modes missing. Stored deficit 4.6383.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    20.008374615293068,
+    142.250184064624,
+    17.741441320082938
+   ],
+   "area": 0.3221122074430084,
+   "perimeter": 4.0,
+   "min_edge": 0.9680674097896189,
+   "notes": "plan_at == p (fresh plan); from_full_solve=True"
+  },
+  {
+   "id": "T2.7-lowest",
+   "tier": 2,
+   "kinds": [
+    "a",
+    "c"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.1923842248248644,
+    0.4334832433769792,
+    -0.24312983385212628,
+    0.760236247241375,
+    0.9138453911535944,
+    0.7879536771390546
+   ],
+   "vertices": [
+    [
+     0.8974204166193533,
+     0.0
+    ],
+    [
+     1.1923842248248644,
+     0.760236247241375
+    ],
+    [
+     0.4334832433769792,
+     0.9138453911535944
+    ],
+    [
+     -0.24312983385212628,
+     0.7879536771390546
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.1923842248248644,
+     0.4334832433769792,
+     -0.24312983385212628,
+     0.760236247241375,
+     0.9138453911535944,
+     0.7879536771390546
+    ],
+    "vertices": [
+     [
+      0.8974204166193533,
+      0.0
+     ],
+     [
+      1.1923842248248644,
+      0.760236247241375
+     ],
+     [
+      0.4334832433769792,
+      0.9138453911535944
+     ],
+     [
+      -0.24312983385212628,
+      0.7879536771390546
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/N5_k5.jsonl L8 (start 1) refusals[3] fields p, plan_at",
+   "n_eigs_requested": 7,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    20.224246563069045,
+    42.57663550534977,
+    59.0168591646309,
+    76.88399486699377,
+    84.80055859850494,
+    122.53420800791027,
+    122.53441190971085
+   ],
+   "lappy_note": "N5_k5 (lam_6/lam_1) contested cell: Weyl refusal at deficit 0.5005 (threshold 0.5), near-double at ~122.5-123.5. Either a Weyl false positive at k >= 6 or a lost copy; reruns give F 6.0617/6.0698 vs certified 6.0656540842.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    111.2057385411062,
+    80.23690386855984,
+    158.01733809907716,
+    83.39196271932268,
+    107.14805677193415
+   ],
+   "area": 1.0030522387983836,
+   "perimeter": 4.000000000000001,
+   "min_edge": 0.6882252392458141,
+   "notes": "lowest of the 16 refusal records in this file (deficits 0.5005-0.5267, all >= 0.5, so the lowest IS the one nearest 0.5; the third pick is the median instead). from_full_solve=False; plan_at == p: True. The catalogue's \"0.485-0.546\" is the range of the rows' worst_weyl_deficit, not of refusal deficits; stored refusals number 48 across LED, pre_rerun and the two (identical) rerun files."
+  },
+  {
+   "id": "T2.7-median",
+   "tier": 2,
+   "kinds": [
+    "a",
+    "c"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.202697321552123,
+    0.514520410366848,
+    -0.23323215534237107,
+    0.7146962442123295,
+    0.9089705246330488,
+    0.8268189003271378
+   ],
+   "vertices": [
+    [
+     0.8957793518795466,
+     0.0
+    ],
+    [
+     1.202697321552123,
+     0.7146962442123295
+    ],
+    [
+     0.514520410366848,
+     0.9089705246330488
+    ],
+    [
+     -0.23323215534237107,
+     0.8268189003271378
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.202697321552123,
+     0.514520410366848,
+     -0.23323215534237107,
+     0.7146962442123295,
+     0.9089705246330488,
+     0.8268189003271378
+    ],
+    "vertices": [
+     [
+      0.8957793518795466,
+      0.0
+     ],
+     [
+      1.202697321552123,
+      0.7146962442123295
+     ],
+     [
+      0.514520410366848,
+      0.9089705246330488
+     ],
+     [
+      -0.23323215534237107,
+      0.8268189003271378
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/N5_k5.jsonl L7 (start 6) refusals[2] fields p, plan_at",
+   "n_eigs_requested": 7,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    20.276214320488897,
+    42.6393690708034,
+    59.17702910646952,
+    76.88224919687308,
+    85.11600320772735,
+    122.90638062507003,
+    122.90653183278765
+   ],
+   "lappy_note": "N5_k5 (lam_6/lam_1) contested cell: Weyl refusal at deficit 0.5106 (threshold 0.5), near-double at ~122.5-123.5. Either a Weyl false positive at k >= 6 or a lost copy; reruns give F 6.0617/6.0698 vs certified 6.0656540842.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    113.24054029892972,
+    82.5239823412623,
+    157.96583743831155,
+    80.51674440555486,
+    105.75289551594157
+   ],
+   "area": 1.0015585517078631,
+   "perimeter": 3.9999999999999996,
+   "min_edge": 0.7150733928216699,
+   "notes": "median of the 16 refusal records in this file (deficits 0.5005-0.5267, all >= 0.5, so the lowest IS the one nearest 0.5; the third pick is the median instead). from_full_solve=False; plan_at == p: True. The catalogue's \"0.485-0.546\" is the range of the rows' worst_weyl_deficit, not of refusal deficits; stored refusals number 48 across LED, pre_rerun and the two (identical) rerun files."
+  },
+  {
+   "id": "T2.7-highest",
+   "tier": 2,
+   "kinds": [
+    "a",
+    "c"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.1373999445334508,
+    0.4075669530047523,
+    -0.30128551080361493,
+    0.8101156382306792,
+    0.908753973098881,
+    0.7397299951924318
+   ],
+   "vertices": [
+    [
+     0.8886190792858678,
+     0.0
+    ],
+    [
+     1.1373999445334508,
+     0.8101156382306792
+    ],
+    [
+     0.4075669530047523,
+     0.908753973098881
+    ],
+    [
+     -0.30128551080361493,
+     0.7397299951924318
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.1373999445334508,
+     0.4075669530047523,
+     -0.30128551080361493,
+     0.8101156382306792,
+     0.908753973098881,
+     0.7397299951924318
+    ],
+    "vertices": [
+     [
+      0.8886190792858678,
+      0.0
+     ],
+     [
+      1.1373999445334508,
+      0.8101156382306792
+     ],
+     [
+      0.4075669530047523,
+      0.908753973098881
+     ],
+     [
+      -0.30128551080361493,
+      0.7397299951924318
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/N5_k5.jsonl L6 (start 0) refusals[2] fields p, plan_at",
+   "n_eigs_requested": 7,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    20.3341009286532,
+    42.788627243371714,
+    59.303806380345065,
+    77.21412687324428,
+    85.19184934875483,
+    123.44539721506514,
+    123.51363410945653
+   ],
+   "lappy_note": "N5_k5 (lam_6/lam_1) contested cell: Weyl refusal at deficit 0.5267 (threshold 0.5), near-double at ~122.5-123.5. Either a Weyl false positive at k >= 6 or a lost copy; reruns give F 6.0617/6.0698 vs certified 6.0656540842.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    107.07135716408088,
+    80.62563937939679,
+    158.89141605880496,
+    81.25095262740355,
+    112.16063477031386
+   ],
+   "area": 0.9993042370341909,
+   "perimeter": 4.0,
+   "min_edge": 0.7287255454246905,
+   "notes": "highest of the 16 refusal records in this file (deficits 0.5005-0.5267, all >= 0.5, so the lowest IS the one nearest 0.5; the third pick is the median instead). from_full_solve=True; plan_at == p: True. The catalogue's \"0.485-0.546\" is the range of the rows' worst_weyl_deficit, not of refusal deficits; stored refusals number 48 across LED, pre_rerun and the two (identical) rerun files."
+  },
+  {
+   "id": "T2.8-N5s2",
+   "tier": 2,
+   "kinds": [
+    "d"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    0.9584943287375007,
+    0.6083600308661729,
+    0.2396518594358943,
+    0.8933045489963988,
+    0.5836795896377116,
+    0.49626888077353265
+   ],
+   "vertices": [
+    [
+     1.5378441619627221,
+     0.0
+    ],
+    [
+     0.9584943287375007,
+     0.8933045489963988
+    ],
+    [
+     0.6083600308661729,
+     0.5836795896377116
+    ],
+    [
+     0.2396518594358943,
+     0.49626888077353265
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     0.9584943287375007,
+     0.6083600308661729,
+     0.2396518594358943,
+     0.8933045489963988,
+     0.5836795896377116,
+     0.49626888077353265
+    ],
+    "vertices": [
+     [
+      1.5378441619627221,
+      0.0
+     ],
+     [
+      0.9584943287375007,
+      0.8933045489963988
+     ],
+     [
+      0.6083600308661729,
+      0.5836795896377116
+     ],
+     [
+      0.2396518594358943,
+      0.49626888077353265
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks.ratio_multistart.start_shape(5, 2) -> param_vector(., 4.0)",
+   "n_eigs_requested": null,
+   "prec_requested": 1e-13,
+   "lappy_returned": null,
+   "lappy_note": "EigensolverFailure: f has too many local minima (lappy/opt.py:212) at this start shape. Not deterministic.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    57.034702439229726,
+    81.47885793100012,
+    208.14938878777775,
+    129.1132861220082,
+    64.2237647199842
+   ],
+   "area": 0.7758981158249705,
+   "perimeter": 4.0,
+   "min_edge": 0.37892789248562575,
+   "notes": "crash rows store no shape and no k-specific n_eigs; R-."
+  },
+  {
+   "id": "T2.8-N6s1",
+   "tier": 2,
+   "kinds": [
+    "d"
+   ],
+   "N": 6,
+   "perim": 4.0,
+   "p": [
+    1.6546261036500893,
+    1.554916362709147,
+    0.7189689230720516,
+    0.32520317611992944,
+    0.22497687191772878,
+    0.6613411513589789,
+    0.5212719349170957,
+    0.3945596293417785
+   ],
+   "vertices": [
+    [
+     1.5150989164485296,
+     0.0
+    ],
+    [
+     1.6546261036500893,
+     0.22497687191772878
+    ],
+    [
+     1.554916362709147,
+     0.6613411513589789
+    ],
+    [
+     0.7189689230720516,
+     0.5212719349170957
+    ],
+    [
+     0.32520317611992944,
+     0.3945596293417785
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.6546261036500893,
+     1.554916362709147,
+     0.7189689230720516,
+     0.32520317611992944,
+     0.22497687191772878,
+     0.6613411513589789,
+     0.5212719349170957,
+     0.3945596293417785
+    ],
+    "vertices": [
+     [
+      1.5150989164485296,
+      0.0
+     ],
+     [
+      1.6546261036500893,
+      0.22497687191772878
+     ],
+     [
+      1.554916362709147,
+      0.6613411513589789
+     ],
+     [
+      0.7189689230720516,
+      0.5212719349170957
+     ],
+     [
+      0.32520317611992944,
+      0.3945596293417785
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks.ratio_multistart.start_shape(6, 1) -> param_vector(., 4.0)",
+   "n_eigs_requested": null,
+   "prec_requested": 1e-13,
+   "lappy_returned": null,
+   "lappy_note": "EigensolverFailure: f has too many local minima (lappy/opt.py:212) at this start shape (N6_k1 start 1 crashed twice). Not deterministic.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    121.80655142435526,
+    135.32227365400206,
+    93.3592015068042,
+    171.67399744790825,
+    147.33393948065796,
+    50.504036486272305
+   ],
+   "area": 0.7672608382676522,
+   "perimeter": 4.0,
+   "min_edge": 0.26473086118974726,
+   "notes": "crash rows store no shape and no k-specific n_eigs; R-."
+  },
+  {
+   "id": "T2.8-kink",
+   "tier": 2,
+   "kinds": [
+    "d"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": null,
+   "vertices": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.6202041028867288,
+     0.0
+    ],
+    [
+     1.2404082057734576,
+     0.0
+    ],
+    [
+     1.2404082057734576,
+     0.7595917942265424
+    ],
+    [
+     0.0,
+     0.7595917942265424
+    ]
+   ],
+   "plan_at": {
+    "p": null,
+    "vertices": [
+     [
+      0.0,
+      0.0
+     ],
+     [
+      0.619979315846517,
+      -0.029989126787173827
+     ],
+     [
+      1.239958631693034,
+      0.0
+     ],
+     [
+      1.239958631693034,
+      0.7593164874518878
+     ],
+     [
+      0.0,
+      0.7593164874518878
+     ]
+    ]
+   },
+   "source": "benchmarks.kink_sweep.pentagon(0.0) (kink_sweep.py:66-69); plan_at = pentagon(0.03), the h_freeze of frozen_plan_crossing (kink_sweep.py:114)",
+   "n_eigs_requested": 4,
+   "prec_requested": 1e-12,
+   "lappy_returned": null,
+   "lappy_note": "a plan frozen at a pentagon (h = 0.03) realized at its flat-vertex limit raises IndexError in basis_plan.realize (one block per corner; the flat vertex is not one). Works at |h| = 1e-8. Deterministic.",
+   "claimed_truth": {
+    "values": [
+     23.52024897236292,
+     42.764089040659854,
+     74.83715582115474,
+     74.83715582115475
+    ],
+    "kind": "closed form",
+    "source": "h = 0 is the sqrt(8/3) rectangle of perimeter 4: pi^2 (m^2/L^2 + n^2/H^2)"
+   },
+   "interior_angles_deg": [
+    90.0,
+    180.0,
+    90.0,
+    90.0,
+    90.0
+   ],
+   "area": 0.9422038945967869,
+   "perimeter": 4.0,
+   "min_edge": 0.6202041028867288,
+   "notes": "vertices as stored by kink_sweep (lappy Polygon, not the VertexPolygon gauge), so p is null. Vertex 1 is FLAT (180 deg). The (1,2)/(3,1) modes cross here, so lam_3 = lam_4 is an exact double."
+  },
+  {
+   "id": "T2.9-seed",
+   "tier": 2,
+   "kinds": [
+    "e"
+   ],
+   "N": 4,
+   "perim": null,
+   "p": null,
+   "vertices": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     1.3,
+     0.0
+    ],
+    [
+     1.1,
+     0.9
+    ],
+    [
+     0.15,
+     0.8
+    ]
+   ],
+   "plan_at": null,
+   "source": "douse/tests/test_derivative.py:53 SEED_SHAPE (vertices as stored)",
+   "n_eigs_requested": null,
+   "prec_requested": null,
+   "lappy_returned": null,
+   "lappy_note": "tension floor limits finite differences: target 1e-12 gives a floor 1.15e-10 and FD error 3.7e-4; target 1e-14 a floor 1.02e-11.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    79.38034472384487,
+    77.47119229084849,
+    96.519801751657,
+    106.62866123364967
+   ],
+   "area": 0.9575000000000001,
+   "perimeter": 3.9911441342614142,
+   "min_edge": 0.8139410298049854,
+   "notes": "perimeter as stored is not 4; the test solves param_vector(SEED_SHAPE, 4.0) = [1.1024407668540006, 0.15033283184372734, 0.9019969910623641, 0.8017751031665459] (perimeter 4, same shape up to similarity)."
+  },
+  {
+   "id": "T2.9-N4opt",
+   "tier": 2,
+   "kinds": [
+    "e"
+   ],
+   "N": 4,
+   "perim": 4.0,
+   "p": [
+    0.8900654471639374,
+    0.4625203214000986,
+    1.008974443993513,
+    1.008971156497466
+   ],
+   "vertices": [
+    [
+     1.3525880275935496,
+     0.0
+    ],
+    [
+     0.8900654471639374,
+     1.008974443993513
+    ],
+    [
+     0.4625203214000986,
+     1.008971156497466
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": null,
+   "source": "benchmarks/run/ratio_multistart/pre_plateau_fix/N4_k3.jsonl L1 (start 0) field x -- its lams match the literal in tests/test_cluster_opt.py:439-440 to the 10 digits printed there",
+   "n_eigs_requested": 6,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    23.630257813651667,
+    55.349572494593026,
+    57.357381150259556,
+    101.21781225231047,
+    101.21781226379991,
+    107.905516462002
+   ],
+   "lappy_note": "N=4 lam_4/lam_1 optimum: top pair 101.2178122523/101.2178122638 split 1.1e-10 relative, below the basis resolution; the lost cluster cost 8 of the first 10 runs (trust radius collapsed to 5.68e-15).",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    65.37287065109358,
+    114.62668878804556,
+    114.62753462117901,
+    65.37290593968184
+   ],
+   "area": 0.8980529662782755,
+   "perimeter": 4.0,
+   "min_edge": 0.427545125776478,
+   "notes": "the test itself stores no shape; this is the ledger row whose lams it quotes. Starts 1 and 4 (L2, L5) reach congruent endpoints with the pair bit-identical.; row's stored edges 0.0e+00 and angles 2.8e-14 deg reproduced (max abs diff)"
+  },
+  {
+   "id": "T2.9-N5k3s5",
+   "tier": 2,
+   "kinds": [
+    "e"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.3621395983568187,
+    0.8282628831001582,
+    0.41181535362878235,
+    0.32302440166647567,
+    1.107402098483748,
+    1.031553529066821
+   ],
+   "vertices": [
+    [
+     1.103088783816183,
+     0.0
+    ],
+    [
+     1.3621395983568187,
+     0.32302440166647567
+    ],
+    [
+     0.8282628831001582,
+     1.107402098483748
+    ],
+    [
+     0.41181535362878235,
+     1.031553529066821
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": null,
+   "source": "benchmarks/run/ratio_multistart/N5_k3.jsonl L6 (start 5) field x (identical to pre_rerun/N5_k3.jsonl L7)",
+   "n_eigs_requested": 5,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    20.38549547988745,
+    48.575505017283106,
+    49.70781478588542,
+    89.19592347780195,
+    90.5457662184875
+   ],
+   "lappy_note": "tracked F 4.441676010 disagrees with a fresh solve 4.375460168 (gap 6.6e-2) at the endpoint; trust ratios -9e7 to -7.5e11; trust radius collapsed.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    128.72802021546443,
+    107.03131621945192,
+    113.9183932697633,
+    122.08507366349268,
+    68.23719663182769
+   ],
+   "area": 0.9977820175250413,
+   "perimeter": 4.0,
+   "min_edge": 0.4140677342973629,
+   "notes": "catalogue cites tests/test_discontinuity.py and LED/detector/; neither stores a shape (detector/N5_k3_s5.json is a summary). The shape is this endpoint row, whose fun equals the fresh value 4.375460168 (douse/cluster_opt.py:1112, benchmarks/diagnostics/detector_validation.py:3). The tracked 4.441676010 is not stored with a shape.; row's stored edges 0.0e+00 and angles 0.0e+00 deg reproduced (max abs diff)"
+  },
+  {
+   "id": "T2.9-ngon5",
+   "tier": 2,
+   "kinds": [
+    "e"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.047213595499958,
+    0.39999999999999997,
+    -0.24721359549995797,
+    0.7608452130361231,
+    1.2310734148701015,
+    0.7608452130361232
+   ],
+   "vertices": [
+    [
+     0.7999999999999992,
+     0.0
+    ],
+    [
+     1.047213595499958,
+     0.7608452130361231
+    ],
+    [
+     0.39999999999999997,
+     1.2310734148701015
+    ],
+    [
+     -0.24721359549995797,
+     0.7608452130361232
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.047213595499958,
+     0.39999999999999997,
+     -0.24721359549995797,
+     0.7608452130361231,
+     1.2310734148701015,
+     0.7608452130361232
+    ],
+    "vertices": [
+     [
+      0.7999999999999992,
+      0.0
+     ],
+     [
+      1.047213595499958,
+      0.7608452130361231
+     ],
+     [
+      0.39999999999999997,
+      1.2310734148701015
+     ],
+     [
+      -0.24721359549995797,
+      0.7608452130361232
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "param_vector(regular(5), 4.0), as ngon_basis_probe.regular_domain (ngon_basis_probe.py:77-80); data benchmarks/run/ngon_basis/probe.jsonl",
+   "n_eigs_requested": 4,
+   "prec_requested": null,
+   "lappy_returned": [
+    17.18191731962523,
+    43.41593421304873,
+    43.41593421304873,
+    76.98996182038894
+   ],
+   "lappy_note": "default prec gives 8.18-8.19 digits (check_precision), flat in n_cap and target; prec=1e-13 gives 10.71-11.52.",
+   "claimed_truth": {
+    "values": [
+     17.181917319624834,
+     43.41593413419574,
+     43.41593413419595,
+     76.98996179773798
+    ],
+    "kind": "certified lappy",
+    "source": "lappy/benchmarks/suite/run/reference_values.py REFERENCE[\"reg_ngon_5\"] (certified_digits=12.81), unit circumradius scaled to perimeter 4 by (2N sin(pi/N)/4)^2; agrees with the probe's prec=1e-13 solve to 1.6e-14 rel"
+   },
+   "interior_angles_deg": [
+    108.00000000000006,
+    107.99999999999993,
+    108.00000000000003,
+    108.0,
+    108.0
+   ],
+   "area": 1.1011055363769386,
+   "perimeter": 4.0,
+   "min_edge": 0.7999999999999992,
+   "notes": "prec_requested null = lappy/douse default; the failure is the default's accuracy."
+  },
+  {
+   "id": "T2.9-ngon8",
+   "tier": 2,
+   "kinds": [
+    "e"
+   ],
+   "N": 8,
+   "perim": 4.0,
+   "p": [
+    0.8535533905932738,
+    0.8535533905932741,
+    0.5000000000000003,
+    3.765318931487286e-16,
+    -0.3535533905932737,
+    -0.35355339059327373,
+    0.3535533905932735,
+    0.8535533905932737,
+    1.2071067811865475,
+    1.2071067811865477,
+    0.8535533905932738,
+    0.35355339059327384
+   ],
+   "vertices": [
+    [
+     0.49999999999999867,
+     0.0
+    ],
+    [
+     0.8535533905932738,
+     0.3535533905932735
+    ],
+    [
+     0.8535533905932741,
+     0.8535533905932737
+    ],
+    [
+     0.5000000000000003,
+     1.2071067811865475
+    ],
+    [
+     3.765318931487286e-16,
+     1.2071067811865477
+    ],
+    [
+     -0.3535533905932737,
+     0.8535533905932738
+    ],
+    [
+     -0.35355339059327373,
+     0.35355339059327384
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     0.8535533905932738,
+     0.8535533905932741,
+     0.5000000000000003,
+     3.765318931487286e-16,
+     -0.3535533905932737,
+     -0.35355339059327373,
+     0.3535533905932735,
+     0.8535533905932737,
+     1.2071067811865475,
+     1.2071067811865477,
+     0.8535533905932738,
+     0.35355339059327384
+    ],
+    "vertices": [
+     [
+      0.49999999999999867,
+      0.0
+     ],
+     [
+      0.8535533905932738,
+      0.3535533905932735
+     ],
+     [
+      0.8535533905932741,
+      0.8535533905932737
+     ],
+     [
+      0.5000000000000003,
+      1.2071067811865475
+     ],
+     [
+      3.765318931487286e-16,
+      1.2071067811865477
+     ],
+     [
+      -0.3535533905932737,
+      0.8535533905932738
+     ],
+     [
+      -0.35355339059327373,
+      0.35355339059327384
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "param_vector(regular(8), 4.0), as ngon_basis_probe.regular_domain (ngon_basis_probe.py:77-80); data benchmarks/run/ngon_basis/probe.jsonl",
+   "n_eigs_requested": 4,
+   "prec_requested": null,
+   "lappy_returned": [
+    15.195144357970836,
+    38.55908541251942,
+    38.55908541251942,
+    69.217848607175
+   ],
+   "lappy_note": "default prec gives 8.18-8.23 digits (check_precision), flat in n_cap and target; prec=1e-13 gives 10.97-11.67.",
+   "claimed_truth": {
+    "values": [
+     15.195144358140807,
+     38.55908537542408,
+     38.55908537542408,
+     69.21784871023502
+    ],
+    "kind": "certified lappy",
+    "source": "lappy/benchmarks/suite/run/reference_values.py REFERENCE[\"reg_ngon_8\"] (certified_digits=10.45), unit circumradius scaled to perimeter 4 by (2N sin(pi/N)/4)^2; agrees with the probe's prec=1e-13 solve to 5.0e-14 rel"
+   },
+   "interior_angles_deg": [
+    135.0000000000001,
+    134.9999999999999,
+    134.99999999999997,
+    135.00000000000003,
+    135.0,
+    135.0,
+    135.0,
+    135.0
+   ],
+   "area": 1.2071067811865475,
+   "perimeter": 4.0,
+   "min_edge": 0.49999999999999867,
+   "notes": "prec_requested null = lappy/douse default; the failure is the default's accuracy."
+  },
+  {
+   "id": "T2.9-ngon12",
+   "tier": 2,
+   "kinds": [
+    "e"
+   ],
+   "N": 12,
+   "perim": 4.0,
+   "p": [
+    0.6220084679281469,
+    0.7886751345948133,
+    0.788675134594813,
+    0.6220084679281463,
+    0.3333333333333336,
+    8.020153186095128e-17,
+    -0.28867513459481253,
+    -0.45534180126147905,
+    -0.45534180126147894,
+    -0.2886751345948124,
+    0.16666666666666674,
+    0.4553418012614797,
+    0.788675134594813,
+    1.0773502691896257,
+    1.2440169358562922,
+    1.2440169358562922,
+    1.0773502691896253,
+    0.7886751345948124,
+    0.455341801261479,
+    0.16666666666666657
+   ],
+   "vertices": [
+    [
+     0.3333333333333373,
+     0.0
+    ],
+    [
+     0.6220084679281469,
+     0.16666666666666674
+    ],
+    [
+     0.7886751345948133,
+     0.4553418012614797
+    ],
+    [
+     0.788675134594813,
+     0.788675134594813
+    ],
+    [
+     0.6220084679281463,
+     1.0773502691896257
+    ],
+    [
+     0.3333333333333336,
+     1.2440169358562922
+    ],
+    [
+     8.020153186095128e-17,
+     1.2440169358562922
+    ],
+    [
+     -0.28867513459481253,
+     1.0773502691896253
+    ],
+    [
+     -0.45534180126147905,
+     0.7886751345948124
+    ],
+    [
+     -0.45534180126147894,
+     0.455341801261479
+    ],
+    [
+     -0.2886751345948124,
+     0.16666666666666657
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     0.6220084679281469,
+     0.7886751345948133,
+     0.788675134594813,
+     0.6220084679281463,
+     0.3333333333333336,
+     8.020153186095128e-17,
+     -0.28867513459481253,
+     -0.45534180126147905,
+     -0.45534180126147894,
+     -0.2886751345948124,
+     0.16666666666666674,
+     0.4553418012614797,
+     0.788675134594813,
+     1.0773502691896257,
+     1.2440169358562922,
+     1.2440169358562922,
+     1.0773502691896253,
+     0.7886751345948124,
+     0.455341801261479,
+     0.16666666666666657
+    ],
+    "vertices": [
+     [
+      0.3333333333333373,
+      0.0
+     ],
+     [
+      0.6220084679281469,
+      0.16666666666666674
+     ],
+     [
+      0.7886751345948133,
+      0.4553418012614797
+     ],
+     [
+      0.788675134594813,
+      0.788675134594813
+     ],
+     [
+      0.6220084679281463,
+      1.0773502691896257
+     ],
+     [
+      0.3333333333333336,
+      1.2440169358562922
+     ],
+     [
+      8.020153186095128e-17,
+      1.2440169358562922
+     ],
+     [
+      -0.28867513459481253,
+      1.0773502691896253
+     ],
+     [
+      -0.45534180126147905,
+      0.7886751345948124
+     ],
+     [
+      -0.45534180126147894,
+      0.455341801261479
+     ],
+     [
+      -0.2886751345948124,
+      0.16666666666666657
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "param_vector(regular(12), 4.0), as ngon_basis_probe.regular_domain (ngon_basis_probe.py:77-80); data benchmarks/run/ngon_basis/probe.jsonl",
+   "n_eigs_requested": 4,
+   "prec_requested": null,
+   "lappy_returned": [
+    14.645506059993144,
+    37.17873438944615,
+    37.17873438944615,
+    66.78180721381166
+   ],
+   "lappy_note": "default prec gives 8.10-8.16 digits (check_precision), flat in n_cap and target; prec=1e-13 gives 10.34-10.67.",
+   "claimed_truth": {
+    "values": [
+     14.64550605999306,
+     37.178734429526486,
+     37.178734429526486,
+     66.78180710717658
+    ],
+    "kind": "high-precision lappy",
+    "source": "benchmarks/run/ngon_basis/probe.jsonl, prec=1e-13 rows (check_precision digits 10.34-10.67); not certified, no independent check stored"
+   },
+   "interior_angles_deg": [
+    149.99999999999972,
+    150.00000000000026,
+    150.0,
+    150.00000000000006,
+    150.0,
+    150.0,
+    149.99999999999994,
+    150.00000000000006,
+    150.0,
+    150.0,
+    150.00000000000006,
+    149.99999999999997
+   ],
+   "area": 1.2440169358562925,
+   "perimeter": 4.0,
+   "min_edge": 0.33333333333333054,
+   "notes": "prec_requested null = lappy/douse default; the failure is the default's accuracy."
+  },
+  {
+   "id": "T2.9-ngon16",
+   "tier": 2,
+   "kinds": [
+    "e"
+   ],
+   "N": 16,
+   "perim": 4.0,
+   "p": [
+    0.48096988312782213,
+    0.6577465784244589,
+    0.7534174365157313,
+    0.7534174365157313,
+    0.6577465784244587,
+    0.4809698831278219,
+    0.2500000000000003,
+    1.6207533675881276e-16,
+    -0.23096988312782155,
+    -0.40774657842445844,
+    -0.5034174365157308,
+    -0.5034174365157308,
+    -0.40774657842445816,
+    -0.23096988312782143,
+    0.09567085809127254,
+    0.2724475533879094,
+    0.5034174365157311,
+    0.7534174365157312,
+    0.9843873196435529,
+    1.1611640149401896,
+    1.256834873031462,
+    1.256834873031462,
+    1.1611640149401896,
+    0.9843873196435527,
+    0.7534174365157313,
+    0.503417436515731,
+    0.27244755338790905,
+    0.09567085809127243
+   ],
+   "vertices": [
+    [
+     0.24999999999999992,
+     0.0
+    ],
+    [
+     0.48096988312782213,
+     0.09567085809127254
+    ],
+    [
+     0.6577465784244589,
+     0.2724475533879094
+    ],
+    [
+     0.7534174365157313,
+     0.5034174365157311
+    ],
+    [
+     0.7534174365157313,
+     0.7534174365157312
+    ],
+    [
+     0.6577465784244587,
+     0.9843873196435529
+    ],
+    [
+     0.4809698831278219,
+     1.1611640149401896
+    ],
+    [
+     0.2500000000000003,
+     1.256834873031462
+    ],
+    [
+     1.6207533675881276e-16,
+     1.256834873031462
+    ],
+    [
+     -0.23096988312782155,
+     1.1611640149401896
+    ],
+    [
+     -0.40774657842445844,
+     0.9843873196435527
+    ],
+    [
+     -0.5034174365157308,
+     0.7534174365157313
+    ],
+    [
+     -0.5034174365157308,
+     0.503417436515731
+    ],
+    [
+     -0.40774657842445816,
+     0.27244755338790905
+    ],
+    [
+     -0.23096988312782143,
+     0.09567085809127243
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     0.48096988312782213,
+     0.6577465784244589,
+     0.7534174365157313,
+     0.7534174365157313,
+     0.6577465784244587,
+     0.4809698831278219,
+     0.2500000000000003,
+     1.6207533675881276e-16,
+     -0.23096988312782155,
+     -0.40774657842445844,
+     -0.5034174365157308,
+     -0.5034174365157308,
+     -0.40774657842445816,
+     -0.23096988312782143,
+     0.09567085809127254,
+     0.2724475533879094,
+     0.5034174365157311,
+     0.7534174365157312,
+     0.9843873196435529,
+     1.1611640149401896,
+     1.256834873031462,
+     1.256834873031462,
+     1.1611640149401896,
+     0.9843873196435527,
+     0.7534174365157313,
+     0.503417436515731,
+     0.27244755338790905,
+     0.09567085809127243
+    ],
+    "vertices": [
+     [
+      0.24999999999999992,
+      0.0
+     ],
+     [
+      0.48096988312782213,
+      0.09567085809127254
+     ],
+     [
+      0.6577465784244589,
+      0.2724475533879094
+     ],
+     [
+      0.7534174365157313,
+      0.5034174365157311
+     ],
+     [
+      0.7534174365157313,
+      0.7534174365157312
+     ],
+     [
+      0.6577465784244587,
+      0.9843873196435529
+     ],
+     [
+      0.4809698831278219,
+      1.1611640149401896
+     ],
+     [
+      0.2500000000000003,
+      1.256834873031462
+     ],
+     [
+      1.6207533675881276e-16,
+      1.256834873031462
+     ],
+     [
+      -0.23096988312782155,
+      1.1611640149401896
+     ],
+     [
+      -0.40774657842445844,
+      0.9843873196435527
+     ],
+     [
+      -0.5034174365157308,
+      0.7534174365157313
+     ],
+     [
+      -0.5034174365157308,
+      0.503417436515731
+     ],
+     [
+      -0.40774657842445816,
+      0.27244755338790905
+     ],
+     [
+      -0.23096988312782143,
+      0.09567085809127243
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "param_vector(regular(16), 4.0), as ngon_basis_probe.regular_domain (ngon_basis_probe.py:77-80); data benchmarks/run/ngon_basis/probe.jsonl",
+   "n_eigs_requested": 4,
+   "prec_requested": null,
+   "lappy_returned": [
+    14.472701551857673,
+    36.7417785683741,
+    36.7417785683741,
+    66.0013629683836
+   ],
+   "lappy_note": "default prec gives 8.04-8.09 digits (check_precision), flat in n_cap and target; prec=1e-13 gives 10.00-10.41.",
+   "claimed_truth": {
+    "values": [
+     14.472701551859235,
+     36.74177856847178,
+     36.74177856847178,
+     66.00136284872606
+    ],
+    "kind": "high-precision lappy",
+    "source": "benchmarks/run/ngon_basis/probe.jsonl, prec=1e-13 rows (check_precision digits 10.00-10.41); not certified, no independent check stored"
+   },
+   "interior_angles_deg": [
+    157.50000000000003,
+    157.49999999999997,
+    157.5,
+    157.50000000000003,
+    157.49999999999997,
+    157.50000000000006,
+    157.5,
+    157.5,
+    157.50000000000003,
+    157.5,
+    157.5,
+    157.5,
+    157.5,
+    157.5,
+    157.50000000000006,
+    157.5
+   ],
+   "area": 1.2568348730314622,
+   "perimeter": 4.0,
+   "min_edge": 0.2499999999999997,
+   "notes": "prec_requested null = lappy/douse default; the failure is the default's accuracy."
+  },
+  {
+   "id": "T2.9-N5k3convex",
+   "tier": 2,
+   "kinds": [
+    "c",
+    "e"
+   ],
+   "N": 5,
+   "perim": 4.0,
+   "p": [
+    1.6513387331835134,
+    1.1820796426534048,
+    0.23138794008200897,
+    0.002041691573318533,
+    0.2821104637749817,
+    0.7194263196431437
+   ],
+   "vertices": [
+    [
+     1.349302814592353,
+     0.0
+    ],
+    [
+     1.6513387331835134,
+     0.002041691573318533
+    ],
+    [
+     1.1820796426534048,
+     0.2821104637749817
+    ],
+    [
+     0.23138794008200897,
+     0.7194263196431437
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ],
+   "plan_at": {
+    "p": [
+     1.6513387331835134,
+     1.1820796426534048,
+     0.23138794008200897,
+     0.002041691573318533,
+     0.2821104637749817,
+     0.7194263196431437
+    ],
+    "vertices": [
+     [
+      1.349302814592353,
+      0.0
+     ],
+     [
+      1.6513387331835134,
+      0.002041691573318533
+     ],
+     [
+      1.1820796426534048,
+      0.2821104637749817
+     ],
+     [
+      0.23138794008200897,
+      0.7194263196431437
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   },
+   "source": "benchmarks/run/ratio_multistart/N5_k3_convex.jsonl L1 (start 3) fields x, plan_at",
+   "n_eigs_requested": 5,
+   "prec_requested": 1e-13,
+   "lappy_returned": [
+    53.143586048928654,
+    70.23600114381621,
+    81.10795825455,
+    124.64827962507786,
+    124.64827962507786
+   ],
+   "lappy_note": "near-triangle (173.9 and 179.6 deg vertices) \"certified\" at F 2.3455 after one iteration (cell 4.4824) on a bit-identical double 124.64827962507786. Low confidence.",
+   "claimed_truth": null,
+   "interior_angles_deg": [
+    179.61269994300372,
+    31.217398329319412,
+    173.87221618994155,
+    83.12695133474602,
+    72.17073420298932
+   ],
+   "area": 0.6256718008798757,
+   "perimeter": 4.0,
+   "min_edge": 0.3020428191890791,
+   "notes": "row's stored edges 0.0e+00 and angles 2.8e-14 deg reproduced (max abs diff)"
+  }
+ ],
+ "skipped": [
+  {
+   "id": "T1.6",
+   "reason": "right_trapezoid and H_shape (lappy suite) already exist in chladni's domain library; scan-resolution drops at low ppl: right_trapezoid dropped 44.9484877814 at k=10 (ppl 5), H_shape dropped 14.30522996 at k=7, 9 (ppl 10). Reference lappy/benchmarks/suite/run/reference_values.py.",
+   "domains": [
+    "right_trapezoid",
+    "H_shape"
+   ]
+  }
+ ]
+}
