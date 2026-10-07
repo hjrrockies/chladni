@@ -87,8 +87,8 @@ def chladni_run(args):
     return dict(id=case["id"], prec=prec, n_cols=n, wall=time.perf_counter() - t0,
                 declined=bool(d.declined), unmet=len(d.unmet),
                 levels=[dict(lam=float(L.lam), mult=int(L.mult), bound=float(L.bound),
-                             flagged=bool(L.count_uncertain or L.grouping_ambiguous
-                                          or not L.met(prec)))
+                             count_flag=bool(L.count_uncertain or L.grouping_ambiguous),
+                             met=bool(L.met(prec)))
                         for L in res.levels])
 
 
@@ -133,11 +133,17 @@ def score_chladni(run, ref):
             mult_wrong += L["mult"] != T["mult"]
             uncovered += abs(T["lam"] - L["lam"]) > L["bound"]
     bad = dropped or extra or mult_wrong
-    flagged = any(L["flagged"] for L in levels)
+    # Two strengths of "flagged". A COUNT flag (`count_uncertain`, `grouping_ambiguous`) says the
+    # count is in doubt. An unmet level says only that its value missed `prec` -- on this
+    # unplanned basis nearly every solve has one, so counting it would excuse almost any wrong
+    # count. `silent` uses count flags only; `silent_lenient` lets an unmet level excuse it too.
+    count_flag = any(L["count_flag"] for L in levels)
+    any_unmet = any(not L["met"] for L in levels)
     return dict(outcome="wrong" if bad else "ok", dropped=dropped, extra=extra,
                 mult_wrong=mult_wrong, uncovered=uncovered, max_err=err,
-                silent=bool(bad and not flagged), flagged=flagged, unmet=run["unmet"],
-                wall=run["wall"])
+                silent=bool(bad and not count_flag),
+                silent_lenient=bool(bad and not (count_flag or any_unmet)),
+                count_flag=count_flag, unmet=run["unmet"], wall=run["wall"])
 
 
 def main():
@@ -176,7 +182,9 @@ def main():
             return "ok" + (f" ({', '.join(extra)})" if extra else "")
         if o == "wrong":
             parts = [f"{k[:4]} {s[k]}" for k in ("dropped", "extra", "mult_wrong") if s.get(k)]
-            return ("**SILENT** " if s["silent"] else "flagged ") + ", ".join(parts)
+            tag = (("**SILENT** " if s.get("silent_lenient", True) else "silent (unmet only) ")
+                   if s["silent"] else "count-flagged ")
+            return tag + ", ".join(parts)
         return o
     lines = ["| case | ref levels (trusted) | " + " | ".join(cols) + " |",
              "|---|---|" + "---|" * len(cols)]
