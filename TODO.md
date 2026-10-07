@@ -25,9 +25,10 @@ Priorities are `[blocking]` (something else waits on it), `[next]`, `[later]`.
 precision (reorientation of 2026-10-05, `notes/session_2026-10-05.md`). Every section below is
 judged against that, and the two items here come before them.
 
-**Paused (2026-10-06): the user's understanding of the code comes first.** No new code, modules or
-design scope until the user says otherwise; reading, explaining, and correcting wrong docs are in
-scope (`notes/session_2026-10-06.md`).
+A reading pause (2026-10-06) is over: the user is up to speed on the internals and wants
+substantive improvements. Its findings are in `notes/session_2026-10-06.md` and section 4; the
+first of them, `Spectrum.bound` under-reporting on a starved basis, matters to the benchmark below
+because the benchmark scores certified precision.
 
 * **[blocking]** **Build the `douse`-shaped acceptance benchmark.** `douse`'s requirements and the
   interface across the line are written down in `docs/design/douse_requirements.md` (2026-10-06).
@@ -366,7 +367,7 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   argument in the `PrecisionWarning` item above. One of the most complex parts of `chladni`, so a
   simplification candidate -- decided by the two tests not yet run: a high-precision basis on a
   sharp shape (these bases floor at ~2e-7), and a Neumann/Cauchy-data case, where J' from the series
-  may beat `jvp`. Repro: `notes/bessel_kernel_vs_scipy.py` (2026-10-06). Paused with new work.
+  may beat `jvp`. Repro: `notes/bessel_kernel_vs_scipy.py` (2026-10-06).
 * **[next]** **`FourierBessel`'s `PrecisionWarning` flags per-entry relative error, which is not a
   substantive loss.** The user's rule (2026-10-06): **warn only for precision losses that are
   substantive** -- ones that can move a computed result. `Sampling._check_accuracy`
@@ -381,7 +382,7 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   which `log_scale` already supplies), but `docs/conventions.md` records "`helmholtz` owns
   entry-wise accuracy" as a design choice, so the criterion is the user's decision. Audit the other
   `PrecisionWarning` sites against the same rule. Repro: `notes/precision_warning_entrywise.py`.
-  Not established: branch C (Olver/Debye); other domains. Paused with new work (section 0).
+  Not established: branch C (Olver/Debye); other domains.
 * **[next]** **`Spectrum.bound` under-reports the error on a starved basis: `delta_res` is not an
   upper bound there, and `bound = min(delta_res, mp_bound)` passes it through.** The L-shape with
   14 Fourier-Bessel terms at each of six corners, at `prec = 1e-12` (tension floor ~4e-9, so out of
@@ -394,7 +395,7 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   starved on a frozen plan (`docs/design/douse_requirements.md`). Repro:
   `notes/delta_res_undercover.py` (2026-10-06). Not established: adequate bases (every row in
   `examples/lshape_tour.ipynb` held), the penalty path (`prec >= 1e-8`; this basis held there),
-  other domains. Paused with the rest of new work (section 0) until the user lifts it.
+  other domains.
 * **[later]** **`refine`'s phantom test assumes a cone, and a flat-bottomed well defeats it.** On
   the 50*pi^2 triple at `prec = 1e-6`, band 1.3, under the order-2 penalty (`tau_2 = 2 prec`), a
   bracket lying BETWEEN two members converged 2 ulps inside its lower end, on the wall of the
