@@ -58,10 +58,12 @@ with multiplicities come out. `tests/candidates_v1.py` holds the two adapters th
 
 What is left here is not construction, and since 2026-09-18 it is not Phase D either. The
 `modes(x)` widening landed, the interior Gram angle is built behind `phase_d=` and measured, and
-the multiplicity contract is stated in `docs/design/search.md`'s As-built section. **There are no
+the multiplicity contract is stated in `docs/design/search.md`'s As-built section. **There were no
 known wrong totals and no known lost eigenvalues on any measured grid, on macOS/Accelerate at any
 scope, and on Linux/OpenBLAS at full-suite scope** -- measured 2026-10-04 on the cluster grids,
-both pencils. The two platforms still score different case sets (below). What is left is the
+both pencils, all rectangles. **Off rectangles that no longer holds** (2026-10-07, section 4): the
+L-shape's exact double `10 pi^2` comes back x0..x4 unflagged on its reference basis, and `douse`'s
+spike triangle gets a simple level counted x8. The grids were one family. The two platforms still score different case sets (below). What is left is the
 constants still inherited from one rectangle family, the rank policy that belongs to the planner,
 and deciding whether Phase D's angle earns its keep.
 
@@ -383,19 +385,37 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   entry-wise accuracy" as a design choice, so the criterion is the user's decision. Audit the other
   `PrecisionWarning` sites against the same rule. Repro: `notes/precision_warning_entrywise.py`.
   Not established: branch C (Olver/Debye); other domains.
-* **[next]** **`Spectrum.bound` under-reports the error on a starved basis: `delta_res` is not an
-  upper bound there, and `bound = min(delta_res, mp_bound)` passes it through.** The L-shape with
-  14 Fourier-Bessel terms at each of six corners, at `prec = 1e-12` (tension floor ~4e-9, so out of
-  reach): the search flags 6 of 7 levels as unmet, correctly, but on 4 of 7 the reported bound is
-  below the true error -- `lam = 29.52167` is wrong by 1.9e-4 with `delta_res = 4.4e-11`, ~4e6x
-  under -- and `attained_prec` reads 3.4e-10. The Moler-Payne bound covers every level. `min` is
-  honest only if both bars are upper bounds (`mps/search.py`, `Level.bound`); `delta_res =
-  DELTA_SAFETY * eps / c` (`mps/refine.py`) evidently is not when the floor is the basis's and the
-  well is mislocated. Matters for `douse`, which is promised certified bounds and will drift
-  starved on a frozen plan (`docs/design/douse_requirements.md`). Repro:
-  `notes/delta_res_undercover.py` (2026-10-06). Not established: adequate bases (every row in
-  `examples/lshape_tour.ipynb` held), the penalty path (`prec >= 1e-8`; this basis held there),
-  other domains.
+* **[next]** **The reach rule counts a simple level x8 when the cache hands it a wall slope read
+  inside the floor.** `douse`'s spike triangle (catalogue T1.3), Fourier-Bessel at every corner plus
+  an offset source layer, window [124.33, 966.95], `prec = 1e-12`: `807.0076 x8`, unflagged,
+  Moler-Payne refused (`inf`) for the 8 vectors so `bound` fell back to `delta_res = 6e-10`. The
+  slope handed to `multiplicity(rule="reach")` was 47.7 against a true wall slope of 3.40e-3
+  (measured directly), so `sigma_2 .. sigma_8 = 0.22 .. 0.83` read as distances 0.005 .. 0.017
+  inside a 4.3-wide locator bracket, and all `MAX_BRANCHES` were counted. A second basis on the same
+  shape gives x8 at three levels. The sibling of the `_slope_from_cache` floor defect recorded in
+  the phantom item below, whose guard does not reach this path. Two cheap guards suggest themselves
+  -- an O(1) `sigma_j` is never a branch at a root, and a level whose count exceeds Weyl's
+  expectation for its neighbourhood is flagged -- but neither is measured, and the search's
+  special cases are already a maintenance concern (`notes/session_2026-10-05.md`). Repro:
+  `notes/spike_x8.py` (2026-10-07). One shape, two bases.
+* **[next]** **An exact double at the floor is returned with multiplicity 0..4, unflagged, on an
+  ADEQUATE basis.** The L-shape's `10 pi^2` on the 80-term recipe (tension 1.5e-13 there,
+  `sigma_3 = 0.09`): count 1 at `prec = 1e-12` on [5, 100] and [5, 110]; 2 as two simple levels on
+  [90, 105]; 3 and 4 at 1e-13 on [5, 100] and [5, 110]; 0 at 1e-13 on [90, 105] and [95, 100] --
+  never flagged. At 1e-12 the reach rule DECLINES branch 2 (`d_est = 1.4e-11` against a bracket
+  reaching 1.2e-11 on its near side), and the side search, built to LOCATE a distinct partner at the
+  bracket edge, finds none -- the partner is the root itself -- and clears the flag. The minimal
+  honest change: after the side search, a declined branch with no located root within its reach
+  keeps the level `count_uncertain`. Not made: it needs the gate and the robust tier re-run, and the
+  0-count cases at 1e-13 are a different mechanism (not traced). `douse` drives shapes into exact
+  degeneracy, so this class is its core case. Repro: `notes/double_10pi2.py` (2026-10-07).
+* **[later]** **`delta_res` still under-covers by up to 2.6x on met levels near the float floor.**
+  `notes/bound_coverage.md`: after `c1c3f53` (a `delta_res` short of `prec` is no longer admitted
+  into `Level.bound`) the bound covers every unmet level of a 715-level grid, and misses 10 met
+  levels by at most 2.6x, all with errors of 8-3100 ulps and within `prec` -- the sector apex
+  family and the L-shape at 1e-13. `DELTA_SAFETY = 2` was calibrated on a located-error ratio of
+  0.99-1.27; these reach 5.2. Raising it trades against tightness at 1e-13, unmeasured. Neumann and
+  mixed levels have no Moler-Payne bound and still report bare `delta_res`.
 * **[later]** **`refine`'s phantom test assumes a cone, and a flat-bottomed well defeats it.** On
   the 50*pi^2 triple at `prec = 1e-6`, band 1.3, under the order-2 penalty (`tau_2 = 2 prec`), a
   bracket lying BETWEEN two members converged 2 ulps inside its lower end, on the wall of the
