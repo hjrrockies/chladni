@@ -265,7 +265,8 @@ class MPSEigensolver(Eigensolver, Frozen):
 
     def certify_levels(self, res, *, lam_max, prec):
         """`res` with a Moler-Payne bound on every level (`chladni.integrals.certify`), and its
-        precision summary recomputed from the tighter of each level's two bars.
+        precision summary recomputed from each level's reported bar (`Level.bound`: the tighter
+        of the two, except that a `delta_res` short of `prec` is not admitted).
 
         Per level: the `mult` minimizing vectors at the level's `lam`, their Cauchy data on an
         integral rule sized for `lam_max` and `prec`, a Rellich norm, and the bound per vector;
@@ -300,7 +301,9 @@ class MPSEigensolver(Eigensolver, Frozen):
                 levels.append(replace(L, mp_bound=float(np.max(mp.abs)),
                                       mp_eps=float(np.max(mp.eps)),
                                       cancellation=float(np.max(mp.cancellation)),
-                                      bound_reason=mp.reason))
+                                      bound_reason=mp.reason,
+                                      delta_res_admitted=bool(
+                                          L.delta_res <= prec * abs(L.lam))))
             levels = tuple(levels)
         unmet, attained = _precision_summary(levels, prec)
         return replace(res, levels=levels,

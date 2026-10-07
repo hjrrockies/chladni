@@ -199,14 +199,29 @@ class Level:
     mp_eps: float = float("nan")
     cancellation: float = float("nan")
     bound_reason: str = ""
+    #: False when `delta_res` missed the request it was refined for (`delta_res > prec*lam`)
+    #: and a Moler-Payne bound is in hand, so `bound` reports that bound alone. Set by
+    #: `MPSEigensolver.certify_levels`, which knows `prec`; see `bound` for why.
+    delta_res_admitted: bool = True
 
     @property
     def bound(self):
-        """The error bar reported for this level: the tighter of `delta_res` (the refiner's,
-        from the tension's floor) and `mp_bound` (Moler-Payne, from the candidate itself). Both
-        are upper bounds on the distance to a true eigenvalue, so the tighter one is honest; under
-        the penalty default the second is usually two to three orders tighter
-        (`notes/moler_payne_vs_tension.md`). `delta_res` alone where no bound was computed."""
+        """The error bar reported for this level.
+
+        `mp_bound` (Moler-Payne, from the candidate itself) is an upper bound on the distance to
+        a true eigenvalue. `delta_res` (the refiner's, `DELTA_SAFETY * eps / c` from the
+        tension's floor) is a resolution limit, and is an upper bound only while the floor is
+        the well's own: on a basis too poor for the request the floor is the BASIS's, the well
+        can sit away from the eigenvalue, and `delta_res` read up to ~1e5x under the true error
+        while Moler-Payne covered all 715 levels of `notes/bound_coverage.md`. Every such level
+        had `delta_res > prec*lam`, so a `delta_res` that missed the request is not admitted
+        (`delta_res_admitted`) and the level reports `mp_bound`. An admitted `delta_res` is
+        reported when it is the tighter -- on the threshold path near 1e-13 it can be 100x
+        tighter than Moler-Payne, and it covered the error there to within 2.6x. `delta_res`
+        alone where no bound was computed (`certify=False`, or a boundary that is not
+        Dirichlet), and then nothing guards it."""
+        if not self.delta_res_admitted and np.isfinite(self.mp_bound):
+            return float(self.mp_bound)
         vals = [v for v in (self.delta_res, self.mp_bound) if np.isfinite(v)]
         return float(min(vals)) if vals else float("nan")
 

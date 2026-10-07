@@ -166,9 +166,44 @@ def test_every_level_of_a_dirichlet_solve_carries_a_bound_that_covers_its_error(
         true = float(truth[np.argmin(np.abs(truth - L.lam))])
         assert L.bound_reason == "" and np.isfinite(L.mp_bound), L
         assert L.mp_bound >= abs(L.lam - true) - 1e-14 * true, (L.lam, L.mp_bound, true)
-        assert L.bound == min(L.delta_res, L.mp_bound)
+        if L.delta_res <= 1e-10 * L.lam:     # admitted: the tension's bar met the request
+            assert L.bound == min(L.delta_res, L.mp_bound)
+        else:
+            assert L.bound == L.mp_bound
     spec = s.solve_interval(8.0, 33.0)
     assert np.allclose(spec.bound, [L.bound for L in sorted(res.levels, key=lambda x: x.lam)])
+
+
+@pytest.mark.filterwarnings("ignore::chladni.helmholtz.PrecisionWarning")
+def test_a_starved_basis_reports_a_bound_that_covers_its_error():
+    """`notes/delta_res_undercover.py`, `notes/bound_coverage.md`: 14 Fourier-Bessel terms at
+    each L-shape corner asked for 1e-12, out of the basis's reach. `delta_res` read up to ~1e5x
+    under the true error on such levels and `min(delta_res, mp_bound)` passed it through, so the
+    reported bound and `attained_prec` were wrong. A `delta_res` that does not meet `prec` is
+    the basis's floor, not a resolution limit, and is not admitted: the level reports its
+    Moler-Payne bound, which covered every level of the grid."""
+    from chladni.helmholtz import FourierBessel
+    from chladni.mps import MPSEigensolver
+
+    dom = L_shape()
+    b = None
+    for c in dom.corners:
+        f = FourierBessel.at_corner(c, n=14, domain=dom)
+        b = f if b is None else b + f
+    s = MPSEigensolver(dom, basis=b, n_bdry=3 * len(b), n_int=len(b), prec=1e-12)
+    res = s.search_interval(5.0, 45.0)
+    truth = ref.L_shape_eigs(10)
+    worst = 0.0
+    starved = 0
+    for L in res.levels:
+        err = float(np.min(np.abs(truth - L.lam)))
+        assert err <= L.bound, (L.lam, err, L.delta_res, L.mp_bound, L.bound)
+        if L.delta_res > 1e-12 * L.lam:
+            starved += 1
+            assert L.bound == L.mp_bound
+        worst = max(worst, err / L.lam)
+    assert starved >= 4                       # the case still exercises the rule
+    assert res.diagnostics.attained_prec >= worst
 
 
 def test_attained_precision_reads_the_tighter_bound():
