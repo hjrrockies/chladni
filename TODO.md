@@ -355,6 +355,18 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
+* **[later]** **The factored Bessel kernel's accuracy advantage over plain `scipy.special.jv` is
+  unproven end to end.** `helmholtz/_bessel.py` (series / scipy / Olver-Debye, values as
+  `S * exp(sigma)`, with the Airy-regularized envelope in `fourier_bessel.py`) is validated as a
+  KERNEL against mpmath, and is faster than `jv` + `jvp` when derivatives are wanted. But with the
+  same points, equilibration, regularization and search, raw `jv` columns (underflowed columns
+  dropped) give the same eigenvalues: identical on the L-shape (80 terms, 1.6e-14, no underflow),
+  and indistinguishable on `douse`'s spike triangle (failure catalogue T1.3) at 1e-9 .. 2e-8,
+  including with 16-20 high-order apex columns lost to underflow. Expected from the normwise
+  argument in the `PrecisionWarning` item above. One of the most complex parts of `chladni`, so a
+  simplification candidate -- decided by the two tests not yet run: a high-precision basis on a
+  sharp shape (these bases floor at ~2e-7), and a Neumann/Cauchy-data case, where J' from the series
+  may beat `jvp`. Repro: `notes/bessel_kernel_vs_scipy.py` (2026-10-06). Paused with new work.
 * **[next]** **`FourierBessel`'s `PrecisionWarning` flags per-entry relative error, which is not a
   substantive loss.** The user's rule (2026-10-06): **warn only for precision losses that are
   substantive** -- ones that can move a computed result. `Sampling._check_accuracy`
