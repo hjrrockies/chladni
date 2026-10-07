@@ -355,6 +355,21 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
+* **[next]** **`FourierBessel`'s `PrecisionWarning` flags per-entry relative error, which is not a
+  substantive loss.** The user's rule (2026-10-06): **warn only for precision losses that are
+  substantive** -- ones that can move a computed result. `Sampling._check_accuracy`
+  (`helmholtz/_core.py`) warns on `max(rel_err)` over all entries, and the series branch's
+  `rel_err = eps * largest_term / |S|` (`helmholtz/_bessel.py`, `_j_series`) blows up at entries
+  near a zero of `J_mu(k r)`. On the L-shape (80 reentrant-corner terms) the worst bound is 2.1e-8
+  at `lam = 42.1`; mpmath gives a true relative error of 2.7e-9 there, on an entry 1.9e-6 of its
+  column maximum -- 5e-15 relative to the column, and at most 2.6e-13 over all entries. The solve
+  is normwise (equilibration, GSVD), so eigenvalues come out to ~4e-14 whether the family's `prec`
+  is 1e-8 (warns occasionally, depending on which `lam` the search visits) or 1e-12 (185 warnings
+  in one search). The likely fix is a column-scaled criterion (`rel_err * |entry| / column scale`,
+  which `log_scale` already supplies), but `docs/conventions.md` records "`helmholtz` owns
+  entry-wise accuracy" as a design choice, so the criterion is the user's decision. Audit the other
+  `PrecisionWarning` sites against the same rule. Repro: `notes/precision_warning_entrywise.py`.
+  Not established: branch C (Olver/Debye); other domains. Paused with new work (section 0).
 * **[next]** **`Spectrum.bound` under-reports the error on a starved basis: `delta_res` is not an
   upper bound there, and `bound = min(delta_res, mp_bound)` passes it through.** The L-shape with
   14 Fourier-Bessel terms at each of six corners, at `prec = 1e-12` (tension floor ~4e-9, so out of
