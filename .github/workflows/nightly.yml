@@ -1,0 +1,62 @@
+name: nightly (gate and robust)
+
+# The two expensive tiers, off the per-push path: the acceptance gate (`pytest -m gate`, ~7 min)
+# and the robustness campaign (`-m robust`, 30-60 min). Nightly on main, and on demand.
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    env:
+      # The notebook test drives matplotlib through a Jupyter kernel, where there is no
+      # display. Setting the backend in the environment reaches that kernel; a
+      # matplotlib.use() call inside a test module would not.
+      MPLBACKEND: Agg
+      # One BLAS thread. Measured 2026-09-19 on this image: 0 failures in ~39 single-thread runs
+      # against ~4 in 5 at the default threading, and 2.5-3.2x faster at module scope (thousands
+      # of small factorizations, where thread spawn costs more than it buys). This HIDES the
+      # threshold-path count flips rather than explaining them: notes/nondeterminism.md shows
+      # the search is deterministic but discontinuous in its inputs, so last-bit differences
+      # between thread counts can change a count. TODO.md records it as open.
+      OPENBLAS_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned to a patch version deliberately: setup-uv publishes no floating major tag
+      # (there is no `v10`, only `v10.0.1`), so `@v10` would not resolve.
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+          # Without a per-leg suffix all three matrix jobs compute the SAME cache key --
+          # it is built from the uv version, the runner image and the runner's own system
+          # Python, none of which vary here. That is wrong twice over: the jobs race to
+          # save it (one wins, the others log "Unable to reserve cache"), and the uv cache
+          # holds interpreter-specific wheels, so the two losing legs would restore a cache
+          # built for a different Python.
+          cache-suffix: ${{ matrix.python-version }}
+
+      - name: Install
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install -e ".[test]"
+
+      # Steps below call .venv/bin/python directly rather than `uv run`, which would sync
+      # the project environment itself and could undo the `[test]` install above.
+
+      - name: Run the gate and the robust tier
+        run: .venv/bin/python -m pytest -m "gate or robust" -W error::UserWarning

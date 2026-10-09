@@ -24,6 +24,13 @@ jobs:
       # display. Setting the backend in the environment reaches that kernel; a
       # matplotlib.use() call inside a test module would not.
       MPLBACKEND: Agg
+      # One BLAS thread. Measured 2026-09-19 on this image: 0 failures in ~39 single-thread runs
+      # against ~4 in 5 at the default threading, and 2.5-3.2x faster at module scope (thousands
+      # of small factorizations, where thread spawn costs more than it buys). This HIDES the
+      # threshold-path count flips rather than explaining them: notes/nondeterminism.md shows
+      # the search is deterministic but discontinuous in its inputs, so last-bit differences
+      # between thread counts can change a count. TODO.md records it as open.
+      OPENBLAS_NUM_THREADS: "1"
 
     steps:
       - uses: actions/checkout@v7
@@ -55,15 +62,16 @@ jobs:
         # fail and the guard would quietly stop guarding. Fail loudly here instead.
         run: .venv/bin/python -c "import nbformat, nbclient, ipykernel; print('notebook deps present')"
 
-      - name: Run the full suite
-        # -m "" overrides the `-m 'not slow'` in pyproject's addopts, which exists to keep
-        # the local inner loop near 1.5 s. CI has no inner loop, and the two slow tests are
-        # the notebook execution and the corner-construction scaling guard -- precisely the
-        # things that rot silently. -W error::UserWarning makes an unexpected warning a
+      - name: Run the suite (all tiers but gate and robust)
+        # -m overrides the `-m 'not slow and not gate and not robust'` in pyproject's addopts,
+        # which keeps the local inner loop near 1.5 s. CI has no inner loop, so the slow tier
+        # runs here: the notebook execution, the scaling guards and the end-to-end solves --
+        # precisely the things that rot silently. The gate (~7 min) and the robust campaign
+        # (30-60 min) run nightly instead (nightly.yml). -W error::UserWarning makes an unexpected warning a
         # failure; the suite is clean under it. Warnings a test provokes on purpose are
         # either asserted with pytest.warns or silenced with a per-test
         # `filterwarnings` mark that says at the site why the warning is not the claim.
-        run: .venv/bin/python -m pytest -m "" -W error::UserWarning
+        run: .venv/bin/python -m pytest -m "not gate and not robust" -W error::UserWarning
 
       - name: Confirm geometry still imports without matplotlib
         # A test asserts this too, in a subprocess. Repeated here because it is the one
