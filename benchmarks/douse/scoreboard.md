@@ -4,6 +4,14 @@
 reference spectra, and a first scoring of `lappy` against a chladni stand-in. Not yet the douse
 backend seam that `TODO.md` section 0 asks for; this is the scoring core that seam will call.*
 
+**Regenerated after the (C2) fixes (`8e5f694`)** -- the JSON files and `scoreboard_table.md` now hold
+that run; the prose below describes the first run, before the fixes. After: references 311 certified /
+54 fem_resolved / 52 provisional; scored (silently wrong / scored) lappy fresh 10/28, lappy frozen
+12/18 (+1 exception), chladni stand-in 3/34 at 1e-8 and 8/34 at 1e-13 (1 declined). **These two runs
+are not comparable row by row**: the window comes from ARPACK FEM eigenvalues with a random start, and
+counts at near-degeneracies change with ulps of the window (`notes/nondeterminism.md`). The next
+regeneration seeds ARPACK and adds a stability score.
+
 ## Pipeline
 
 | step | script | output | runs under |
