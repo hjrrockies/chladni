@@ -31,6 +31,13 @@ jobs:
       # the search is deterministic but discontinuous in its inputs, so last-bit differences
       # between thread counts can change a count. TODO.md records it as open.
       OPENBLAS_NUM_THREADS: "1"
+      # One KERNEL SET, whatever CPU the runner lands on. Measured 2026-10-09: the failure set
+      # was decided by the runner's CPU -- AMD EPYC 7763 (Zen 3) gave one set, EPYC 9V45 (Zen 5,
+      # AVX-512) another -- because OpenBLAS picks kernels per CPU and the search turns their
+      # last-bit differences into different counts. Haswell (AVX2) runs on every x86 runner.
+      # Pinning makes CI repeatable; the sensitivity itself is measured locally with
+      # tests/ulp_jitter.py, which stands in for "another kernel".
+      OPENBLAS_CORETYPE: Haswell
 
     steps:
       - uses: actions/checkout@v7
