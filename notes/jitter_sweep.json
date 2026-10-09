@@ -1,0 +1,186 @@
+{
+ "scale": 4.0,
+ "n": 16,
+ "targets": [
+  "tests/test_moler_payne.py::test_the_bound_covers_the_true_error_on_every_rectangle_level",
+  "tests/test_solve.py::test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives",
+  "tests/test_solve.py::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong",
+  "tests/test_solve.py::test_the_cross_check_reads_only_CACHED_points",
+  "tests/test_solve.py::test_the_escape_from_the_band_works_in_BOTH_directions",
+  "tests/test_solve.py::test_a_SELF_CONSISTENT_fine_grouping_is_kept",
+  "tests/test_rule_seam.py::test_the_fresh_125_grid_has_no_SILENT_wrong_total",
+  "tests/test_cluster_totals.py::test_the_cluster_total_GRID",
+  "tests/test_cluster_totals.py::test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate",
+  "tests/test_cluster_totals.py::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster"
+ ],
+ "results": [
+  {
+   "seed": 0,
+   "failed": [],
+   "passed": 122
+  },
+  {
+   "seed": 1,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[1.0-4]",
+    "test_solve::test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives[1.0-2.0]",
+    "test_solve::test_the_escape_from_the_band_works_in_BOTH_directions"
+   ],
+   "passed": 119
+  },
+  {
+   "seed": 2,
+   "failed": [
+    "test_cluster_totals::test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate",
+    "test_cluster_totals::test_the_cluster_total_GRID[N65-1e-06-b0.3]",
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[0.5-6]",
+    "test_solve::test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives[0.5-1.0]",
+    "test_solve::test_the_cross_check_reads_only_CACHED_points"
+   ],
+   "passed": 117
+  },
+  {
+   "seed": 3,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[0.5-6]",
+    "test_solve::test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives[0.5-1.0]",
+    "test_solve::test_the_cross_check_reads_only_CACHED_points"
+   ],
+   "passed": 118
+  },
+  {
+   "seed": 4,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]"
+   ],
+   "passed": 121
+  },
+  {
+   "seed": 5,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_rule_seam::test_the_fresh_125_grid_has_no_SILENT_wrong_total[1e-10-0.5-side-search dedup: the partner was discarded against the root being split]"
+   ],
+   "passed": 121
+  },
+  {
+   "seed": 6,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[0.5-6]",
+    "test_solve::test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives[0.5-1.0]",
+    "test_solve::test_the_cross_check_reads_only_CACHED_points"
+   ],
+   "passed": 119
+  },
+  {
+   "seed": 7,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[1.0-4]",
+    "test_solve::test_a_SELF_CONSISTENT_fine_grouping_is_kept[1.3]"
+   ],
+   "passed": 119
+  },
+  {
+   "seed": 8,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[0.5-6]",
+    "test_solve::test_a_SELF_CONSISTENT_fine_grouping_is_kept[1.3]",
+    "test_solve::test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives[0.5-1.0]",
+    "test_solve::test_the_cross_check_reads_only_CACHED_points"
+   ],
+   "passed": 117
+  },
+  {
+   "seed": 9,
+   "failed": [
+    "test_cluster_totals::test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate",
+    "test_cluster_totals::test_the_cluster_total_GRID[N50-1e-14-b2.6]",
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[0.5-6]",
+    "test_solve::test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives[0.5-1.0]",
+    "test_solve::test_the_cross_check_reads_only_CACHED_points"
+   ],
+   "passed": 116
+  },
+  {
+   "seed": 10,
+   "failed": [
+    "test_cluster_totals::test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate",
+    "test_cluster_totals::test_the_cluster_total_GRID[N50-1e-14-b1]"
+   ],
+   "passed": 120
+  },
+  {
+   "seed": 11,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_solve::test_a_SELF_CONSISTENT_fine_grouping_is_kept[1.3]",
+    "test_solve::test_the_escape_from_the_band_works_in_BOTH_directions"
+   ],
+   "passed": 119
+  },
+  {
+   "seed": 12,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_rule_seam::test_the_fresh_125_grid_has_no_SILENT_wrong_total[1e-10-0.5-side-search dedup: the partner was discarded against the root being split]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[0.5-6]",
+    "test_solve::test_a_SELF_CONSISTENT_fine_grouping_is_kept[1.3]",
+    "test_solve::test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives[0.5-1.0]",
+    "test_solve::test_the_cross_check_reads_only_CACHED_points"
+   ],
+   "passed": 117
+  },
+  {
+   "seed": 13,
+   "failed": [
+    "test_cluster_totals::test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate",
+    "test_cluster_totals::test_the_cluster_total_GRID[N50-1e-10-b0.3]",
+    "test_cluster_totals::test_the_cluster_total_GRID[N50-1e-14-b1.3]",
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_moler_payne::test_the_bound_covers_the_true_error_on_every_rectangle_level[tau 2e-14]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[0.8-4]",
+    "test_solve::test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives[0.8-1.6]",
+    "test_solve::test_the_escape_from_the_band_works_in_BOTH_directions"
+   ],
+   "passed": 116
+  },
+  {
+   "seed": 14,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[0.5-6]",
+    "test_solve::test_a_SELF_CONSISTENT_fine_grouping_is_kept[1.3]",
+    "test_solve::test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives[0.5-1.0]",
+    "test_solve::test_the_cross_check_reads_only_CACHED_points"
+   ],
+   "passed": 118
+  },
+  {
+   "seed": 15,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_moler_payne::test_the_bound_covers_the_true_error_on_every_rectangle_level[tau 2e-14]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[0.5-6]",
+    "test_solve::test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives[0.5-1.0]",
+    "test_solve::test_the_cross_check_reads_only_CACHED_points",
+    "test_solve::test_the_escape_from_the_band_works_in_BOTH_directions"
+   ],
+   "passed": 117
+  },
+  {
+   "seed": 16,
+   "failed": [
+    "test_cluster_totals::test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster[2.0]",
+    "test_solve::test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong[1.0-4]"
+   ],
+   "passed": 121
+  }
+ ]
+}

@@ -11,6 +11,17 @@ collection fails until `chladni.geometry` is importable. That is the intended re
 import numpy as np
 import pytest
 
+import ulp_jitter
+
+#: `CHLADNI_ULP_JITTER=SEED[:SCALE]` runs the whole session on a jittered "platform"
+#: (`tests/ulp_jitter.py`). Unset, nothing is patched.
+_JITTER = ulp_jitter.install_from_env()
+
+
+def pytest_report_header(config):
+    if _JITTER:
+        return f"ulp jitter ON: seed {_JITTER[0]}, scale {_JITTER[1]:g} ulps (tests/ulp_jitter.py)"
+
 from chladni.geometry import (
     ArcSegment,
     Boundary,
