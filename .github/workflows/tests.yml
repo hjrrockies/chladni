@@ -57,6 +57,15 @@ jobs:
       # Steps below call .venv/bin/python directly rather than `uv run`, which would sync
       # the project environment itself and could undo the `[test]` install above.
 
+      - name: Report the CPU and the BLAS kernel in use
+        # Two discrete failure sets appear across legs and reruns of identical code, with one BLAS
+        # thread (2026-10-09). The hypothesis: the runner pool mixes CPU models, OpenBLAS picks its
+        # kernels per CPU, and the search turns last-bit differences into different counts
+        # (notes/nondeterminism.md). This step records which CPU and kernel each leg got.
+        run: |
+          lscpu | grep -E "Model name|Flags" | cut -c1-200
+          .venv/bin/python -c "import numpy; numpy.show_runtime()"
+
       - name: Check the notebook test can actually run
         # test_examples.py uses importorskip, so a missing dependency would SKIP rather than
         # fail and the guard would quietly stop guarding. Fail loudly here instead.
