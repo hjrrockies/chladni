@@ -31,6 +31,12 @@ the floor** (`docs/design/douse_requirements.md`, "Precision per level"). Nearly
 
 The path, in order:
 
+* **[blocking]** **Prune the test suite** (agreed 2026-10-09). Much of it pins trajectories,
+  constants and ablations from when the search was designed on one rectangle family; it costs
+  runtime (the full suite is ~17 min) and flips under `tests/ulp_jitter.py`. First an inventory
+  classifying every test as a douse contract, a mechanism pin, evidence for an open item, or a
+  retired/parked feature, with runtime and jitter flip rate. The user reviews it, then the
+  pruning goes in a few commits that say where any evidence went.
 * **[blocking]** **Make the `douse` benchmark a reliable instrument at 1e-10.** It exists
   (`benchmarks/douse/scoreboard.md`: 41 catalogued shapes, references by three chladni bases plus
   FEM counts, `lappy`'s cold solves, a scorer). It is not yet reproducible: the window comes from
