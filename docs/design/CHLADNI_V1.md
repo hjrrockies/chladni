@@ -1,3 +1,8 @@
+*Historical (2026-10-09): the v1 bracketing proposal, measured on the `(1+delta) x 1` rectangle
+only. Its design ships as `chladni.mps.{bracket,refine,multiplicity,search}`; what changed is in its
+own As-built section and in `docs/design/search.md`. Kept as the record of why the search is shaped
+as it is, not as a current specification.*
+
 # Proposal: bracketing for `chladni` v1
 
 A design for the eigenvalue-bracketing stage of a Dirichlet-Laplacian solver on planar domains,

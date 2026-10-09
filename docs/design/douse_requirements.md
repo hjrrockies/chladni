@@ -14,7 +14,7 @@ API -- but it keeps everything that depends on HOW a domain is parameterized.
 |---|---|
 | **Domains** | Polygons up to N = 16: convex, non-convex with several reentrant corners (angles toward `2 pi`), near-regular and exactly symmetric. Iterates get short edges, near-collinear vertices (angles near `pi`), and high aspect ratio. Curved boundaries are not needed yet. |
 | **Indices** | `lam_k` up to `k ~ 10-30`. |
-| **Precision** | Chosen by `douse` per solve and tightened as the optimizer converges. Not one fixed target. Today's working default is 1e-13. |
+| **Precision** | Chosen by `douse` per solve and tightened as the optimizer converges. Not one fixed target. `douse`'s default today is 1e-13; **the first integration targets 1e-10** (agreed 2026-10-09), with 1e-13 a later tightening. |
 | **Outputs** | Eigenvalues with multiplicities; a certified bound per level; Hadamard shape-derivative integrals, as an `m x m` matrix per velocity field for a group of levels. Eigenfunctions are needed only as the input to those integrals. |
 | **Time** | 10 s to 1 min per solve is acceptable -- 1-7 hours per optimization start at a few hundred solves (confirmed 2026-10-06). Reliability comes first. |
 | **Failures to fix** | All of: dropped eigenvalues, lost precision, wrong multiplicities near degeneracies, and solver exceptions that abort a run. |
@@ -96,13 +96,14 @@ backend passes the benchmark without them, not before.
   degenerate cluster. `douse` drives shapes toward degeneracy, so this is the common case
   (`spectral_guard.py`: truncation made a clean set and a set missing a mode indistinguishable).
 
-### Precision per level: loosen, report, optionally abort (proposed 2026-10-09)
+### Precision per level: loosen, report, optionally abort (agreed 2026-10-09)
 
-*Direction agreed with the user; not designed in detail and not built.* `prec` is a request, and the
+*The agreed direction; not designed in detail and not built. The first integration works at
+`prec = 1e-10` (TODO.md section 0).* `prec` is a request, and the
 basis decides per level whether it can be met. The floor varies by orders of magnitude across one
 window, so a shortfall is a property of a LEVEL, not of a solve.
 
-    spec = ep.solve(n, prec=1e-13, plan=plan, on_shortfall="flag")     # or "raise"
+    spec = ep.solve(n, prec=1e-10, plan=plan, on_shortfall="flag")     # or "raise"
     L = spec.levels[i]
     L.lam, L.mult, L.bound, L.resolution, L.met, L.flags
     spec.count_audit                                                    # solve-level: drops

@@ -158,8 +158,10 @@ reported in `shortfalls`, with its achievable precision, never silently.
 and `search.solve` sees only an `Objective`. Per level: `coef(lam, mult)`, Cauchy data, Gram,
 Löwdin, then a bound per column. A level gains `mp_eps`, `mp_bound` (absolute), the norm's
 quadrature error, the cancellation ratio and a `bound_reason`; `Spectrum.bound` becomes
-`min(delta_res, mp_bound)` -- both are valid upper bounds, so the tighter one is honest -- and
-stays `delta_res` where the bound is refused. Members of a merged level are re-solved at the
+`min(delta_res, mp_bound)` where `delta_res` met `prec`, and `mp_bound` alone where it did not --
+`delta_res` is a resolution limit, not an upper bound, once the floor is a starved basis's
+(`c1c3f53`, `notes/bound_coverage.md`: it read up to 1.6e5x under the true error there, while
+Moler-Payne covered all 715 levels). It stays `delta_res` where the bound is refused. Members of a merged level are re-solved at the
 level's one `lam` before their Gram is formed, so no Gram ever divides by `lam_i - lam_j`.
 `MPSEigensolver.eigenfunctions(level)` returns the orthonormal family coefficients and the rule.
 
@@ -207,7 +209,8 @@ level's one `lam` before their Gram is formed, so no Gram ever divides by `lam_i
   own 14 digits, and above the `eps * cancellation` floor it must respect. On `rect(1, 1/phi)` it
   reproduces the notes' table through the Rellich norm: valid on all 15 rows.
 * **Through the solver**, every level of a five-level L-shape solve carries a finite bound that
-  covers its error against the table, and `Spectrum.bound` is `min(delta_res, mp_bound)`.
+  covers its error against the table, and `Spectrum.bound` is `min(delta_res, mp_bound)` (with
+  `delta_res` admitted only where it met `prec`, since `c1c3f53`).
   `Level.attained_prec` and the diagnostics' `unmet` follow the tighter bar.
 * **Cancellation enters the bound as a floor, not a refusal**: the sampled maximum is raised by
   `4 eps` times the largest term behind it, so a bound below float64's own reach cannot be
