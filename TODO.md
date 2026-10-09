@@ -77,14 +77,17 @@ planner.
   a member; count 3 locates one member twice, 4e-12 apart, and the dedup keeps both. At `prec =
   1e-12` the pair sits at `R = 4.1`, inside the margin rule's regime (section 0), which may absorb
   it -- trace stages 1-2 only if it does not.
-* **[next]** **Drive the `ulp_sensitive` tests to 0 of N jitter seeds.** Seventeen test cases flip
-  under ulp-level perturbation of the pencil (`tests/ulp_jitter.py`; `notes/jitter_sweep.py`,
-  16 seeds, 2026-10-09): the uneven-cluster cross-check 15/16, three `test_solve.py` cross-checks
-  8/16, the 125 pi^2 silent wrong total at 1e-10 2/16, the Moler-Payne coverage test at
-  `tau = 2e-14` 2/16, and others. They are excluded from per-push CI (`pyproject.toml`, the marker)
-  because each asserts one platform's outcome of a decision the solver cannot yet make robustly;
-  the margin rule (section 0) is judged by these rates. Single cluster-grid cells also flip at
-  ~1/16 (`test_the_cluster_total_GRID`, unmarked) -- watch CI for them.
+* **[next]** **Drive the `ulp_sensitive` tests to 0 of N jitter seeds.** They flip under ulp-level
+  perturbation of the pencil (`tests/ulp_jitter.py`; `notes/jitter_sweep.py`, 16 seeds,
+  2026-10-09) and across Linux runner CPUs, so per-push CI excludes them (`pyproject.toml`, the
+  marker). Every one is a CONTRACT the solver owes, failing under some seeds: the 125 pi^2 grid's
+  "no silent wrong total" at 1e-10 (2/16), the Moler-Payne coverage test at `tau = 2e-14` (2/16),
+  the starved-basis bound (the item below), and the cluster grid's decline-rate test, now
+  "every cell right, declined or flagged". The margin rule (section 0) is judged by these rates.
+  Single cluster-grid cells also flip at ~1/16 (`test_the_cluster_total_GRID`, unmarked). The
+  tests that pinned trajectories of the retired grouping cross-check were retired with it
+  (2026-10-09); `solve(collapse=True)` and `rule="gap"` are now untested options -- retire them
+  or re-test them.
 * **[next]** **`delta_res` is admitted into `Level.bound` at the very edge of `prec`.** `c1c3f53`
   admits `delta_res` when `delta_res <= prec*lam`. On a Linux EPYC 9V45 runner (2026-10-09) the
   starved-basis test's level at 44.948 had `delta_res = 4.445e-11` against `prec*lam = 4.495e-11`

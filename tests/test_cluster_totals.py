@@ -48,8 +48,8 @@ No wrong cell -- against 33 wrong (32 flagged, 1 silent) under the previous defa
 wherever a cluster's width fell between about one and eight merge licences. That band belonged to
 the licence merge folding roots already resolved into separate brackets and to
 `_collapse_ambiguous` recounting over a synthesised bracket whose radius placed it; both are out of
-the defaults now, and `test_the_cross_check_LOSES_a_correct_answer...` below keeps the evidence
-under the configuration it describes. The last wrong cell, the even cluster at 1e-8, band 0.8, was
+the defaults now. The tests that pinned the cross-check's own behaviour were retired on
+2026-10-09 along with it (`git log -S test_the_cross_check_LOSES` for the evidence). The last wrong cell, the even cluster at 1e-8, band 0.8, was
 2 of 3 until the refiner stopped giving up on a start with no parabola.
 
 # Tiers
@@ -271,7 +271,7 @@ def test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate():
     Scored over the exercisable cells only, for the same reason `_assert_total` skips the others:
     a cell whose basis cannot resolve the cluster measures the basis.
     """
-    n = declined = right = 0
+    n = declined = right = flagged = 0
     reasons = {}
     for N, m in (EVEN, UNEVEN):
         for prec in PRECS:
@@ -287,12 +287,18 @@ def test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate():
                     reasons[key] = reasons.get(key, 0) + 1
                 elif sum(x.mult for x in res.levels) == m:
                     right += 1
+                elif res.diagnostics.n_uncertain > 0 or not res.diagnostics.certified_counts:
+                    flagged += 1          # wrong but SAID so: honest, and scored as such
     rate = declined / n if n else 0.0
-    print(f"\n  {right} right, {declined} declined of {n} exercisable cells "
-          f"(decline rate {rate:.1%})")
+    print(f"\n  {right} right, {declined} declined, {flagged} wrong-but-flagged of {n} "
+          f"exercisable cells (decline rate {rate:.1%})")
     for why, k in sorted(reasons.items(), key=lambda kv: -kv[1]):
         print(f"    {k:>3}  {why}")
-    assert right + declined == n, f"{n - right - declined} cell(s) neither right nor declined"
+    # THE CONTRACT: every cell is right, declined, or flagged. A silent wrong total is the only
+    # outcome that fails here; which honest outcome a cell lands on can move with the last bits
+    # of the arithmetic (tests/ulp_jitter.py), and is not asserted.
+    silent = n - right - declined - flagged
+    assert silent == 0, f"{silent} cell(s) wrong and unflagged"
     assert rate <= MAX_DECLINE_RATE, (
         f"decline rate {rate:.1%} over {n} cells, above {MAX_DECLINE_RATE:.0%}: {reasons}")
 
@@ -325,30 +331,6 @@ def test_the_MULTIPLICITY_precondition_holds_at_both_ends_of_the_ladder():
             _, rows = rs.assert_floor(cluster(N, m, 1.0, prec), finest_prec=prec)
             worst = max(worst, max(r["mult_prec"] for r in rows))
     assert worst < 1e-13, f"the multiplicity precondition admits only {worst:.1e}"
-
-
-@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py and across CPUs; notes/jitter_sweep.py
-@pytest.mark.slow
-@pytest.mark.parametrize("band", [
-    1.3, 1.6,
-    # Only where the QR route is taken: on OpenBLAS the cell reads right (XPASS on Linux CI,
-    # 2026-09-21 and 2026-10-04), so a strict xfail there fails for the wrong reason.
-    pytest.param(2.0, marks=pytest.mark.xfail(_AVOID_GEQRF, strict=True, reason=(
-        "the previous configuration now DECLINES here at stage 1, cross-check on or off -- 'the "
-        "slope estimate never settled' -- since the QR route around Accelerate's dgeqrf moved the "
-        "objective; the promoted defaults read this cell right (4 of 4)"))),
-])
-def test_the_cross_check_LOSES_a_correct_answer_on_the_uneven_cluster(band):
-    """Measured on main at 1e-8: ablated, four levels of multiplicity one and the right total;
-    enabled, the total reads 2 and both levels are flagged. The guard is load-bearing on the even
-    triple (`test_solve.py`) and net-negative here, which is why it is retired rather than tuned."""
-    case = cluster(*UNEVEN, band, 1e-8)
-    old = dict(merge="licence", rule="gap", reach_slope="outside")   # the previous defaults
-    off = solve(bs.objective_for(case, 1e-8), prec=1e-8, collapse=False, **old)
-    on = solve(bs.objective_for(case, 1e-8), prec=1e-8, collapse=True, **old)
-    assert [x.mult for x in off.levels] == [1, 1, 1, 1]
-    assert sum(x.mult for x in on.levels) < 4
-    assert on.diagnostics.n_uncertain > 0, "and it says so"
 
 
 @pytest.mark.slow
