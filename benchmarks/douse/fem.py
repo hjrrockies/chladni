@@ -86,5 +86,9 @@ def fem_eigs(vertices, n_eigs, refine=5):
     M = mass.assemble(ib)
     D = ib.get_dofs()
     Kc, Mc, _, I = condense(K, M, D=D)
-    w = sla.eigsh(Kc, k=n_eigs, M=Mc, sigma=0.0, which="LM", return_eigenvectors=False)
+    # A FIXED start vector. ARPACK's default is random, so the eigenvalues -- and every window
+    # make_references.py derives from them -- changed in the last digits on every run, and counts
+    # at near-degeneracies change with ulps of the window (notes/nondeterminism.md).
+    v0 = np.random.default_rng(0).standard_normal(Kc.shape[0])
+    w = sla.eigsh(Kc, k=n_eigs, M=Mc, sigma=0.0, which="LM", return_eigenvectors=False, v0=v0)
     return np.sort(w), int(len(I))
