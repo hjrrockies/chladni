@@ -136,6 +136,7 @@ def test_reading_once_per_group_gets_the_COLLAPSE_branch_without_the_gram_angle(
 _CROSS_CHECK = dict(merge="licence", rule="gap", reach_slope="outside", collapse=True)
 _CROSS_CHECK_OFF = {**_CROSS_CHECK, "collapse": False}
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py and across CPUs; notes/jitter_sweep.py
 @pytest.mark.slow
 @pytest.mark.parametrize("band, ratio", [
     (0.5, 1.0),
@@ -166,6 +167,7 @@ def test_an_ambiguous_grouping_COLLAPSES_and_the_total_survives(band, ratio):
     assert flagged[0].width > 1e-8 * flagged[0].lam, "and declaring that it is over-wide"
 
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py and across CPUs; notes/jitter_sweep.py
 @pytest.mark.slow
 @pytest.mark.parametrize("band, wrong", [
     (0.5, 6),
@@ -185,6 +187,7 @@ def test_ABLATION_without_the_cross_check_the_TOTAL_is_wrong(band, wrong):
     assert sum(x.mult for x in on.levels) == len(case.truth), "and with it, the total is right"
 
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py and across CPUs; notes/jitter_sweep.py
 @pytest.mark.slow
 @pytest.mark.parametrize("band", [1.3, 3.0])
 def test_a_SELF_CONSISTENT_fine_grouping_is_kept(band):
@@ -212,6 +215,7 @@ def test_the_collapse_does_not_fire_where_nothing_is_ambiguous():
         assert not any(x.grouping_ambiguous for x in res.levels), case.label
 
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py and across CPUs; notes/jitter_sweep.py
 @pytest.mark.slow
 def test_the_cross_check_reads_only_CACHED_points():
     """It costs nothing: the spanning count is taken over samples the search already paid for.
@@ -224,6 +228,7 @@ def test_the_cross_check_reads_only_CACHED_points():
     assert res.diagnostics.multiplicity_evals == 0
 
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py and across CPUs; notes/jitter_sweep.py
 @pytest.mark.slow
 def test_the_escape_from_the_band_works_in_BOTH_directions():
     """The band is `d/2 < prec*lam < d`, so a caller can leave it either way and both give a

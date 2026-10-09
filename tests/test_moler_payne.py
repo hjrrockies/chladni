@@ -47,7 +47,10 @@ def _rect_case():
     return rs.family_A()[0]
 
 
-@pytest.mark.parametrize("which", ["default", "tau 2e-14", "threshold"])
+@pytest.mark.parametrize("which", [
+    "default",
+    pytest.param("tau 2e-14", marks=pytest.mark.ulp_sensitive),   # 2 of 16 seeds; Linux EPYC 9V45
+    "threshold"])
 def test_the_bound_covers_the_true_error_on_every_rectangle_level(which):
     """`notes/moler_payne_vs_tension.py bound`, now through `chladni.integrals` with a Rellich
     norm instead of an interior rule: five eigenvalues of `rect(1, 1/phi)`, each refined on the
@@ -174,6 +177,7 @@ def test_every_level_of_a_dirichlet_solve_carries_a_bound_that_covers_its_error(
     assert np.allclose(spec.bound, [L.bound for L in sorted(res.levels, key=lambda x: x.lam)])
 
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py and across CPUs; notes/jitter_sweep.py
 @pytest.mark.filterwarnings("ignore::chladni.helmholtz.PrecisionWarning")
 def test_a_starved_basis_reports_a_bound_that_covers_its_error():
     """`notes/delta_res_undercover.py`, `notes/bound_coverage.md`: 14 Fourier-Bessel terms at

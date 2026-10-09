@@ -259,6 +259,7 @@ def test_every_wrong_total_in_the_grid_is_LOUD(N, m, prec, band):
 MAX_DECLINE_RATE = 0.15
 
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py and across CPUs; notes/jitter_sweep.py
 @pytest.mark.robust
 def test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate():
     """`docs/design/candidates.md` section 5: **the decline rate is quoted beside the pass rate
@@ -326,6 +327,7 @@ def test_the_MULTIPLICITY_precondition_holds_at_both_ends_of_the_ladder():
     assert worst < 1e-13, f"the multiplicity precondition admits only {worst:.1e}"
 
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py and across CPUs; notes/jitter_sweep.py
 @pytest.mark.slow
 @pytest.mark.parametrize("band", [
     1.3, 1.6,

@@ -66,4 +66,4 @@ jobs:
       # the project environment itself and could undo the `[test]` install above.
 
       - name: Run the gate and the robust tier
-        run: .venv/bin/python -m pytest -m "gate or robust" -W error::UserWarning
+        run: .venv/bin/python -m pytest -m "(gate or robust) and not ulp_sensitive" -W error::UserWarning

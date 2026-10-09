@@ -77,12 +77,29 @@ planner.
   a member; count 3 locates one member twice, 4e-12 apart, and the dedup keeps both. At `prec =
   1e-12` the pair sits at `R = 4.1`, inside the margin rule's regime (section 0), which may absorb
   it -- trace stages 1-2 only if it does not.
+* **[next]** **Drive the `ulp_sensitive` tests to 0 of N jitter seeds.** Seventeen test cases flip
+  under ulp-level perturbation of the pencil (`tests/ulp_jitter.py`; `notes/jitter_sweep.py`,
+  16 seeds, 2026-10-09): the uneven-cluster cross-check 15/16, three `test_solve.py` cross-checks
+  8/16, the 125 pi^2 silent wrong total at 1e-10 2/16, the Moler-Payne coverage test at
+  `tau = 2e-14` 2/16, and others. They are excluded from per-push CI (`pyproject.toml`, the marker)
+  because each asserts one platform's outcome of a decision the solver cannot yet make robustly;
+  the margin rule (section 0) is judged by these rates. Single cluster-grid cells also flip at
+  ~1/16 (`test_the_cluster_total_GRID`, unmarked) -- watch CI for them.
+* **[next]** **`delta_res` is admitted into `Level.bound` at the very edge of `prec`.** `c1c3f53`
+  admits `delta_res` when `delta_res <= prec*lam`. On a Linux EPYC 9V45 runner (2026-10-09) the
+  starved-basis test's level at 44.948 had `delta_res = 4.445e-11` against `prec*lam = 4.495e-11`
+  -- admitted by 1% -- and the reported bound was 700x under the true error (3.1e-8; Moler-Payne,
+  3.0e-6, covered it). Admission needs a margin, `delta_res <= prec*lam / M`. On the 715-level grid
+  (`notes/bound_coverage.jsonl`) M = 10 leaves 6 levels under-covered instead of 10 and turns 24 met
+  levels unmet; settle M with the margin rule, under jitter.
 * **[later]** **The Linux count flips at OpenBLAS's default threading are not explained.** The
   2026-10-05 `main` run failed 7 truncation-scored tests on Python 3.11 and 3.13 and passed on 3.12,
   ~4 in 5 at full-suite scope; single-thread OpenBLAS measured 0 in ~39 runs. CI now pins one
   thread (`.github/workflows/tests.yml`), which HIDES the flips. The lead is
   `notes/nondeterminism.md`: a search discontinuous in its inputs turns last-bit BLAS differences
-  into different counts, with no nondeterminism in either library. Untested on Linux.
+  into different counts, with no nondeterminism in either library. **Confirmed 2026-10-09**: the
+  failure set followed the runner's CPU (EPYC 7763 vs 9V45), `OPENBLAS_CORETYPE` equalized only
+  the former, and `tests/ulp_jitter.py` reproduces every Linux failure on macOS.
 * **[next]** **`basis_sufficiency` decides the DENOMINATOR at a boundary it clears by 6%, and the
   two platforms therefore score different case sets.** macOS calls 10 cells unexercisable where
   Linux calls 7. Two of the four `test_cluster_totals` skips sit on the precondition boundary:

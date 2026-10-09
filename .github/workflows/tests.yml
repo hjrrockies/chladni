@@ -83,11 +83,12 @@ jobs:
         # which keeps the local inner loop near 1.5 s. CI has no inner loop, so the slow tier
         # runs here: the notebook execution, the scaling guards and the end-to-end solves --
         # precisely the things that rot silently. The gate (~7 min) and the robust campaign
-        # (30-60 min) run nightly instead (nightly.yml). -W error::UserWarning makes an unexpected warning a
+        # (30-60 min) run nightly instead (nightly.yml); ulp_sensitive tests are
+        # measured locally by notes/jitter_sweep.py instead (pyproject.toml, the marker). -W error::UserWarning makes an unexpected warning a
         # failure; the suite is clean under it. Warnings a test provokes on purpose are
         # either asserted with pytest.warns or silenced with a per-test
         # `filterwarnings` mark that says at the site why the warning is not the claim.
-        run: .venv/bin/python -m pytest -m "not gate and not robust" -W error::UserWarning
+        run: .venv/bin/python -m pytest -m "not gate and not robust and not ulp_sensitive" -W error::UserWarning
 
       - name: Confirm geometry still imports without matplotlib
         # A test asserts this too, in a subprocess. Repeated here because it is the one

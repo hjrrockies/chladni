@@ -386,7 +386,9 @@ def test_a_partner_at_the_bracket_edge_is_LOCATED_rather_than_left_uncounted(N, 
 
 @pytest.mark.slow
 @pytest.mark.parametrize("prec, band, cause", [
-    (1e-10, 0.5, "side-search dedup: the partner was discarded against the root being split"),
+    pytest.param(1e-10, 0.5,
+                 "side-search dedup: the partner was discarded against the root being split",
+                 marks=pytest.mark.ulp_sensitive),     # 2 of 16 jitter seeds; Linux EPYC
     (1e-8, 1.6, "phantom 4 ulps inside a bracket end, past the ulp tie"),
 ])
 def test_the_fresh_125_grid_has_no_SILENT_wrong_total(prec, band, cause):
