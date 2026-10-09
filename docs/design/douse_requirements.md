@@ -77,8 +77,9 @@ backend passes the benchmark without them, not before.
     ep   = Eigenproblem(dom)
     spec = ep.solve(n, prec=..., plan=None, warm=None)
 
-* Returns a `Spectrum` of levels, sorted, each with value, multiplicity, certified bound
-  (`min(delta_res, mp_bound)`) and flags. The count and the order are `chladni`'s guarantee.
+* Returns a `Spectrum` of levels, sorted, each with value, multiplicity, certified bound (the
+  Moler-Payne bound, or the tighter `delta_res` where that met `prec` -- `c1c3f53`) and flags. The
+  count and the order are `chladni`'s guarantee.
 * `warm=` (a previous `Spectrum`) may seed the search for speed, but the result carries the SAME
   contract as a cold solve: sorted, no duplicate modes, no silent drops. Tracking is an
   implementation detail, not a mode the caller has to verify.
@@ -94,6 +95,61 @@ backend passes the benchmark without them, not before.
   `[2, 5, 5, 8, 10, 10] pi^2` and says the last level has multiplicity 2, rather than truncating a
   degenerate cluster. `douse` drives shapes toward degeneracy, so this is the common case
   (`spectral_guard.py`: truncation made a clean set and a set missing a mode indistinguishable).
+
+### Precision per level: loosen, report, optionally abort (proposed 2026-10-09)
+
+*Direction agreed with the user; not designed in detail and not built.* `prec` is a request, and the
+basis decides per level whether it can be met. The floor varies by orders of magnitude across one
+window, so a shortfall is a property of a LEVEL, not of a solve.
+
+    spec = ep.solve(n, prec=1e-13, plan=plan, on_shortfall="flag")     # or "raise"
+    L = spec.levels[i]
+    L.lam, L.mult, L.bound, L.resolution, L.met, L.flags
+    spec.count_audit                                                    # solve-level: drops
+
+* **Two numbers per level, because they come apart.** `bound` says how well the VALUE is known
+  (it exists today). `resolution` says over what neighbourhood the COUNT was taken: a level of
+  multiplicity `m` at resolution `r` stands for the eigenvalues within `r` of `lam`, whatever their
+  internal splitting. A value can be known to 1e-14 while its count is only resolved at 1e-9 -- the
+  L-shape's `10 pi^2` is exactly that. `met` requires both within `prec * lam`. `Level.width` (today,
+  for collapsed groups only) is the special case this generalizes.
+* **The solver loosens `resolution` per level instead of reading noise.** Where the request is too
+  close to the local floor scale `eps/c` for the multiplicity evidence to be unambiguous, the level is
+  counted at a coarser licence and reports it. First evidence for where that line sits:
+  `notes/count_ratio.py` -- on the bound-coverage grid (4 domains, pre-(C2) code) every wrong
+  multiplicity had `prec*lam / (eps/c) <= 31`, against a median of 117 for correctly counted
+  degenerate levels, and counting below a threshold of 32-50 at `T * eps/c` would have merged a
+  distinct neighbour once in 363 levels. Twelve failures, one dataset, and the rule not yet
+  prototyped. `eps/c` must be read where the cone has left the floor (the wide bracket), not from the
+  cache slope that read 14000x steep on the spike triangle (`notes/spike_x8.py`).
+* **This is clause (2) of the search's contract, extended from values to counts.** Today a value is
+  within `prec` or the solver reports what it attained (`docs/design/search.md` section 2.4);
+  `resolution` makes the same promise for a count. It is also the "best result plus an honest bound
+  and flags" this document already asks for on a shortfall.
+* **`on_shortfall="flag"` is the default; `"raise"` is an opt-in early abort.** douse spends 10 s - 1
+  min per solve and wants to stop a solve that cannot meet `prec` as soon as that is known. The
+  exception (`PrecisionShortfall`, name open) carries the first deficient level, how far short it was
+  (the request against the local floor scale), and the partial spectrum -- the input to a re-plan,
+  not just the fact of failure. Flags, not warnings, are what douse branches on; a warning in
+  addition serves interactive use, under the rule that only substantive losses warn.
+* **The retry is a re-plan, not a tighter `prec`.** A shortfall means the basis's floor at that level
+  sits above what `prec` needs; the same plan fails the same way at any tighter request. douse
+  re-plans at the same `prec` (an enriched basis), consistent with "changing `prec` is an explicit
+  re-plan" below. The exception's payload says where to enrich.
+* **"As soon as possible" is after the first deficient level is refined.** A level's floor is known
+  only once it is located; it cannot be predicted before the solve starts. Strict mode saves the
+  rest of the window, not the whole solve.
+* **Drops cannot be expressed per level.** A missing eigenvalue has no level to carry a flag, and the
+  sector with too few apex terms dropped modes whose tension has no well at all
+  (`notes/count_ratio.py`): no local reading can see them. `count_audit` -- Weyl's corner-corrected
+  count against what was returned, per window -- is the solve-level check, and the first thing
+  strict mode should abort on, since silent drops are douse's worst failure class.
+* **Locating can fail where counting is sound, and the design must cover it.** T1.2's near-double
+  (two eigenvalues 9e-10 apart, ~45 floor scales, so resolvable) comes back as 1, 2 or 3 depending
+  on ulps of the window's ends (`notes/nondeterminism.md`): the pair is missed or one member found
+  twice, unflagged. Loosening the counting licence does not fix a member stage 1/2 never located.
+  Either the search is fixed so the pair is found every time, or a level whose neighbourhood shows
+  unexplained structure is loosened to cover it. Not yet traced.
 
 ### Plans: plan once, realize per iterate
 
