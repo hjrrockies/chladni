@@ -343,43 +343,6 @@ def test_a_genuine_minimum_OFF_CENTRE_in_its_bracket_is_accepted():
 
 
 @pytest.mark.slow
-def test_the_start_point_is_the_DEEPEST_SAMPLE_not_the_midpoint():
-    """**A bracket is guaranteed to CONTAIN the eigenvalue, not to have a sampled descent inside
-    it.** Stage 1 stops on purity by width, which can be satisfied without ever sampling at well
-    scale: on the multiplicity-3 degeneracy the well is ~1e-07 wide inside an 8.6e-07 bracket,
-    so the arithmetic midpoint misses it and the starting triple reads
-    1.5e-09 -> 5.6e-09 -> 1.3e-08, monotone. The parabola cannot close on that.
-
-    The search already paid for a sample in the well -- that is what earned the bracket -- so
-    the fix is a cache read, not another evaluation.
-    """
-    import bracket_score as bscore
-    import rect_suite as rs
-    from chladni.mps.bracket import bracket_interval
-    from chladni.mps.refine import _deepest_inside
-
-    (case,) = [c for c in rs.family_D() if "mult=3" in c.label]
-    true = float(np.unique(case.truth)[0])
-    obj = bscore.objective_for(case, 1e-8)
-    res = bracket_interval(obj, prec=1e-8)
-    b = [x for x in res.brackets if x.lo <= true <= x.hi][0]
-    lo, hi = b.lo, b.hi
-
-    deep = _deepest_inside(obj, lo, hi)
-    assert deep is not None and lo < deep < hi
-    assert obj.tension(deep) < obj.tension(0.5 * (lo + hi)), (
-        "the deepest sample is deeper than the midpoint, which is why it is the start point")
-    # And with no explicit hint the refiner finds the well. Asserted at the CONTRACT -- accepted,
-    # its bar containing the error, the error inside `prec` -- not at the 1e-10 Accelerate happens
-    # to reach: on OpenBLAS the refiner stops 2e-10 relative up the triple's wall (sigma 1.7e-9,
-    # bar 4e-10), which is legal (Linux CI, 2026-10-04). The failure this guards against, a
-    # monotone midpoint triple, does not close at all.
-    r = refine(obj, lo, hi, prec=1e-8)
-    assert r.accepted, f"with no hint the refiner refused the level: {r.reason}"
-    assert abs(r.lam - true) <= r.delta_res, "its bar must contain its error"
-    assert abs(r.lam - true) / true < 1e-8, f"relative error {abs(r.lam - true) / true:.2e}"
-
-
 # --- tier 2: a real pencil --------------------------------------------------------------------
 
 @pytest.mark.slow

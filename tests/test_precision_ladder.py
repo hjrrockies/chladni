@@ -185,7 +185,7 @@ def test_the_STRESS_cell_is_acceptable(f, i, prec):
 
 @pytest.mark.parametrize("f, i", [
     pytest.param(f, i,
-                 marks=([pytest.mark.xfail(strict=True, reason="plan Phase 2")]
+                 marks=([pytest.mark.xfail(strict=True, reason="not yet on a frozen basis (UNFROZEN)")]
                         if (f, i) in UNFROZEN else [])
                        + [pytest.mark.robust if (f, i) in ROBUST_CASES else _SLOW],
                  id=f"{f}{i}")
