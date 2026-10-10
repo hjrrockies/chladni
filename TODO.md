@@ -108,9 +108,17 @@ planner.
   2026-10-09 jitter sweep of the pruned suite (`notes/jitter_sweep_after_prune.json`, seeds 4 and 7):
   `test_refine::test_it_rejects_an_empty_bracket_on_a_real_pencil_cheaply`, re-posed at 1e-10,
   returned `accepted=True, reason='converged'` at `sigma = 0.41` -- an O(1) value nowhere near an
-  eigenvalue -- in [217.25, 217.35]. A spurious root a search would report. Not traced; the test is
-  `ulp_sensitive` meanwhile. Likely `_accept`'s depth test reading a noise-level local minimum on
-  the plateau as a well.
+  eigenvalue -- in [217.25, 217.35]. A spurious root a search would report; the test is
+  `ulp_sensitive` meanwhile. **Traced 2026-10-10:** not a rank flip (the rank stays 57). Under
+  seed 4 the plateau's `sigma_1` near the gap's peak is flat and NOISY -- 0.41075 .. 0.41082 over
+  4e-6 in `lam`, ~2e-4 relative, from a 4-ulp perturbation of a pencil truncated at `rtol` 1.5e-15,
+  which keeps near-null directions the perturbation shakes -- and `refine` found an interior dip
+  below both ends. `_accept` (`mps/refine.py`) has no DEPTH test: "strictly interior and below both
+  ends" is all it asks, so a noise dip on a plateau passes. The same plateau under
+  `reg="tikhonov_qr"` at 1e-10 wanders ~4e-6 relative, 50x quieter. In a real search stage 1
+  rarely brackets a plateau peak, so the exposure is through spurious brackets in noisy regions.
+  A depth criterion (relative to the ends or the plateau) is the obvious fix; it touches a
+  calibrated function, so it waits for the margin rule.
 * **[next]** **At 1e-10 on truncation, ulp noise stops stage 1 from bounding a slope.** The 170 pi^2
   cluster (N=170, m=4, band 0.3) at `prec = 1e-10` DECLINED at stage 1 ("the slope estimate never
   settled") under 7 of 8 jitter seeds, and solved unjittered (found adding it as a test cell during
