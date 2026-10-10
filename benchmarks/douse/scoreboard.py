@@ -147,7 +147,10 @@ def score_chladni(run, ref):
     # count. `silent` uses count flags only; `silent_lenient` lets an unmet level excuse it too.
     count_flag = any(L["count_flag"] for L in levels)
     any_unmet = any(not L["met"] for L in levels)
-    sig = tuple((round(L["lam"], 5), L["mult"]) for L in levels)
+    # The COUNT structure: which levels, with what multiplicity. Values at 6 significant figures,
+    # well above the stand-in basis's ~1e-8 relative resolution -- a stability score keyed on the
+    # 5th decimal called a case unstable for value noise on correct counts (T1.3 near lam 800).
+    sig = tuple((f"{L['lam']:.6g}", L["mult"]) for L in levels)
     return dict(outcome="wrong" if bad else "ok", sig=sig, dropped=dropped, extra=extra,
                 mult_wrong=mult_wrong, uncovered=uncovered, max_err=err,
                 silent=bool(bad and not count_flag),
@@ -159,9 +162,15 @@ def main():
     cases = {c["id"]: c for c in MR.load_cases()}
     refs = {r["id"]: r for r in json.load(open(os.path.join(HERE, "references.json")))["cases"]}
     lruns = json.load(open(os.path.join(HERE, "lappy_runs.json")))["runs"]
-    jobs = [(cases[i], refs[i]["window"], p, j) for i in refs for p in CHLADNI_PRECS for j in JITTERS]
-    with ProcessPoolExecutor(8) as ex:
-        cruns = list(ex.map(chladni_run, jobs))
+    if "--rescore" in sys.argv:     # re-score the saved solves; nothing is re-solved
+        cruns = json.load(open(os.path.join(HERE, "scoreboard.json")))["chladni_runs"]
+        for r in cruns:
+            r["jit"] = tuple(r["jit"])
+    else:
+        jobs = [(cases[i], refs[i]["window"], p, j) for i in refs for p in CHLADNI_PRECS
+                for j in JITTERS]
+        with ProcessPoolExecutor(8) as ex:
+            cruns = list(ex.map(chladni_run, jobs))
     rows = []
     for i in refs:
         row = dict(id=i, ref_levels=len(refs[i]["levels"]),

@@ -12,6 +12,28 @@ are not comparable row by row**: the window comes from ARPACK FEM eigenvalues wi
 counts at near-degeneracies change with ulps of the window (`notes/nondeterminism.md`). The next
 regeneration seeds ARPACK and adds a stability score.
 
+## Phase 1 state (2026-10-10): a reproducible instrument at 1e-10
+
+* **References reproduce.** `fem.py` seeds ARPACK's start vector, so the windows -- and with them
+  every reference -- are the same on every run: two full regenerations were identical apart from
+  wall-clock times. Against the previous (random-start) set no trusted value or multiplicity
+  changed; values moved at ~1e-8 relative, inside the references' known accuracy.
+* **A stability score.** Each chladni cell is solved on the reference window and four jittered ones
+  (`JITTERS`: ends moved by 4e-16 .. 1e-12 relative); a case is STABLE when all five give the same
+  count structure (levels at 6 significant figures, with multiplicities).
+* **Rungs 1e-8 and 1e-10** (was 1e-8 and 1e-13), and wall time per solve.
+
+| solver | scored | ok | wrong, silent | wrong, flagged | stable (of scored) | median wall |
+|---|---|---|---|---|---|---|
+| lappy fresh plan, `prec = 1e-13` | 28 | 17 | **11** | -- | -- | -- |
+| lappy frozen plan | 18 | 6 | **12** (+1 exception) | -- | -- | -- |
+| chladni stand-in, 1e-8 | 35 | 32 | **1** | 2 | 31 / 35 | 5.4 s |
+| chladni stand-in, 1e-10 | 35 | 31 | **4** | 0 | 30 / 35 | 5.5 s |
+
+The unstable chladni cases are all near-degenerate spectra -- T1.2's near-double, T2.2's close
+pair, the regular 8- and 12-gons, the 2:1 rectangle's doubles, a near-regular convex pentagon -- the
+class the margin rule (TODO section 0) targets. The `scoreboard_table.md` rows say which.
+
 ## Pipeline
 
 | step | script | output | runs under |
