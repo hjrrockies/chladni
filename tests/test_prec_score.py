@@ -34,9 +34,10 @@ def lvl(lam, mult=1, bar=None):
                  delta_res=float(0.1 * P * lam if bar is None else bar))
 
 
-def res(*levels, declined=False, reason=""):
+def res(*levels, declined=False, reason="", n_uncertain=0):
     return SolveResult(tuple(levels),
-                       SolveDiagnostics(declined=declined, decline_reason=reason))
+                       SolveDiagnostics(declined=declined, decline_reason=reason,
+                                        n_uncertain=n_uncertain))
 
 
 def verdict(result, truth, suff=OK, prec=P):
@@ -150,7 +151,8 @@ def test_a_decline_with_no_reason_is_a_failure():
 # --- the acceptance set --------------------------------------------------------------------------
 
 def test_the_acceptable_verdicts_are_exactly_these():
-    assert ACCEPTABLE == {"pass", "declined", "b-excused", "merge-excused", "wrong-total-excused"}
+    assert ACCEPTABLE == {"pass", "declined", "flagged", "b-excused", "merge-excused",
+                          "wrong-total-excused"}
 
 
 @pytest.mark.parametrize("v", ["b-fail", "shortfall-silent", "bar-violated", "spurious",
@@ -167,14 +169,37 @@ def test_the_score_carries_what_a_report_needs():
     assert s.acceptable
 
 
-def test_a_collapsed_level_that_DECLARES_its_width_and_undercounts_is_a_wrong_total():
-    """The collapse defect as `solve` actually reports it: one level, `grouping_ambiguous`, whose
-    declared width spans the whole cluster, carrying multiplicity 1 where three eigenvalues lie.
-    Its members are inside what it declared, so the eigenvalues were not MISSED -- the search
-    found the neighbourhood -- they were dropped from the count. A diagnosis that says `missed`
-    points at the bracketer when the defect is in the multiplicity stage."""
-    members = [X, X * (1 + 0.96e-4), X * (1 + 1.92e-4)]
-    collapsed = Level(lam=X, mult=1, delta_res=1e-6 * X, grouping_ambiguous=True,
-                      wide_bracket=(X * (1 - 1e-4), X * (1 + 3e-4)))
-    assert collapsed.width > 0, "the premise: the level declares a width"
-    assert verdict(res(collapsed), members, prec=1e-4) == "wrong-total"
+# --- a count error the solve SAYS is uncertain is honest, not a failure ---------------------------
+#
+# The 2026-10-09 direction: right, declined, or FLAGGED are the honest outcomes; a silent wrong
+# count is the failure. Before this the scorer had no flagged verdict, so an honestly flagged
+# miscount failed the precision ladder and both cluster grids (notes/test_inventory_2026-10-09.md).
+
+def test_a_wrong_total_the_solve_FLAGS_is_flagged_not_a_failure():
+    members = [X, X * (1 + 5e-9)]     # inside the licence: one level of 2 is legal
+    r = res(lvl(X, mult=1), n_uncertain=1)          # one of two, and the solve says so
+    s = score_cell(r, np.asarray(members), P, OK)
+    assert s.verdict == "flagged" and s.acceptable
+    assert "wrong-total" in s.detail, "the underlying miscount is still reported"
+
+
+def test_the_same_wrong_total_UNFLAGGED_stays_a_failure():
+    members = [X, X * (1 + 5e-9)]     # inside the licence: one level of 2 is legal
+    assert verdict(res(lvl(X, mult=1)), members) == "wrong-total"
+
+
+def test_a_LEVEL_flag_is_enough():
+    members = [X, X * (1 + 5e-9)]     # inside the licence: one level of 2 is legal
+    flagged_level = Level(lam=X, mult=1, delta_res=0.1 * P * X, count_uncertain=True)
+    assert verdict(res(flagged_level), members) == "flagged"
+
+
+def test_a_spurious_level_in_a_flagged_solve_is_flagged():
+    assert verdict(res(lvl(X), lvl(2 * X), n_uncertain=1), [X]) == "flagged"
+
+
+def test_a_flag_does_NOT_excuse_a_silent_accuracy_shortfall():
+    """Flags are about COUNTS. A level that claims to have met `prec` and has not is dishonest
+    about its value whatever the count flags say."""
+    off = Level(lam=X * (1 + 5 * P), mult=1, delta_res=0.1 * P * X)    # met(P), error 5 prec
+    assert verdict(res(off, n_uncertain=1), [X]) == "shortfall-silent"

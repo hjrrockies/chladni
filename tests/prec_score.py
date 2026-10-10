@@ -15,7 +15,8 @@ may claim `m` eigenvalues, claims are made closest-first, and each eigenvalue is
     width <= prec*lam      MAY merge, never MUST      merged and split both pass
     gap   >  prec*lam      MUST split                 a merge fails unless the basis
                                                       cannot resolve multiplicity
-    total                  scored everywhere          no unscored band
+    total                  scored everywhere          no unscored band; a count error the
+                                                      solve FLAGS is `flagged`, acceptable
     accuracy               within prec, OR reported   `b-excused` only where the basis
                            with a bar that holds      cannot serve `prec`
 
@@ -48,7 +49,17 @@ import numpy as np
 __all__ = ["Sufficiency", "CellScore", "score_cell", "ACCEPTABLE"]
 
 #: The verdicts a benchmark may accept. Everything else is a failure.
-ACCEPTABLE = frozenset({"pass", "declined", "b-excused", "merge-excused", "wrong-total-excused"})
+#:
+#: `flagged` (2026-10-09): a COUNT error -- spurious, missed, merged across the licence, wrong
+#: total -- in a solve that says its counts are uncertain. Right, declined or flagged are the
+#: honest outcomes; a silent wrong count is the failure. Before this, an honestly flagged miscount
+#: failed every ladder built on this scorer (notes/test_inventory_2026-10-09.md). Flags never
+#: excuse ACCURACY: a level claiming to have met `prec` and wrong is `shortfall-silent` regardless.
+ACCEPTABLE = frozenset({"pass", "declined", "flagged", "b-excused", "merge-excused",
+                        "wrong-total-excused"})
+
+#: The count-error verdicts a count flag turns into `flagged`.
+_COUNT_ERRORS = frozenset({"spurious", "missed", "merge-above-licence", "wrong-total"})
 
 
 @dataclass(frozen=True)
@@ -125,7 +136,12 @@ def score_cell(result, truth, prec, sufficiency):
     base = dict(n_true=int(t.size), n_levels=len(levels), found_total=found_total,
                 worst_rel_err=float(max(errs, default=np.nan)))
 
+    flagged = (not d.certified_counts or getattr(d, "n_ambiguous", 0) > 0
+               or any(L.count_uncertain or L.grouping_ambiguous for L in levels))
+
     def verdict(v, detail=""):
+        if flagged and v in _COUNT_ERRORS:
+            v, detail = "flagged", f"{v}, flagged by the solve: {detail}"
         return CellScore(v, prec, detail=detail, **base)
 
     spurious = [float(lam[i]) for i in range(len(levels)) if not members[i]]

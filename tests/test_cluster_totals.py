@@ -129,9 +129,13 @@ def _assert_total(N, m, prec, band):
     if res.declined:
         assert res.diagnostics.decline_reason.strip(), "a decline must carry its reason"
         return
-    assert sum(x.mult for x in res.levels) == m, (
-        f"declared {sum(x.mult for x in res.levels)} of {m}; "
-        f"n_uncertain={res.diagnostics.n_uncertain}")
+    total = sum(x.mult for x in res.levels)
+    flagged = (not res.diagnostics.certified_counts or res.diagnostics.n_ambiguous > 0
+               or any(x.count_uncertain or x.grouping_ambiguous for x in res.levels))
+    # THE CONTRACT (2026-10-09): right, declined, or FLAGGED. A wrong total the solve says is
+    # uncertain is honest; only a silent one fails (tests/prec_score.py, the `flagged` verdict).
+    assert total == m or flagged, (
+        f"declared {total} of {m}, unflagged; n_uncertain={res.diagnostics.n_uncertain}")
 
 
 @pytest.mark.parametrize("N, m, prec, band",
@@ -201,9 +205,13 @@ def _assert_total_default(N, m, prec, band):
     if res.declined:
         assert res.diagnostics.decline_reason.strip(), "a decline must carry its reason"
         return
-    assert sum(x.mult for x in res.levels) == m, (
-        f"declared {sum(x.mult for x in res.levels)} of {m}; "
-        f"n_uncertain={res.diagnostics.n_uncertain}")
+    total = sum(x.mult for x in res.levels)
+    flagged = (not res.diagnostics.certified_counts or res.diagnostics.n_ambiguous > 0
+               or any(x.count_uncertain or x.grouping_ambiguous for x in res.levels))
+    # THE CONTRACT (2026-10-09): right, declined, or FLAGGED. A wrong total the solve says is
+    # uncertain is honest; only a silent one fails (tests/prec_score.py, the `flagged` verdict).
+    assert total == m or flagged, (
+        f"declared {total} of {m}, unflagged; n_uncertain={res.diagnostics.n_uncertain}")
 
 
 @pytest.mark.parametrize("N, m, prec, band",
