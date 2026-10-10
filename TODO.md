@@ -53,11 +53,13 @@ The path, in order:
   `tikhonov_qr` 152 / 10 / 13, 38/41, 1.8x wall, with NEW silent losses on T1.4-oct and ngon8;
   posterior 161 / 3 / 11, 35/41, 2.9x wall, new silent windows on T1.4-hex and ngon8. Cluster
   grids under jitter: truncation 115/115. Neither penalty clears the pre-written rule. Open from
-  it: (a) the penalty's T1.4-oct/ngon8 silent losses matter at 1e-8, where `reg="auto"` still
-  uses it -- check them there; (b) the penalty turns truncation's silent T1.2/ngon12 rows into
-  flags; check whether the margin rule does the same for truncation; (c) E3: the first dropped
-  singular value sits within 10% of the cutoff at 15% of evaluated points, with no outcome yet
-  attributed to it.
+  it: (a) **at 1e-8, where `reg="auto"` ships the penalty, truncation beats it on the benchmark on
+  every axis** (169 ok / 1 silent / 39 of 41 stable vs 155 / 9 / 37, 0.6x wall; cluster grids tie at
+  115/115). Reversing `PENALTY_PREC_MIN` is a default change with history (the Linux rank-flip
+  refusal the penalty removed), so it is for review; (b) the penalty turns truncation's silent
+  T1.2/ngon12 rows at 1e-10 into flags; check whether the margin rule does the same for
+  truncation; (c) E3: the first dropped singular value sits within 10% of the cutoff at 15% of
+  evaluated points, with no outcome yet attributed to it.
 * **[next]** **The margin rule in stage 3**: count at `prec` only where `R` is generous; below it,
   report the level over a neighbourhood chosen at a spectral gap, as `Level.resolution`, and flag
   it. `notes/count_ratio.py` is the first evidence for the threshold (re-run on HEAD first).
@@ -128,9 +130,12 @@ planner.
   cluster (N=170, m=4, band 0.3) at `prec = 1e-10` DECLINED at stage 1 ("the slope estimate never
   settled") under 7 of 8 jitter seeds, and solved unjittered (found adding it as a test cell during
   the prune). At 1e-10 `reg="auto"` resolves to the threshold rank, whose flips make the objective
-  piecewise (the "threshold rank makes the objective piecewise" item above). NOT reproduced by `notes/regularization_1e10.py` e2
-  (2026-10-10): its truncation solves of the same cell were right under seeds 1..4. The two set up
-  the solve differently (the test's default path vs the script's explicit `reg="svd"`); unexplained.
+  piecewise (the "threshold rank makes the objective piecewise" item above). EXPLAINED 2026-10-10: a SUITE-PENCIL
+  artifact. The suite truncates at `SUITE_RTOL` ~ 1.5e-15 (sized for 1e-14); the default 1e-10
+  pencil at ~1.5e-13 solves the cell right under 9 of 9 seeds, where the suite pencil declines at 7
+  (`notes/regularization_1e10.md`, follow-up 2). Open: how much of the suite's 1e-10
+  `ulp_sensitive` population is this, and whether the 1e-10 rungs should run on a
+  rung-sized pencil.
 * **[next]** **`delta_res` is admitted into `Level.bound` at the very edge of `prec`.** `c1c3f53`
   admits `delta_res` when `delta_res <= prec*lam`. On a Linux EPYC 9V45 runner (2026-10-09) the
   starved-basis test's level at 44.948 had `delta_res = 4.445e-11` against `prec*lam = 4.495e-11`

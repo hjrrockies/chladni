@@ -96,7 +96,53 @@ not measured point by point; that would mean re-solving with `rtol` nudged and c
   truncation through the Phase 3 margin rule. That is the next thing to check: if the margin
   rule flags those rows, the penalty's only advantage is gone.
 
+## Follow-up 1: the same comparison at prec = 1e-8, where the penalty IS the default
+
+`CHLADNI_REG_PREC=1e-8 CHLADNI_REG_VARIANTS=truncation,penalty`; outputs `*_prec1e-08.json`.
+`penalty` here is exactly what `reg="auto"` ships at 1e-8 (`tikhonov_qr`, tau = 0.02 prec).
+
+| E1, 1e-8 | ok | flagged | SILENT | declined | stable | tightness | wall total |
+|---|---|---|---|---|---|---|---|
+| truncation | 169 | 4 | 1 | 1 | 39/41 | 143 | 20.3 m |
+| penalty (shipped) | 155 | 11 | 9 | 0 | 37/41 | 284 | 35.3 m |
+
+| case | truncation | penalty |
+|---|---|---|
+| T1.2 | ooooo | oooSo |
+| T1.4-oct | ooooo | ooSSS |
+| T1.5-r2 | ooood | ooooo |
+| T2.2 | fSfff | SSSSf |
+| T2.6-N5k4-L7-ref0 | ooooo | fffff |
+| T2.9-ngon12 | ooooo | fffff |
+| T2.9-ngon8 | ooooo | ooSoo |
+
+E2 at 1e-8 (cluster grids, seeds 0..4): both 115/115 right; truncation 2.2 m, penalty 3.7 m.
+
+On douse shapes **truncation beats the shipped 1e-8 default on every axis**: 8 fewer silent
+losses, 2 more stable cases, a 2x tighter bound, 0.6x the wall time. The penalty was promoted at
+1e-8 on rectangle evidence (a Linux rank-flip refusal it removed; `tests/test_regularization.py`),
+not on this benchmark. Reversing it is a default change with history, so it is left for review
+rather than made here; see TODO.
+
+## Follow-up 2: the 170 pi^2 stage-1 declines are a suite-pencil artifact
+
+TODO recorded the 170 pi^2 cell (m=4, band 0.3) at 1e-10 declining at stage 1 under 7 of 8 jitter
+seeds. E2 did not reproduce it. The difference is the pencil: the test solves on the rectangle
+suite's pencil, truncated at the fixed `SUITE_RTOL = sqrt(1e-14 eps)` ~ 1.5e-15
+(`tests/rect_suite.py`, `FINEST_PREC`), while a default 1e-10 solve truncates at
+`sqrt(1e-10 eps)` ~ 1.5e-13. A/B on the same cell, seeds 0..8 (seed 0 unjittered):
+
+| pencil | outcome |
+|---|---|
+| suite (`SUITE_RTOL`) | right at seeds 0 and 8; DECLINED at 1..7 (961 evals each) |
+| default `rtol` at 1e-10 | right at all 9 (206-221 evals) |
+
+The suite pencil keeps near-null directions that 4-ulp noise shakes. That is also the pencil in the
+refine gap-root trace (TODO: "a pencil truncated at `rtol` 1.5e-15"). So part of the suite's 1e-10
+`ulp_sensitive` population is a property of a pencil sized for 1e-14, not of what a 1e-10 user
+gets. How much was not measured.
+
 ## What changes
 
-Nothing in `src/`. TODO records the result and the T1.4-oct/ngon8 penalty regressions (relevant if
-the penalty is ever reconsidered at 1e-8, where `reg="auto"` still uses it).
+Nothing in `src/` on this branch. TODO records the result, the 1e-8 reversal question, and the
+suite-pencil finding.

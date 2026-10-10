@@ -47,8 +47,10 @@ sys.path.insert(0, os.path.join(ROOT, "tests"))
 sys.path.insert(0, os.path.join(ROOT, "benchmarks", "douse"))
 warnings.simplefilter("ignore")
 
-PREC = 1e-10
-VARIANTS = ("truncation", "penalty", "posterior")
+# CHLADNI_REG_PREC / CHLADNI_REG_VARIANTS rerun e1 at another rung (env, so pool workers see it).
+PREC = float(os.environ.get("CHLADNI_REG_PREC", "1e-10"))
+VARIANTS = tuple(os.environ.get("CHLADNI_REG_VARIANTS", "truncation,penalty,posterior").split(","))
+_SUFFIX = "" if PREC == 1e-10 else f"_prec{PREC:g}"
 EPS = np.finfo(float).eps
 
 
@@ -122,7 +124,7 @@ def e1(workers=8):
             for j in SB.JITTERS]
     with ProcessPoolExecutor(workers) as ex:
         runs = list(ex.map(e1_run, jobs))
-    json.dump(dict(prec=PREC, runs=runs), open(os.path.join(HERE, "regularization_1e10_e1.json"),
+    json.dump(dict(prec=PREC, runs=runs), open(os.path.join(HERE, f"regularization_1e10_e1{_SUFFIX}.json"),
                                                 "w"), indent=1)
     summarize_e1(runs, refs)
 
@@ -241,7 +243,7 @@ def e2(seeds=4, workers=8):
     with ProcessPoolExecutor(workers) as ex:
         runs = list(ex.map(e2_run, jobs))
     json.dump(dict(prec=PREC, seeds=seeds, runs=runs),
-              open(os.path.join(HERE, "regularization_1e10_e2.json"), "w"), indent=1)
+              open(os.path.join(HERE, f"regularization_1e10_e2{_SUFFIX}.json"), "w"), indent=1)
     print(f"e2: cluster grids + 170 pi^2 band 0.3 at prec {PREC:g}, seeds 0..{seeds}\n")
     for v in VARIANTS:
         rr = [r for r in runs if r["variant"] == v and r["outcome"] != "unexercisable"]
@@ -294,7 +296,7 @@ def e3():
     print(f"\ne3: {r.size} evaluated points; first dropped singular value / cutoff: median "
           f"{np.median(r):.2f}; >= 0.5 at {np.mean(r >= 0.5):.0%}; >= 0.9 at {np.mean(r >= 0.9):.0%}")
     json.dump(dict(prec=PREC, ratios=ratios, per_case=near),
-              open(os.path.join(HERE, "regularization_1e10_e3.json"), "w"), indent=1)
+              open(os.path.join(HERE, f"regularization_1e10_e3{_SUFFIX}.json"), "w"), indent=1)
 
 
 if __name__ == "__main__":
