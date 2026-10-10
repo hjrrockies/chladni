@@ -70,5 +70,6 @@ markers = [
     "slow: costs seconds rather than milliseconds -- end-to-end solves, notebook\n        execution, scaling guards. DESELECTED BY DEFAULT via addopts, to keep the inner\n        loop at ~1.5 s. Run them with `-m slow`, or everything with `-m ''`.",
     "gate: the V1 acceptance gate, RETIRED from the suite 2026-10-09 to\n        notes/evidence_tests/test_gate.py (run it there with -m gate). Kept as a marker so that\n        module still selects.",
     "ulp_sensitive: the outcome flips under ulp-level perturbation of the pencil (tests/ulp_jitter.py)\n        and across CPUs on Linux CI -- a decision the solver cannot yet make robustly, not a\n        bit-level contract. Excluded from per-push CI; measured by notes/jitter_sweep.py, where\n        the target is 0 of N seeds failing.",
+    "not_under_jitter: compares the pencil's assembly with itself, so tests/ulp_jitter.py (which\n        patches it) would fail it by construction. Skipped when CHLADNI_ULP_JITTER is set.",
     "robust: the full robustness campaign -- whole grids rather than the slices the slow tier\n        carries, 30-60 minutes when complete. DESELECTED BY DEFAULT via addopts; run with\n        `-m robust`.",
 ]

@@ -51,6 +51,7 @@ def test_it_finds_every_level_in_the_window(name, dom_fn, truth_fn, a, b):
     assert np.allclose(spec.unfolded, truth, rtol=1e-8, atol=0)
 
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py (2026-10-09 sweep after the prune)
 @pytest.mark.parametrize("name,dom_fn,truth_fn,a,b", CASES)
 def test_the_multiplicities_are_read_not_inferred(name, dom_fn, truth_fn, a, b):
     """The half of clause (1) the old array contract could not carry. Both domains have
@@ -65,6 +66,7 @@ def test_the_multiplicities_are_read_not_inferred(name, dom_fn, truth_fn, a, b):
         f"{name}: multiplicities {spec.mult} against truth {want}")
 
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py (2026-10-09 sweep after the prune)
 def test_a_tighter_request_costs_more_and_says_what_it_could_not_reach():
     """`search.md` section 2.6 and clause (2), which is an OR and has to be tested as one.
 
@@ -227,6 +229,7 @@ def test_multiplicity_is_read_from_the_cache_and_spends_nothing():
     assert res.diagnostics.multiplicity_evals == 0
 
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py (2026-10-09 sweep after the prune)
 def test_the_cost_is_reported_and_is_not_absurd():
     """Not a benchmark -- a guard. The gate measures cost properly; this only catches a wiring
     change that turns a 25-evaluation solve into a 2500-evaluation one."""

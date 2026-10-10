@@ -91,7 +91,11 @@ planner.
   perturbation of the pencil (`tests/ulp_jitter.py`; `notes/jitter_sweep.py`, 16 seeds,
   2026-10-09) and across Linux runner CPUs, so per-push CI excludes them (`pyproject.toml`, the
   marker). After the 2026-10-09 prune every one left is a CONTRACT the solver owes, failing under
-  some seeds: the 125 pi^2 grid's "no silent wrong total" at 1e-10 (2/16 before the prune), and the
+  some seeds -- 15 cases; the sweep after the prune (`notes/jitter_sweep_after_prune.json`, 8 seeds)
+  found real flips fall from ~38 to ~22 and quarantined the rest cell by cell: the rule-seam cells
+  at 65 pi^2 band 0.3 (1/8 each), three `test_solve_interval` checks, two `test_refine` cases (one
+  the gap-root item below), the exact-triple pipeline (1/8), the 125 pi^2 grid's "no silent wrong
+  total" at 1e-10, and the
   cluster grid's decline-and-flag-rate test (every cell right, declined or flagged; both honest
   outcomes capped, `MAX_DECLINE_RATE` and `MAX_FLAG_RATE`). The Moler-Payne `tau = 2e-14` case and
   the starved-basis bound moved to `notes/evidence_tests/test_moler_payne_evidence.py` (prec 1e-12,
@@ -100,6 +104,19 @@ planner.
   tests that pinned trajectories of the retired grouping cross-check were retired with it
   (2026-10-09); `solve(collapse=True)` and `rule="gap"` are now untested options -- retire them
   or re-test them.
+* **[next]** **Under ulp noise, `refine` accepts a bracket in a spectral GAP as a root.** The
+  2026-10-09 jitter sweep of the pruned suite (`notes/jitter_sweep_after_prune.json`, seeds 4 and 7):
+  `test_refine::test_it_rejects_an_empty_bracket_on_a_real_pencil_cheaply`, re-posed at 1e-10,
+  returned `accepted=True, reason='converged'` at `sigma = 0.41` -- an O(1) value nowhere near an
+  eigenvalue -- in [217.25, 217.35]. A spurious root a search would report. Not traced; the test is
+  `ulp_sensitive` meanwhile. Likely `_accept`'s depth test reading a noise-level local minimum on
+  the plateau as a well.
+* **[next]** **At 1e-10 on truncation, ulp noise stops stage 1 from bounding a slope.** The 170 pi^2
+  cluster (N=170, m=4, band 0.3) at `prec = 1e-10` DECLINED at stage 1 ("the slope estimate never
+  settled") under 7 of 8 jitter seeds, and solved unjittered (found adding it as a test cell during
+  the prune). At 1e-10 `reg="auto"` resolves to the threshold rank, whose flips make the objective
+  piecewise (the "threshold rank makes the objective piecewise" item above). Direct evidence for
+  section 0's regularization decision at douse's precision.
 * **[next]** **`delta_res` is admitted into `Level.bound` at the very edge of `prec`.** `c1c3f53`
   admits `delta_res` when `delta_res <= prec*lam`. On a Linux EPYC 9V45 runner (2026-10-09) the
   starved-basis test's level at 44.948 had `delta_res = 4.445e-11` against `prec*lam = 4.495e-11`

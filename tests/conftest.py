@@ -18,6 +18,16 @@ import ulp_jitter
 _JITTER = ulp_jitter.install_from_env()
 
 
+def pytest_collection_modifyitems(config, items):
+    """Under jitter, skip tests that compare `assemble` with itself: the harness patches it."""
+    if not _JITTER:
+        return
+    skip = pytest.mark.skip(reason="not_under_jitter: compares the jittered assemble with itself")
+    for item in items:
+        if item.get_closest_marker("not_under_jitter"):
+            item.add_marker(skip)
+
+
 def pytest_report_header(config):
     if _JITTER:
         return f"ulp jitter ON: seed {_JITTER[0]}, scale {_JITTER[1]:g} ulps (tests/ulp_jitter.py)"

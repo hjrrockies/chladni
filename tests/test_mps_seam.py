@@ -112,6 +112,7 @@ def test_a_solver_is_safe_to_share_across_threads(solver):
 # --- every stage is a free function ------------------------------------------------------
 
 
+@pytest.mark.not_under_jitter  # compares assemble with itself; tests/ulp_jitter.py patches assemble
 def test_the_free_functions_and_the_methods_agree(pencil):
     """The rule: the free function holds the algorithm, the method holds the defaults. If
     these ever disagree, logic has leaked into a class where it cannot be inspected."""
@@ -169,6 +170,7 @@ def test_everything_in_mps_speaks_lam(pencil, solver):
     assert solver.tension(LAM) == pytest.approx(solver.pencil.tension(LAM), rel=1e-12)
 
 
+@pytest.mark.not_under_jitter  # compares assemble with itself; tests/ulp_jitter.py patches assemble
 def test_assemble_is_where_lam_becomes_k(pencil):
     """The seam itself, as an assertion. `assemble` is the call into `helmholtz`, so it is
     the last function that takes `k`; `matrices` is its `lam`-facing wrapper and the two must

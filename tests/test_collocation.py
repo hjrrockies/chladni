@@ -187,6 +187,7 @@ def test_the_log_scales_add(pencil):
 # --- a coefficient vector means the same function everywhere -----------------------------
 
 
+@pytest.mark.not_under_jitter  # compares assemble with itself; tests/ulp_jitter.py patches assemble
 def test_a_coefficient_vector_means_the_same_function_on_a_second_point_set(pencil):
     """The property the whole scaled-column design exists for.
 

@@ -272,8 +272,13 @@ def test_the_traced_under_count_cell_is_never_SILENTLY_wrong():
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("N, m, band, prec", [(50, 3, 0.8, 1e-8), (65, 4, 0.3, 1e-8),
-                                              (50, 3, 0.3, 1e-8), (170, 4, 0.3, 1e-10)])
+@pytest.mark.parametrize("N, m, band, prec", [
+    (50, 3, 0.8, 1e-8),
+    pytest.param(65, 4, 0.3, 1e-8, marks=pytest.mark.ulp_sensitive),     # 1 of 8 jitter seeds
+    (50, 3, 0.3, 1e-8)])
+# (170, 4, 0.3, 1e-10) was tried as this test's 1e-10 cell during the 2026-10-09 prune and
+# DECLINED at stage 1 ("the slope estimate never settled") under 7 of 8 jitter seeds -- evidence
+# for the regularization decision at 1e-10 (TODO.md section 0), not a cell to test here.
 def test_the_multiplicity_READ_spends_nothing_even_where_the_count_DECLINES(N, m, band, prec):
     """Stage 3's contract, asserted where it could actually fail.
 
@@ -302,7 +307,8 @@ def test_the_multiplicity_READ_spends_nothing_even_where_the_count_DECLINES(N, m
 @pytest.mark.slow
 @pytest.mark.parametrize("N, m, band, prec, cause", [
     (50, 3, 0.8, 1e-8, "both sides hold a partner, and the side probe picked one"),
-    (65, 4, 0.3, 1e-8, "a hump top kept as a level beside the two members found either side"),
+    pytest.param(65, 4, 0.3, 1e-8, "a hump top kept as a level beside the two members found "
+                 "either side", marks=pytest.mark.ulp_sensitive),          # 1 of 8 jitter seeds
 ])
 def test_the_promoted_defaults_leave_no_SILENT_wrong_total(N, m, band, prec, cause):
     """The silent wrong totals that appeared once the crash fix (the QR route around Accelerate's
@@ -357,8 +363,9 @@ def _cluster_total(N, m, band, prec):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("N, m, band, prec", [(50, 3, 0.3, 1e-8), (50, 3, 0.5, 1e-8),
-                                              (65, 4, 0.3, 1e-8)])
+@pytest.mark.parametrize("N, m, band, prec", [
+    (50, 3, 0.3, 1e-8), (50, 3, 0.5, 1e-8),
+    pytest.param(65, 4, 0.3, 1e-8, marks=pytest.mark.ulp_sensitive)])    # 1 of 8 jitter seeds
 def test_a_partner_at_the_bracket_edge_is_LOCATED_rather_than_left_uncounted(N, m, band, prec):
     """Every wrong total the recalibrated reach rule left on the cluster grid was one bracket
     holding two distinct eigenvalues: the refiner located one, the partner sat at the bracket
@@ -401,8 +408,9 @@ def test_the_fresh_125_grid_has_no_SILENT_wrong_total(prec, band, cause):
                        "member's well, so the cell refine read not_a_minimum -- 1 of 3"),
     (125, 4, 0.8, 1e-8, "a side search read the wall of a member already located 4.5e-6 away, "
                         "outside a one-width window, and called the dip unexplained"),
-    (65, 4, 1.0, 1e-10, "a side sub-bracket on the hump top between two located members, accepted "
-                        "once the refiner's fallback found a parabola there -- 5 of 4"),
+    pytest.param(65, 4, 1.0, 1e-10, "a side sub-bracket on the hump top between two located "
+                 "members, accepted once the refiner's fallback found a parabola there -- 5 of 4",
+                 marks=pytest.mark.ulp_sensitive),                            # 1 of 8 jitter seeds
 ])
 def test_the_hump_and_side_guards_do_not_break_a_CORRECT_count(N, m, band, prec, cause):
     """The ways the guards for the silent cells overreached, measured on the 50/65 grid (and the

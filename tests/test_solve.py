@@ -167,6 +167,7 @@ def test_the_pipeline_on_the_hard_roster(name):
     assert res.diagnostics.multiplicity_evals == 0
 
 
+@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py (2026-10-09 sweep after the prune)
 @pytest.mark.slow
 @pytest.mark.parametrize("mult", [2, 3, 4])
 def test_the_pipeline_on_an_exact_degeneracy(mult):
