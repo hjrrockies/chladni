@@ -1,0 +1,125 @@
+{
+ "scale": 4.0,
+ "n": 8,
+ "targets": [
+  "tests"
+ ],
+ "markexpr": "not gate and not robust",
+ "results": [
+  {
+   "seed": 0,
+   "failed": [],
+   "passed": 2237
+  },
+  {
+   "seed": 1,
+   "failed": [
+    "test_floor::test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window",
+    "test_mps_seam::test_assemble_is_where_lam_becomes_k",
+    "test_mps_seam::test_the_free_functions_and_the_methods_agree",
+    "test_regularization::test_the_ci_refusal_does_not_happen_under_the_penalty",
+    "test_regularization::test_the_refused_bracket_end_is_smooth_under_the_penalty",
+    "test_rule_seam::test_a_side_search_that_finds_NOTHING_leaves_a_correct_count_correct",
+    "test_rule_seam::test_the_hump_and_side_guards_do_not_break_a_CORRECT_count[65-4-1.0-1e-10-a side sub-bracket on the hump top between two located members, accepted once the refiner's fallback found a parabola there -- 5 of 4]",
+    "test_rule_seam::test_the_multiplicity_READ_spends_nothing_even_where_the_count_DECLINES[170-4-0.3-1e-12]",
+    "test_rule_seam::test_the_promoted_defaults_leave_no_SILENT_wrong_total[170-4-0.3-1e-12-a residual sub-bracket abutting an exclusion, where the refiner landed on the excluded member's wall until the standoff reached 0.3]"
+   ],
+   "passed": 2229
+  },
+  {
+   "seed": 2,
+   "failed": [
+    "test_collocation::test_a_coefficient_vector_means_the_same_function_on_a_second_point_set",
+    "test_floor::test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window",
+    "test_mps_seam::test_assemble_is_where_lam_becomes_k",
+    "test_mps_seam::test_the_free_functions_and_the_methods_agree",
+    "test_precision_ladder::test_the_cell_is_acceptable[rostereq_tri-1e-14]",
+    "test_regularization::test_the_ci_refusal_does_not_happen_under_the_penalty",
+    "test_regularization::test_the_refused_bracket_end_is_smooth_under_the_penalty"
+   ],
+   "passed": 2231
+  },
+  {
+   "seed": 3,
+   "failed": [
+    "test_floor::test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window",
+    "test_mps_seam::test_assemble_is_where_lam_becomes_k",
+    "test_mps_seam::test_the_free_functions_and_the_methods_agree",
+    "test_regularization::test_the_ci_refusal_does_not_happen_under_the_penalty",
+    "test_regularization::test_the_refused_bracket_end_is_smooth_under_the_penalty"
+   ],
+   "passed": 2231
+  },
+  {
+   "seed": 4,
+   "failed": [
+    "test_collocation::test_a_coefficient_vector_means_the_same_function_on_a_second_point_set",
+    "test_floor::test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window",
+    "test_mps_seam::test_assemble_is_where_lam_becomes_k",
+    "test_mps_seam::test_the_free_functions_and_the_methods_agree",
+    "test_refine::test_it_rejects_an_empty_bracket_on_a_real_pencil_cheaply",
+    "test_regularization::test_the_ci_refusal_does_not_happen_under_the_penalty",
+    "test_regularization::test_the_refused_bracket_end_is_smooth_under_the_penalty",
+    "test_rule_seam::test_a_partner_at_the_bracket_edge_is_LOCATED_rather_than_left_uncounted[65-4-0.3-1e-08]",
+    "test_rule_seam::test_the_multiplicity_READ_spends_nothing_even_where_the_count_DECLINES[65-4-0.3-1e-08]",
+    "test_rule_seam::test_the_promoted_defaults_leave_no_SILENT_wrong_total[65-4-0.3-1e-08-a hump top kept as a level beside the two members found either side]",
+    "test_solve_interval::test_a_tighter_request_costs_more_and_says_what_it_could_not_reach",
+    "test_solve_interval::test_the_cost_is_reported_and_is_not_absurd",
+    "test_solve_interval::test_the_multiplicities_are_read_not_inferred[disk-<lambda>-<lambda>-8.0-60.0]"
+   ],
+   "passed": 2223
+  },
+  {
+   "seed": 5,
+   "failed": [
+    "test_collocation::test_a_coefficient_vector_means_the_same_function_on_a_second_point_set",
+    "test_floor::test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window",
+    "test_floor_multiplicity::test_a_noisy_floor_does_not_multiply_a_simple_level[A]",
+    "test_mps_seam::test_assemble_is_where_lam_becomes_k",
+    "test_mps_seam::test_the_free_functions_and_the_methods_agree",
+    "test_regularization::test_the_ci_refusal_does_not_happen_under_the_penalty",
+    "test_rule_seam::test_the_fresh_125_grid_has_no_SILENT_wrong_total[1e-10-0.5-side-search dedup: the partner was discarded against the root being split]"
+   ],
+   "passed": 2231
+  },
+  {
+   "seed": 6,
+   "failed": [
+    "test_floor::test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window",
+    "test_mps_seam::test_assemble_is_where_lam_becomes_k",
+    "test_mps_seam::test_the_free_functions_and_the_methods_agree",
+    "test_regularization::test_the_ci_refusal_does_not_happen_under_the_penalty"
+   ],
+   "passed": 2234
+  },
+  {
+   "seed": 7,
+   "failed": [
+    "test_floor::test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window",
+    "test_floor_multiplicity::test_a_noisy_floor_does_not_multiply_a_simple_level[A]",
+    "test_mps_seam::test_assemble_is_where_lam_becomes_k",
+    "test_mps_seam::test_the_free_functions_and_the_methods_agree",
+    "test_refine::test_it_rejects_an_empty_bracket_on_a_real_pencil_cheaply",
+    "test_regularization::test_the_ci_refusal_does_not_happen_under_the_penalty",
+    "test_rule_seam::test_the_multiplicity_READ_spends_nothing_even_where_the_count_DECLINES[170-4-0.3-1e-12]",
+    "test_rule_seam::test_the_promoted_defaults_leave_no_SILENT_wrong_total[170-4-0.3-1e-12-a residual sub-bracket abutting an exclusion, where the refiner landed on the excluded member's wall until the standoff reached 0.3]"
+   ],
+   "passed": 2229
+  },
+  {
+   "seed": 8,
+   "failed": [
+    "test_floor::test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window",
+    "test_floor::test_the_inert_cutoff_costs_spurious_minima_and_NOT_the_floor",
+    "test_mps_seam::test_assemble_is_where_lam_becomes_k",
+    "test_mps_seam::test_the_free_functions_and_the_methods_agree",
+    "test_refine::test_a_genuine_minimum_OFF_CENTRE_in_its_bracket_is_accepted",
+    "test_regularization::test_the_ci_refusal_does_not_happen_under_the_penalty",
+    "test_regularization::test_the_refused_bracket_end_is_smooth_under_the_penalty",
+    "test_rule_seam::test_the_promoted_defaults_leave_no_SILENT_wrong_total[170-4-0.3-1e-12-a residual sub-bracket abutting an exclusion, where the refiner landed on the excluded member's wall until the standoff reached 0.3]",
+    "test_solve::test_the_pipeline_on_an_exact_degeneracy[3]"
+   ],
+   "passed": 2228
+  }
+ ]
+}
