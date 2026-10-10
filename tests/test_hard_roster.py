@@ -219,3 +219,17 @@ def test_every_roster_pencil_carries_the_SUITE_rtol(name):
     case = hr.ROSTER[name]()
     assert case.pencil.rtol == SUITE_RTOL
     assert hr.solver_for(case.domain, case.b, label=name, prec=1e-12).pencil.rtol == SUITE_RTOL
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name", ["L_shape", "disk", "eq_tri"])
+def test_every_ROSTER_case_carries_its_eigenfunctions(name):
+    """Moved from the retired Phase D file: `Case.modes` is the roster's interior-image hook,
+    which multiplicity grouping on the transfer domains needs."""
+    case = hr.ROSTER[name]()
+    t = np.unique(np.asarray(case.truth, dtype=float))
+    first = float(t[(t > case.a) & (t < case.b)][0])
+    assert getattr(case, "modes", None) is not None
+    u = case.modes(first)
+    assert u.shape == (case.pencil.n_int,)
+    assert np.linalg.norm(u) == pytest.approx(1.0, rel=1e-12)

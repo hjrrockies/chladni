@@ -671,7 +671,7 @@ Written before the implementation, against the surrogate and against real pencil
 | `tests/test_search_scan.py` | Phase A: the envelope never prunes an interval containing a root when `L` is a true bound; a region excluded under a smaller `L` is LIVE AGAIN once `L` grows (the shipped analogue of the attic revival -- there is no attic, see As built); the subdivision depth reaches `beta*d_est` on a pair and stops at `h_floor` on a degeneracy |
 | `tests/test_search_refine.py` | Phase B: the apex case (root on a shared endpoint) is recovered to the floor; a wall point adjacent to a deep root is rejected; symmetric sampling still finds the well; stagnation terminates |
 | `tests/test_search_multiplicity.py` | Phase C: 9 for 9 on disk and eq_tri; (C2) rejects the `d <~ eps/c` double-count; a roughness minimum fails prominence `P` and a true well passes it by orders; the wide bracket is wide enough |
-| `tests/test_search_collapse.py` | Phase D: the Gram angle reads `<= 0.10` on a resolved pair of `rect(1+delta, 1)` and `>= 0.948` on one well sampled twice; within one `lam` it is 0 to machine precision and must not be consulted; a true double found twice gives multiplicity 2 under BOTH verdicts |
+| `notes/evidence_tests/test_search_collapse.py` (retired 2026-10-09) | Phase D: the Gram angle reads `<= 0.10` on a resolved pair of `rect(1+delta, 1)` and `>= 0.948` on one well sampled twice; within one `lam` it is 0 to machine precision and must not be consulted; a true double found twice gives multiplicity 2 under BOTH verdicts |
 | `tests/test_search_precision.py` | section 2's contract: the same domain solved at `prec` = 1e-6, 1e-8, 1e-10 returns levels agreeing to the looser `prec` and costs monotonically more; refinement stops on `prec * lam` when the basis is better than the request; `delta_res > prec * lam` is REPORTED rather than silently missed |
 | `tests/test_search_score.py` | end to end through the harness, against the uniform-grid control and the lappy baseline, on the surrogate and on real domains |
 
@@ -742,7 +742,7 @@ And the current instrument, built against `candidates.md` and `CHLADNI_V1.md`:
 | `tests/surrogate_cases.py`, `tests/rect_suite.py`, `tests/hard_roster.py` | the three tiers |
 | `chladni.mps.{bracket,refine,multiplicity,search}` | the winning candidate, all four stages |
 | `tests/candidates_v1.py` | the two adapters that put those modules on the scored seam |
-| `tests/test_gate.py` | the standing acceptance gate, `pytest -m gate` |
+| `notes/evidence_tests/test_gate.py` | the V1 acceptance gate, retired from the suite 2026-10-09; run on demand |
 
 **The search now ships.** `MPSEigensolver.solve_interval` returns a `Spectrum`, so a `Domain`
 goes in and eigenvalues with multiplicities come out. What stayed in `tests/` is the
@@ -846,7 +846,7 @@ tension at both SAMPLED endpoints, it keeps 3 of 3 at every `floor_frac` includi
 where the fixed-step probe keeps none. Its docstring already made this argument about a different
 wrong version of the same probe: a probe whose reach is set by the bracket width cannot know what
 it is stepping across. One whose reach is set by a CONSTANT cannot know that, and cannot know how
-accurate the point it steps from is either. `tests/test_searches.py` is the tracked measurement;
+accurate the point it steps from is either. `notes/evidence_tests/test_searches.py` is the tracked measurement;
 `tests/searches.py` had no test file at all before it.
 
 ## THE MULTIPLICITY CONTRACT, as shipped

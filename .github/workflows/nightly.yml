@@ -1,6 +1,7 @@
 name: nightly (gate and robust)
 
-# The two expensive tiers, off the per-push path: the acceptance gate (`pytest -m gate`, ~7 min)
+# The expensive tier, off the per-push path: the robustness campaign. (The acceptance gate,
+# `-m gate`, was retired from the suite to notes/evidence_tests/ on 2026-10-09.)
 # and the robustness campaign (`-m robust`, 30-60 min). Nightly on main, and on demand.
 on:
   schedule:

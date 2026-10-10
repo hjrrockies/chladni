@@ -393,3 +393,13 @@ def test_a_MILD_disagreement_keeps_the_calibrated_blind_slope():
     got = _slope_from_cache(lams, vs, 2.0, floor=aware_floor)
     assert blind < _SLOPE_FLOOR_GUARD * got or got == blind
     assert got == blind
+
+
+def test_phase_d_defaults_to_DISTANCE_and_refuses_an_unknown_rule():
+    """Moved from the retired Phase D file (now `notes/evidence_tests/test_search_collapse.py`):
+    the shipped default is named for what it does, and a typo is an error, not a silent fallback."""
+    import inspect
+    assert inspect.signature(solve).parameters["phase_d"].default == "distance"
+    obj = Objective(lambda x: np.array([abs(x - 50.0) + 1e-9, 1.0]), 15.0, 110.0, variable="lam")
+    with pytest.raises(ValueError, match="phase_d"):
+        solve(obj, prec=1e-8, phase_d="gram")

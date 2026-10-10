@@ -6,7 +6,7 @@ That is deliberate rather than rot. `tests/baselines.py` supplies the honest-bas
 current seam and is what the test suite reaches for; this file holds the older GENERATION of
 searches so a candidate can still be scored against what it replaced. `TODO.md` once called it
 orphaned along with `tests/searches.py`, which was wrong on both counts -- `searches.py` is
-imported here and by `tests/test_searches.py`, which covers `_spacing`, `_descend` and
+imported here and by `notes/evidence_tests/test_searches.py` (retired 2026-10-09), which covers `_spacing`, `_descend` and
 `_local_minima`.
 
 A bracketer is

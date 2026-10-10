@@ -254,8 +254,9 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   domains, or rename the field so it stops looking like an answer.
 * **[later]** One of the six test files `search.md` section 7 specifies has no equivalent:
   `test_search_multiplicity.py`. The others exist under different names -- `test_search.py`
-  (scan), `test_refine.py`, `test_bracket_score.py` (score), `test_search_collapse.py`, and the
-  `prec` ladder threaded through `test_search.py`, `test_gate.py` and `test_hard_roster.py`.
+  (scan), `test_refine.py`, `test_bracket_score.py` (score), and the `prec` ladder threaded
+  through `test_search.py`, `test_precision_ladder.py` and `test_hard_roster.py`. (`test_gate.py` and
+  `test_search_collapse.py` moved to `notes/evidence_tests/` on 2026-10-09.)
 
 ## 3. Unwritten layers
 
@@ -472,12 +473,9 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 5. Test-suite hygiene
 
-* **[later]** No direct `test_searches.py` covering the older public searches. `test_searches.py`
-  reaches only three private helpers (`_spacing`, `_descend`, `_local_minima`); `lappy_search`,
-  `lappy_repaired_search` and `swing_direct_search` are exercised only through
-  `tests/bracketers.py`, which is `notes/`-runner tooling rather than a test module. That is now
-  stated in `bracketers.py`'s own docstring, so the arrangement is deliberate rather than
-  undiscovered -- but the searches themselves are still uncovered by anything the suite runs.
+* **[later]** The older public searches (`tests/searches.py`) have no live test: `test_searches.py`
+  moved to `notes/evidence_tests/` on 2026-10-09 with the retired baselines. They are reached only
+  through `tests/bracketers.py` and `baselines.py`, which `test_bracket_score.py` exercises.
 
 ## 6. Small deferred measurements
 
