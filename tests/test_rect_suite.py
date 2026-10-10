@@ -35,23 +35,6 @@ def test_modes_in_window_is_complete(window):
     assert np.allclose(ours, theirs, rtol=1e-14)
 
 
-def test_rect_spectrum_would_MERGE_the_bottom_of_the_ladder():
-    """The reason truth comes from `rect_eig` directly. `snap` merges within `1e-13 * lam`,
-    and the dialled separation at the bottom of the ladder is `5e-15` relative -- two orders
-    below that floor. Snapped truth hands back an EXACT DEGENERACY wearing the split-pair
-    label, which is the opposite case with the right name on it."""
-    a, b = 10.0, 88.0
-    L = 1.0 + rs.delta_for(0.5, 1e-14, a, b)
-    direct = np.sort([rect_eig(m, n, L, 1.0) for m, n in rs.modes_in_window(a, b)])
-    snapped = np.sort(rect_spectrum(a, b, L, 1.0))
-
-    assert np.unique(direct).size == 4, "rect_eig keeps the pair apart"
-    assert np.unique(snapped).size == 3, "rect_spectrum merges it"
-    gap = np.diff(direct)[1]
-    assert gap / np.spacing(direct[1]) == pytest.approx(34, abs=2), "34 ulps, representable"
-    assert np.diff(snapped)[1] == 0.0, "and snapped to bit-identical"
-
-
 # --- trap 1: the tightest pair is not the one you would dial --------------------------------
 
 def test_the_tightest_level_in_the_wide_window_is_not_the_obvious_one():
@@ -110,8 +93,10 @@ def test_a_level_that_cannot_split_is_not_offered_as_a_dial():
 @pytest.mark.parametrize("prec", bs.PREC_LADDER)
 @pytest.mark.parametrize("window", sorted(rs.CROSSOVER_WINDOWS))
 def test_the_dial_achieves_its_band(window, prec, band):
-    """The cross product itself: 6 precisions x 4 bands x 3 windows, each landing where it
-    was aimed. This is the test that failed 18 of 72 cells and exposed both traps."""
+    """The cross product itself: every rung x 4 bands x 3 windows, each landing where it was
+    aimed. This is the test that failed 18 of 72 cells on the six-rung ladder and exposed both
+    traps. Since the 2026-10-09 prune the ladder stops at 1e-10 (48 cells); the 1e-14 rung,
+    where the dial quantizes by ~2.7%, is parked with the rest of the sub-1e-10 rungs."""
     a, b = rs.CROSSOVER_WINDOWS[window]
     L = 1.0 + rs.delta_for(band, prec, a, b)
     if L == 1.0:
@@ -122,21 +107,6 @@ def test_the_dial_achieves_its_band(window, prec, band):
         f"{window}@{prec:.0e} band {band} achieved ratio {sep.ratio:.4g} at {sep.at}")
     assert sep.exercisable
     assert sep.must_split == (band > 1.0)
-
-
-@pytest.mark.parametrize("window", sorted(rs.CROSSOVER_WINDOWS))
-def test_the_quantization_shows_only_at_the_bottom_of_the_ladder(window):
-    """~2.7% at 1e-14, and clean above it. The dial degrading is expected and is why cases are
-    classified by what they ACHIEVED; it is reported rather than corrected."""
-    a, b = rs.CROSSOVER_WINDOWS[window]
-
-    def achieved(prec, band):
-        L = 1.0 + rs.delta_for(band, prec, a, b)
-        truth = np.sort([rect_eig(m, n, L, 1.0) for m, n in rs.modes_in_window(a, b)])
-        return bs.classify_separation(truth, prec).ratio / band
-
-    assert abs(achieved(1e-8, 0.5) - 1.0) < 1e-6, "exact well above the floor"
-    assert abs(achieved(1e-14, 0.5) - 1.0) < 0.10, "a few percent at the floor"
 
 
 def test_delta_for_is_the_inverse_of_the_splitting_rate():
@@ -240,7 +210,7 @@ def test_complete_truth_does_NOT_merge_what_rect_spectrum_snaps():
 # --- the smoothness precondition must certify what the SEARCHER samples -------------------------
 
 @pytest.mark.slow
-@pytest.mark.parametrize("prec", [1e-8, 1e-14])
+@pytest.mark.parametrize("prec", [1e-8, 1e-10])
 def test_assert_smooth_reads_the_SEARCHERS_own_seed(prec):
     """`assert_smooth` decides which gate cells are skipped as having no slope bound. It seeded
     its own 16-point grid with 4 doublings while the searcher seeds from Weyl with up to 6, so a

@@ -3,7 +3,7 @@
 `CHLADNI_V1.md` section 5.5. About seven minutes.
 
 The crossover sweep and the degeneracy class, on three rectangle windows, at every precision in
-`bracket_score.PREC_LADDER`. Coverage and purity are hard; spurious, fineness, cost and the
+`bracket_score.PREC_LADDER_FULL`. Coverage and purity are hard; spurious, fineness, cost and the
 DECLINE RATE are reported.
 
 # Why a standing gate, and why it must be fixed in advance
@@ -79,7 +79,7 @@ def _require_preconditions(case, prec):
 # --- the crossover sweep, the whole cross product -----------------------------------------------
 
 @pytest.mark.parametrize("band", BANDS)
-@pytest.mark.parametrize("prec", bs.PREC_LADDER)
+@pytest.mark.parametrize("prec", bs.PREC_LADDER_FULL)
 @pytest.mark.parametrize("window", ["pair", "cluster", "wide"])
 def test_the_crossover_sweep(window, prec, band):
     """Two bands that must MERGE and two that must SPLIT, at every precision, on every window.
@@ -107,7 +107,7 @@ def test_the_crossover_sweep(window, prec, band):
     assert s.cost_ok, f"{s.per_eigenvalue:.0f} evaluations per eigenvalue"
 
 
-@pytest.mark.parametrize("prec", bs.PREC_LADDER)
+@pytest.mark.parametrize("prec", bs.PREC_LADDER_FULL)
 @pytest.mark.parametrize("mult", [2, 3, 4])
 def test_exact_degeneracy_as_a_class(prec, mult):
     """Swept as a CLASS, not as one case. The crossover ladder varies a separation and never
@@ -126,7 +126,7 @@ def test_exact_degeneracy_as_a_class(prec, mult):
     assert np.sum(np.isclose(case.truth, lam, rtol=1e-12)) == mult, f"of multiplicity {mult}"
 
 
-@pytest.mark.parametrize("prec", bs.PREC_LADDER)
+@pytest.mark.parametrize("prec", bs.PREC_LADDER_FULL)
 @pytest.mark.parametrize("mult", [2, 3, 4])
 def test_the_split_counterparts_of_every_degeneracy(prec, mult):
     """Every closed-form multiple gets a split counterpart at each precision, so the merge/split

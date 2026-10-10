@@ -62,8 +62,13 @@ PHI = (1.0 + 5.0**0.5) / 2.0
 #: `snap` in `chladni.reference` merges within this, so truth below it is not trustworthy.
 SNAP_FLOOR_REL = 1e-13
 
-#: The finest precision the sweep exercises. The pencil must serve it, because it is fixed
-#: across the whole `prec` ladder and the ladder's bottom rung is the hardest requirement.
+#: The finest precision the suite pencil is BUILT to serve. The pencil is fixed across the whole
+#: `prec` ladder, so it must serve the hardest rung any caller runs.
+#:
+#: Since the 2026-10-09 prune `bracket_score.PREC_LADDER` stops at 1e-10, and no default-suite
+#: test runs a rung below it. This stays at 1e-14 anyway: it sets `SUITE_RTOL`, every fixture is
+#: measured at that threshold, and the evidence modules in `notes/evidence_tests/` still run
+#: `PREC_LADDER_FULL` to 1e-14. Moving it would move every pencil in the suite.
 FINEST_PREC = 1e-14
 
 #: Rank-truncation threshold for every suite pencil: `sqrt(FINEST_PREC * eps)`, which is
@@ -438,6 +443,11 @@ _B_MODES = ((2, 1), (1, 2))
 #: with `3e-10`. On the real ladder `1e-11` is the SOLE case exercising `prec = 1e-12`. The
 #: verdict row is a property of the ladder the cases are swept at, and nothing else.
 #:
+#: **Since the 2026-10-09 prune the ladder is four rungs, to 1e-10** (`PREC_LADDER_FULL` keeps
+#: the six). On it `1e-11` and `1e-13` both read `mmmm`: they exercise only the merge direction,
+#: and duplicate each other. They are kept because the six-rung evidence modules still sweep them
+#: and other files key on the family's labels; trimming one is a separate decision.
+#:
 #: `1e-13` and `3e-14` ARE admissible, and an earlier version of this comment wrongly said
 #: they were not. The reasoning was that `snap` merges within `1e-13 * lam = 4.9e-12` and
 #: `d = 5.9e-12` clears it by only 1.2x -- but **family B does not use snapped truth**. It
@@ -526,9 +536,10 @@ def all_families(seed=0):
 
 # --- the crossover sweep: a CROSS PRODUCT against the prec ladder ---------------------------
 #
-# `docs/design/candidates.md` and `bracket_score.PREC_LADDER`. Every candidate is scored at six
-# precisions, and a separation is only informative relative to the `prec` it is judged against,
-# so the separation ladder is dialled PER PRECISION rather than once globally. Section 29
+# `docs/design/candidates.md` and `bracket_score.PREC_LADDER`. Every candidate is scored at every
+# rung (four since the 2026-10-09 prune, six in `PREC_LADDER_FULL`), and a separation is only
+# informative relative to the `prec` it is judged against, so the separation ladder is dialled
+# PER PRECISION rather than once globally. Section 29
 # recorded results that were IDENTICAL at 1e-8, 1e-11 and 1e-14 because one global ladder left
 # the requirement unchanged at all three -- the sweep measured cost while claiming capability.
 

@@ -47,23 +47,19 @@ def _rect_case():
     return rs.family_A()[0]
 
 
-@pytest.mark.parametrize("which", [
-    "default",
-    pytest.param("tau 2e-14", marks=pytest.mark.ulp_sensitive),   # 2 of 16 seeds; Linux EPYC 9V45
-    "threshold"])
+# The `threshold` row (the suite's 1e-12 pencil) is retired and the `tau 2e-14` row moved to
+# `notes/evidence_tests/test_moler_payne_evidence.py`: rungs below 1e-10 are parked
+# (`notes/test_inventory_2026-10-09.md`, decision 3). The starved-basis test went there too.
+@pytest.mark.parametrize("which", ["default"])
 def test_the_bound_covers_the_true_error_on_every_rectangle_level(which):
     """`notes/moler_payne_vs_tension.py bound`, now through `chladni.integrals` with a Rellich
     norm instead of an interior rule: five eigenvalues of `rect(1, 1/phi)`, each refined on the
-    pencil, the bound held against the exact eigenvalue. Valid on every row; within 2-6x where
-    the penalty sits near rounding, as the note measured."""
+    pencil, the bound held against the exact eigenvalue. Valid on every row. (Within 2-6x where
+    the penalty sits near rounding, as the note measured: the `tau 2e-14` evidence row.)"""
     case = _rect_case()
     p0 = case.pencil
-    n = p0.n_cols
     p, prec = {
         "default": (MPSPencil(p0.bdry, p0.interior, prec=1e-8), 1e-8),
-        "tau 2e-14": (MPSPencil(p0.bdry, p0.interior, reg="tikhonov_qr", prec=1e-12,
-                                rtol=2e-14 / np.sqrt(n)), 1e-12),
-        "threshold": (p0, 1e-12),
     }[which]
     for lam0 in (float(t) for t in case.truth[[0, 1, 2, 4, 7]]):
         lo, hi = lam0 * (1 - 1e-6), lam0 * (1 + 1.3e-6)
@@ -73,8 +69,6 @@ def test_the_bound_covers_the_true_error_on_every_rectangle_level(which):
         err = abs(r.lam - lam0)
         assert mp.reason == ""
         assert mp.abs[0] >= err, (lam0, mp.abs[0], err)
-        if which == "tau 2e-14":
-            assert mp.abs[0] <= 10 * max(err, 1e-15 * lam0), (lam0, mp.abs[0], err)
 
 
 # --- a singular corner, at known offsets ----------------------------------------------------------
@@ -175,39 +169,6 @@ def test_every_level_of_a_dirichlet_solve_carries_a_bound_that_covers_its_error(
             assert L.bound == L.mp_bound
     spec = s.solve_interval(8.0, 33.0)
     assert np.allclose(spec.bound, [L.bound for L in sorted(res.levels, key=lambda x: x.lam)])
-
-
-@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py and across CPUs; notes/jitter_sweep.py
-@pytest.mark.filterwarnings("ignore::chladni.helmholtz.PrecisionWarning")
-def test_a_starved_basis_reports_a_bound_that_covers_its_error():
-    """`notes/delta_res_undercover.py`, `notes/bound_coverage.md`: 14 Fourier-Bessel terms at
-    each L-shape corner asked for 1e-12, out of the basis's reach. `delta_res` read up to ~1e5x
-    under the true error on such levels and `min(delta_res, mp_bound)` passed it through, so the
-    reported bound and `attained_prec` were wrong. A `delta_res` that does not meet `prec` is
-    the basis's floor, not a resolution limit, and is not admitted: the level reports its
-    Moler-Payne bound, which covered every level of the grid."""
-    from chladni.helmholtz import FourierBessel
-    from chladni.mps import MPSEigensolver
-
-    dom = L_shape()
-    b = None
-    for c in dom.corners:
-        f = FourierBessel.at_corner(c, n=14, domain=dom)
-        b = f if b is None else b + f
-    s = MPSEigensolver(dom, basis=b, n_bdry=3 * len(b), n_int=len(b), prec=1e-12)
-    res = s.search_interval(5.0, 45.0)
-    truth = ref.L_shape_eigs(10)
-    worst = 0.0
-    starved = 0
-    for L in res.levels:
-        err = float(np.min(np.abs(truth - L.lam)))
-        assert err <= L.bound, (L.lam, err, L.delta_res, L.mp_bound, L.bound)
-        if L.delta_res > 1e-12 * L.lam:
-            starved += 1
-            assert L.bound == L.mp_bound
-        worst = max(worst, err / L.lam)
-    assert starved >= 4                       # the case still exercises the rule
-    assert res.diagnostics.attained_prec >= worst
 
 
 def test_attained_precision_reads_the_tighter_bound():

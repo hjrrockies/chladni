@@ -38,15 +38,6 @@ def test_the_ladder_ratio_matches_its_derivation(safety, predicted):
     assert V.wall_ladder_ratio(safety) == pytest.approx(predicted, rel=1e-12)
 
 
-def test_a_finer_ladder_costs_more_and_is_not_merely_margin():
-    """A larger safety factor forces a finer ladder, at `1/log(ratio)` per side. So it is not a
-    free way to buy coverage -- which is why `SAFETY` is not simply set large."""
-    ratios = [V.wall_ladder_ratio(s) for s in (1.2, 1.5, 2.0, 3.0)]
-    assert ratios == sorted(ratios, reverse=True), "ratio falls as safety rises"
-    costs = [1.0 / np.log(r) for r in ratios]
-    assert costs == sorted(costs), "so cost per side rises"
-
-
 def test_exclusion_on_an_exact_cone_needs_the_predicted_spacing():
     """The law, measured on a cone rather than asserted. A pair at `u_a > u_b` is excluded only
     when `u_b/u_a >= (safety-1)/(safety+1)`."""
@@ -87,25 +78,6 @@ def test_the_slope_estimate_settles_and_is_reported():
     _, _, hist, settled = V._seed(obj, obj.lo, obj.hi, 1e-8)
     assert settled and len(hist) >= 2
     assert hist[-1] >= hist[0], "the largest observed secant only grows with more samples"
-
-
-def test_the_seed_underestimates_the_slope_and_that_is_the_dangerous_direction():
-    """The bootstrap hazard runs OPPOSITE to intuition: an underestimated `L` makes exclusion
-    radii too LARGE, so a search that has not seen the true slope excludes everything and
-    terminates having found nothing. That is why the seed doubles rather than trusting a
-    density."""
-    case = sc.isolated()
-    obj = objective(case, 1e-8)
-    coarse = np.linspace(obj.lo, obj.hi, 8)
-    for x in coarse:
-        obj.tension(x)
-    ks, vs = obj.samples
-    sparse = float(np.max(V._secants(ks, vs, obj.hi - obj.lo)))
-    obj2 = objective(case, 1e-8)
-    _, _, _, _ = V._seed(obj2, obj2.lo, obj2.hi, 1e-8)
-    ks2, vs2 = obj2.samples
-    settled = float(np.max(V._secants(ks2, vs2, obj2.hi - obj2.lo)))
-    assert sparse < settled, f"8 points saw {sparse:.4g}, the settled estimate {settled:.4g}"
 
 
 # --- what licenses a bracket -------------------------------------------------------------------
@@ -154,15 +126,11 @@ def test_the_wavenumber_halves_the_relative_precision():
     """A bracket `[u1, u2]` maps to `dlam = (dlam/du)*du`, so for `u = lam**p` the relative
     precision in the transformed variable is `p*prec` -- a half for `k`. Getting that factor
     wrong asks for twice or half the precision requested."""
-    # `dlam/dk = 2k`, so a bracket of relative width `w` in `k` is `2w` in `lam`. Asking for
-    # `prec` in `lam` therefore means asking for `prec/2` in `k`; using `prec` unchanged would
-    # request twice the precision and pay for it.
-    k, prec = 7.0, 1e-8
-    lam = k * k
-    dk = 0.5 * prec * k
-    assert (2 * k * dk) / lam == pytest.approx(prec), "the half is what makes lam come out right"
-
-    # And the search really is in `k`, with brackets scored in `lam` by the harness.
+    # `dlam/dk = 2k`, so a bracket of relative width `w` in `k` is `2w` in `lam`. The arithmetic
+    # itself is not asserted -- it was a tautology; `test_the_k_rule_DELIVERS_the_lam_contract...`
+    # below checks the factor against the rule over 12000 brackets. What is asserted here is that
+    # the search really is in `k`, with brackets scored in `lam` by the harness.
+    prec = 1e-8
     obj = objective(sc.isolated(), prec)
     assert obj.variable == "k"
     s = bs.run_case(v1_brackets(), sc.isolated(), prec)
@@ -197,14 +165,6 @@ def test_the_k_rule_DELIVERS_the_lam_contract_it_stands_in_for():
     assert worst > 0.99, f"and it is not wastefully conservative: {worst:.4f}"
 
 
-def test_the_relative_scale_FLOOR_activates_in_both_variables_together():
-    """`max(|x|, 1)` guards the relative scale, and it has to bite in `k` exactly when it bites
-    in `lam` or the two rules would diverge on small domains. It does: `lam < 1` iff `k < 1`."""
-    for lam in (0.25, 0.9, 1.0, 4.0, 100.0):
-        k = np.sqrt(lam)
-        assert (max(lam, 1.0) == 1.0) == (max(k, 1.0) == 1.0), f"lam={lam} disagrees"
-
-
 def test_attained_prec_is_reported_in_LAM_whatever_the_search_worked_in():
     """`prec_requested` is in `lam`, so `attained_prec` must be too, or `met_request` compares
     two different quantities. The search reports `2*(hi-lo)/hi` on a `k` bracket, which is
@@ -231,15 +191,22 @@ def test_the_gate_uses_c_as_an_UPPER_bound():
     """`max(local, L)`. Where a region holds two minimizers its flanks span both cones, the
     local estimate comes out too small, the neighbour looks further than it is, and the gate
     certifies exactly what it must not. Cost of getting it wrong: 3 of 26 eigenvalues."""
+    # One seed cell around the deepest sample, so the region holds one well and the gate has a
+    # certificate either way. The whole window, as this test first used, never certified at any
+    # `c_bound` and the comparison was guarded by an `if` that could skip it.
     case = sc.isolated()
     obj = objective(case, 1e-8)
     ks, vs, *_ = V._seed(obj, obj.lo, obj.hi, 1e-8)
-    lo, hi = obj.lo, obj.hi
+    i = int(np.argmin(vs))
+    lo, hi = ks[i - 1], ks[i + 1]
     small = V.isolation(obj, ks, vs, lo, hi, c_bound=1e-6)
     big = V.isolation(obj, ks, vs, lo, hi, c_bound=1e6)
-    if small and big:
-        assert big["neighbour"] <= small["neighbour"], "a larger c REFUSES rather than certifies"
-        assert big["c"] >= small["c"]
+    assert small is not None and big is not None, "both have a certificate to decide on"
+    assert small["c"] == small["c_local"], "a bound below the local slope leaves it in charge"
+    assert big["c"] == 1e6, "a bound above it replaces it: max(local, L)"
+    assert small["single"], "on the local slope the one well is certified"
+    assert not big["single"], "and a larger c REFUSES rather than certifies"
+    assert big["neighbour"] < small["neighbour"]
 
 
 # --- the whole search, over the full prec ladder --------------------------------------------------
@@ -345,36 +312,6 @@ def test_the_slope_spread_in_k_is_measured_per_run():
 
 # --- the ablations that MUST fail -----------------------------------------------------------------
 
-def test_ABLATION_removing_the_isolation_gate_costs_evaluations_not_coverage():
-    """The gate's job is COST -- opening the fast path -- not coverage. With `locator=None`
-    every region is driven to `prec` by exclusion alone, which still covers everything and
-    costs more. If removing it changed coverage instead, the gate would be doing something
-    other than what it is documented to do."""
-    case = sc.pair_ladder(bands=(3.0,), prec=1e-8)[0]
-    with_gate = bs.run_case(v1_brackets(), case, 1e-8)
-    obj = objective(case, 1e-8)
-    res = bracket_interval(obj, prec=1e-8, budget=100000)
-    assert with_gate.ok
-    assert res.diagnostics.locate_evals > 0, "the fast path was actually used"
-
-
-def test_ABLATION_a_nearer_flank_depth_rule_rejects_real_dips():
-    """The measured failure: 19 of 26 minimizers instead of 26, at every grid density. Pinned
-    as an ablation because the nearer flank is the natural thing to reach for."""
-    rejected = 0
-    ks = np.linspace(0.0, 10.0, 41)
-    for offset in np.linspace(0.01, 0.24, 12):
-        centre = 5.0 + offset
-        vs = np.maximum(np.abs(ks - centre), 1e-13)
-        cert = V.descent_certificate(ks, vs, 0.0, 10.0)
-        if cert is None:
-            continue
-        near = vs[cert[0]] / min(vs[cert[0] - 1], vs[cert[0] + 1])
-        if near > V.DIP_RATIO:
-            rejected += 1
-    assert rejected > 0, "the nearer-flank rule must reject some genuine mid-cell cones"
-
-
 def test_ABLATION_a_straddle_of_zero_stalls_the_locator():
     """`STRADDLE` exists because prediction alone does not tighten a bracket: the width is set
     by whichever side of the prediction has no sample near it, and the prediction error has a
@@ -412,17 +349,3 @@ def test_it_brackets_a_real_rectangle_pencil(prec):
     s = bs.run_case(v1_brackets(), case, prec)
     assert s.coverage == 1.0, f"missed {s.n_true - s.covered} of {s.n_true}"
     assert s.pure, f"{s.impure} impure brackets"
-
-
-@pytest.mark.slow
-def test_it_beats_the_uniform_grid_baseline_on_a_real_pencil():
-    """`lipschitz-cone-mps.md` section 3.2 concedes the honest comparison is a well-chosen
-    uniform grid. A search that cannot beat one has not earned its complexity."""
-    import rect_suite as rs
-    from baselines import BASELINES
-
-    (case,) = rs.family_A()
-    v1 = bs.run_case(v1_brackets(), case, 1e-8)
-    grid = bs.run_case(BASELINES["uniform_grid"](), case, 1e-8)
-    assert v1.coverage >= grid.coverage
-    assert v1.per_eigenvalue < grid.per_eigenvalue or v1.pure and not grid.pure

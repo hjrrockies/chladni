@@ -1,8 +1,10 @@
 """The full pipeline on every real case, at EVERY precision in the ladder, one test per cell.
 
-`bracket_score.PREC_LADDER` is `(1e-4, 1e-6, 1e-8, 1e-10, 1e-12, 1e-14)`. `test_gate.py` sweeps
-it on the BRACKETING stage; this file drives the composed pipeline -- bracket, refine,
-multiplicity -- across all of it, on the rectangle families and the hard roster.
+`bracket_score.PREC_LADDER` is `(1e-4, 1e-6, 1e-8, 1e-10)`. This file drives the composed
+pipeline -- bracket, refine, multiplicity -- across all of it, on the rectangle families and the
+hard roster. The 1e-12 and 1e-14 rungs were dropped in the 2026-10-09 prune (they are below
+douse's working precision); `notes/evidence_tests/test_precision_ladder_evidence.py` still prints
+the grid over `PREC_LADDER_FULL`.
 
 # Scoring
 
@@ -11,6 +13,7 @@ excuses it grants come from `tests/basis_sufficiency.py`:
 
     pass                  complete, unspurious, counted right, every level within prec
     declined              declined WITH a reason (`candidates.md` section 5)
+    flagged               a count error the solve itself flags as uncertain
     b-excused             short of prec, reported with an honest bar, where the basis cannot
                           serve prec
     merge-/wrong-total-excused
@@ -89,7 +92,7 @@ KNOWN = {}
 #: Phase 2, which took eq_tri's floor from 2.4e-12 to 1.3e-15 and its 1e-14 cell off `KNOWN`.
 UNFROZEN = set()
 
-_CODES = {"pass": ".", "declined": "D", "b-excused": "b", "b-fail": "B", "shortfall-silent": "!",
+_CODES = {"pass": ".", "declined": "D", "flagged": "f", "b-excused": "b", "b-fail": "B", "shortfall-silent": "!",
           "bar-violated": "?", "spurious": "S", "missed": "M", "wrong-total": "T",
           "wrong-total-excused": "t", "merge-above-licence": "G", "merge-excused": "g",
           "decline-unreasoned": "X"}
@@ -215,23 +218,6 @@ def test_the_cost_rises_with_the_request_and_stays_in_budget():
     assert all(b >= 0.95 * a for a, b in zip(med, med[1:])), (
         f"median evaluations per eigenvalue fell as prec tightened: {np.round(med, 1)}")
     assert not over, f"over the per-eigenvalue budget: {over}"
-
-
-@_SLOW
-def test_the_ladder_report(capsys):
-    """Not an assertion -- the grid, printed with `-s`. A standing report nobody regenerated is
-    how both the false floor and the snapped truth stayed invisible."""
-    with capsys.disabled():
-        print(f"\n\n{'case':24}" + "".join(f"{p:>9.0e}" for p in PREC_LADDER))
-        print("-" * (24 + 9 * len(PREC_LADDER)))
-        for f, i in CASES:
-            label = _case(f, i).label
-            row = "".join(f"{_CODES.get(_cell(f, i, p)[3].verdict, '?'):>9}" for p in PREC_LADDER)
-            print(f"{label:24}{row}")
-        print("\n" + "  ".join(f"{c}={v}" for v, c in _CODES.items()))
-        print(f"{'median evals/eig':24}" + "".join(
-            f"{np.median([_cell(f, i, p)[4] / max(_cell(f, i, p)[1].size, 1) for f, i in CASES]):>9.1f}"
-            for p in PREC_LADDER))
 
 
 @_SLOW

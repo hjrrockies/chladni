@@ -43,15 +43,23 @@ __all__ = ["BracketScore", "score_brackets", "CostReport", "Separation", "run_br
            "truth_in_lam", "objective_for", "run_case",
            "charge_refinement",
            "classify_separation", "predicted_refine_cost", "to_lam_brackets", "REJECT_COST",
-           "COST_CAP_PER_EIG", "PREC_LADDER", "SEPARATION_BANDS"]
+           "COST_CAP_PER_EIG", "PREC_LADDER", "PREC_LADDER_FULL", "SEPARATION_BANDS"]
 
-#: The `prec` ladder every candidate is scored on. Six points rather than
+#: The `prec` ladder every candidate is scored on. Four points rather than
 #: `CHLADNI_V1.md` section 5.5's three, so the merge/split crossover is located at each
 #: precision separately instead of being sampled three times. Section 29 recorded results that
 #: were IDENTICAL at 1e-8, 1e-11 and 1e-14 because one global separation ladder left the
 #: requirement unchanged at all three -- the sweep has to move with `prec` or it measures cost
 #: while claiming to measure capability.
-PREC_LADDER = (1e-4, 1e-6, 1e-8, 1e-10, 1e-12, 1e-14)
+#:
+#: It stops at 1e-10, douse's working precision. The 1e-12 and 1e-14 rungs are parked (test
+#: inventory 2026-10-09, decision 3): in the 8-seed jitter sweep the 1e-12 rule-seam cells
+#: flipped in 2-3 of 8 seeds, and the 1e-14 rung is a 13-ulp stress test, not a douse need.
+PREC_LADDER = (1e-4, 1e-6, 1e-8, 1e-10)
+
+#: The six-rung ladder the suite ran before the prune. Only the evidence modules in
+#: `notes/evidence_tests/` use it, so their recorded behaviour still reruns as recorded.
+PREC_LADDER_FULL = (1e-4, 1e-6, 1e-8, 1e-10, 1e-12, 1e-14)
 
 #: Multiples of `prec * lam` at which a case's tightest pair is placed. The first two must
 #: MERGE and the next two must SPLIT, so every precision is exercised on both sides of its

@@ -62,7 +62,7 @@ threshold's narrower bars hide it. Not fixed in this experiment.
 
 The dedup now merges two finds only within the NARROWER of their refiner bars; a true duplicate is
 still caught by the find's own reach (`(sigma / c) / bias_lo`). Regression:
-`tests/test_rule_seam.py::test_a_wide_refiner_bar_does_not_swallow_a_found_neighbour`, which fails
+`notes/evidence_tests/test_rule_seam_evidence.py::test_a_wide_refiner_bar_does_not_swallow_a_found_neighbour` (moved from `tests/test_rule_seam.py` 2026-10-09), which fails
 without the fix. On every exercisable 50/65*pi^2 cell from 1e-6 to 1e-14, on the default and the
 suite pencils (106 each), the fix changes nothing -- totals and evaluation counts identical. The
 grid, rerun:

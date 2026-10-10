@@ -244,7 +244,7 @@ def test_an_exact_degeneracy_is_one_bracket_and_that_is_correct():
     assert s.ok and s.verdict == "pass"
 
 
-# --- the baselines fail in OPPOSITE ways ---------------------------------------------------
+# --- the baselines never read truth -------------------------------------------------------
 
 @pytest.mark.parametrize("name", sorted(BASELINES))
 def test_a_baseline_never_reads_truth(name):
@@ -253,18 +253,6 @@ def test_a_baseline_never_reads_truth(name):
     obj = cone_objective()
     out = BASELINES[name]()(obj.tensions, obj.lo, obj.hi, prec=1e-8)
     assert isinstance(out, list)
-
-
-def test_the_two_baselines_fail_in_opposite_ways():
-    """The check that the scoring is not merely agreeing with itself: if both failed the same
-    way, coverage and purity would be one metric rather than two."""
-    prec = 1e-9
-    grid = bs.run_bracketer(BASELINES["uniform_grid"](), cone_objective(prec=prec),
-                            TRUTH, prec, label="uniform_grid")
-    bisect = bs.run_bracketer(BASELINES["grid_then_bisect"](), cone_objective(prec=prec),
-                              TRUTH, prec, label="grid_then_bisect")
-    assert grid.coverage == 1.0 and not grid.pure, "the grid holds coverage, fails purity"
-    assert bisect.pure and bisect.coverage < 1.0, "bisect holds purity, loses eigenvalues"
 
 
 # --- separation classification -------------------------------------------------------------
@@ -291,8 +279,8 @@ def test_a_separation_between_bands_is_reported_UNEXERCISABLE():
 @pytest.mark.parametrize("band", bs.SEPARATION_BANDS)
 @pytest.mark.parametrize("prec", bs.PREC_LADDER)
 def test_every_band_of_every_precision_classifies_to_itself(band, prec):
-    """The sweep is a CROSS PRODUCT: each band has to land on its own label at each of the six
-    precisions, or the crossover is not being located per precision."""
+    """The sweep is a CROSS PRODUCT: each band has to land on its own label at each precision
+    of the ladder, or the crossover is not being located per precision."""
     truth = np.array([PAIR, PAIR * (1 + band * prec)])
     sep = bs.classify_separation(truth, prec)
     if sep.min_gap == 0.0:

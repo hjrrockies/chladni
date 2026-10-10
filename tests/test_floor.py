@@ -31,21 +31,6 @@ def _truth(L, H, a, b):
                     if a <= rect_eig(m, n, L, H) <= b])
 
 
-def _spurious(pencil, truth, a, b, n=900):
-    """Sampled local minima of `sigma_1` not near any true eigenvalue.
-
-    This is what a rank cutoff that fails to truncate actually costs. It does NOT move the
-    floor -- which is why a floor check alone never noticed -- it makes `sigma_1` rough
-    BETWEEN eigenvalues, which is where a search spends all of its time.
-    """
-    xs = np.linspace(a, b, n)
-    v = np.array([pencil.tension(x) for x in xs])
-    idx = np.nonzero((v[1:-1] < v[:-2]) & (v[1:-1] <= v[2:]))[0] + 1
-    h = xs[1] - xs[0]
-    hit = sum(1 for i in idx if np.min(np.abs(truth - xs[i])) < 3 * h)
-    return len(idx) - hit, len(idx)
-
-
 # --- expected_count, sizing only ------------------------------------------------------------
 
 def test_expected_count_matches_the_true_count_to_a_few_percent():
@@ -67,76 +52,12 @@ def test_expected_count_is_clamped_and_additive():
     assert whole == pytest.approx(halves)
 
 
-# --- the rank cutoff must actually truncate -------------------------------------------------
-
-@pytest.mark.slow
-def test_a_cutoff_below_machine_epsilon_BARELY_TRUNCATES_at_the_top_of_the_window():
-    """`rtol = 1e-16` is below `eps = 2.2e-16`, so under a RELATIVE threshold it keeps
-    essentially everything the arithmetic can distinguish -- and it does so from the TOP down,
-    where basis demand is highest. A floor checked only at the low end proves nothing.
-
-    The claim here was once "retains EVERY column", `rank_at(hi) == n_cols`, and that was true
-    only with the oversized collocation this suite used to build: 368 boundary points against
-    92 columns left all 92 numerically independent, while the sized 138 rows saturate the rank
-    at 82. The phenomenon survives the correction and the exact equality does not, so the test
-    asserts the phenomenon -- a cutoff below machine epsilon barely truncates at the top, and
-    truncates hard at the bottom.
-
-    What the cutoff COSTS is measured in the next test, and that is the part that matters: not
-    the floor, which stays healthy, but hundreds of spurious minima between the eigenvalues.
-
-    HOW MANY it keeps at the top is not a property of the pencil. Past index 60 the singular
-    values at `b` are rounding, 4e-17 to 1.5e-16 relative, and `1e-16` lands inside that band, so
-    the count is decided by how one LAPACK's rounding happens to fall: 81 of 92 on Accelerate,
-    71 on OpenBLAS (Linux CI, 2026-10-04), against 51 at `SUITE_RTOL` on Accelerate. The old bounds,
-    0.85 n and 1.5x the sound rank, were Accelerate's 81 with a margin, and failed on Linux. What
-    holds on both is the phenomenon itself: the cutoff keeps a block of directions that a cutoff
-    above rounding drops -- and every one of them sits below `SUITE_RTOL`, which is rounding.
-    """
-    a, b = A_WINDOW
-    p = rs.pencil_for(1.0, 1.0 / rs.PHI, a, b, rtol=1e-16)
-    good = rs.pencil_for(1.0, 1.0 / rs.PHI, a, b, rtol=rs.SUITE_RTOL)
-    extra = p.rank_at(b) - good.rank_at(b)
-    assert extra >= 0.1 * p.n_cols, (
-        f"a cutoff below eps keeps {extra} directions of rounding a sound one drops; expected a "
-        f"block of them (30 on Accelerate)")
-    assert p.rank_at(a) < 0.6 * p.n_cols, "while the low end truncates normally"
-
-
-@pytest.mark.slow
-def test_the_inert_cutoff_costs_spurious_minima_and_NOT_the_floor():
-    """Which is exactly why a floor check never noticed it. The damage is between the
-    eigenvalues, where a search lives."""
-    a, b = A_WINDOW
-    truth = _truth(1.0, 1.0 / rs.PHI, a, b)
-    inert = rs.pencil_for(1.0, 1.0 / rs.PHI, a, b, rtol=1e-16)
-    good = rs.pencil_for(1.0, 1.0 / rs.PHI, a, b, rtol=rs.SUITE_RTOL)
-
-    assert inert.tension(float(truth[0])) < 1e-13, "the floor is fine at 1e-16"
-    n_bad, _ = _spurious(inert, truth, a, b)
-    n_good, _ = _spurious(good, truth, a, b)
-    assert n_bad > 100, f"but the plateau is rough: {n_bad} spurious minima"
-    assert n_good == 0, f"and clean at SUITE_RTOL: {n_good}"
-
-
-@pytest.mark.slow
-def test_the_suite_rtol_is_chosen_by_the_FLOOR_not_the_spurious_count():
-    """`1.5e-12` -- the derived default at `prec = 1e-8` -- also reaches zero spurious minima,
-    but costs two orders of floor and fails the precondition, which would make the bottom of
-    the `prec` ladder unexercisable. The floor is the binding constraint."""
-    a, b = A_WINDOW
-    case = rs.make_case("A", 1.0, 1.0 / rs.PHI, a, b)
-
-    case.pencil = rs.pencil_for(1.0, 1.0 / rs.PHI, a, b, rtol=1.5e-12)
-    loose_ok, loose = rs.assert_floor(case)
-    case.pencil = rs.pencil_for(1.0, 1.0 / rs.PHI, a, b, rtol=rs.SUITE_RTOL)
-    tight_ok, tight = rs.assert_floor(case)
-
-    assert not loose_ok, "1.5e-12 fails the floor precondition"
-    assert max(r["sigma_mu"] for r in loose) > 1e-13
-    assert tight_ok and max(r["sigma_mu"] for r in tight) < 1e-14
-    assert min(r["headroom"] for r in tight) > 1.0, "and supports prec = 1e-14"
-
+# --- the floor tracks the rank cutoff ------------------------------------------------------
+#
+# The two tests that showed a cutoff below machine epsilon barely truncating, and what that costs
+# (`BARELY_TRUNCATES`, `inert_cutoff_costs_spurious_minima`), moved to
+# `notes/evidence_tests/test_floor_evidence.py` in the 2026-10-09 prune: design evidence for
+# `SUITE_RTOL`, and the first counts rounding-level directions, which is a platform pin.
 
 @pytest.mark.slow
 def test_the_floor_is_PROPORTIONAL_to_rtol_above_the_basis_own_floor():
@@ -178,14 +99,6 @@ def test_the_floor_is_PROPORTIONAL_to_rtol_above_the_basis_own_floor():
                for x in truth)
     assert tiny > 0.1 * eps[0] / 100, "saturated, not proportional, at rtol below eps_basis"
     assert tiny < 1e-14, "and the basis's own floor is what remains"
-
-
-def test_the_suite_rtol_is_the_derived_rule_at_the_finest_prec():
-    """Not a fitted constant: `chladni`'s own `sqrt(prec*eps)` evaluated at the tightest
-    precision the sweep has to serve. The rule delivers about the floor each `prec` needs --
-    4e-13 at 1e-8, 2e-15 at 1e-14 -- rather than a constant, which is what it was derived for."""
-    assert rs.SUITE_RTOL == pytest.approx(np.sqrt(rs.FINEST_PREC * np.finfo(float).eps))
-    assert rs.FINEST_PREC == min(__import__("bracket_score").PREC_LADDER)
 
 
 # --- the floor holds across the window, checked from the top down ---------------------------

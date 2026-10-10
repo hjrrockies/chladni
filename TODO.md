@@ -90,10 +90,12 @@ planner.
 * **[next]** **Drive the `ulp_sensitive` tests to 0 of N jitter seeds.** They flip under ulp-level
   perturbation of the pencil (`tests/ulp_jitter.py`; `notes/jitter_sweep.py`, 16 seeds,
   2026-10-09) and across Linux runner CPUs, so per-push CI excludes them (`pyproject.toml`, the
-  marker). Every one is a CONTRACT the solver owes, failing under some seeds: the 125 pi^2 grid's
-  "no silent wrong total" at 1e-10 (2/16), the Moler-Payne coverage test at `tau = 2e-14` (2/16),
-  the starved-basis bound (the item below), and the cluster grid's decline-rate test, now
-  "every cell right, declined or flagged". The margin rule (section 0) is judged by these rates.
+  marker). After the 2026-10-09 prune every one left is a CONTRACT the solver owes, failing under
+  some seeds: the 125 pi^2 grid's "no silent wrong total" at 1e-10 (2/16 before the prune), and the
+  cluster grid's decline-and-flag-rate test (every cell right, declined or flagged; both honest
+  outcomes capped, `MAX_DECLINE_RATE` and `MAX_FLAG_RATE`). The Moler-Payne `tau = 2e-14` case and
+  the starved-basis bound moved to `notes/evidence_tests/test_moler_payne_evidence.py` (prec 1e-12,
+  parked). The margin rule (section 0) is judged by these rates.
   Single cluster-grid cells also flip at ~1/16 (`test_the_cluster_total_GRID`, unmarked). The
   tests that pinned trajectories of the retired grouping cross-check were retired with it
   (2026-10-09); `solve(collapse=True)` and `rule="gap"` are now untested options -- retire them
@@ -115,7 +117,9 @@ planner.
   the former, and `tests/ulp_jitter.py` reproduces every Linux failure on macOS.
 * **[next]** **`basis_sufficiency` decides the DENOMINATOR at a boundary it clears by 6%, and the
   two platforms therefore score different case sets.** macOS calls 10 cells unexercisable where
-  Linux calls 7. Two of the four `test_cluster_totals` skips sit on the precondition boundary:
+  Linux calls 7. (Measured at 1e-14, a rung the suite no longer runs since 2026-10-09; the boundary
+  question stands for the planner's own preconditions.) Two of the four `test_cluster_totals` skips
+  sat on the precondition boundary:
   separation 4.78e-15 against a multiplicity resolution of 5.09e-15, a ratio of **0.94**, and
   2.84e-15 against 4.67e-15. On Linux those are scored instead of skipped.
 
@@ -153,10 +157,11 @@ planner.
 
   The remedy is an objective CONTINUOUS in `lam`, and it exists now as an OPTION:
   `reg="tikhonov_qr"`, a penalty in place of the truncation, so no rank is chosen and none can
-  flip (`notes/smooth_filter.md` section 9). On macOS it replays this refusal deterministically
-  and fixes it -- with the flip injected `refine` refuses exactly as recorded; under the penalty
-  it accepts, 1e-10 from the root -- and solves the cell 4 of 4
-  (`tests/test_regularization.py`, the "2026-09-21 CI refusal" section).
+  flip (`notes/smooth_filter.md` section 9). On macOS it replayed this refusal deterministically
+  and fixed it -- with the flip injected `refine` refused exactly as recorded; under the penalty it
+  accepts, 1e-10 from the root -- and solves the cell 4 of 4 (`tests/test_regularization.py`, the
+  "2026-09-21 CI refusal" section, which since 2026-10-09 keeps only the penalty half: the injected
+  replay pinned refine's reason string and failed 8 of 8 jitter seeds).
 
   **Run on Linux 2026-10-04, and demoted to `[later]` -- PREMATURELY (see the item above, 10-05:
   the suite row failed again on two of three legs).** The default path at `prec >= 1e-8` is
@@ -209,7 +214,8 @@ planner.
   and the jumps land on boundaries the search restarts at.
 
   Two remedies are measured NOT to work and are in section 9. The decline rate is now a scored
-  quantity (`test_cluster_totals.MAX_DECLINE_RATE`, 5.7% over 106 exercisable cells); the "5% the
+  quantity (`test_cluster_totals.MAX_DECLINE_RATE`; 7.6% over 66 exercisable cells at 1e-6..1e-10,
+  2026-10-09, where it was 5.7% over 106 with the 1e-12/1e-14 rungs); the "5% the
   robustness plan set" cited here before came from a plan not in this repository, and the "24 of
   45" beside it contradicted `search.solve`'s own table, where 24 is the number RIGHT.
 * **[next]** Carry the in-loop stride correction past the seed. The bracketing stage now has
@@ -239,7 +245,7 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 * **[next]** Re-measure the three constants that are still inherited: `straddle = 0.02`,
   `margin = 1.5`, `safety = 1.5`. Each carries a `RECALIBRATE` comment in `chladni/mps/bracket.py`
   naming what it was measured on. The others are done: `kappa` re-measured at 2.591 +- 0.226
-  against the study's 2.384 (`tests/test_calibrate.py`), the wall slope at 0.64-1.41 across
+  against the study's 2.384 (`notes/evidence_tests/test_calibrate_evidence.py`), the wall slope at 0.64-1.41 across
   four domains, and the floor set by `sqrt(prec*eps)` landing on the crossover of Betcke's
   relation (`tests/test_floor.py`). `CHLADNI_V1.md` section 8.
 * **[next]** Confirm that stopping at isolation is safe. Section 8 calls it "the change most
@@ -369,6 +375,10 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 * **[later]** A starved basis DROPS the levels it resolves worst, and for the levels that are
   never BRACKETED no diagnostic added to `solve` can catch it -- `notes/landscape_findings.md`
   section 38. RECLASSIFIED to basis planning (section 3) rather than an honesty gap in the search.
+  **Re-measured at 1e-10 (2026-10-09)**: `solver_for(disk, 60, pad=0.35)` returns 2 of 6 levels and
+  `pad=0.45` 5 of 6, no decline, flag or unmet level -- stage 1 never brackets them. At 1e-12 the same
+  losses were caught only incidentally. `tests/test_solve_interval.py` carries three
+  `xfail(strict=False)` tests that document it; the planner and the Weyl audit are the defence.
 
   **The claim was stated too broadly, and one case of it is now caught.** It read "no diagnostic
   added to `solve` can catch it", and the `pad = 0.45` case it cited is catchable, because stage 1
@@ -419,7 +429,7 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   L-shape `pencil` fixture evaluated far from its `lam_ref`, and **about 1e2, i.e. no accuracy
   at all**, on the sector references in `tests/test_tension.py`. Both sites carry an argument
   for why the bound is not their claim, written before the mark that hid it:
-  `tests/test_regularization.py:117` ("accuracy at those lam is not the claim, and is tested in
+  `tests/test_regularization.py` (the module-level filterwarnings, "accuracy at those lam is not the claim, and is tested in
   test_precision.py") and `tests/test_tension.py:43` (with a SINGLE column the common kernel
   scale divides out of the tension). The arguments are plausible and the `< 1e-10` assertions
   do re-check the sector case immediately -- but neither has been verified since the warning

@@ -44,7 +44,12 @@ def run(control, prec, monkeypatch):
     return score_cell(res, TRUTH, prec, Sufficiency(accuracy=True, multiplicity=True))
 
 
-@pytest.mark.parametrize("prec", [1e-8, 1e-14])
+#: Douse's rungs. Until the 2026-10-09 prune the tight end was 1e-14; the cone's 1e-15 floor serves
+#: either, and 1e-10 is the precision douse works at.
+TIGHT = 1e-10
+
+
+@pytest.mark.parametrize("prec", [1e-8, TIGHT])
 @pytest.mark.parametrize("name", sorted(rc.ORACLES))
 def test_every_refine_oracle_passes(name, prec, monkeypatch):
     s = run(rc.ORACLES[name](TRUTH), prec, monkeypatch)
@@ -53,13 +58,25 @@ def test_every_refine_oracle_passes(name, prec, monkeypatch):
 
 @pytest.mark.parametrize("name", sorted(rc.ADVERSARIES))
 def test_every_refine_adversary_fails_by_its_named_verdict(name, monkeypatch):
+    """Each adversary is caught by the criterion named for it. Caught means one of two things.
+    The scorer rejects it under that verdict; or the error is a COUNT error that the solve ITSELF
+    flags (`certified_counts` False), which `prec_score` scores `flagged` with the underlying
+    verdict in its detail. The second is the honest outcome by the 2026-10-09 contract -- right,
+    declined or flagged -- and it is what `rejects_everything` now gets: three bracketed
+    eigenvalues refused, no level returned, and the solve saying its count is uncertain.
+    An accuracy error is never excusable by a flag, so the other three must still fail outright.
+    """
     factory, expected = rc.ADVERSARIES[name]
-    s = run(factory(TRUTH), 1e-14, monkeypatch)
+    s = run(factory(TRUTH), TIGHT, monkeypatch)
+    if s.verdict == "flagged":
+        assert s.detail.startswith(f"{expected}, flagged by the solve"), (
+            f"{name}: flagged, but not for {expected}: {s.detail}")
+        return
     assert not s.acceptable, f"{name} must fail"
     assert s.verdict == expected, f"{name} must be rejected as {expected}, got {s.verdict}"
 
 
 def test_the_real_refiner_passes_on_the_same_cone(monkeypatch):
     """The instrument's premise: on this objective the shipped refiner is an oracle."""
-    s = run(search.refine, 1e-14, monkeypatch)
+    s = run(search.refine, TIGHT, monkeypatch)
     assert s.verdict == "pass", f"{s.verdict} -- {s.detail}"

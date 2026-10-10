@@ -18,8 +18,9 @@ the tests only check that it is not lost.
    lands on a point already sampled, and the loop reported `converged` whatever the width of
    the triple.
 
-Every test here is on the tier-1 cone, milliseconds, except the last, which is the real pencil
-the defect was found on.
+Every test here is on the tier-1 cone, milliseconds, except the pipeline check for phantoms. The
+real-pencil test the defect was found on (prec 1e-12 and 1e-14 on `rect(1, 1/phi)`) left with the
+rungs below 1e-10 on 2026-10-09; the cone tests below still pin the vertex and the width exit.
 """
 from __future__ import annotations
 
@@ -92,13 +93,18 @@ def test_the_vertex_curvature_is_the_leading_coefficient():
 @pytest.mark.parametrize("a, b", SIDES)
 def test_it_reaches_the_floor_from_an_ASYMMETRIC_bracket(lam0, a, b):
     """The case `test_refine.py` never posed: the minimum off-centre, and no hint. Before the fix
-    every one of these read 1e-11 to 4e-10 relative, `converged` and accepted."""
+    every one of these read 1e-11 to 4e-10 relative, `converged` and accepted -- measured at
+    prec 1e-14, where the test was posed until 2026-10-09.
+
+    At douse's 1e-10 the defect's worst cases still fail `_xatol`, and a `converged` claim must
+    still mean a narrow triple. The seeded sweep below covers 1e-14 to 1e-6 on the same cone."""
+    prec = 1e-10
     w = _width(lam0, 1e-3, a, b)
-    r = refine(cone(lam0), lam0 - a * w, lam0 + b * w, prec=1e-14)
+    r = refine(cone(lam0, prec=prec), lam0 - a * w, lam0 + b * w, prec=prec)
     assert r.accepted, r.reason
-    assert _converged_means_narrow(r, 1e-14), (
-        f"converged at width {r.width:.2e} against xatol {_xatol(r.lam, 1e-14):.2e}")
-    assert abs(r.lam - lam0) <= _xatol(lam0, 1e-14), (
+    assert _converged_means_narrow(r, prec), (
+        f"converged at width {r.width:.2e} against xatol {_xatol(r.lam, prec):.2e}")
+    assert abs(r.lam - lam0) <= _xatol(lam0, prec), (
         f"relative error {abs(r.lam - lam0) / lam0:.2e}, reason {r.reason}, {r.steps} steps")
     assert abs(r.lam - lam0) <= r.delta_res, "and the reported bar still contains the error"
 
@@ -160,40 +166,10 @@ def test_on_a_FLAT_bottom_a_narrow_triple_does_not_bound_the_error_and_the_bar_m
         f"error {abs(r.lam - lam0):.2e} outside the bar {r.delta_res:.2e} (width {r.width:.2e})")
 
 
-# --- the real pencil it was found on ------------------------------------------------------------
-
-@pytest.mark.slow
-@pytest.mark.parametrize("prec", [1e-12, 1e-14])
-def test_it_reaches_the_floor_on_a_real_pencil_from_asymmetric_brackets(prec):
-    """`rect(1, 1/phi)`, tension ~1.5e-15 at every true eigenvalue. Asymmetric brackets 1e-3
-    relative, the scale stage 1 hands on, no hint. Before the fix: 1e-12 to 1e-9 relative, all
-    `converged`."""
-    import bracket_score as bs
-    import rect_suite as rs
-
-    (case,) = rs.family_A()
-    obj = bs.objective_for(case, prec)
-    worst = []
-    levels = np.unique(case.truth)
-    for i, lam0 in enumerate(levels):
-        below = lam0 - levels[i - 1] if i else np.inf
-        above = levels[i + 1] - lam0 if i + 1 < levels.size else np.inf
-        for a, b in ((0.37, 1.9), (2.3, 0.21)):
-            obj.reset()
-            # A bracket holds ONE level: each side stays inside a quarter of the gap to the
-            # neighbour, or the fit spans two wells and `no_parabola` is the correct answer.
-            w = min(1e-3 * lam0, 0.25 * below / a, 0.25 * above / b)
-            r = refine(obj, lam0 - a * w, lam0 + b * w, prec=prec)
-            assert r.accepted, f"{lam0}: {r.reason}"
-            assert _converged_means_narrow(r, prec)
-            worst.append(abs(r.lam - lam0) / lam0)
-    assert max(worst) <= max(prec, 1e-14), f"worst relative error {max(worst):.2e}"
-
-
 # --- a bracket already narrower than the tolerance must still be LOCATED -------------------------
 
 @pytest.mark.parametrize("lam0", [49.348022005446786, 493.48022005446785])
-@pytest.mark.parametrize("prec", [1e-8, 1e-12])
+@pytest.mark.parametrize("prec", [1e-8, 1e-10])          # 1e-12 until 2026-10-09
 @pytest.mark.parametrize("frac", [0.2, 0.35, 0.75])
 def test_a_bracket_NARROWER_than_xatol_is_still_located_and_its_bar_holds(lam0, prec, frac):
     """Found porting the multiplicity instrument. A bracket two licences wide is inside `_xatol`
@@ -366,13 +342,17 @@ def test_a_GENUINE_minimum_exactly_AT_the_search_end_handed_in_is_still_accepted
     spaced cluster the third member sits EXACTLY at a search bracket's lower end, the search's
     deepest sample is that end, and sigma there is the floor. "A handed-in point must be strictly
     inside the unwidened bracket" rejected it and the member was dropped -- the cluster slice went
-    from 3 of 3 to 1 of 3. A handed end is a phantom only when the curve keeps FALLING past it."""
+    from 3 of 3 to 1 of 3. A handed end is a phantom only when the curve keeps FALLING past it.
+
+    Found at 1e-14; posed at douse's 1e-10 since 2026-10-09, with the bracket scaled to match
+    (five licences wide, as the 1e-14 one was). Nothing in the rule depends on the rung."""
+    prec = 1e-10
     lam0 = 493.48022005446785
     k0 = np.sqrt(lam0)
     obj = Objective(lambda k: [np.sqrt(1e-30 + (0.27 * (float(k) - k0)) ** 2), 10.0],
-                    1.0, 1e3, variable="k", prec=1e-14)
-    lo, end = lam0 * (1 - 5e-14), lam0            # the true minimum IS the search's upper end
+                    1.0, 1e3, variable="k", prec=prec)
+    lo, end = lam0 * (1 - 5 * prec), lam0         # the true minimum IS the search's upper end
     wlo, whi = lo - 4 * np.spacing(lo), end + 4 * np.spacing(end)
-    r = refine(obj, wlo, whi, prec=1e-14, lam_hint=end, interior=(lo, end))
+    r = refine(obj, wlo, whi, prec=prec, lam_hint=end, interior=(lo, end))
     assert r.accepted, r.reason
     assert abs(r.lam - lam0) <= 4 * np.spacing(lam0)

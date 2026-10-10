@@ -301,9 +301,6 @@ def test_the_basis_is_required_while_planning_is_deferred(poly):
         MPSEigensolver(poly, n_bdry=200, n_int=80)
 
 
-# --- the candidate eigenfunction, on a fixed shared point set -------------------------------
-
-
 # --- the coefficient vector, in the FAMILY's coordinates -------------------------------------
 
 
@@ -341,48 +338,3 @@ def test_family_coef_scatters_the_SHORT_frozen_rank_vector(pencil):
     V = p.basis.values(K, p.int_pts)
     terms = (np.abs(V) @ np.abs(fc)).max()
     assert np.allclose(V @ fc, I[:, :r] @ x, rtol=0, atol=EXACT * terms)
-
-
-def test_the_interior_image_has_the_SAME_LENGTH_at_every_lam(pencil):
-    """The property the whole `modes(x)` seam rests on. The coefficient vector's width moves
-    with `lam` under a threshold rank, so vectors from `coef` cannot be compared across `lam`;
-    `I` has `n_int` ROWS, fixed at construction, so the product always lands on the same
-    points."""
-    us = [pencil.interior_image(lam) for lam in (9.0, LAM, 14.0, 20.0)]
-    assert {u.shape for u in us} == {(pencil.n_int,)}
-    for u in us:
-        assert np.linalg.norm(u) == pytest.approx(1.0, rel=1e-12)
-
-
-def test_the_interior_image_is_the_EQUILIBRATED_product(pencil):
-    """`search.md` section 2.4 clause (1): `u = I(lam) @ coef(lam, 1)`, equilibrated and NOT
-    unscaled -- the unscaled vector does not exist in float64 and the angle does not need it."""
-    _, I = pencil.pencil(LAM)
-    want = I @ pencil.coef(LAM, 1)[:, 0]
-    want = want / np.linalg.norm(want)
-    got = pencil.interior_image(LAM)
-    assert np.allclose(got, want, rtol=0, atol=EXACT)
-
-
-def test_within_ONE_lam_the_interior_images_are_orthogonal_BY_CONSTRUCTION(pencil):
-    """The warning that has to travel with this method. The GSVD gives `A_I x_j = s_j v_j` with
-    `V` orthogonal, so an angle between two directions at the SAME `lam` says nothing about the
-    eigenfunctions -- it is zero because of how the factorization is defined. Phase D's angle is
-    informative only ACROSS roots, and a rule that forgets this measures nothing."""
-    _, I = pencil.pencil(LAM)
-    c = pencil.coef(LAM, 2)
-    u = I @ c[:, 0]
-    v = I @ c[:, 1]
-    cos = abs(float(u @ v) / (np.linalg.norm(u) * np.linalg.norm(v)))
-    assert cos < 1e-10, f"expected orthogonal by construction, got {cos:.2e}"
-
-
-def test_the_interior_image_TURNS_between_distant_lam_and_not_between_near_ones(pencil):
-    """What makes it usable across roots at all: near `lam` give nearly the same function, far
-    ones do not. The thresholds `search.md` sets (0.948 / 0.10) are properties of a well and a
-    gap and are pinned where those exist; this only asserts the direction."""
-    a = pencil.interior_image(LAM)
-    near = abs(float(a @ pencil.interior_image(LAM * (1 + 1e-9))))
-    far = abs(float(a @ pencil.interior_image(LAM * 2.5)))
-    assert near > 0.99, f"a 1e-9 step should not turn the function: {near:.4f}"
-    assert far < near, f"a distant lam should turn it: near {near:.4f}, far {far:.4f}"

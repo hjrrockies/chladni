@@ -15,5 +15,25 @@ records measurements that TODO.md or the notes still cite. `pytest` does not col
 | `test_search_collapse.py` | Phase D (`phase_d="angle"`), parked | TAU_GRAM's populations, the degenerate-eigenspace finding (TODO section 10) |
 | `test_sector_floors.py` | rungs below 1e-10 only; its `sector_suite` was never built | more Fourier-Bessel columns DEGRADE a sector's floor |
 
+## Single tests moved out of live modules (decision 6 and parked rungs)
+
+`<source>_evidence.py` holds design-evidence tests moved verbatim from `tests/<source>.py`: ablations,
+measurements of a premise, and cases below 1e-10.
+
+| file | what moved |
+|---|---|
+| `test_bracket_score_evidence.py` | two baselines fail in opposite ways (V1 metric design) |
+| `test_calibrate_evidence.py` | wall slope scales with length; kappa re-measured at 2.591 (TODO section 2) |
+| `test_floor_evidence.py` | a sub-eps cutoff barely truncates (platform pin); inert cutoff costs spurious minima |
+| `test_hard_roster_evidence.py` | the L-shape's floor spread is a basis artefact |
+| `test_harness_evidence.py` | a symmetrically sampled well (surrogate quirk) |
+| `test_moler_payne_evidence.py` | Moler-Payne at `tau = 2e-14`; the starved-basis bound (TODO: `delta_res` admitted at the edge) |
+| `test_multiplicity_evidence.py` | C2 rejects a double count; the mediocre-basis dangerous regime |
+| `test_precision_ladder_evidence.py` | the ladder report over the full six-rung ladder |
+| `test_refine_evidence.py` | the machine-eps `delta_res` formula ablation |
+| `test_regularization_evidence.py` | the two rank rules agree on a real scan |
+| `test_rule_seam_evidence.py` | the four posterior-penalty tests (parked; `notes/posterior_penalty.md`) |
+| `test_search_evidence.py` | seed underestimates slope; nearer-flank ablation; beats a uniform grid |
+
 The two live tests that were in `test_search_collapse.py` moved to `tests/test_solve.py` (the
 `phase_d` default) and `tests/test_hard_roster.py` (`Case.modes`).

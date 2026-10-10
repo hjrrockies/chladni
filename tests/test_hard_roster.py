@@ -25,7 +25,9 @@ from chladni.mps.refine import refine
 
 pytestmark = [pytest.mark.slow]
 
-PRECS = (1e-4, 1e-8, 1e-14)
+#: Stops at 1e-10, douse's working precision. The 1e-14 rung was dropped in the 2026-10-09 prune
+#: (`notes/test_inventory_2026-10-09.md`, decision 3).
+PRECS = (1e-4, 1e-8, 1e-10)
 
 
 def _skip_unless_supported(case, prec):
@@ -39,18 +41,20 @@ def _skip_unless_supported(case, prec):
 
 def test_each_domain_reports_the_precision_its_basis_supports():
     """The numbers that decide which cells of the sweep exist. Recorded so a basis change has
-    to confront them."""
+    to confront them -- and asserted at the bottom of `PRECS`, because every cell below it is
+    gated by `_skip_unless_supported`: a basis that slipped past 1e-10 would turn the 1e-10
+    cells into silent skips rather than failures.
+
+    Until the 2026-10-09 prune this asserted 1e-14 on all three, and all three reached it (the
+    L-shape at 7.1e-15, eq_tri at 1.5e-15 once its rank cutoff was fixed). The rung is parked;
+    the guard moved to the rung the sweep runs."""
     got = {c.label: hr.finest_prec(c) for c in hr.all_cases()}
     print("\n  finest achievable prec: "
           + ", ".join(f"{k} {v:.2e}" for k, v in got.items()))
-    assert got["L_shape"] < 1e-14, (
-        "pure Fourier-Bessel at the reentrant corner must reach the bottom of the ladder; "
-        f"got {got['L_shape']:.2e}")
-    assert got["disk"] < 1e-14
-    assert got["eq_tri"] < 1e-14, (
-        "plane waves on eq_tri reach the bottom of the ladder once the rank cutoff is fixed; an "
-        f"earlier version of this line asserted the opposite, on a prec-derived rtol. Got "
-        f"{got['eq_tri']:.2e}")
+    for name in ("L_shape", "disk", "eq_tri"):
+        assert got[name] <= min(PRECS), (
+            f"{name}'s basis must serve the bottom of the ladder, {min(PRECS):.0e}; "
+            f"got {got[name]:.2e}")
 
 
 def test_the_l_shape_really_has_a_reentrant_corner():
@@ -159,54 +163,6 @@ def test_degeneracies_on_a_smooth_domain_are_bracketed(name):
     assert mult.max() >= 2, f"{name} should hold a degenerate level"
     s = bs.run_case(v1_brackets(), case, 1e-8, refine=refine)
     assert s.coverage == 1.0 and s.pure
-
-
-# --- the floor spread the rectangle cannot show -------------------------------------------------
-
-def test_the_l_shapes_FLOOR_SPREAD_IS_A_BASIS_ARTIFACT():
-    """The five-order floor spread attributed to this domain does not survive a good basis.
-
-    `notes/landscape_findings.md` section 20.1 measured the L-shape's tension floor at 3.1e-13
-    at `k = 4.443` and 5.5e-08 at `k = 5.649` -- five orders WITHIN one scan -- and explained it
-    structurally: whichever modes VANISH at the reentrant corner are analytic there and resolved
-    almost exactly, while their neighbours carry the `r**(2/3)` singularity. That claim is the
-    stated justification for the per-eigenvalue accuracy clause.
-
-    With the recipe-grade basis -- 80 pure Fourier-Bessel terms at the reentrant corner -- the
-    same levels over `[5, 40]` read:
-
-        lam      9.640   15.197   19.739   29.521   31.913
-        k        3.105    3.898    4.443    5.433    5.649
-        eps    1.9e-15  5.4e-15  2.8e-15  8.2e-15  5.3e-15      spread 4.2x
-
-    **5.3e-15 at `k = 5.649`, against the 5.5e-08 recorded there: seven orders.** So the spread
-    is a property of the BASIS that was used, not of the domain, and it collapses from 1e+05 to
-    4.2 once the basis is adequate. That is the same correction section 27.1 made about
-    `rect81`, where a 9.2e+04 floor spread turned out to be a frozen rank over a wide window.
-
-    What this does and does not touch. It does NOT retire the per-eigenvalue accuracy clause:
-    the floor still varies, just by 4x rather than 1e+05, and a domain whose basis cannot be
-    made adequate everywhere will still show the large spread -- which is exactly why
-    `finest_prec` is measured per case rather than assumed. What it does retire is "the L-shape
-    is the domain where the floor varies five orders", which was a statement about a basis.
-    """
-    case = hr.l_shape_case(a=5.0, b=40.0)
-    p = case.pencil
-    lv = np.unique(case.truth)
-    floors = np.array([p.tension(float(x)) for x in lv])
-    spread = floors.max() / floors.min()
-    print(f"\n  L_shape [5, 40], {p.n_cols} pure-FB columns: "
-          f"floors {['%.1e' % f for f in floors]}, spread {spread:.1f}x, "
-          f"finest_prec {hr.finest_prec(case):.2e}")
-
-    assert floors.max() < 1e-13, (
-        "with a recipe-grade basis every level is resolved to better than 1e-13; the recorded "
-        f"5.5e-08 at k = 5.649 was the basis, not the domain (got {floors.max():.2e})")
-    assert spread < 100.0, f"and the spread is small, not five orders: {spread:.1f}x"
-    # The level the notes single out is present and is well resolved.
-    i = int(np.argmin(np.abs(lv - 31.9126)))
-    assert abs(lv[i] - 31.9126) < 1e-3
-    assert floors[i] < 1e-13, f"k = 5.649 reads {floors[i]:.2e}, not 5.5e-08"
 
 
 @pytest.mark.parametrize("name", ["disk", "eq_tri", "L_shape"])

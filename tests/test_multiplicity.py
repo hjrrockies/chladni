@@ -17,10 +17,6 @@ import level_controls as lc
 import level_score as ls
 import rect_suite as rs
 import chladni.mps.multiplicity as M
-from chladni.geometry import rect
-from chladni.helmholtz import PlaneWave
-from chladni.mps import MPSPencil
-from chladni.reference import rect_eig
 from candidates_v1 import v1_brackets
 
 
@@ -87,18 +83,6 @@ def _flat(values):
     return lambda x: np.asarray(values(x) if callable(values) else values, dtype=float)
 
 
-def test_C1_is_a_RATIO_GAP_and_not_a_threshold():
-    """No absolute level on `sigma` can serve: the floor varies FIVE ORDERS within one scan.
-    So the same shape at two wildly different floors must read the same multiplicity."""
-    for eps in (1e-15, 1e-10, 1e-5):
-        def tens(x, e=eps):
-            deep = [e, 1.3 * e, 1.0, 1.2]          # two branches at the floor, then the gap
-            return np.array(deep) if x == 0.0 else np.array([9 * e, 12 * e, 1.0, 1.2])
-        r = M.multiplicity(tens, 0.0, wide_bracket=(-1.0, 1.0))
-        assert r.mu == 2, f"floor {eps:.0e} read {r.mu}"
-        assert r.gap_ratio > M.GAP_RATIO
-
-
 def test_C2_uses_PROMINENCE_and_not_a_bare_comparison():
     """Roughness minima reach `1 + 2.4e-10` while a true well reaches `plateau/eps`, worst case
     72. A bare `<` counts the first as a branch; `P = 2` does not."""
@@ -119,12 +103,6 @@ def test_C2_takes_the_longest_PREFIX_not_a_walk_down():
         return at if x == 0.0 else out
     r = M.multiplicity(holed, 0.0, wide_bracket=(-1.0, 1.0))
     assert r.mu == 1, f"the block stops at the hole, got {r.mu}"
-
-
-def test_a_single_branch_reads_multiplicity_one():
-    def simple(x):
-        return np.array([1e-15, 1.0, 1.2]) if x == 0.0 else np.array([1e-9, 1.0, 1.2])
-    assert M.multiplicity(simple, 0.0, wide_bracket=(-1.0, 1.0)).mu == 1
 
 
 # --- the wide bracket -------------------------------------------------------------------------
@@ -153,50 +131,87 @@ def test_the_factor_is_above_the_cone_bound():
     assert np.sqrt(1 + M.WIDE_FACTOR**2) > M.PROMINENCE
 
 
+# --- the reach rule, as `solve` runs it -------------------------------------------------------
+#
+# The gap rule's real-pencil reads (`reads_correctly_off_a_smooth_spectrum`, `exact_degeneracy_
+# reads`) and its (C1) unit tests (`C1_is_a_RATIO_GAP`, `single_branch_reads_one`) were retired
+# with `rule="gap"` on 2026-10-09; the starved-basis (C2) measurements moved to
+# `notes/evidence_tests/test_multiplicity_evidence.py`.
+
+#: The reach rule's bounds as `solve` ships them: the cache-slope set, `(0.61, 2.21, 0.61, 2.21)`.
+#: `multiplicity(rule="reach")` without `reach_bounds` falls back to the RETIRED outside-slope set
+#: (`notes/test_inventory_2026-10-09.md`, "two source issues"), so every read here passes these.
+SHIPPED_BOUNDS = (M.COUNT_BELOW_CACHE, M.REJECT_ABOVE_CACHE, M.BIAS_LO_CACHE, M.BIAS_HI_CACHE)
+
+
+def _reach_read(obj, lam, sigma, bracket, prec, counter=None):
+    """Stage 3 as `solve` runs it: the reach rule on the EMITTED bracket, with the wall slope read
+    from the two cached samples nearest the root (`search._slope_from_cache`) and the shipped
+    bounds."""
+    from chladni.mps.search import _samples, _slope_from_cache
+
+    lams, svals = _samples(obj)
+    c = _slope_from_cache(lams, svals, lam, floor=sigma)
+    assert c is not None and c > 0, f"no wall slope in the cache at {lam}"
+    return M.multiplicity(lambda z: obj.tensions(obj.from_lam(z)), lam, bracket=bracket, c=c,
+                          prec=prec, rule="reach", reach_bounds=SHIPPED_BOUNDS, counter=counter)
+
+
+def test_the_shipped_bounds_are_the_cache_slope_set():
+    """The premise of every reach read below, pinned so a recalibration has to confront it."""
+    assert SHIPPED_BOUNDS == (0.61, 2.21, 0.61, 2.21)
+
+
 @pytest.mark.slow
-def test_the_reach_must_clear_the_LOCATED_ROOTS_OWN_ERROR():
+def test_the_reach_read_at_a_LOCATED_ROOT_counts_the_degeneracy():
     """`sigma_1` read at a REPORTED root is not the floor -- the root sits within `prec*lam` of
     the true minimum, so on a well-resolved pencil `sigma` there is orders above `eps`.
 
-    Measured on the disk at `prec = 1e-8`: the reported root sits ~3e-09 from the minimum,
-    `sigma` there is 6.2e-10 against a floor of 7.2e-16, and `2*sigma/c` gives a reach of
-    6.4e-09. The flanks then straddle asymmetrically -- one side moves TOWARD the true minimum
-    and one away -- prominence comes out at 1.45 against `P = 2`, (C2) rejects `sigma_1` itself,
-    and a genuine multiplicity-2 level reads as 1. Two of seven disk levels went that way, and
-    the isolated stage-3 tests could not see it because they read at SAMPLED points.
+    Measured on the disk at `prec = 1e-8` under the retired gap rule: the reported root sat ~3e-09
+    from the minimum, `sigma` there was 6.2e-10 against a floor of 7.2e-16, the wide bracket's
+    flanks straddled asymmetrically, and two of seven double levels read 1. That rule needed
+    `prec` to widen its bracket. The reach rule compares DISTANCE to DISTANCE -- `sigma_j/c`
+    against the emitted bracket -- so the root's own error is inside the comparison rather than
+    corrupting it.
+
+    Re-posed on the reach rule (2026-10-09 prune) as `solve` runs it: stage 1's bracket, the
+    refiner's root, the cache slope, the shipped bounds. Every disk double reached reads 2, or
+    declines; a SILENT under-count is the failure this guards.
     """
     import hard_roster as hr
     from chladni.mps.bracket import bracket_interval
     from chladni.mps.refine import refine
 
+    prec = 1e-8
     case = hr.ROSTER["disk"]()
-    obj = bs.objective_for(case, 1e-8)
-    res = bracket_interval(obj, prec=1e-8)
-    roots = [refine(obj, b.lo, b.hi, prec=1e-8, lam_hint=b.k_hint)
-             for b in res.brackets]
-    roots = [r for r in roots if r.accepted]
+    obj = bs.objective_for(case, prec)
+    res = bracket_interval(obj, prec=prec)
+    located = []
+    for b in res.brackets:
+        lo, hi = obj.in_lam_bracket(b.lo, b.hi)
+        hint = obj.in_lam(b.k_hint) if np.isfinite(b.k_hint) else None
+        r = refine(obj, lo, hi, prec=prec, lam_hint=hint,
+                   interior=(obj.in_lam(b.lo), obj.in_lam(b.hi)))
+        if r.accepted:
+            located.append((r, (lo, hi)))
 
     lv, mult = np.unique(case.truth, return_counts=True)
     doubles = [float(x) for x, m in zip(lv, mult) if m == 2]
     assert doubles, "the disk window must hold a degenerate level"
 
-    xs, _ = obj.samples
-    checked = 0
+    reads = []
     for lam in doubles:
-        near = [r for r in roots if abs(r.lam - lam) / lam < 1e-6]
+        near = [(r, br) for r, br in located if abs(r.lam - lam) / lam < 1e-6]
         if not near:
             continue
-        r = near[0]
-        h = 0.005 * abs(r.lam)
-        c = 0.5 * (obj.tension(r.lam + h) + obj.tension(r.lam - h)) / h
-        naive = M.wide_bracket_for(xs, r.lam, r.sigma, c)
-        aware = M.wide_bracket_for(xs, r.lam, r.sigma, c, prec=1e-8)
-        assert min(r.lam - aware[0], aware[1] - r.lam) > min(r.lam - naive[0],
-                                                             naive[1] - r.lam), (
-            "knowing `prec` must widen the bracket")
-        assert M.multiplicity(obj.tensions, r.lam, wide_bracket=aware, prec=1e-8).mu == 2
-        checked += 1
-    assert checked, "no degenerate level was reached"
+        r, br = min(near, key=lambda p: p[0].sigma)
+        m = _reach_read(obj, r.lam, r.sigma, br, prec)
+        reads.append((lam, m.mu, m.ambiguous))
+    print(f"\n  disk doubles, reach rule at the located root: {reads}")
+    assert reads, "no degenerate level was reached"
+    silent = [x for x in reads if x[1] != 2 and not x[2]]
+    assert not silent, f"read wrong and undeclined: {silent}"
+    assert any(mu == 2 for _, mu, _ in reads), "and the rule does count a double"
 
 
 # --- it spends nothing ------------------------------------------------------------------------
@@ -204,66 +219,26 @@ def test_the_reach_must_clear_the_LOCATED_ROOTS_OWN_ERROR():
 @pytest.mark.slow
 def test_it_spends_NO_EVALUATIONS_on_a_shared_cache():
     """Every point it reads was paid for by the search. A multiplicity stage that quietly cost
-    a GSVD per level would change the cost model it is scored under."""
+    a GSVD per level would change the cost model it is scored under.
+
+    Re-posed on the reach rule (2026-10-09 prune). The reach rule MAY spend two side probes, but
+    only for a branch whose distance lands in the band between "inside whichever side" and
+    "outside both ways". At an exact degeneracy every partner sits at distance ~0 and the next
+    branch far outside, so the read must cost nothing -- and read 3.
+    """
+    prec = 1e-8
     (case,) = [c for c in rs.family_D() if "mult=3" in c.label]
-    obj = bs.objective_for(case, 1e-8)
-    v1_brackets()(obj.tensions, obj.lo, obj.hi, prec=1e-8, objective=obj)
-    xs, _ = obj.samples
-    lam = float(np.unique(case.truth)[0])
-    s1 = obj.tension(lam)
-    h = 0.005 * lam
-    c = 0.5 * (obj.tension(lam + h) + obj.tension(lam - h)) / h
-    wb = M.wide_bracket_for(xs, lam, s1, c)
-
-    before = obj.n_evals
-    r = M.multiplicity(obj.tensions, lam, wide_bracket=wb, counter=obj)
-    assert obj.n_evals == before, f"spent {obj.n_evals - before} evaluations"
-    assert r.evaluations == 0
-    assert r.mu == 3
-
-
-# --- real pencils: the nine-for-nine measurement ------------------------------------------------
-
-def _read_all(case, prec=1e-8):
     obj = bs.objective_for(case, prec)
     v1_brackets()(obj.tensions, obj.lo, obj.hi, prec=prec, objective=obj)
-    xs, _ = obj.samples
-    out = []
-    for lam in np.unique(case.truth):
-        lam = float(lam)
-        s1 = obj.tension(lam)
-        h = 0.005 * abs(lam)
-        c = 0.5 * (obj.tension(lam + h) + obj.tension(lam - h)) / h
-        wb = M.wide_bracket_for(xs, lam, s1, c)
-        mu = M.multiplicity(obj.tensions, lam, wide_bracket=wb).mu if wb else 1
-        out.append((lam, mu))
-    return out
+    lam = float(np.unique(case.truth)[0])
+    s1 = obj.tension(obj.from_lam(lam))
+    bracket = (lam * (1 - prec), lam * (1 + prec))
 
-
-@pytest.mark.slow
-@pytest.mark.parametrize("name", ["disk", "eq_tri"])
-def test_multiplicity_reads_correctly_off_a_smooth_spectrum(name):
-    """The measurement that put this rule in the spec: nine for nine on the disk and the
-    equilateral triangle, covering both mechanisms -- the disk's degeneracies are geometric
-    (sin/cos pairs), the triangle's arithmetic (`m^2+mn+n^2` collisions)."""
-    import hard_roster as hr
-
-    case = hr.ROSTER[name]()
-    got = _read_all(case)
-    s = ls.score_levels(got, case.truth, 1e-8, label=name)
-    assert s.ok, (f"{s.verdict}: separation {s.separation:.2f}, "
-                  f"{s.n_mult_over} over / {s.n_mult_under} under")
-    assert s.n_mult_right == s.n_levels_true
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize("mult", [2, 3, 4])
-def test_an_exact_degeneracy_reads_its_multiplicity(mult):
-    (case,) = [c for c in rs.family_D() if f"mult={mult}" in c.label]
-    got = _read_all(case)
-    s = ls.score_levels(got, case.truth, 1e-8, label=case.label)
-    assert s.ok, f"{s.verdict}: read {got}"
-    assert max(m for _, m in got) == mult
+    before = obj.n_evals
+    r = _reach_read(obj, lam, s1, bracket, prec, counter=obj)
+    assert obj.n_evals == before, f"spent {obj.n_evals - before} evaluations"
+    assert r.evaluations == 0
+    assert r.mu == 3 and not r.ambiguous
 
 
 @pytest.mark.slow
@@ -281,64 +256,3 @@ def test_a_real_degeneracy_is_NOT_bit_identical():
     v = obj.tensions(lam)
     assert v[0] != v[1], "coincident, not identical"
     assert v[1] / v[0] < M.GAP_RATIO, "and within the multiplet by the gap test"
-
-
-# --- (C2) is load-bearing: the starved-basis regime ----------------------------------------------
-
-def _starved(ndir, target_ratio):
-    """A pencil whose basis is deliberately too small, with the pair placed at a chosen
-    multiple of `eps/c`. Section 9.4's construction: it is `eps` that sets `eps/c`, so the
-    dangerous regime is entered by having a mediocre basis."""
-    probe = _starved_pencil(ndir, 1e-9)
-    epsc = probe[2] / probe[3]
-    delta = target_ratio * epsc / (6 * np.pi**2)
-    return _starved_pencil(ndir, delta)
-
-
-def _starved_pencil(ndir, delta):
-    L = 1.0 + delta
-    dom = rect(L, 1.0)
-    la, lb = rect_eig(2, 1, L, 1.0), rect_eig(1, 2, L, 1.0)
-    lam1 = min(la, lb)
-    basis = PlaneWave.uniform(ndir, radius=dom.diameter)
-    # The threshold, explicitly: `eps` here is the BASIS's floor, which a penalty would replace
-    # with its own `tau` (the default at prec 1e-8 since 2026-09-24).
-    p = MPSPencil.from_basis(basis, dom.bdry_quad(3 * ndir),
-                             dom.interior_pts(ndir, rng=np.random.default_rng(0)), reg="svd")
-    eps = p.tension(lam1)
-    h = 0.02 * lam1
-    c = 0.5 * (p.tension(lam1 + h) + p.tension(lam1 - h)) / h
-    return p, lam1, eps, c, abs(lb - la)
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize("ratio", [0.42, 0.86])
-def test_C2_REJECTS_the_double_count_that_C1_alone_makes(ratio):
-    """Section 9.4's measurement, reproduced. Near a simple eigenvalue whose neighbour is
-    unresolved, the second branch is the OTHER cone's descending wall -- small, so it passes any
-    gap test, but monotone rather than minimal. (C1) reads 2 at a SIMPLE eigenvalue and would do
-    so again at its neighbour: the double count. (C2) rejects it."""
-    p, lam1, eps, c, d = _starved(10, ratio)
-    epsc = eps / c
-    assert d / epsc == pytest.approx(ratio, rel=0.5), "the case landed in the ambiguous band"
-
-    reach = M.WIDE_FACTOR * epsc
-    r = M.multiplicity(lambda z: p.tensions(float(z)), lam1,
-                       wide_bracket=(lam1 - reach, lam1 + reach))
-    assert r.c1_read == 2, "the gap test alone says 2"
-    assert r.mu == 1, "and (C2) cuts it to 1"
-    assert r.c2_rejected
-
-
-@pytest.mark.slow
-def test_the_dangerous_regime_is_entered_by_having_a_MEDIOCRE_BASIS():
-    """The consequence larger than the multiplicity rule: it is `eps` that sets `eps/c`, so a
-    black-box solver whose planner produces a merely adequate basis is in the double-counting
-    regime by default. Basis quality and multiplicity correctness are the same problem."""
-    starved = _starved_pencil(10, 3.28e-5)
-    good = _starved_pencil(40, 3.28e-5)
-    ratio_bad = starved[4] / (starved[2] / starved[3])
-    ratio_good = good[4] / (good[2] / good[3])
-    assert ratio_bad < 1.0, f"10 directions: d/(eps/c) = {ratio_bad:.2f}, unresolvable"
-    assert ratio_good > 20.0, f"40 directions: {ratio_good:.3g}, inside the contract"
-    assert good[2] < starved[2] / 1e6, "and the only thing that changed is the floor"
