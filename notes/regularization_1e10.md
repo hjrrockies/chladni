@@ -118,11 +118,17 @@ not measured point by point; that would mean re-solving with `rtol` nudged and c
 
 E2 at 1e-8 (cluster grids, seeds 0..4): both 115/115 right; truncation 2.2 m, penalty 3.7 m.
 
+At **1e-6** (E1 only, `*_e1_prec1e-06.json`): truncation 170 ok / 5 flagged / 0 silent, 41/41
+stable, tightness 3.4, 16.5 m; penalty 162 / 8 / 5, 40/41, 26.4, 29.8 m. Same direction.
+
 On douse shapes **truncation beats the shipped 1e-8 default on every axis**: 8 fewer silent
 losses, 2 more stable cases, a 2x tighter bound, 0.6x the wall time. The penalty was promoted at
 1e-8 on rectangle evidence (a Linux rank-flip refusal it removed; `tests/test_regularization.py`),
-not on this benchmark. Reversing it is a default change with history, so it is left for review
-rather than made here; see TODO.
+not on this benchmark. Reversing it (`PENALTY_PREC_MIN`, so `"auto"` is the threshold at every
+rung) is a default change with history, so it is left for review rather than made here; see TODO.
+What a reversal would have to answer: the rectangle-suite rank-flip refusal the penalty fixed
+(`tests/test_regularization.py`, "2026-09-21 CI refusal") comes back on the default path at 1e-8,
+on Linux.
 
 ## Follow-up 2: the 170 pi^2 stage-1 declines are a suite-pencil artifact
 
