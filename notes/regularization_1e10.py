@@ -194,8 +194,11 @@ BANDS = (0.3, 0.5, 0.8, 1.0, 1.3, 1.6, 2.0, 2.6, 3.0, 4.0, 6.0)
 def e2_run(args):
     seed, variant, N, m, band = args
     import ulp_jitter
+    # Workers are reused across jobs: a seed installed by one job must not leak into the next.
     if seed:
         ulp_jitter.install(seed, 4.0)
+    else:
+        ulp_jitter.uninstall()
     import bracket_score as bs
     import rect_suite as rs
     from basis_sufficiency import sufficient
@@ -223,6 +226,7 @@ def e2_run(args):
     except Exception as e:  # noqa: BLE001
         return dict(seed=seed, variant=variant, N=N, band=band, outcome="crash", detail=repr(e))
     total = sum(x.mult for x in res.levels)
+    m = int(len(case.truth))        # the cluster's own count (170 pi^2 is 8-fold, not the m asked)
     flagged = (not res.diagnostics.certified_counts or res.diagnostics.n_ambiguous > 0
                or any(x.count_uncertain or x.grouping_ambiguous for x in res.levels))
     out = ("declined" if res.declined else "right" if total == m
@@ -259,6 +263,7 @@ def e2(seeds=4, workers=8):
 
 def e3():
     import make_references as MR
+    import scoreboard  # noqa: F401 -- registers basis "D"
     import scipy.linalg as la
     cases = {c["id"]: c for c in MR.load_cases()}
     refs = {r["id"]: r for r in json.load(open(os.path.join(ROOT, "benchmarks", "douse",

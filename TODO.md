@@ -48,11 +48,16 @@ The path, in order:
   the window (`notes/nondeterminism.md`). Needs: a seeded ARPACK start in `fem.py`; a STABILITY
   score (each case on a few jittered windows, how often the count changes); rows at `prec = 1e-10`
   with wall time.
-* **[next]** **Decide the regularization at 1e-10** -- truncation (today's default below 1e-8)
-  against a fixed small `tau` penalty and posterior tensions, on the benchmark: count correctness,
-  stability, bound tightness, wall time. Switch only on a clear win at no more than 2x cost.
-  Existing evidence is rectangle-only and ties at 1e-10 (`notes/smooth_filter.md` section 11,
-  `notes/posterior_penalty.md`).
+* **DECIDED 2026-10-10: keep truncation at 1e-10** (`notes/regularization_1e10.md`). On the douse
+  benchmark (basis D, 5 windows): truncation 161 ok / 1 flagged / 13 silent, stable 36/41;
+  `tikhonov_qr` 152 / 10 / 13, 38/41, 1.8x wall, with NEW silent losses on T1.4-oct and ngon8;
+  posterior 161 / 3 / 11, 35/41, 2.9x wall, new silent windows on T1.4-hex and ngon8. Cluster
+  grids under jitter: truncation 115/115. Neither penalty clears the pre-written rule. Open from
+  it: (a) the penalty's T1.4-oct/ngon8 silent losses matter at 1e-8, where `reg="auto"` still
+  uses it -- check them there; (b) the penalty turns truncation's silent T1.2/ngon12 rows into
+  flags; check whether the margin rule does the same for truncation; (c) E3: the first dropped
+  singular value sits within 10% of the cutoff at 15% of evaluated points, with no outcome yet
+  attributed to it.
 * **[next]** **The margin rule in stage 3**: count at `prec` only where `R` is generous; below it,
   report the level over a neighbourhood chosen at a spectral gap, as `Level.resolution`, and flag
   it. `notes/count_ratio.py` is the first evidence for the threshold (re-run on HEAD first).
@@ -123,8 +128,9 @@ planner.
   cluster (N=170, m=4, band 0.3) at `prec = 1e-10` DECLINED at stage 1 ("the slope estimate never
   settled") under 7 of 8 jitter seeds, and solved unjittered (found adding it as a test cell during
   the prune). At 1e-10 `reg="auto"` resolves to the threshold rank, whose flips make the objective
-  piecewise (the "threshold rank makes the objective piecewise" item above). Direct evidence for
-  section 0's regularization decision at douse's precision.
+  piecewise (the "threshold rank makes the objective piecewise" item above). NOT reproduced by `notes/regularization_1e10.py` e2
+  (2026-10-10): its truncation solves of the same cell were right under seeds 1..4. The two set up
+  the solve differently (the test's default path vs the script's explicit `reg="svd"`); unexplained.
 * **[next]** **`delta_res` is admitted into `Level.bound` at the very edge of `prec`.** `c1c3f53`
   admits `delta_res` when `delta_res <= prec*lam`. On a Linux EPYC 9V45 runner (2026-10-09) the
   starved-basis test's level at 44.948 had `delta_res = 4.445e-11` against `prec*lam = 4.495e-11`
@@ -195,8 +201,7 @@ planner.
   now is a moved bracket end, not a fix, so this item stays until either the penalty's range
   reaches the bottom rung or the planner owns the rank (the item below). Section 12 of
   `notes/smooth_filter.md` added a look past a refused bracket END; it does not cover this case,
-  where the root is inside and the flipped end points away from it. **The regularization decision
-  at 1e-10 (section 0) settles whether this stays open.**
+  where the root is inside and the flipped end points away from it. Truncation stays the 1e-10 default (decided 2026-10-10), so this stays open.
 * **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
   slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
   planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner
