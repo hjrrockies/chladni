@@ -15,8 +15,8 @@ In both cases, we need to integrate the Cauchy data (values, normal and tangent 
    Helmholtz-exact `u`, and the Rellich identity below gives it from boundary data alone.
 
 `notes/moler_payne_vs_tension.md` measured what that would buy, on `rect(1, 1/phi)` where an exact
-interior rule is available as a reference. The shipped default (the penalty at `prec = 1e-8`)
-reports a bar of 1-2e-10 on errors that are really 6e-14 to 2.5e-12: its bar is built from the
+interior rule is available as a reference. The then-shipped default (the penalty at `prec = 1e-8`;
+the threshold since 2026-10-10) reports a bar of 1-2e-10 on errors that are really 6e-14 to 2.5e-12: its bar is built from the
 penalty's floor, and the floor is the penalty term, not the eigenvalue's error. The Moler-Payne
 bound held on all 15 rows, is about 10x tighter than that bar, and is within 2-6x of the true error
 on a penalty with `tau` near rounding. Three consequences, each a reason to build this layer before

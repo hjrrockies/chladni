@@ -55,10 +55,11 @@ The path, in order:
   grids under jitter: truncation 115/115. Neither penalty clears the pre-written rule. Open from
   it: (a) **at 1e-8, where `reg="auto"` ships the penalty, truncation beats it on the benchmark on
   every axis** (169 ok / 1 silent / 39 of 41 stable vs 155 / 9 / 37, 0.6x wall; cluster grids tie at
-  115/115), and at 1e-6 too (0 silent vs 5). Reversing `PENALTY_PREC_MIN` is a default change with history (the Linux rank-flip
-  refusal the penalty removed), so it is for review. That refusal was on the suite pencil
-  (`SUITE_RTOL`); at the rung's own `rtol` the cluster grids are 391/391 at 1e-6 and 1e-8 under 16
-  jitter seeds (2026-10-11); (b) the penalty turns truncation's silent
+  115/115), and at 1e-6 too (0 silent vs 5). REVERSED 2026-10-11 on `phase2/auto-truncation`
+  (`PENALTY_PREC_MIN = inf`: `"auto"` is the threshold at every `prec`). The Linux rank-flip
+  refusal the penalty once removed was on the suite pencil (`SUITE_RTOL`); at the rung's own
+  `rtol` the cluster grids are 391/391 at 1e-6 and 1e-8 under 16 jitter seeds. **Linux CI is the
+  open check;** (b) the penalty turns truncation's silent
   T1.2/ngon12 rows at 1e-10 into flags; check whether the margin rule does the same for
   truncation; (c) E3: the first dropped singular value sits within 10% of the cutoff at 15% of
   evaluated points, with no outcome yet attributed to it.
