@@ -48,11 +48,21 @@ The path, in order:
   the window (`notes/nondeterminism.md`). Needs: a seeded ARPACK start in `fem.py`; a STABILITY
   score (each case on a few jittered windows, how often the count changes); rows at `prec = 1e-10`
   with wall time.
-* **[next]** **Decide the regularization at 1e-10** -- truncation (today's default below 1e-8)
-  against a fixed small `tau` penalty and posterior tensions, on the benchmark: count correctness,
-  stability, bound tightness, wall time. Switch only on a clear win at no more than 2x cost.
-  Existing evidence is rectangle-only and ties at 1e-10 (`notes/smooth_filter.md` section 11,
-  `notes/posterior_penalty.md`).
+* **DECIDED 2026-10-10: keep truncation at 1e-10** (`notes/regularization_1e10.md`). On the douse
+  benchmark (basis D, 5 windows): truncation 161 ok / 1 flagged / 13 silent, stable 36/41;
+  `tikhonov_qr` 152 / 10 / 13, 38/41, 1.8x wall, with NEW silent losses on T1.4-oct and ngon8;
+  posterior 161 / 3 / 11, 35/41, 2.9x wall, new silent windows on T1.4-hex and ngon8. Cluster
+  grids under jitter: truncation 115/115. Neither penalty clears the pre-written rule. Open from
+  it: (a) **at 1e-8, where `reg="auto"` ships the penalty, truncation beats it on the benchmark on
+  every axis** (169 ok / 1 silent / 39 of 41 stable vs 155 / 9 / 37, 0.6x wall; cluster grids tie at
+  115/115), and at 1e-6 too (0 silent vs 5). REVERSED 2026-10-11 on `phase2/auto-truncation`
+  (`PENALTY_PREC_MIN = inf`: `"auto"` is the threshold at every `prec`). The Linux rank-flip
+  refusal the penalty once removed was on the suite pencil (`SUITE_RTOL`); at the rung's own
+  `rtol` the cluster grids are 391/391 at 1e-6 and 1e-8 under 16 jitter seeds. **Linux CI is the
+  open check;** (b) the penalty turns truncation's silent
+  T1.2/ngon12 rows at 1e-10 into flags; check whether the margin rule does the same for
+  truncation; (c) E3: the first dropped singular value sits within 10% of the cutoff at 15% of
+  evaluated points, with no outcome yet attributed to it.
 * **[next]** **The margin rule in stage 3**: count at `prec` only where `R` is generous; below it,
   report the level over a neighbourhood chosen at a spectral gap, as `Level.resolution`, and flag
   it. `notes/count_ratio.py` is the first evidence for the threshold (re-run on HEAD first).
@@ -108,15 +118,27 @@ planner.
   2026-10-09 jitter sweep of the pruned suite (`notes/jitter_sweep_after_prune.json`, seeds 4 and 7):
   `test_refine::test_it_rejects_an_empty_bracket_on_a_real_pencil_cheaply`, re-posed at 1e-10,
   returned `accepted=True, reason='converged'` at `sigma = 0.41` -- an O(1) value nowhere near an
-  eigenvalue -- in [217.25, 217.35]. A spurious root a search would report. Not traced; the test is
-  `ulp_sensitive` meanwhile. Likely `_accept`'s depth test reading a noise-level local minimum on
-  the plateau as a well.
+  eigenvalue -- in [217.25, 217.35]. A spurious root a search would report; the test is
+  `ulp_sensitive` meanwhile. **Traced 2026-10-10:** not a rank flip (the rank stays 57). Under
+  seed 4 the plateau's `sigma_1` near the gap's peak is flat and NOISY -- 0.41075 .. 0.41082 over
+  4e-6 in `lam`, ~2e-4 relative, from a 4-ulp perturbation of a pencil truncated at `rtol` 1.5e-15,
+  which keeps near-null directions the perturbation shakes -- and `refine` found an interior dip
+  below both ends. `_accept` (`mps/refine.py`) has no DEPTH test: "strictly interior and below both
+  ends" is all it asks, so a noise dip on a plateau passes. The same plateau under
+  `reg="tikhonov_qr"` at 1e-10 wanders ~4e-6 relative, 50x quieter. In a real search stage 1
+  rarely brackets a plateau peak, so the exposure is through spurious brackets in noisy regions.
+  A depth criterion (relative to the ends or the plateau) is the obvious fix; it touches a
+  calibrated function, so it waits for the margin rule.
 * **[next]** **At 1e-10 on truncation, ulp noise stops stage 1 from bounding a slope.** The 170 pi^2
   cluster (N=170, m=4, band 0.3) at `prec = 1e-10` DECLINED at stage 1 ("the slope estimate never
   settled") under 7 of 8 jitter seeds, and solved unjittered (found adding it as a test cell during
   the prune). At 1e-10 `reg="auto"` resolves to the threshold rank, whose flips make the objective
-  piecewise (the "threshold rank makes the objective piecewise" item above). Direct evidence for
-  section 0's regularization decision at douse's precision.
+  piecewise (the "threshold rank makes the objective piecewise" item above). EXPLAINED 2026-10-10: a SUITE-PENCIL
+  artifact. The suite truncates at `SUITE_RTOL` ~ 1.5e-15 (sized for 1e-14); the default 1e-10
+  pencil at ~1.5e-13 solves the cell right under 9 of 9 seeds, where the suite pencil declines at 7
+  (`notes/regularization_1e10.md`, follow-up 2). Open: how much of the suite's 1e-10
+  `ulp_sensitive` population is this, and whether the 1e-10 rungs should run on a
+  rung-sized pencil.
 * **[next]** **`delta_res` is admitted into `Level.bound` at the very edge of `prec`.** `c1c3f53`
   admits `delta_res` when `delta_res <= prec*lam`. On a Linux EPYC 9V45 runner (2026-10-09) the
   starved-basis test's level at 44.948 had `delta_res = 4.445e-11` against `prec*lam = 4.495e-11`
@@ -187,8 +209,7 @@ planner.
   now is a moved bracket end, not a fix, so this item stays until either the penalty's range
   reaches the bottom rung or the planner owns the rank (the item below). Section 12 of
   `notes/smooth_filter.md` added a look past a refused bracket END; it does not cover this case,
-  where the root is inside and the flipped end points away from it. **The regularization decision
-  at 1e-10 (section 0) settles whether this stays open.**
+  where the root is inside and the flipped end points away from it. Truncation stays the 1e-10 default (decided 2026-10-10), so this stays open.
 * **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
   slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
   planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner

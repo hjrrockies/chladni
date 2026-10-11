@@ -741,10 +741,15 @@ def test_the_default_is_auto_on_both_the_pencil_and_the_solver():
 
 
 # Rungs below 1e-10 are parked (`notes/test_inventory_2026-10-09.md`, decision 3).
-@pytest.mark.parametrize("prec, want", [(1e-6, "tikhonov_qr"), (1e-8, "tikhonov_qr"),
-                                        (1e-9, "svd"), (1e-10, "svd")])
-def test_auto_is_the_penalty_down_to_1e_8_and_the_threshold_below(pencil, prec, want):
-    """What `reg` reports is the RESOLVED mode, so a caller can see which one it got."""
+@pytest.mark.parametrize("prec", [1e-4, 1e-6, 1e-8, 1e-10])
+def test_auto_is_the_threshold_at_every_rung(pencil, prec):
+    """What `reg` reports is the RESOLVED mode, so a caller can see which one it got.
+
+    `"auto"` was the penalty at `prec >= 1e-8` from 2026-09-24, on rectangle evidence. On the
+    douse benchmark the threshold beat it at 1e-6, 1e-8 and 1e-10 -- fewer silent losses, as
+    stable or more, a tighter bound, less wall time (`notes/regularization_1e10.md`) -- so
+    `"auto"` is the threshold at every rung and a penalty is asked for explicitly."""
+    want = "svd"
     p = MPSPencil(pencil.bdry, pencil.interior, prec=prec)
     assert p.reg == want
 

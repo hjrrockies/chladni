@@ -187,10 +187,12 @@ class MPSPencil(Frozen):
     penalty's floor IS its `tau`, and the truncation's `sqrt(prec * eps)` put it at 2.4 prec by
     1e-14. An explicit penalty outside its measured reach warns (`PrecisionWarning`) and runs.
 
-    **The default, `reg="auto"`, is `"tikhonov_qr"` at `prec >= 1e-8` and the threshold below.**
-    A threshold rank leaves a decision to rounding, and that has already cost a real answer
-    (`notes/session_2026-09-19.md`); below 1e-8 the penalty measured worse than the threshold it
-    would replace. Passing `rtol=`, `rank=` or `lam_ref=` asks for a truncation and gets one.
+    **The default, `reg="auto"`, is the threshold at every `prec`** (since 2026-10-10; it was
+    `"tikhonov_qr"` at `prec >= 1e-8` from 2026-09-24). A threshold rank leaves a decision to
+    rounding (`notes/session_2026-09-19.md`), but on the douse benchmark the penalty lost to it at
+    1e-6, 1e-8 and 1e-10 -- more silent losses, a looser bound, more wall time
+    (`notes/regularization_1e10.md`). Passing `rtol=`, `rank=` or `lam_ref=` asks for a
+    truncation and gets one; a penalty is asked for by name.
     See `_regularize` for both.
     """
 
@@ -213,7 +215,7 @@ class MPSPencil(Frozen):
             raise ValueError(f"unknown regularization {reg!r}; expected one of "
                              f"{_MODES + ('auto',)}")
         if reg == "auto":
-            # A truncation knob asks for a truncation; so does a `prec` below the penalty's range.
+            # The threshold at every `prec` since 2026-10-10 (`PENALTY_PREC_MIN` is infinite).
             explicit = rtol is not None or rank is not None or lam_ref is not None
             reg = ("tikhonov_qr" if not explicit and prec >= PENALTY_PREC_MIN else "svd")
         n_cols = len(bdry.family)

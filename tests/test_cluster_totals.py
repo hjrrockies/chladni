@@ -149,8 +149,8 @@ def test_the_cluster_total_GRID(N, m, prec, band):
 #
 # Every cell above is scored on `rect_suite`'s pencil, fixed at `SUITE_RTOL` -- a threshold, and
 # under `reg="auto"` an explicit `rtol=` stays one. So the grid above never exercises the default:
-# the penalty at `prec >= 1e-8` (`tau = C_PEN * prec`), the threshold at its own derived `rtol`
-# below. These rows rebuild each case's pencil with no regularization knob at all, which is what
+# the threshold at its own derived `rtol`, `sqrt(prec*eps)`, at every `prec` (since 2026-10-10;
+# before it, the penalty at `prec >= 1e-8`). These rows rebuild each case's pencil with no regularization knob at all, which is what
 # `MPSEigensolver` builds. Same cells, same precondition, same scoring.
 
 #: There was once a wrong total on the default pencil, `(50, 1e-12, 0.3)`, 2 of 3 and silent, on

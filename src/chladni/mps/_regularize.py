@@ -58,11 +58,12 @@ block's numerical rank with its own tolerance. So `"tikhonov"` does not remove t
 decision, it moves it inside LAPACK: on `rect(1, 1/phi)`'s 126-column pencil its count of
 finite tensions was 33, 43, 48 at `lam = 35.7, 150, 261`, at every `tau` tried. `"tikhonov_qr"`
 hands LAPACK an orthonormal stack, and its count was `n_int = 63` at all three.
-`"tikhonov_qr"` is the mode to use, and the DEFAULT at `prec >= PENALTY_PREC_MIN` (1e-8), through
-`reg="auto"` on `MPSPencil` and `MPSEigensolver` (decided 2026-09-23, ranged 09-24): a threshold
-rank leaves a decision to rounding, and that has already cost a real answer. On the cluster grid
-it ties the threshold rather than beating it, so what it buys is the removal of that hazard, not a
-better score. Below 1e-8 `"auto"` is the threshold. `"tikhonov"` is kept as the literal
+`"tikhonov_qr"` is the penalty mode to use. It was the DEFAULT at `prec >= 1e-8` through
+`reg="auto"` (decided 2026-09-23, ranged 09-24): a threshold rank leaves a decision to rounding,
+and that has already cost a real answer. On the cluster grid it ties the threshold rather than
+beating it; on the douse benchmark it LOSES to it at 1e-6, 1e-8 and 1e-10 (more silent losses, a
+looser bound, more wall time). Since 2026-10-10 `"auto"` is the threshold at every `prec`
+(`PENALTY_PREC_MIN` below) and the penalty is explicit only. `"tikhonov"` is kept as the literal
 formulation and as an oracle the QR form must agree with; it is not a candidate.
 
 **`tau = C_PEN * prec`, not `sqrt(prec*eps)`.** A penalty's floor is its `tau`, so the truncation's
@@ -122,7 +123,13 @@ C_PEN = 0.02
 #: what shipped before -- (`notes/smooth_filter.md` section 11): 22 of 22 each at 1e-6 and 1e-8,
 #: but at 1e-10 the penalty lost a member where the threshold did not (50*pi^2, band 0.3, flagged).
 #: A feasible `tau` still exists down to 1e-12 (10.6); this is where it is measured NOT WORSE.
-PENALTY_PREC_MIN = 1e-8
+#:
+#: Infinite since 2026-10-10: `"auto"` never chooses the penalty. On the douse benchmark the
+#: threshold beat it at 1e-6, 1e-8 and 1e-10 -- 1 silent loss against 9 at 1e-8, 0 against 5 at
+#: 1e-6, as stable or more, a 2x tighter bound, 0.6x the wall time -- and the cluster grids tied,
+#: 391 of 391 under 16 jitter seeds at 1e-6 and 1e-8 (`notes/regularization_1e10.md`). The
+#: penalty stays available as an explicit `reg=`.
+PENALTY_PREC_MIN = float("inf")
 
 #: The penalty's REACH, the two jaws `tau` must sit between (`notes/penalty_prec_limit_explained.md`
 #: section 6). Above `_REACH_FLOOR * prec` the floor blurs members `prec` apart: members were lost

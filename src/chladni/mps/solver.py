@@ -105,8 +105,8 @@ class MPSEigensolver(Eigensolver, Frozen):
                 raise ValueError("pass either int_pts or n_int")
             int_pts = domain.interior_pts(n_int, rng=np.random.default_rng(rng))
 
-        # `reg="auto"` by default: the penalty at `prec >= 1e-8`, the per-lam threshold below
-        # (`MPSPencil`). Passing rtol=, rank= or lam_ref= asks for a truncation; lam_ref=(lo, hi)
+        # `reg="auto"` by default: the per-lam threshold at every `prec` (`MPSPencil`); the
+        # penalty is `reg="tikhonov_qr"`, explicitly. Passing rtol=, rank= or lam_ref= asks for a truncation; lam_ref=(lo, hi)
         # freezes its rank.
 
         _set(self, _pencil=MPSPencil.from_basis(
