@@ -75,10 +75,11 @@ The path, in order:
   whole-level drop scores >= 0.16 when it lies in the lower two-thirds of the spectrum (all
   caught) and is caught 88% of the time in the top third. Today's worst-cut statistic
   (`weyl_deficit`) overlaps: clean up to 1.04, drops from 0.15. In-sample, so:
-  1. Validate out of sample on the real solves (`notes/admission_bound.json`; the DROP rows of
-     `notes/phase3_rescore.md`), including complete solves with duplicate levels. Choose the
-     threshold generously and the top-of-window headroom. Write `notes/count_audit.md`; review
-     before code.
+  1. DONE 2026-10-11 (`notes/count_audit.md`). On 819 real solves the mean statistic (with the
+     window's top as a cut) caught every drop, 100 of 100, including a drop balanced by a
+     duplicate, with 0 false alarms in 716 complete solves. The worst cut gave 20 false alarms.
+     Recommended: `short` above 0.15, optional `excess` below -0.25, headroom of 2 levels.
+     Unmeasured: spectra deeper than ~26 eigenvalues.
   2. `asymp.count_audit(eigs, domain, *, lo)` -> statistic, threshold, verdict
      (`ok` / `short` / `unaudited`), and step location. PREFIX windows only (`lo` below the
      Faber-Krahn bound on lam_1); any other window is `unaudited` (decided). Wire it in as
