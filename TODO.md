@@ -82,13 +82,16 @@ The path, in order:
      windows only), wired as `diagnostics.count_audit` (`tests/test_count_audit.py`). No false
      alarm on any complete spectrum measured; ~94% of single drops caught on spectra of <= 30
      levels with 4 levels of headroom, and weaker deeper. A backstop: drops stay the planner's.
-  3. `on_shortfall="flag" | "raise"`: `PrecisionShortfall` on an audit `short` or an unmet level,
-     with the first deficient level, its `margin`, the audit and the partial spectrum. Raised
-     AFTER the solve (decided).
-  4. Measure whether early is worth it: the time to the first deficient level against the total
-     (early abort), and whether stage 1's samples predict unmet regions (floor pre-scan). Build
-     only what pays.
-  5. Rescore the benchmark with the audit.
+  3. BUILT 2026-10-11: `on_shortfall="flag" | "raise"` on `search_interval` and
+     `solve_interval`; `PrecisionShortfall` (`tests/test_on_shortfall.py`).
+  4. MEASURED 2026-10-11 (`notes/early_shortfall.md`): the early abort saves a median 57% of a
+     failing solve's wall time, so `"raise"` stops at the first refined level that misses
+     `prec`. The floor pre-scan predicts unmet levels at AUC 0.59, so it is dropped.
+  5. RESCORED 2026-10-11 (`notes/count_audit.md`): 100 of 101 real drops caught, no false alarm
+     in 654 clean solves. The one miss, a drop replaced by a duplicate of its neighbour, is
+     invisible to counting.
+  **Phase 4 done.** Left for the planner: drops on deep spectra (the audit weakens), and the
+  Faber-Krahn prefix condition on elongated shapes (start windows low).
 * **[with the planner]** **Re-base the Phase 3 contract test on a fair basis.**
   `tests/test_level_resolution.py` runs on the stand-in basis D (1.0x lappy's per-corner FB
   sizing), so it partly tests the basis. Move it to planner-built bases, and judge only levels

@@ -15,7 +15,7 @@ Moler-Payne bound from `chladni.integrals` (`docs/design/boundary_integrals.md`)
 `MPSEigensolver.eigenfunctions(level)` returns a level's eigenfunctions L2-orthonormalized through
 the Rellich identity.
 """
-from .._core import PREC, PrecisionWarning
+from .._core import PREC, PrecisionShortfall, PrecisionWarning
 from ..eigensolver import Eigensolver, Spectrum, k_to_lam, lam_to_k, weyl_window
 from ._gsvd import coef, coef_of, tensions, tensions_of
 from ._regularize import RegularizedPencil, choose_rank, regularize
@@ -47,5 +47,5 @@ __all__ = [
     "Objective", "Declined",
     "lam_to_k", "k_to_lam", "weyl_window", "Spectrum",
     "sigma_base", "findability_target", "required_dk", "calibrate_rtol", "RtolCalibration",
-    "PREC", "PrecisionWarning",
+    "PREC", "PrecisionShortfall", "PrecisionWarning",
 ]

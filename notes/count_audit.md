@@ -79,6 +79,29 @@ forms to depth 100.
 - Wired as `diagnostics.count_audit` by `MPSEigensolver.search_interval`, including on an empty
   result. There `b` is a coarse top only.
 
+## On the benchmark, as shipped (step 5, `notes/phase4_rescore.py`)
+
+The shipped audit, called exactly as `search_interval` calls it (the window's top as a coarse
+check only), on the 819 real solves. Labels: the finite-element count, plus Phase 3's DROP rows,
+which also see a drop balanced by a duplicate.
+
+| truth | `ok` | `short` | `unaudited` |
+|---|---|---|---|
+| clean (714) | **654** | **0** | 60 |
+| drop (102) | 2 | **100** | 0 |
+| extra (3) | 3 | 0 | 0 |
+
+- **No false alarm.** The 60 unaudited solves are three elongated cases (T1.1-bad, T1.3,
+  T2.6-N3k4-L8) whose windows start above the Faber-Krahn bound.
+- **The two misses.** One is not a drop: T2.8-N5s2's spectrum matches the reference level for
+  level, and its "drop" label is the biased value (`notes/admission_bound.md`). The other is a
+  limit of any count: T2.2 on basis D at 1e-8 dropped 118.3839 and returned its neighbour
+  118.3881, 3.5e-5 away, TWICE. Every cut matches except the one between them, which does not
+  exist. **A drop replaced by a duplicate of its nearest neighbour is invisible to counting.**
+- **Extras are not caught without a mid-gap top.** The three solves with one eigenvalue too many
+  read `ok`: without the top cut they score above -0.6. `excess` fires on a duplicate low in the
+  spectrum (`tests/test_count_audit.py`); a caller with a mid-gap top sees more.
+
 ## Not established
 
 - Non-polygonal shapes with corners (cut square, mushroom) were not in the wide set.

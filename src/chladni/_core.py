@@ -47,6 +47,28 @@ class PrecisionWarning(UserWarning):
     """
 
 
+class PrecisionShortfall(RuntimeError):
+    """A solve could not deliver what was asked, raised on request (`on_shortfall="raise"`).
+
+    The input to a RE-PLAN, not just the fact of failure (`docs/design/douse_requirements.md`,
+    "Precision per level"): `result` is the whole result as it would have been returned, `level`
+    the first level that fell short (None when no level carries it, as for a dropped
+    eigenvalue), `margin` how far short it was (`Level.margin`; NaN without a level), and
+    `audit` the count audit (`asymp.CountAudit`, or None when none was taken). The retry is a
+    richer basis at the same `prec`, not a tighter request: the same basis fails the same way.
+
+    Raised EARLY -- at the first refined level that misses `prec`, before the window is finished
+    -- `result` and `audit` are None, `level`'s multiplicity has not been read (it says 1), and
+    `located` holds the values refined so far.
+    """
+
+    def __init__(self, message, *, result=None, level=None, margin=float("nan"), audit=None,
+                 located=()):
+        super().__init__(message)
+        self.result, self.level, self.margin, self.audit = result, level, margin, audit
+        self.located = tuple(located)
+
+
 class Frozen:
     """Base for the immutable objects.
 

@@ -982,6 +982,30 @@ def _deep_rejections(refused, levels):
                  if not (np.isfinite(r.sigma) and r.sigma > worst))
 
 
+def _abort_if_unmet(r, bracket, located, prec):
+    """`abort_unmet`: raise `PrecisionShortfall` the moment a refined level misses `prec`.
+
+    "As soon as possible" is after the first deficient level is refined
+    (`docs/design/douse_requirements.md`): a level's floor is known only once it is located.
+    Measured on the douse benchmark at 1e-10 (`notes/early_shortfall.md`), stopping here saves a
+    median 57% of a failing solve's wall time -- the remaining refines, stage 3, and the
+    Moler-Payne certification. The test is the refiner's own `delta_res > prec*lam` (margin < 2),
+    before any Moler-Payne bound: on the 8062 benchmark levels a level with margin < 2 was never
+    certified met afterwards, so stopping on it lost nothing measured."""
+    if not (np.isfinite(r.delta_res) and r.delta_res > prec * abs(r.lam)):
+        return
+    from .._core import PrecisionShortfall
+
+    L = Level(lam=float(r.lam), mult=1, sigma=float(r.sigma), delta_res=float(r.delta_res),
+              bracket=tuple(bracket), prec=prec)
+    raise PrecisionShortfall(
+        f"stopped early: the level refined at lam = {r.lam:.10g} is unmet -- its resolution "
+        f"{r.delta_res:.2e} exceeds prec*lam = {prec * abs(r.lam):.2e} (margin {L.margin:.3g}; "
+        f"2 is needed). {len(located)} value(s) located so far. The retry is a richer basis at "
+        f"the same prec.",
+        level=L, margin=L.margin, located=[float(x.lam) for x, _ in located])
+
+
 def _precision_summary(levels, prec):
     """`(unmet, attained)`: the levels short of `prec`, and the worst attained precision. One
     place, because `MPSEigensolver` recomputes it after attaching Moler-Payne bounds."""
@@ -992,7 +1016,7 @@ def _precision_summary(levels, prec):
 
 
 def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
-          reach_slope="cache", phase_d="distance"):
+          reach_slope="cache", phase_d="distance", abort_unmet=False):
     """Locate every eigenvalue in the objective's window, with its multiplicity.
 
     All three stages share one `Objective`, so the cost is the union of what they sampled and
@@ -1068,6 +1092,8 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
                    interior=(obj.in_lam(b.lo), obj.in_lam(b.hi)))
         if r.accepted:
             located.append((r, (lo, hi)))
+            if abort_unmet:
+                _abort_if_unmet(r, (lo, hi), located, prec)
         else:
             # A bracket the search kept on purpose and the refiner threw away. USUALLY not a
             # failure of either: dropping a doubtful region costs an eigenvalue and keeping one
@@ -1116,6 +1142,8 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
         r_out = refine(obj, a, b, prec=prec, interior=(a, b))
         if r_out.accepted:
             located.append((r_out, (a, b)))
+            if abort_unmet:
+                _abort_if_unmet(r_out, (a, b), located, prec)
             refused.remove(r)               # explained: the end was this find's wall
     rejected = len(refused)
     refine_evals = obj.n_evals - mark

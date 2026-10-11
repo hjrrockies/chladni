@@ -186,6 +186,24 @@ So the per-level rule is a REPORTING change, with no new search machinery:
 * **Dropped from the plan:** the neighbourhood chosen at a spectral gap, the coarser re-count, and
   a T threshold sweep. Nothing measured needs them.
 
+#### Phase 4, built 2026-10-11: the count audit and `on_shortfall`
+
+* `diagnostics.count_audit` (`asymp.count_audit`) is the solve-level check for drops. It
+  compares the mean Weyl deficit over mid-gap cuts against thresholds that clear every complete
+  spectrum measured on 18 shapes. It is a BACKSTOP: ~94% of single drops caught on spectra of
+  <= 30 levels with four levels of headroom, 100 of 101 real drops on the benchmark, and weaker
+  deeper. It covers prefix windows only (`lo` below Faber-Krahn) and Dirichlet boundaries only.
+  `notes/count_audit.md`.
+* `on_shortfall="raise"` raises `PrecisionShortfall`:
+  - at the FIRST refined level that misses `prec`, with that level, its `margin` and the values
+    located so far. This saves a median 57% of a failing solve's time (`notes/early_shortfall.md`);
+  - after the solve for an audit of `short` or `excess`, an uncertified count or a decline, with
+    the whole result and the audit.
+  `"flag"` is the default. A floor pre-scan was measured and dropped: stage 1's samples bound the
+  floor only from above.
+* `Eigenproblem.solve(n)` should audit four levels past `n` and start its window well below
+  Faber-Krahn.
+
 ### Plans: plan once, realize per iterate
 
 `douse` freezes the basis plan at a starting shape so that `n_basis` is constant across iterates
