@@ -24,7 +24,7 @@ import numpy as np
 
 import warnings
 
-from .._core import Frozen, PrecisionWarning, _set, check_prec
+from .._core import Frozen, PrecisionShortfall, PrecisionWarning, _set, check_prec
 from ..eigensolver import Eigensolver, Spectrum, lam_to_k, weyl_window
 from .pencil import MPSPencil
 
@@ -243,7 +243,7 @@ class MPSEigensolver(Eigensolver, Frozen):
                 expected_count=lambda lo, hi: asymp.expected_count(lo, hi, self.domain))
         return cache[key]
 
-    def search_interval(self, a, b, *, prec=None, objective=None):
+    def search_interval(self, a, b, *, prec=None, objective=None, on_shortfall="flag"):
         """Every level in `[a, b]` as a `SolveResult`: the MPS-rich answer, diagnostics and all.
 
         This is the seam to reach for. `solve_interval` narrows what comes back to the
@@ -253,15 +253,44 @@ class MPSEigensolver(Eigensolver, Frozen):
         A decline comes back as a VALUE with `diagnostics.declined` set, per
         `docs/design/candidates.md` section 5. `solve_interval` is where it becomes an error,
         because that is where an empty answer would otherwise be indistinguishable from one.
+
+        `on_shortfall="raise"` raises `PrecisionShortfall` instead of returning a result that
+        fell short. A level that misses `prec` raises EARLY, the moment it is refined, with that
+        level, its `margin` and the values located so far -- a median 57% of a failing solve's
+        wall time saved on the douse benchmark (`notes/early_shortfall.md`). A count audit of
+        `short` or `excess`, an uncertified count, or a decline is known only at the end and
+        raises after the solve, with the whole result and the audit. `"flag"` (the default)
+        reports the same things on the result and returns it.
         """
         from .search import solve
 
+        if on_shortfall not in ("flag", "raise"):
+            raise ValueError(f"on_shortfall must be 'flag' or 'raise', got {on_shortfall!r}")
         prec = self.prec if prec is None else check_prec(prec)
         obj = self.objective(a, b, prec=prec) if objective is None else objective
-        res = solve(obj, prec=prec)
-        if not self.certify or not res.levels:
-            return res
-        return self.certify_levels(res, lam_max=float(b), prec=prec)
+        res = solve(obj, prec=prec, abort_unmet=(on_shortfall == "raise"))
+        if self.certify and res.levels:
+            res = self.certify_levels(res, lam_max=float(b), prec=prec)
+        res = self.audit_count(res, a, b)
+        if on_shortfall == "raise":
+            _raise_on_shortfall(res, a, b, prec)
+        return res
+
+    def audit_count(self, res, a, b):
+        """`res` with `diagnostics.count_audit`: the returned count against Weyl's law
+        (`asymp.count_audit`). The one check for a DROPPED eigenvalue, which no level can flag.
+
+        Free -- it reads values already in hand -- and attached to an EMPTY result too, which is
+        the case it catches most plainly: a basis that found nothing in `[a, b]`. `b` is a coarse
+        top only (an arbitrary `b` need not sit in a gap); a caller that knows its window ends
+        mid-gap calls `asymp.count_audit` with `top_is_gap=True`. Non-prefix windows and
+        non-Dirichlet boundaries come back `"unaudited"`."""
+        from dataclasses import replace
+
+        from ..asymp import count_audit
+
+        audit = count_audit(res.unfolded, self.domain, lo=float(a), top=float(b))
+        return replace(res, diagnostics=replace(res.diagnostics, count_audit=audit))
 
     def certify_levels(self, res, *, lam_max, prec):
         """`res` with a Moler-Payne bound on every level (`chladni.integrals.certify`), and its
@@ -358,7 +387,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         return Eigenfunctions(lam=lam, coef=out, rule=iq, orthonormal=ok, gram_residual=resid,
                               reason=why)
 
-    def solve_interval(self, a, b):
+    def solve_interval(self, a, b, *, on_shortfall="flag"):
         """The `Spectrum` of `[a, b]` -- `Eigensolver`'s contract, over `search_interval`.
 
         Two things are reported rather than swallowed, and they are different in kind.
@@ -378,7 +407,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         is right and the split may be coarser than `prec` asked for. That is the in-scope half
         of Phase D; deciding the grouping needs the interior Gram angle and is not built.
         """
-        res = self.search_interval(a, b)
+        res = self.search_interval(a, b, on_shortfall=on_shortfall)
         d = res.diagnostics
         if d.n_uncertain:
             # An uncertain COUNT raises, where a precision shortfall only warns: the value is
@@ -424,3 +453,32 @@ class MPSEigensolver(Eigensolver, Frozen):
         return (f"MPSEigensolver({self.domain!r}, n_cols={self.n_cols}, "
                 f"n_bdry={self.n_bdry}, n_int={self.n_int}, "
                 f"rank={self.rank if self.rank is not None else 'threshold'})")
+
+
+def _raise_on_shortfall(res, a, b, prec):
+    """`PrecisionShortfall` if `res` fell short of what was asked; nothing otherwise."""
+    d = res.diagnostics
+    audit = d.count_audit
+    short = sorted((L for L in res.levels if L.count_shortfall), key=lambda L: L.lam)
+    reasons = []
+    if short:
+        reasons.append(f"{len(short)} level(s) unmet, the first at lam = {short[0].lam:.10g} "
+                       f"(margin {short[0].margin:.3g}: the request spans that many local floor "
+                       f"scales; 2 is needed)")
+    if audit is not None and audit.verdict in ("short", "excess"):
+        reasons.append(f"the count audit says {audit.verdict} (mean Weyl deficit "
+                       f"{audit.statistic:.3g}, at the window's top {audit.top_deficit:.3g}"
+                       + (f", from lam ~ {audit.step_at:.6g}" if np.isfinite(audit.step_at)
+                          else "") + ")")
+    if d.n_uncertain:
+        reasons.append(f"{d.n_uncertain} count(s) could not be certified")
+    if d.declined:
+        reasons.append(f"the search declined: {d.decline_reason}")
+    if not reasons:
+        return
+    first = short[0] if short else None
+    raise PrecisionShortfall(
+        f"the solve on lam in [{float(a):.6g}, {float(b):.6g}] fell short of prec={prec:.0e}: "
+        + "; ".join(reasons) + ". The retry is a richer basis at the same prec.",
+        result=res, level=first, margin=(first.margin if first is not None else float("nan")),
+        audit=audit)
