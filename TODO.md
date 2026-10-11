@@ -63,11 +63,16 @@ The path, in order:
   T1.2/ngon12 rows at 1e-10 into flags; check whether the margin rule does the same for
   truncation; (c) E3: the first dropped singular value sits within 10% of the cutoff at 15% of
   evaluated points, with no outcome yet attributed to it.
-* **[next]** **The margin rule in stage 3**: count at `prec` only where `R` is generous; below it,
-  report the level over a neighbourhood chosen at a spectral gap, as `Level.resolution`, and flag
-  it. `notes/count_ratio.py` is the first evidence for the threshold (re-run on HEAD first).
-* **[next]** **Report shortfalls early**: a floor pre-scan from the bracketing stage's first
-  samples; `on_shortfall="flag"`, then `"raise"`.
+* **[next]** **Phase 3, designed 2026-10-11** (`docs/design/douse_requirements.md`, "Phase 3"):
+  `Level.margin`, `Level.resolution = max(prec*lam, bound, width)`, and a `count_shortfall` flag
+  on unmet levels that never raises. Reporting only, with no search change. Test-first; then
+  rescore the benchmark with resolution-aware matching.
+* **[next]** **Report shortfalls early**, and the **count audit**: a floor pre-scan from the
+  bracketing stage's first samples; `on_shortfall="flag"`, then `"raise"`. The Weyl `count_audit`
+  is the only check for a whole level dropped (T1.2 and ngon12 on basis D).
+* **[next]** **The planner refuses a basis that fails `basis_sufficiency`'s multiplicity
+  precondition.** It is the guard for a double read as simple on a MET level, which only starved
+  bases showed (the `count_ratio` grid, R up to 18).
 * **[next]** **A minimal planner, then `Eigenproblem`, then the `douse` seam and M5 Hadamard** --
   to the interface in `docs/design/douse_requirements.md`. The planner starts from the recipe the
   references show works (Fourier-Bessel at every corner, lappy's per-corner sizing,

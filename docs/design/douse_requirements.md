@@ -152,6 +152,37 @@ window, so a shortfall is a property of a LEVEL, not of a solve.
   Either the search is fixed so the pair is found every time, or a level whose neighbourhood shows
   unexplained structure is loosened to cover it. Not yet traced.
 
+#### Phase 3, decided 2026-10-11: report, don't re-count
+
+Measured before designing (`notes/margin_rule_offline.md`, with its 2026-10-11 correction): on the
+douse benchmark no level that meets `prec` had a wrong count, on either basis. Every count defect
+was one of four kinds:
+- (a) a whole level dropped, with no solved level near it;
+- (b) a value off by 1e-6 to 1e-4 on an unmet level, whose bound covered the error;
+- (c) the partner of a close pair missed, beside an unmet level;
+- (d) a simple level read as a double inside its own floor, on an unmet level.
+
+So the per-level rule is a REPORTING change, with no new search machinery:
+
+* **`Level.margin = 2 * prec * lam / delta_res`**, the R of the plan, with `delta_res = DELTA_SAFETY *
+  eps/c`. `met` holds exactly when `margin >= 2` (all 8062 benchmark levels).
+* **`Level.resolution = max(prec * lam, bound, width)`**, the neighbourhood the count stands for. On
+  a met level it is the merge licence. On an unmet level it widens to the value's own bar, since a
+  level whose value is known to 1e-4 cannot claim its count at 1e-10. `width` (collapsed groups)
+  is the special case.
+* **`Level.count_shortfall`** is True on an unmet level: the count was read where the floor blurs
+  it, which catches (c) and (d). It is a FLAG and never raises. It does not feed
+  `certified_counts`, which `solve_interval` raises on: about 40% of levels at 1e-10 are unmet
+  even on the references' basis. Diagnostics count it.
+* **Not here, by design:**
+  - (a) is the solve-level `count_audit` (Phase 4).
+  - A double read as simple on a MET level happens only on starved bases (3 cases on the
+    `count_ratio` grid, R up to 18). Catching it would need T ≈ 20, which flags about half the
+    healthy levels on douse shapes. It belongs to the planner, which must not stop at a basis that
+    fails `basis_sufficiency`'s multiplicity precondition (Phase 5).
+* **Dropped from the plan:** the neighbourhood chosen at a spectral gap, the coarser re-count, and
+  a T threshold sweep. Nothing measured needs them.
+
 ### Plans: plan once, realize per iterate
 
 `douse` freezes the basis plan at a starting shape so that `n_basis` is constant across iterates
