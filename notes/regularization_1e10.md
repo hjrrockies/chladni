@@ -130,6 +130,16 @@ What a reversal would have to answer: the rectangle-suite rank-flip refusal the 
 (`tests/test_regularization.py`, "2026-09-21 CI refusal") comes back on the default path at 1e-8,
 on Linux.
 
+**Measured 2026-10-11.** That refusal was on the SUITE pencil (`SUITE_RTOL` ~ 1.5e-15) at 1e-6,
+not on a truncation at the rung's own `rtol`. E2 at 1e-6 and 1e-8 over 16 jitter seeds (0..16):
+- truncation at its default `rtol`: right on 391 of 391 cells × seeds at both rungs, the CI cell
+  (65π², band 2.6) included;
+- the penalty: the same, at 1.7-1.8x the wall time.
+
+So on the jitter harness the reversal's known risk does not reproduce. A Linux run is still the
+real test. The suite-pencil finding (`notes/suite_rtol_sweep.md`) is the likely reason the
+original failure needed `SUITE_RTOL`.
+
 ## Follow-up 2: the 170 pi^2 stage-1 declines are a suite-pencil artifact
 
 TODO recorded the 170 pi^2 cell (m=4, band 0.3) at 1e-10 declining at stage 1 under 7 of 8 jitter
