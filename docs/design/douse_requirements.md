@@ -154,6 +154,9 @@ window, so a shortfall is a property of a LEVEL, not of a solve.
 
 #### Phase 3, decided 2026-10-11: report, don't re-count
 
+*Built 2026-10-11 (`tests/test_level_resolution.py`). The benchmark rescored in
+`notes/phase3_rescore.md`: no count silently wrong; drops (Phase 4) and one value bound remain.*
+
 Measured before designing (`notes/margin_rule_offline.md`, with its 2026-10-11 correction): on the
 douse benchmark no level that meets `prec` had a wrong count, on either basis. Every count defect
 was one of four kinds:

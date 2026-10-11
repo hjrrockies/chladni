@@ -63,10 +63,12 @@ The path, in order:
   T1.2/ngon12 rows at 1e-10 into flags; check whether the margin rule does the same for
   truncation; (c) E3: the first dropped singular value sits within 10% of the cutoff at 15% of
   evaluated points, with no outcome yet attributed to it.
-* **[next]** **Phase 3, designed 2026-10-11** (`docs/design/douse_requirements.md`, "Phase 3"):
-  `Level.margin`, `Level.resolution = max(prec*lam, bound, width)`, and a `count_shortfall` flag
-  on unmet levels that never raises. Reporting only, with no search change. Test-first; then
-  rescore the benchmark with resolution-aware matching.
+* **Phase 3 BUILT 2026-10-11** (branch `phase3/margin-rule`): `Level.margin`, `Level.resolution`,
+  `Level.count_shortfall`, and `SolveDiagnostics.n_count_shortfall`, reporting only
+  (`tests/test_level_resolution.py`). On the benchmark, rescored (`notes/phase3_rescore.md`): no
+  count is silently wrong on bases D or A at 1e-10 or 1e-8. What is left is DROP rows (Phase 4)
+  and one value bound (the `delta_res` item below). The scoreboard itself still matches at 1e-6;
+  move it to resolution groups when it is next regenerated.
 * **[next]** **Report shortfalls early**, and the **count audit**: a floor pre-scan from the
   bracketing stage's first samples; `on_shortfall="flag"`, then `"raise"`. The Weyl `count_audit`
   is the only check for a whole level dropped (T1.2 and ngon12 on basis D).
@@ -150,7 +152,11 @@ planner.
   -- admitted by 1% -- and the reported bound was 700x under the true error (3.1e-8; Moler-Payne,
   3.0e-6, covered it). Admission needs a margin, `delta_res <= prec*lam / M`. On the 715-level grid
   (`notes/bound_coverage.jsonl`) M = 10 leaves 6 levels under-covered instead of 10 and turns 24 met
-  levels unmet; settle M with the margin rule, under jitter.
+  levels unmet; settle M with the margin rule, under jitter. **Second case, on a douse shape and
+  an adequate basis (2026-10-11, `notes/phase3_rescore.md`):** T2.8-N5s2, basis A, 1e-10 -- admitted
+  at margin R = 3.06 (1.5x the edge), 11x under the error that reference run B's Moler-Payne bound
+  pins. It is the only SILENT row left on the benchmark after Phase 3, and it is a value, not a
+  count. **Next after Phase 3.**
 * **[later]** **The Linux count flips at OpenBLAS's default threading are not explained.** The
   2026-10-05 `main` run failed 7 truncation-scored tests on Python 3.11 and 3.13 and passed on 3.12,
   ~4 in 5 at full-suite scope; single-thread OpenBLAS measured 0 in ~39 runs. CI now pins one

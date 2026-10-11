@@ -79,7 +79,7 @@ from .bracket import bracket_interval
 from .multiplicity import (BIAS_HI, BIAS_HI_CACHE, BIAS_LO, BIAS_LO_CACHE, COUNT_BELOW_CACHE,
                            MAX_BRANCHES, PROMINENCE, REJECT_ABOVE_CACHE, SIDE_RATIO,
                            SLOPE_STANDOFF, TAU_GRAM, WIDE_FACTOR, multiplicity, wide_bracket_for)
-from .refine import refine
+from .refine import DELTA_SAFETY, refine
 
 __all__ = ["Level", "SolveResult", "SolveDiagnostics", "solve"]
 
@@ -203,6 +203,51 @@ class Level:
     #: and a Moler-Payne bound is in hand, so `bound` reports that bound alone. Set by
     #: `MPSEigensolver.certify_levels`, which knows `prec`; see `bound` for why.
     delta_res_admitted: bool = True
+    #: The request this level was solved for. Stamped by `solve`; NaN on a Level built
+    #: elsewhere, which then claims no `margin`, no `resolution` and no shortfall.
+    prec: float = float("nan")
+
+    @property
+    def margin(self):
+        """`prec * lam / (eps/c)`, the plan's R: how many local floor scales the request spans.
+
+        `delta_res = DELTA_SAFETY * eps / c` (`mps/refine.py`), so this is
+        `DELTA_SAFETY * prec * lam / delta_res`. `met` held exactly when `margin >= DELTA_SAFETY`
+        on all 8062 levels of the douse benchmark (`notes/margin_rule_offline.md`). It is what a
+        re-plan needs to know: how far short a level fell, not only that it did."""
+        if not (np.isfinite(self.prec) and np.isfinite(self.delta_res) and self.delta_res > 0):
+            return float("nan")
+        return float(DELTA_SAFETY * self.prec * abs(self.lam) / self.delta_res)
+
+    @property
+    def resolution(self):
+        """The neighbourhood this level's COUNT stands for: `mult` eigenvalues within
+        `resolution` of `lam`, whatever their internal splitting.
+
+        `max(prec * lam, bound, width)`. On a met level it is the merge licence, as before. On
+        an unmet level it widens to the value's own bar: a level whose value is known to 1e-4
+        cannot claim its count at 1e-10, and on the douse benchmark every value that fell
+        outside the 1e-6 match window was inside its bar. `width` (a collapsed group's wide
+        bracket) is the special case this generalizes (`docs/design/douse_requirements.md`,
+        "Phase 3")."""
+        if not np.isfinite(self.prec):
+            return float("nan")
+        vals = [self.prec * abs(self.lam), self.width]
+        if np.isfinite(self.bound):
+            vals.append(self.bound)
+        return float(max(vals))
+
+    @property
+    def count_shortfall(self):
+        """True when the count was read where the floor blurs it: the level is unmet.
+
+        A FLAG, never an exception -- unlike `count_uncertain`, it does not reach
+        `certified_counts`, which `solve_interval` raises on. About 40% of levels at 1e-10 are
+        unmet even on the douse references' basis. On the benchmark every count defect beside a
+        returned level sat on an unmet one: a missed partner, or a simple level read double
+        inside its floor. A level that MEETS `prec` with a wrong count was seen only on starved
+        bases, which is the planner's to refuse (`douse_requirements.md`, "Phase 3")."""
+        return bool(np.isfinite(self.prec) and not self.met(self.prec))
 
     @property
     def bound(self):
@@ -326,6 +371,13 @@ class SolveDiagnostics:
         `certified_counts` is that question, and both were True in every wrong cell of
         `tests/test_cluster_totals.py` because only this one was being asked."""
         return not self.unmet
+
+    @property
+    def n_count_shortfall(self):
+        """Levels whose count was read where the floor blurs it (`Level.count_shortfall`). They
+        are the unmet levels: a value short of `prec` means its count is too. Reported, never
+        raised -- it does not enter `certified_counts`."""
+        return len(self.unmet)
 
     @property
     def certified_counts(self):
@@ -1507,6 +1559,8 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     # intermediate set that Phase D or the cross-check may still have folded.
     deep = _deep_rejections(refused, levels)
 
+    # The request, on every level, so `margin`, `resolution` and `count_shortfall` read it.
+    levels = [replace(x, prec=prec) for x in levels]
     unmet, attained = _precision_summary(levels, prec)
 
     return SolveResult(tuple(levels), SolveDiagnostics(
