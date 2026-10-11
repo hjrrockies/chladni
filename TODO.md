@@ -72,6 +72,11 @@ The path, in order:
 * **[next]** **Report shortfalls early**, and the **count audit**: a floor pre-scan from the
   bracketing stage's first samples; `on_shortfall="flag"`, then `"raise"`. The Weyl `count_audit`
   is the only check for a whole level dropped (T1.2 and ngon12 on basis D).
+* **[with the planner]** **Re-base the Phase 3 contract test on a fair basis.**
+  `tests/test_level_resolution.py` runs on the stand-in basis D (1.0x lappy's per-corner FB
+  sizing), so it partly tests the basis. Move it to planner-built bases, and judge only levels
+  the basis demonstrably resolves (Moler-Payne meets `prec`), so that a count error left is the
+  solver's. Even the references' recipe A (1.5x, FB only) misses 1e-10 on ~40% of levels.
 * **[next]** **The planner refuses a basis that fails `basis_sufficiency`'s multiplicity
   precondition.** It is the guard for a double read as simple on a MET level, which only starved
   bases showed (the `count_ratio` grid, R up to 18).
