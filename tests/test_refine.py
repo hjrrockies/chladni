@@ -259,7 +259,7 @@ def test_a_flat_objective_terminates_without_claiming_a_root():
 
 # --- the two seam defects that only composition exposed ---------------------------------------
 
-@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py (2026-10-09 sweep after the prune)
+# was ulp_sensitive; 0 of 32 jitter seeds on the rung-sized suite pencil (2026-10-11)
 @pytest.mark.slow
 def test_a_genuine_minimum_OFF_CENTRE_in_its_bracket_is_accepted():
     """The interior margin was `min(xatol, width/4)`, and the `width/4` term rejected real
@@ -299,7 +299,7 @@ def test_a_genuine_minimum_OFF_CENTRE_in_its_bracket_is_accepted():
 
 # --- tier 2: a real pencil --------------------------------------------------------------------
 
-@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py (2026-10-09 sweep after the prune)
+# was ulp_sensitive; 0 of 32 jitter seeds on the rung-sized suite pencil (2026-10-11)
 @pytest.mark.slow
 def test_it_rejects_an_empty_bracket_on_a_real_pencil_cheaply():
     """The other half of the cost model: 2 to 7 evaluations to REJECT. A search that returns a

@@ -236,7 +236,7 @@ MAX_DECLINE_RATE = 0.15
 MAX_FLAG_RATE = 0.10
 
 
-@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py and across CPUs; notes/jitter_sweep.py
+# was ulp_sensitive; 0 of 32 jitter seeds on the rung-sized suite pencil (2026-10-11)
 @pytest.mark.robust
 def test_the_DECLINE_RATE_is_quoted_beside_the_pass_rate():
     # (and the FLAG rate, since 2026-10-09: both honest outcomes are capped, so neither can

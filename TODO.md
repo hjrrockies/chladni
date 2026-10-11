@@ -97,23 +97,15 @@ planner.
   a member; count 3 locates one member twice, 4e-12 apart, and the dedup keeps both. At `prec =
   1e-12` the pair sits at `R = 4.1`, inside the margin rule's regime (section 0), which may absorb
   it -- trace stages 1-2 only if it does not.
-* **[next]** **Drive the `ulp_sensitive` tests to 0 of N jitter seeds.** They flip under ulp-level
-  perturbation of the pencil (`tests/ulp_jitter.py`; `notes/jitter_sweep.py`, 16 seeds,
-  2026-10-09) and across Linux runner CPUs, so per-push CI excludes them (`pyproject.toml`, the
-  marker). After the 2026-10-09 prune every one left is a CONTRACT the solver owes, failing under
-  some seeds -- 15 cases; the sweep after the prune (`notes/jitter_sweep_after_prune.json`, 8 seeds)
-  found real flips fall from ~38 to ~22 and quarantined the rest cell by cell: the rule-seam cells
-  at 65 pi^2 band 0.3 (1/8 each), three `test_solve_interval` checks, two `test_refine` cases (one
-  the gap-root item below), the exact-triple pipeline (1/8), the 125 pi^2 grid's "no silent wrong
-  total" at 1e-10, and the
-  cluster grid's decline-and-flag-rate test (every cell right, declined or flagged; both honest
-  outcomes capped, `MAX_DECLINE_RATE` and `MAX_FLAG_RATE`). The Moler-Payne `tau = 2e-14` case and
-  the starved-basis bound moved to `notes/evidence_tests/test_moler_payne_evidence.py` (prec 1e-12,
-  parked). The margin rule (section 0) is judged by these rates.
-  Single cluster-grid cells also flip at ~1/16 (`test_the_cluster_total_GRID`, unmarked). The
-  tests that pinned trajectories of the retired grouping cross-check were retired with it
-  (2026-10-09); `solve(collapse=True)` and `rule="gap"` are now untested options -- retire them
-  or re-test them.
+* **[next]** **Drive the `ulp_sensitive` tests to 0 of N jitter seeds -- one left.** The suite
+  pencil is cut for 1e-10 since 2026-10-11 (`rect_suite.FINEST_PREC`; it was 1e-14), and 15 of the
+  16 quarantined tests then passed 32 of 32 jitter seeds and went back into per-push CI
+  (`notes/suite_rtol_sweep.md`, `notes/jitter_sweep_rung_pencil.json`). Their flips came from
+  near-null directions a `sqrt(1e-14 eps)` cut keeps. Left: `test_floor_multiplicity`'s noisy-floor
+  case [A], which builds its own pencil (1 of 32 seeds, and Linux Zen 3 returned 916.08 x2).
+  Not re-measured on the new pencil: single cluster-grid cells, which flipped at ~1/16 on the old
+  one (`test_the_cluster_total_GRID`, unmarked). `solve(collapse=True)` and `rule="gap"` are
+  untested options since 2026-10-09 -- retire them or re-test them.
 * **[next]** **Under ulp noise, `refine` accepts a bracket in a spectral GAP as a root.** The
   2026-10-09 jitter sweep of the pruned suite (`notes/jitter_sweep_after_prune.json`, seeds 4 and 7):
   `test_refine::test_it_rejects_an_empty_bracket_on_a_real_pencil_cheaply`, re-posed at 1e-10,
@@ -129,16 +121,8 @@ planner.
   rarely brackets a plateau peak, so the exposure is through spurious brackets in noisy regions.
   A depth criterion (relative to the ends or the plateau) is the obvious fix; it touches a
   calibrated function, so it waits for the margin rule.
-* **[next]** **At 1e-10 on truncation, ulp noise stops stage 1 from bounding a slope.** The 170 pi^2
-  cluster (N=170, m=4, band 0.3) at `prec = 1e-10` DECLINED at stage 1 ("the slope estimate never
-  settled") under 7 of 8 jitter seeds, and solved unjittered (found adding it as a test cell during
-  the prune). At 1e-10 `reg="auto"` resolves to the threshold rank, whose flips make the objective
-  piecewise (the "threshold rank makes the objective piecewise" item above). EXPLAINED 2026-10-10: a SUITE-PENCIL
-  artifact. The suite truncates at `SUITE_RTOL` ~ 1.5e-15 (sized for 1e-14); the default 1e-10
-  pencil at ~1.5e-13 solves the cell right under 9 of 9 seeds, where the suite pencil declines at 7
-  (`notes/regularization_1e10.md`, follow-up 2). Open: how much of the suite's 1e-10
-  `ulp_sensitive` population is this, and whether the 1e-10 rungs should run on a
-  rung-sized pencil.
+  On the rung-sized suite pencil (2026-10-11) the test passes 32 of 32 seeds: the noise was the
+  1e-14 cut's. The missing depth test is still a defect, with less exposure at the default cut.
 * **[next]** **`delta_res` is admitted into `Level.bound` at the very edge of `prec`.** `c1c3f53`
   admits `delta_res` when `delta_res <= prec*lam`. On a Linux EPYC 9V45 runner (2026-10-09) the
   starved-basis test's level at 44.948 had `delta_res = 4.445e-11` against `prec*lam = 4.495e-11`
@@ -487,9 +471,10 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   columns), which is the case that made the old `log_scale` guard fire on healthy setups.
 * **[next]** `_UNSAFE_RATIO` and `SUITE_RTOL` disagree, and neither cites the other.
   `src/chladni/mps/pencil.py:68` calls a cut below `1e-13` unsafe, measured on the disk;
-  `tests/rect_suite.py:113` sets the suite's threshold rank to `sqrt(FINEST_PREC*eps)` = 1.5e-15,
-  so every threshold-rank pencil in the suite cuts two decades BELOW the level the frozen-rank
-  guard calls unsafe -- deliberately, and measured to work (0 spurious minima in `[5, 35]` on
+  `tests/rect_suite.py` set the suite's threshold rank to `sqrt(FINEST_PREC*eps)` = 1.5e-15 until
+  2026-10-11 (1.5e-13 since, cut for 1e-10; the evidence modules keep 1.5e-15), so every
+  threshold-rank pencil in the suite cut two decades BELOW the level the frozen-rank guard calls
+  unsafe -- deliberately, and measured to work (0 spurious minima in `[5, 35]` on
   `family_A`, `sigma_1` of 8.6e-16 to 1.5e-15 at all eleven true eigenvalues). Either the
   constant is domain-dependent, or the threshold path is safe at cuts the frozen path is not,
   and which it is has not been measured. Related: `_warn_if_unsafe` fires only for a FROZEN

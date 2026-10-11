@@ -169,7 +169,7 @@ def test_degeneracies_on_a_smooth_domain_are_bracketed(name):
 def test_every_roster_pencil_carries_the_SUITE_rtol(name):
     """The rank cutoff must not move with the request. Built at the default `prec` the cutoff was
     `sqrt(1e-8 * eps) = 1.5e-12`, which held eq_tri's floor at 2.4e-12 and made its 1e-14 cells
-    unexercisable; at `SUITE_RTOL` the same 90 columns reach 1.3e-15."""
+    unexercisable; at `SUITE_RTOL` (then cut for 1e-14) the same 90 columns reached 1.3e-15."""
     from rect_suite import SUITE_RTOL
 
     case = hr.ROSTER[name]()

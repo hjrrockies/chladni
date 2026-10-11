@@ -40,7 +40,8 @@ tabulated multi-corner domains cannot.
 **Every pencil here carries `SUITE_RTOL`.** Built at the default `prec` the rank cutoff was
 `sqrt(1e-8 * eps) = 1.5e-12`, which moved with the request and held eq_tri at 2.4e-12 -- read
 for a long time as "plane waves stop short on eq_tri". They do not: the same 90 columns at
-`SUITE_RTOL` reach 1.3e-15. The disk and the L-shape did not move, because their bases were
+`SUITE_RTOL` reached 1.3e-15 while it was cut for 1e-14 (it is cut for 1e-10 since 2026-10-11,
+`rect_suite.FINEST_PREC`). The disk and the L-shape did not move, because their bases were
 already the binding term.
 
 The roster is the L-shape plus the two smooth domains, and every case carries the finest `prec`

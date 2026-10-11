@@ -762,7 +762,7 @@ def test_auto_with_a_truncation_knob_is_the_threshold(pencil, knob):
     assert MPSPencil(pencil.bdry, pencil.interior, prec=1e-8, **knob).reg == "svd"
 
 
-@pytest.mark.parametrize("reg", PENALTY + ["auto"])
+@pytest.mark.parametrize("reg", PENALTY)          # "auto" is never a penalty since 2026-10-10
 @pytest.mark.parametrize("prec", [1e-6, 1e-8, 1e-10])
 def test_a_penalty_s_default_tau_is_proportional_to_prec(pencil, reg, prec):
     """`tau = C_PEN * prec`, absolute on the equilibrated pencil. `C_PEN` is 0.02 as shipped,
@@ -770,8 +770,6 @@ def test_a_penalty_s_default_tau_is_proportional_to_prec(pencil, reg, prec):
     contract is the proportionality: the constant is a calibration and is not pinned here. The
     shipped rule it replaces, `sqrt(prec*eps)`, was a truncation's, and put the floor at 2.4
     prec by 1e-14 (10.4)."""
-    if reg == "auto" and prec < regmod.PENALTY_PREC_MIN:
-        pytest.skip("auto is the threshold here")
     p = MPSPencil(pencil.bdry, pencil.interior, reg=reg, prec=prec)
     assert p.regularized(LAM).tau == pytest.approx(regmod.C_PEN * prec, rel=1e-12)
 
@@ -833,10 +831,16 @@ def test_the_qr_penalty_never_changes_rank():
 def _flicker_point():
     """A plateau point on `rect(1, 1/phi)` where the threshold rank flips between 39 and 40 at
     every scale -- `notes/smooth_filter.md` section 3: 63-88 changes per 201 samples whether
-    the interval is 2e-2 or 2e-10 wide."""
+    the interval is 2e-2 or 2e-10 wide.
+
+    Found on the suite pencil cut at `sqrt(1e-14 eps)`, which is pinned here: the suite's own
+    threshold is cut for 1e-10 since 2026-10-11, and the rank does not flicker at this point
+    there (one reason the cut moved, `notes/suite_rtol_sweep.md`)."""
     import rect_suite as rs
 
-    return rs.family_A()[0].pencil, 38.261708924
+    p = rs.family_A()[0].pencil
+    rtol_1e14 = float(np.sqrt(1e-14 * np.finfo(float).eps))
+    return MPSPencil(p.bdry, p.interior, reg="svd", rtol=rtol_1e14), 38.261708924
 
 
 def _spread(f, centre, w, n=41):
