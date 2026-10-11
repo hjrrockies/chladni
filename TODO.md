@@ -75,15 +75,13 @@ The path, in order:
   whole-level drop scores >= 0.16 when it lies in the lower two-thirds of the spectrum (all
   caught) and is caught 88% of the time in the top third. Today's worst-cut statistic
   (`weyl_deficit`) overlaps: clean up to 1.04, drops from 0.15. In-sample, so:
-  1. DONE 2026-10-11 (`notes/count_audit.md`). On 819 real solves the mean statistic (with the
-     window's top as a cut) caught every drop, 100 of 100, including a drop balanced by a
-     duplicate, with 0 false alarms in 716 complete solves. The worst cut gave 20 false alarms.
-     Recommended: `short` above 0.15, optional `excess` below -0.25, headroom of 2 levels.
-     Unmeasured: spectra deeper than ~26 eigenvalues.
-  2. `asymp.count_audit(eigs, domain, *, lo)` -> statistic, threshold, verdict
-     (`ok` / `short` / `unaudited`), and step location. PREFIX windows only (`lo` below the
-     Faber-Krahn bound on lam_1); any other window is `unaudited` (decided). Wire it in as
-     `diagnostics.count_audit`. Test-first.
+  1. DONE 2026-10-11 (`notes/count_audit.md`). Validated on the douse benchmark (100 of 100
+     drops, no false alarm), then widened to 18 shapes with known spectra. That widening found
+     the douse-only threshold too tight: a 5:1 rectangle and the L-shape alarm when complete.
+  2. BUILT 2026-10-11: `asymp.count_audit` (`short` above 0.25, `excess` below -0.6; prefix
+     windows only), wired as `diagnostics.count_audit` (`tests/test_count_audit.py`). No false
+     alarm on any complete spectrum measured; ~94% of single drops caught on spectra of <= 30
+     levels with 4 levels of headroom, and weaker deeper. A backstop: drops stay the planner's.
   3. `on_shortfall="flag" | "raise"`: `PrecisionShortfall` on an audit `short` or an unmet level,
      with the first deficient level, its `margin`, the audit and the partial spectrum. Raised
      AFTER the solve (decided).

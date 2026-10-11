@@ -364,6 +364,10 @@ class SolveDiagnostics:
     prec_requested: float = float("nan")
     attained_prec: float = float("nan")   # the worst over levels
     unmet: tuple = ()                     # levels whose accuracy fell short, if any
+    #: The returned count against Weyl's law (`asymp.CountAudit`), attached by
+    #: `MPSEigensolver.search_interval`, which holds the domain; `solve` sees only an objective
+    #: and leaves it None. A flag, never an exception: it does not enter `certified_counts`.
+    count_audit: object = None
 
     @property
     def met_request(self):

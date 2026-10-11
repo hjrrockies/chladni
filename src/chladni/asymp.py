@@ -7,11 +7,14 @@ Like `bounds`, each function takes either a `Domain` or the raw scalars.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 from scipy.optimize import brentq
 
 __all__ = ["weyl_count", "weyl_est", "weyl_count_poly", "weyl_est_poly", "weyl_deficit",
-           "weyl_count_check", "corner_correction", "expected_count"]
+           "weyl_count_check", "corner_correction", "expected_count", "count_audit",
+           "CountAudit"]
 
 
 def _resolve(domain, area, perim, bc_type, need_perim=True):
@@ -181,3 +184,102 @@ def weyl_deficit(eigs, domain=None, *, area=None, perim=None, angles=None, bc_ty
                                    bc_type=bc_type)
         worst = max(worst, float(expected) - float(np.sum(e <= cut)))
     return worst
+
+
+#: `count_audit`'s thresholds on the MEAN deficit (`notes/count_audit.md`). On the douse benchmark
+#: (819 real solves, FEM-labelled) complete spectra scored [-0.10, 0.04] and every drop >= 0.47.
+#: Across all 18 shapes with known spectra, complete prefixes reach +0.23 (a 5:1 rectangle) and
+#: -0.48 (an 8-gon cut at 6 levels), so these clear every complete spectrum measured. The price:
+#: on spectra of <= 30 levels, a single drop with 4 levels above it is caught ~94% of the time.
+AUDIT_SHORT = 0.25
+AUDIT_EXCESS = -0.6
+#: The window's top when it is NOT known to sit in a gap: a single cut's deficit is not averaged,
+#: and on complete reference spectra it spans [-1.57, 1.84] (Weyl's remainder, about one
+#: eigenvalue, plus up to half from where the top falls in its gap). So it only catches a window
+#: that came back several eigenvalues short -- a basis that found nothing at all.
+AUDIT_TOP_COARSE = 2.5
+#: Values this close are one level, as in `weyl_deficit`.
+_AUDIT_RTOL = 1e-6
+
+
+@dataclass(frozen=True)
+class CountAudit:
+    """A spectrum's count against Weyl's corner-corrected law. See `count_audit`."""
+    verdict: str                          # "ok", "short", "excess" or "unaudited"
+    statistic: float = float("nan")       # mean deficit over the mid-gap cuts
+    n_cuts: int = 0
+    top_deficit: float = float("nan")     # at the window's top, when one was given
+    step_at: float = float("nan")         # the first cut where the deficit reaches +-1/2
+    reason: str = ""
+
+    @property
+    def ok(self):
+        return self.verdict == "ok"
+
+
+def count_audit(eigs, domain, *, lo, top=None, top_is_gap=False, short=AUDIT_SHORT,
+                excess=AUDIT_EXCESS):
+    """Does a PREFIX of the spectrum have the right number of eigenvalues? A `CountAudit`.
+
+    The one check for a DROPPED eigenvalue: no returned level exists to carry a flag for it.
+    At every mid-gap cut between returned levels, `weyl_count_poly(cut) - #(eigs <= cut)`; the
+    verdict reads the MEAN over the cuts. Validated in `notes/count_audit.md` on 819 real solves
+    labelled by finite-element counts: 100 of 100 drops caught, one of them balanced by a
+    duplicate so that the total was right, and no false alarm in 716 complete solves. The
+    WORST cut (`weyl_deficit`, douse's guard) gave 20 false alarms: Weyl's remainder swings
+    about half an eigenvalue cut to cut, while a drop moves EVERY cut above it.
+
+    * `"short"` when the mean exceeds `short`, `"excess"` when it falls below `excess` (an
+      eigenvalue returned twice). `step_at` is the first cut where the deficit reaches one
+      half, which says where to look and certifies nothing.
+    * `top` is the window's upper end. With `top_is_gap=True` (it is known to sit in a gap) it
+      joins the cuts, as calibrated. Otherwise it is a coarse check only, `+-AUDIT_TOP_COARSE`,
+      which catches a window that came back nearly empty.
+    * `"unaudited"`, with `reason`, when the count cannot be compared:
+      - `lo` is not below the Faber-Krahn bound on `lam_1` (Weyl counts from zero);
+      - the boundary is not all Dirichlet (the corner sum and the calibration are Dirichlet's);
+      - there is nothing to cut.
+    * **It is a backstop, not a certificate.** On spectra of <= 30 levels it catches ~94% of
+      single drops with four levels of headroom above them (all 100 on the douse benchmark), and
+      none of 320 complete spectra over 18 shapes alarms. It weakens with depth: a drop with `h`
+      levels above it moves the mean by about `h/n`, while Weyl's remainder wanders by about two
+      eigenvalues over the last cuts of a deep spectrum, so no local reading recovers it. Audit
+      four levels past what you consume.
+    """
+    from .bounds import faber_krahn
+
+    if domain.bc_type != "dir":
+        return CountAudit("unaudited", reason=f"the boundary is {domain.bc_type!r}; the corner "
+                          f"sum and the calibration are Dirichlet's")
+    if not lo < faber_krahn(domain):
+        return CountAudit("unaudited", reason=f"not a prefix window: lo = {lo:.6g} is not below "
+                          f"the Faber-Krahn bound on lam_1, so the count below it is unknown")
+    e = np.sort(np.asarray(eigs, dtype=float).ravel())
+    levels = []
+    for x in e:
+        if not levels or abs(x - levels[-1]) > _AUDIT_RTOL * max(abs(x), 1.0):
+            levels.append(x)
+    cuts = [0.5 * (a + b) for a, b in zip(levels, levels[1:])]
+    if top is not None and top_is_gap:
+        cuts.append(float(top))
+
+    def deficit(c):
+        return float(weyl_count_poly(c, domain)) - float(np.sum(e <= c))
+
+    d = np.array([deficit(c) for c in cuts])
+    top_d = deficit(float(top)) if top is not None else float("nan")
+    if d.size == 0 and top is None:
+        return CountAudit("unaudited", reason="fewer than two distinct levels and no top: "
+                          "nothing to cut")
+    stat = float(d.mean()) if d.size else float("nan")
+    coarse = top is not None and not top_is_gap
+    if (d.size and stat > short) or (coarse and top_d > AUDIT_TOP_COARSE):
+        verdict = "short"
+        hit = np.flatnonzero(d >= 0.5)
+    elif (d.size and stat < excess) or (coarse and top_d < -AUDIT_TOP_COARSE):
+        verdict = "excess"
+        hit = np.flatnonzero(d <= -0.5)
+    else:
+        verdict, hit = "ok", np.array([], int)
+    step = float(cuts[hit[0]]) if hit.size else float("nan")
+    return CountAudit(verdict, stat, int(d.size), top_d, step)

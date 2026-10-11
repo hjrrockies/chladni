@@ -259,9 +259,25 @@ class MPSEigensolver(Eigensolver, Frozen):
         prec = self.prec if prec is None else check_prec(prec)
         obj = self.objective(a, b, prec=prec) if objective is None else objective
         res = solve(obj, prec=prec)
-        if not self.certify or not res.levels:
-            return res
-        return self.certify_levels(res, lam_max=float(b), prec=prec)
+        if self.certify and res.levels:
+            res = self.certify_levels(res, lam_max=float(b), prec=prec)
+        return self.audit_count(res, a, b)
+
+    def audit_count(self, res, a, b):
+        """`res` with `diagnostics.count_audit`: the returned count against Weyl's law
+        (`asymp.count_audit`). The one check for a DROPPED eigenvalue, which no level can flag.
+
+        Free -- it reads values already in hand -- and attached to an EMPTY result too, which is
+        the case it catches most plainly: a basis that found nothing in `[a, b]`. `b` is a coarse
+        top only (an arbitrary `b` need not sit in a gap); a caller that knows its window ends
+        mid-gap calls `asymp.count_audit` with `top_is_gap=True`. Non-prefix windows and
+        non-Dirichlet boundaries come back `"unaudited"`."""
+        from dataclasses import replace
+
+        from ..asymp import count_audit
+
+        audit = count_audit(res.unfolded, self.domain, lo=float(a), top=float(b))
+        return replace(res, diagnostics=replace(res.diagnostics, count_audit=audit))
 
     def certify_levels(self, res, *, lam_max, prec):
         """`res` with a Moler-Payne bound on every level (`chladni.integrals.certify`), and its
