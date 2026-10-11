@@ -223,8 +223,8 @@ basis coordinates, produced by whichever mode ran. That is the fix for `lappy`'s
 `nullspace_coef`, which branches on `reg_type` *again* at the recovery site: two places that
 must agree about a transformation only one of them computed.
 
-- `"auto"` (default) -- `"tikhonov_qr"` at `prec >= 1e-8`, `"svd"` below it or whenever `rtol=`,
-  `rank=` or `lam_ref=` is passed. Resolved at construction; `reg` reports the mode it chose.
+- `"auto"` (default) -- `"svd"` at every `prec` since 2026-10-10 (it was `"tikhonov_qr"` at
+  `prec >= 1e-8` from 2026-09-24; `notes/regularization_1e10.md` has why it changed). Resolved at construction; `reg` reports the mode it chose.
 - `"svd"` -- economic QR of the stack, SVD of `R`, truncate to `r`.
 - `"qrp"` -- column-pivoted QR, truncate to `r`.
 - `None` -- raw pencil.
@@ -233,8 +233,9 @@ must agree about a transformation only one of them computed.
   QR of `[A_B; tau*I; A_I]`, and the two row blocks of `Q` go to the GSVD; `back` is `R^-1`.
   No rank is chosen, so none can change with `k`. Its `rtol` defaults to
   `C_PEN * prec / sqrt(n_cols)`, so `tau = 0.02 prec`: a penalty's floor is its `tau`, and the
-  truncation's `sqrt(prec*eps)` rule put it above `prec` by 1e-14. The default at `prec >= 1e-8`
-  (2026-09-24); `notes/smooth_filter.md` section 11 has why the range stops there.
+  truncation's `sqrt(prec*eps)` rule put it above `prec` by 1e-14. It was the default at
+  `prec >= 1e-8` from 2026-09-24 to 2026-10-10 (`notes/smooth_filter.md` section 11); on the douse
+  benchmark it lost to the threshold (`notes/regularization_1e10.md`), and is explicit only.
 - `"tikhonov"` -- the same penalty handed to the GSVD directly, `([A_B; tau*I], A_I)`.
   Identical in exact arithmetic but NOT free of rank decisions: `tau*I` makes the stack full
   rank and does nothing for the interior block, whose rank LAPACK's `?ggsvp3` then decides
@@ -412,8 +413,9 @@ minimization.
 
 **And the threshold is itself meant to go.** A rank re-derived per parameter is decided by
 rounding wherever a singular value sits near the cutoff, and on Linux that cost a real answer
-(`notes/session_2026-09-19.md`). The penalty modes above are the intended default from
-2026-09-23; this section describes what ships today, not where it is headed.
+(`notes/session_2026-09-19.md`). The penalty modes above were the default at
+`prec >= 1e-8` from 2026-09-23 to 2026-10-10; on douse shapes the threshold measured better, so it
+ships again at every `prec` (`notes/regularization_1e10.md`).
 
 Two corrections to the section above, both found by measuring the objective before designing
 a search for it (`notes/`, not tracked).

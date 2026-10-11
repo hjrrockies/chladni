@@ -121,15 +121,16 @@ def test_the_default_truncation_rule_is_threshold():
     assert "threshold" in repr(p)
 
 
-def test_the_default_at_the_default_prec_chooses_no_rank_at_all():
-    """`reg="auto"` at `prec = 1e-8` is the penalty (`tests/test_regularization.py` has the
-    range): nothing to freeze and nothing re-derived, and every column yields a tension."""
+def test_the_default_at_the_default_prec_re_derives_its_rank_per_lam():
+    """`reg="auto"` at `prec = 1e-8` is the threshold since 2026-10-10 (it was the penalty;
+    `tests/test_regularization.py` has the range): nothing frozen, the rank re-derived at each
+    `lam`, and one tension per retained direction."""
     poly = Polygon(L_SHAPE)
     b = basis_for(poly)
     p = MPSPencil(b.at(poly.bdry_quad(200)),
                   b.at(poly.interior_pts(80, rng=np.random.default_rng(RNG))))
-    assert p.reg == "tikhonov_qr" and p.rank is None and not p.is_frozen
-    assert p.rank_at(LAM) == len(p.tensions(LAM)) == p.n_cols
+    assert p.reg == "svd" and p.rank is None and not p.is_frozen
+    assert p.rank_at(LAM) == len(p.tensions(LAM)) <= p.n_cols
 
 
 def test_a_frozen_rank_still_needs_a_reference_or_a_value():
