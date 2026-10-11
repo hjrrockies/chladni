@@ -59,6 +59,41 @@ was dropped. A rule "flag where R < T" catches a defect when that level has R < 
   getting levels to R >= 2, and on the reference recipe that is 60% of levels at 1e-10. Moving
   the minimal planner before, or alongside, the margin rule looks right.
 
+## Cross-check: `notes/count_ratio.py` re-run on HEAD (rectangle-free bound-coverage grid)
+
+`notes/bound_coverage.py` covers the L-shape, 3π/2 sector, equilateral triangle and disk; bases
+from starved to generous; prec 1e-8..1e-13. It was regenerated on HEAD (72 s on 8 processes) and
+`count_ratio.py` re-read it. The HEAD data is kept beside the pre-(C2) originals, which stay as
+they were:
+- `notes/bound_coverage_head_2026-10-11.jsonl`;
+- `notes/count_ratio_head_2026-10-11.json`.
+
+Changes on HEAD:
+- Wrong multiplicities fell from 12 to 8.
+- The largest R of a wrong multiplicity fell from 31 to 18.4.
+- Correct degenerate counts still have a median R of 116.
+
+**This grid qualifies result 1.** With deliberately starved bases it has wrong multiplicities ON
+levels that meet `prec` (R >= 2), all of them a double read as simple:
+
+| domain | basis | prec | R |
+|---|---|---|---|
+| eq_tri | plane waves at 0.5x | 1e-8 | 18.4 |
+| L_shape | FB at the re-entrant corner only, n=40 | 1e-8 | 15.9 |
+| L_shape | FB re-entrant only, n=80 | 1e-13 | 9.9 (parked rung) |
+| L_shape | FB re-entrant only, n=40 | 1e-10 | 3.2 |
+
+With basis D's T1.2 (R = 14.4) that is a consistent picture: **on a starved basis a double can be
+read as simple at a level whose value meets `prec`, with R up to about 20**. A T = 2 rule does not
+see it. On this grid, moving T from 2 to 20 costs only 34 of 704 correct records (4 of them
+degenerate), but on the douse benchmark (basis D) it costs about half of the resolving levels. The
+price of T > 2 is domain-dependent.
+
+So the margin rule alone does not close the starved-basis case. Candidates, for design:
+- `basis_sufficiency`'s multiplicity precondition as the guard;
+- the planner refusing to stop at a basis that has not cleared it;
+- T ≈ 20 only where the basis is known to be marginal.
+
 ## Caveats, and what is not established
 
 - `delta_res` is a proxy. It is clamped from below and widened on a stalled refine
@@ -70,5 +105,3 @@ was dropped. A rule "flag where R < T" catches a defect when that level has R < 
   a rate.
 - macOS only, on the shipped code (truncation at both rungs, i.e. NOT the 1e-8 default today,
   which is the penalty).
-- `notes/count_ratio.py` (rectangle-family bound-coverage grid, pre-(C2) code) was not re-run on
-  HEAD in this pass.
