@@ -156,7 +156,13 @@ planner.
   an adequate basis (2026-10-11, `notes/phase3_rescore.md`):** T2.8-N5s2, basis A, 1e-10 -- admitted
   at margin R = 3.06 (1.5x the edge), 11x under the error that reference run B's Moler-Payne bound
   pins. It is the only SILENT row left on the benchmark after Phase 3, and it is a value, not a
-  count. **Next after Phase 3.**
+  count. **Measured 2026-10-11 (`notes/admission_bound.md`): it is basis BIAS, not edge
+  admission.** At 1e-8 the same level has R = 56 and is still 1.9x under-covered, so no margin
+  M fixes it. Moler-Payne-only is honest but flips ~30% of met levels to unmet at 1e-10, nearly
+  all truly within `prec`. A cross-check -- admit `delta_res` only if also `mp_bound <= 20 *
+  prec*lam` -- removes the harmful case and the Linux one at a cost of 2-5 met levels per ~1200.
+  **Decided: change nothing yet**; revisit with the planner, whose basis choice may make the
+  biased well rare.
 * **[later]** **The Linux count flips at OpenBLAS's default threading are not explained.** The
   2026-10-05 `main` run failed 7 truncation-scored tests on Python 3.11 and 3.13 and passed on 3.12,
   ~4 in 5 at full-suite scope; single-thread OpenBLAS measured 0 in ~39 runs. CI now pins one
