@@ -63,11 +63,41 @@ The path, in order:
   T1.2/ngon12 rows at 1e-10 into flags; check whether the margin rule does the same for
   truncation; (c) E3: the first dropped singular value sits within 10% of the cutoff at 15% of
   evaluated points, with no outcome yet attributed to it.
-* **[next]** **The margin rule in stage 3**: count at `prec` only where `R` is generous; below it,
-  report the level over a neighbourhood chosen at a spectral gap, as `Level.resolution`, and flag
-  it. `notes/count_ratio.py` is the first evidence for the threshold (re-run on HEAD first).
-* **[next]** **Report shortfalls early**: a floor pre-scan from the bracketing stage's first
-  samples; `on_shortfall="flag"`, then `"raise"`.
+* **Phase 3 BUILT 2026-10-11** (branch `phase3/margin-rule`): `Level.margin`, `Level.resolution`,
+  `Level.count_shortfall`, and `SolveDiagnostics.n_count_shortfall`, reporting only
+  (`tests/test_level_resolution.py`). On the benchmark, rescored (`notes/phase3_rescore.md`): no
+  count is silently wrong on bases D or A at 1e-10 or 1e-8. What is left is DROP rows (Phase 4)
+  and one value bound (the `delta_res` item below). The scoreboard itself still matches at 1e-6;
+  move it to resolution groups when it is next regenerated.
+* **[next]** **Phase 4, planned 2026-10-11: the count audit, then `on_shortfall`.**
+  Calibration on the 31 complete douse reference spectra: the MEAN Weyl deficit over mid-gap cuts
+  (corner-corrected `weyl_count_poly`) sits in [-0.07, 0.04] on complete spectra. A simulated
+  whole-level drop scores >= 0.16 when it lies in the lower two-thirds of the spectrum (all
+  caught) and is caught 88% of the time in the top third. Today's worst-cut statistic
+  (`weyl_deficit`) overlaps: clean up to 1.04, drops from 0.15. In-sample, so:
+  1. Validate out of sample on the real solves (`notes/admission_bound.json`; the DROP rows of
+     `notes/phase3_rescore.md`), including complete solves with duplicate levels. Choose the
+     threshold generously and the top-of-window headroom. Write `notes/count_audit.md`; review
+     before code.
+  2. `asymp.count_audit(eigs, domain, *, lo)` -> statistic, threshold, verdict
+     (`ok` / `short` / `unaudited`), and step location. PREFIX windows only (`lo` below the
+     Faber-Krahn bound on lam_1); any other window is `unaudited` (decided). Wire it in as
+     `diagnostics.count_audit`. Test-first.
+  3. `on_shortfall="flag" | "raise"`: `PrecisionShortfall` on an audit `short` or an unmet level,
+     with the first deficient level, its `margin`, the audit and the partial spectrum. Raised
+     AFTER the solve (decided).
+  4. Measure whether early is worth it: the time to the first deficient level against the total
+     (early abort), and whether stage 1's samples predict unmet regions (floor pre-scan). Build
+     only what pays.
+  5. Rescore the benchmark with the audit.
+* **[with the planner]** **Re-base the Phase 3 contract test on a fair basis.**
+  `tests/test_level_resolution.py` runs on the stand-in basis D (1.0x lappy's per-corner FB
+  sizing), so it partly tests the basis. Move it to planner-built bases, and judge only levels
+  the basis demonstrably resolves (Moler-Payne meets `prec`), so that a count error left is the
+  solver's. Even the references' recipe A (1.5x, FB only) misses 1e-10 on ~40% of levels.
+* **[next]** **The planner refuses a basis that fails `basis_sufficiency`'s multiplicity
+  precondition.** It is the guard for a double read as simple on a MET level, which only starved
+  bases showed (the `count_ratio` grid, R up to 18).
 * **[next]** **A minimal planner, then `Eigenproblem`, then the `douse` seam and M5 Hadamard** --
   to the interface in `docs/design/douse_requirements.md`. The planner starts from the recipe the
   references show works (Fourier-Bessel at every corner, lappy's per-corner sizing,
@@ -129,7 +159,17 @@ planner.
   -- admitted by 1% -- and the reported bound was 700x under the true error (3.1e-8; Moler-Payne,
   3.0e-6, covered it). Admission needs a margin, `delta_res <= prec*lam / M`. On the 715-level grid
   (`notes/bound_coverage.jsonl`) M = 10 leaves 6 levels under-covered instead of 10 and turns 24 met
-  levels unmet; settle M with the margin rule, under jitter.
+  levels unmet; settle M with the margin rule, under jitter. **Second case, on a douse shape and
+  an adequate basis (2026-10-11, `notes/phase3_rescore.md`):** T2.8-N5s2, basis A, 1e-10 -- admitted
+  at margin R = 3.06 (1.5x the edge), 11x under the error that reference run B's Moler-Payne bound
+  pins. It is the only SILENT row left on the benchmark after Phase 3, and it is a value, not a
+  count. **Measured 2026-10-11 (`notes/admission_bound.md`): it is basis BIAS, not edge
+  admission.** At 1e-8 the same level has R = 56 and is still 1.9x under-covered, so no margin
+  M fixes it. Moler-Payne-only is honest but flips ~30% of met levels to unmet at 1e-10, nearly
+  all truly within `prec`. A cross-check -- admit `delta_res` only if also `mp_bound <= 20 *
+  prec*lam` -- removes the harmful case and the Linux one at a cost of 2-5 met levels per ~1200.
+  **Decided: change nothing yet**; revisit with the planner, whose basis choice may make the
+  biased well rare.
 * **[later]** **The Linux count flips at OpenBLAS's default threading are not explained.** The
   2026-10-05 `main` run failed 7 truncation-scored tests on Python 3.11 and 3.13 and passed on 3.12,
   ~4 in 5 at full-suite scope; single-thread OpenBLAS measured 0 in ~39 runs. CI now pins one

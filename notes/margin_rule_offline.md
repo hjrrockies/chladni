@@ -19,6 +19,15 @@ Each count **defect** is a reference level miscounted in a solve, or a solved le
 nothing. It is attributed to the solved level assigned to it, or to the nearest one if the level
 was dropped. A rule "flag where R < T" catches a defect when that level has R < T.
 
+> **Correction, 2026-10-11.** The defect attribution below scores a DROPPED level by the nearest
+> solved level's R. For T1.2 and ngon12 on basis D that level is 28-78% of λ away, so their R
+> (14.4 and 1.52) belongs to an unrelated level. Both are whole doubles dropped outright (class
+> (a) in `docs/design/douse_requirements.md`, Phase 3), not count misreads. Re-read by kind, **no
+> level that meets `prec` had a wrong count on the douse benchmark, on either basis.** The
+> remaining defects on unmet levels are either value errors that the bound covers (and that the
+> 1e-6 match window scores as drop + extra), a missed partner of a pair, or a simple level read as
+> a double inside its floor. Result 3 below, about T1.2, is superseded.
+
 ## Result
 
 | basis | prec | defects | defects with R < 2 (unmet level) | right-count levels with R < 2 |
