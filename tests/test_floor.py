@@ -79,8 +79,9 @@ def test_the_floor_is_PROPORTIONAL_to_rtol_above_the_basis_own_floor():
     * It says why `rtol` is safe to raise up to `prec` -- the floor it induces is about `rtol`,
       so at `rtol = prec` the discarded directions contribute at the precision asked for, which
       is by definition negligible.
-    * It says exactly where `SUITE_RTOL` belongs. `sqrt(FINEST_PREC * eps_mach) = 1.49e-15` is
-      the CROSSOVER: below it the truncation contributes less than the basis already does and
+    * It says where a suite threshold for 1e-14 belongs: `sqrt(1e-14 * eps_mach) = 1.49e-15` is
+      the CROSSOVER (`rect_suite.FINEST_PREC` was 1e-14 until 2026-10-11; it is 1e-10 now, a
+      deliberate step up the linear branch, `notes/suite_rtol_sweep.md`): below it the truncation contributes less than the basis already does and
       buys nothing, above it the floor inflates linearly. That the derived rule lands on the
       crossover is the reason it is the right default and not merely a convenient one.
     """

@@ -36,6 +36,8 @@ suite and fail on an L-shape, so the corner roster stays as a transfer check.
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 from chladni.geometry import rect
@@ -65,11 +67,14 @@ SNAP_FLOOR_REL = 1e-13
 #: The finest precision the suite pencil is BUILT to serve. The pencil is fixed across the whole
 #: `prec` ladder, so it must serve the hardest rung any caller runs.
 #:
-#: Since the 2026-10-09 prune `bracket_score.PREC_LADDER` stops at 1e-10, and no default-suite
-#: test runs a rung below it. This stays at 1e-14 anyway: it sets `SUITE_RTOL`, every fixture is
-#: measured at that threshold, and the evidence modules in `notes/evidence_tests/` still run
-#: `PREC_LADDER_FULL` to 1e-14. Moving it would move every pencil in the suite.
-FINEST_PREC = 1e-14
+#: 1e-10 since 2026-10-11, the bottom of `bracket_score.PREC_LADDER` since the 2026-10-09 prune;
+#: it was 1e-14. A pencil cut at `sqrt(1e-14 eps)` kept near-null directions that 4-ulp noise
+#: shakes: the 16 `ulp_sensitive` tests failed 15 of 256 test-seeds under `tests/ulp_jitter.py`
+#: at that threshold and 0 of 256 at this one (`notes/suite_rtol_sweep.md`), with every contract
+#: unchanged. The evidence modules in `notes/evidence_tests/`, which still run `PREC_LADDER_FULL`
+#: to 1e-14, set `CHLADNI_SUITE_FINEST_PREC=1e-14` in their conftest and keep the old pencil.
+#: The measurements quoted below were taken at the old value unless they say otherwise.
+FINEST_PREC = float(os.environ.get("CHLADNI_SUITE_FINEST_PREC", "1e-10"))
 
 #: Rank-truncation threshold for every suite pencil: `sqrt(FINEST_PREC * eps)`, which is
 #: `chladni`'s OWN derived default rule evaluated at the tightest precision this suite has to
@@ -277,10 +282,12 @@ def complete_truth(case):
     return np.sort(np.asarray(out, dtype=float))
 
 
-FLOOR_TARGET = 1e-14        #: sigma_mu must sit at or below this at every true eigenvalue
+#: `sigma_mu` must sit at or below this at every true eigenvalue: the floor the finest rung
+#: needs, so it moves with `FINEST_PREC` (it was a literal 1e-14 while that was the finest rung).
+FLOOR_TARGET = FINEST_PREC
 
 
-def assert_floor(case, target=FLOOR_TARGET, finest_prec=1e-14, margin=3.0, h_frac=0.005):
+def assert_floor(case, target=FLOOR_TARGET, finest_prec=FINEST_PREC, margin=3.0, h_frac=0.005):
     """HARD PRECONDITION, not a diagnostic. Run before a case is scored, ever.
 
     Two checks, because this session produced three separate basis-construction errors -- a

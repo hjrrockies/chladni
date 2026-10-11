@@ -51,7 +51,7 @@ def test_it_finds_every_level_in_the_window(name, dom_fn, truth_fn, a, b):
     assert np.allclose(spec.unfolded, truth, rtol=1e-8, atol=0)
 
 
-@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py (2026-10-09 sweep after the prune)
+# was ulp_sensitive; 0 of 32 jitter seeds on the rung-sized suite pencil (2026-10-11)
 @pytest.mark.parametrize("name,dom_fn,truth_fn,a,b", CASES)
 def test_the_multiplicities_are_read_not_inferred(name, dom_fn, truth_fn, a, b):
     """The half of clause (1) the old array contract could not carry. Both domains have
@@ -66,7 +66,7 @@ def test_the_multiplicities_are_read_not_inferred(name, dom_fn, truth_fn, a, b):
         f"{name}: multiplicities {spec.mult} against truth {want}")
 
 
-@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py (2026-10-09 sweep after the prune)
+# was ulp_sensitive; 0 of 32 jitter seeds on the rung-sized suite pencil (2026-10-11)
 def test_a_tighter_request_costs_more_and_says_what_it_could_not_reach():
     """`search.md` section 2.6 and clause (2), which is an OR and has to be tested as one.
 
@@ -114,7 +114,8 @@ def test_an_exact_degeneracy_is_ONE_level_when_the_refiner_stops_on_its_wall(see
     """The solver contract, not a scoring rule: a detectable exact degeneracy comes back as one
     level with its full multiplicity. Linux CI broke it in the test above -- 7 levels against
     6, total right -- on every leg, and these are the same failure reproduced on Accelerate by
-    moving what a BLAS moves, the threshold rank: `rtol = 1.25 SUITE_RTOL`, two of 108 seed /
+    moving what a BLAS moves, the threshold rank: `rtol = 1.25 SUITE_RTOL` (then cut for 1e-14),
+    two of 108 seed /
     `rtol` / `prec` cells.
 
     The mechanism (seed 0, the double at 57.58): the refiner accepted a point 0.0245 licences up
@@ -128,13 +129,15 @@ def test_an_exact_degeneracy_is_ONE_level_when_the_refiner_stops_on_its_wall(see
     which is honest; returning the wrong split SILENTLY is the failure."""
     from chladni.helmholtz import PlaneWave
     from chladni.mps import MPSEigensolver
-    from rect_suite import SUITE_RTOL
+    # The reproduction is at the suite threshold of the time, `sqrt(1e-14 eps)`, pinned as a value:
+    # `rect_suite.SUITE_RTOL` is cut for 1e-10 since 2026-10-11.
+    rtol_1e14 = float(np.sqrt(1e-14 * np.finfo(float).eps))
 
     a, b, dom = 8.0, 60.0, disk(1.0)
     basis = PlaneWave.uniform(int(1.3 * PlaneWave.n_useful(np.sqrt(b) * dom.diameter)),
                               radius=dom.diameter)
     n = len(basis)
-    s = MPSEigensolver(dom, basis=basis, n_bdry=3 * n, n_int=n, rtol=f * SUITE_RTOL,
+    s = MPSEigensolver(dom, basis=basis, n_bdry=3 * n, n_int=n, rtol=f * rtol_1e14,
                        rng=np.random.default_rng(seed), prec=prec)
     import warnings
     with warnings.catch_warnings(record=True) as caught:
@@ -229,7 +232,7 @@ def test_multiplicity_is_read_from_the_cache_and_spends_nothing():
     assert res.diagnostics.multiplicity_evals == 0
 
 
-@pytest.mark.ulp_sensitive  # flips under tests/ulp_jitter.py (2026-10-09 sweep after the prune)
+# was ulp_sensitive; 0 of 32 jitter seeds on the rung-sized suite pencil (2026-10-11)
 def test_the_cost_is_reported_and_is_not_absurd():
     """Not a benchmark -- a guard. The gate measures cost properly; this only catches a wiring
     change that turns a 25-evaluation solve into a 2500-evaluation one."""

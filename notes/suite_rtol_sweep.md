@@ -37,15 +37,22 @@ pencil's floor reaches the 1e-14 target:
 
 These are expected: they test the 1e-14 premise, which a 1e-10 pencil does not serve.
 
-## What it suggests (not done)
+## Done (2026-10-11, branch `suite/rung-sized-pencil`)
 
-- Size the suite pencil to the rung under test. Either set `FINEST_PREC = 1e-10` (since the prune,
-  no default-tier test runs below it) and restate the three floor preconditions at that target, or
-  key the pencil memo on a per-rung `rtol`.
-- The evidence modules in `notes/evidence_tests/` that still run `PREC_LADDER_FULL` to 1e-14 would
-  keep a 1e-14 pencil of their own.
-- The `ulp_sensitive` quarantine would then be re-measured, aiming at the 0 of N target in TODO.
-- **This is a test-fixture change, and it moves every suite pencil.** It is for review, not made here.
+- `rect_suite.FINEST_PREC = 1e-10`, so `SUITE_RTOL` ≈ 1.5e-13. `FLOOR_TARGET` and
+  `assert_floor`'s default now derive from it; they were literal 1e-14s. Those were the three
+  "failures" above.
+- `notes/evidence_tests/conftest.py` sets `CHLADNI_SUITE_FINEST_PREC=1e-14`, so the evidence
+  modules keep the old pencil.
+- Two tests that replay a measurement made at the old cut pin `sqrt(1e-14 eps)` as a value:
+  - `test_solve_interval`'s Linux replay at 1.25x;
+  - `test_regularization`'s flicker point, whose contrasts would otherwise skip because the rank
+    no longer flickers there on the new pencil.
+- Re-swept on the change, 32 seeds (`notes/jitter_sweep_rung_pencil.json`): 15 of the 16
+  `ulp_sensitive` tests pass every seed, and their marker is lifted. `test_floor_multiplicity[A]`
+  (its own pencil) failed 1 of 32 and stays quarantined.
+- Full suite, every tier, `-W error::UserWarning`: 2126 passed, 0 skipped, 3 xfailed (macOS).
+  Per-push CI now runs 1990 tests.
 
 ## Caveats
 
