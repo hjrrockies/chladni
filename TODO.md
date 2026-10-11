@@ -69,9 +69,27 @@ The path, in order:
   count is silently wrong on bases D or A at 1e-10 or 1e-8. What is left is DROP rows (Phase 4)
   and one value bound (the `delta_res` item below). The scoreboard itself still matches at 1e-6;
   move it to resolution groups when it is next regenerated.
-* **[next]** **Report shortfalls early**, and the **count audit**: a floor pre-scan from the
-  bracketing stage's first samples; `on_shortfall="flag"`, then `"raise"`. The Weyl `count_audit`
-  is the only check for a whole level dropped (T1.2 and ngon12 on basis D).
+* **[next]** **Phase 4, planned 2026-10-11: the count audit, then `on_shortfall`.**
+  Calibration on the 31 complete douse reference spectra: the MEAN Weyl deficit over mid-gap cuts
+  (corner-corrected `weyl_count_poly`) sits in [-0.07, 0.04] on complete spectra. A simulated
+  whole-level drop scores >= 0.16 when it lies in the lower two-thirds of the spectrum (all
+  caught) and is caught 88% of the time in the top third. Today's worst-cut statistic
+  (`weyl_deficit`) overlaps: clean up to 1.04, drops from 0.15. In-sample, so:
+  1. Validate out of sample on the real solves (`notes/admission_bound.json`; the DROP rows of
+     `notes/phase3_rescore.md`), including complete solves with duplicate levels. Choose the
+     threshold generously and the top-of-window headroom. Write `notes/count_audit.md`; review
+     before code.
+  2. `asymp.count_audit(eigs, domain, *, lo)` -> statistic, threshold, verdict
+     (`ok` / `short` / `unaudited`), and step location. PREFIX windows only (`lo` below the
+     Faber-Krahn bound on lam_1); any other window is `unaudited` (decided). Wire it in as
+     `diagnostics.count_audit`. Test-first.
+  3. `on_shortfall="flag" | "raise"`: `PrecisionShortfall` on an audit `short` or an unmet level,
+     with the first deficient level, its `margin`, the audit and the partial spectrum. Raised
+     AFTER the solve (decided).
+  4. Measure whether early is worth it: the time to the first deficient level against the total
+     (early abort), and whether stage 1's samples predict unmet regions (floor pre-scan). Build
+     only what pays.
+  5. Rescore the benchmark with the audit.
 * **[with the planner]** **Re-base the Phase 3 contract test on a fair basis.**
   `tests/test_level_resolution.py` runs on the stand-in basis D (1.0x lappy's per-corner FB
   sizing), so it partly tests the basis. Move it to planner-built bases, and judge only levels
