@@ -399,6 +399,49 @@ class MPSEigensolver(Eigensolver, Frozen):
         return Eigenfunctions(lam=lam, coef=out, rule=iq, orthonormal=ok, gram_residual=resid,
                               reason=why)
 
+    def hadamard(self, level, V, *, prec=None):
+        """The Hadamard shape derivative of a Dirichlet level: `(n_fields, m, m)`.
+
+        `H[f, i, j] = - oint d_n u_i d_n u_j V_f ds` over the level's eigenfunctions,
+        L2-orthonormalized (`eigenfunctions`); its eigenvalues are the derivatives of the level's
+        members under the normal velocity `V_f`. `V(curve, t) -> (n_fields, len(t))`, with `curve`
+        the boundary curve's index (segments in `domain.boundaries` order, flattened) and `t` in
+        [0, 1] its parameter, so `V` may be discontinuous at a corner, as a moving vertex's normal
+        velocity is (`docs/design/douse_requirements.md`, "Hadamard integrals"). Integrated on the
+        `'integer'` rule (`integrals.integral_quad`), whose corner panels are fitted to the
+        velocity's integer powers of `r` on top of the corner family. Dirichlet only.
+        """
+        from ..integrals import cauchy, identities, integral_quad
+
+        if self.domain.bc_type != "dir":
+            raise NotImplementedError("Hadamard derivatives are built for Dirichlet boundaries "
+                                      "only (the Neumann and mixed formulas differ)")
+        prec = self.prec if prec is None else check_prec(prec)
+        lam = float(level.lam)
+        ef = self.eigenfunctions(level, prec=prec)
+        if not ef.orthonormal:
+            raise ValueError(f"the level at lam = {lam:.10g} could not be orthonormalized "
+                             f"({ef.reason}); its Hadamard matrix would mix a wrong count")
+        key = ("hadamard", lam, float(prec))
+        cache = getattr(self, "_integral_quads", None)
+        if cache is None:
+            _set(self, _integral_quads={})
+            cache = self._integral_quads
+        if key not in cache:
+            cache[key] = integral_quad(self.domain, lam, prec=prec, family="integer")
+        q = cache[key].quad
+        cd = cauchy.cauchy_data(self._pencil.basis, ef.coef, lam, q)
+        offsets = np.cumsum([0] + [len(b.segments) for b in self.domain.boundaries])
+        curve = offsets[np.asarray(q.bdry_idx, int)] + np.asarray(q.seg_idx, int)
+        vals = None
+        for c in np.unique(curve):
+            mask = curve == c
+            v = np.atleast_2d(np.asarray(V(int(c), np.asarray(q.tau)[mask]), dtype=float))
+            if vals is None:
+                vals = np.zeros((v.shape[0], len(curve)))
+            vals[:, mask] = v
+        return np.stack([-identities.weighted_integral(cd, "NN", vf) for vf in vals])
+
     def solve_interval(self, a, b, *, on_shortfall="flag"):
         """The `Spectrum` of `[a, b]` -- `Eigensolver`'s contract, over `search_interval`.
 

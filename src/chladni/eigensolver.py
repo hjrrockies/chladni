@@ -15,7 +15,7 @@ settled on, and it was right.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -142,6 +142,8 @@ class Spectrum:
     flags: tuple = ()
     #: The `chladni.plan.Plan` that produced it, for re-use on a nearby shape.
     plan: object = None
+    #: The solver that produced it, for `hadamard`. Not part of the value.
+    source: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
         lam = np.atleast_1d(np.asarray(self.lam, dtype=float))
@@ -159,6 +161,17 @@ class Spectrum:
         object.__setattr__(self, "mult", mult)
         object.__setattr__(self, "bound", bound)
         object.__setattr__(self, "prec", check_prec(self.prec))
+
+    def hadamard(self, i, V):
+        """The Hadamard shape derivative of level `i`, `(n_fields, m, m)`: see
+        `MPSEigensolver.hadamard`. Needs the solver that produced this spectrum (`source`), which
+        the black-box path (`chladni.eigenproblem`) attaches."""
+        if self.source is None:
+            raise ValueError("this Spectrum carries no solver; solve it with "
+                             "chladni.eigenproblem.Eigenproblem to get Hadamard derivatives")
+        from types import SimpleNamespace
+        return self.source.hadamard(SimpleNamespace(lam=float(self.lam[i]),
+                                                    mult=int(self.mult[i])), V, prec=self.prec)
 
     @classmethod
     def from_unfolded(cls, lam, prec=PREC, bound=None):

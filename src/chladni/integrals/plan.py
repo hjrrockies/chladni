@@ -200,8 +200,14 @@ def integral_quad(domain, lam_max, prec=1e-8, *, x0=None, clearance_frac=CLEARAN
 
     `clearance_frac=None` removes the clearance cap; it exists to be measured, not used.
     """
-    if family != "even":
-        raise NotImplementedError("the 'integer' family is the Hadamard rule, milestone M5")
+    # 'integer' is the HADAMARD rule (M5): the integrand `(d_n u)^2 V` carries the velocity's
+    # integer powers of `r` on top of the corner family -- `V` is linear along a straight edge of
+    # a moving polygon -- so every ruled corner takes the interpolatory rule fitted to the CURVED
+    # exponent set `{gamma + j nu + m}`, every integer `m`, which contains them. The substitution
+    # shortcut is exact only on the straight, even-power set, and is not used for it.
+    if family not in ("even", "integer"):
+        raise ValueError(f"family must be 'even' or 'integer', got {family!r}")
+    hadamard = family == "integer"
     target = integral_prec(prec)
     k = 2.0 * np.sqrt(max(float(lam_max), 0.0))
     segs = {(bi, si): seg for bi, b in enumerate(domain.boundaries)
@@ -233,12 +239,13 @@ def integral_quad(domain, lam_max, prec=1e-8, *, x0=None, clearance_frac=CLEARAN
                 frac = min(frac, clearance_frac * spec.corner.clearance / seg.length)
             frac = float(np.clip(frac, 1e-6, share))
             k_corner = np.sqrt(max(float(lam_max), 0.0)) * seg.length * frac
-            order, ach = rules.corner_order_for_prec(spec.kind, spec.mu, spec.gamma, spec.sub,
-                                                     not spec.straight, target, scale=frac,
-                                                     k=k_corner)
+            kind = "interpolatory" if hadamard else spec.kind
+            curved = True if hadamard else not spec.straight
+            order, ach = rules.corner_order_for_prec(kind, spec.mu, spec.gamma, spec.sub,
+                                                     curved, target, scale=frac, k=k_corner)
             rule = (rules.corner_rule(order, spec.mu, spec.gamma, spec.sub)
-                    if spec.kind == "substitution" else
-                    rules.corner_interp_rule(order, spec.mu, spec.gamma, None, not spec.straight))
+                    if kind == "substitution" else
+                    rules.corner_interp_rule(order, spec.mu, spec.gamma, None, curved))
             idx = specs.index(spec)
             achieved[idx] = max(achieved.get(idx, 0.0), ach)
             if at_start:
