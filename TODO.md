@@ -92,6 +92,15 @@ The path, in order:
      invisible to counting.
   **Phase 4 done.** Left for the planner: drops on deep spectra (the audit weakens), and the
   Faber-Krahn prefix condition on elongated shapes (start windows low).
+* **[later]** **Sharp, thin-wedged douse shapes cap near 1e-7, whatever the basis size**
+  (`notes/hard_cases.md` parts 2-3): T1.3, T2.2, T2.6-N3k4-L8 and T2.6-N3k5-L6, with corners of
+  11-20 degrees (40-55 for the last). It is not Fourier-Bessel evaluation, which agrees with
+  30-digit mpmath to ~1e-14. Enriching any single corner does not help, nor does dropping
+  inaccurate columns or doubling collocation. Untested candidates:
+  - the corner expansions' convergence regions on thin wedges;
+  - too few interior points inside the wedges;
+  - TAPERED lightning clusters (untapered ones made solves decline).
+  Until then the planner ends these FLAGGED at its top rung.
 * **[with the planner]** **Re-base the Phase 3 contract test on a fair basis.**
   `tests/test_level_resolution.py` runs on the stand-in basis D (1.0x lappy's per-corner FB
   sizing), so it partly tests the basis. Move it to planner-built bases, and judge only levels
