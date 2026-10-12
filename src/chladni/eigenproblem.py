@@ -128,6 +128,7 @@ class Eigenproblem:
             if res.declined or sum(L.mult for L in res.levels) >= n + HEADROOM:
                 break
             hi = lo + 2.0 * (hi - lo)
+        res.solver = solver                     # for `Spectrum.hadamard`
         return res, (lo, hi)
 
 
@@ -215,4 +216,5 @@ def _spectrum(res, n, prec, plan, flags):
                    for L in kept)
     return Spectrum(lam, mult, bound, prec=prec, declined=bool(d.declined),
                     reason=d.decline_reason if d.declined else "", levels=levels,
-                    count_audit=audit, flags=tuple(flags), plan=plan)
+                    count_audit=audit, flags=tuple(flags), plan=plan,
+                    source=getattr(res, "solver", None))
