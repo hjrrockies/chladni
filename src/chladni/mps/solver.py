@@ -11,9 +11,10 @@ changing across the hop and nothing about the numbers changing to justify it. Th
 sits at `mps`/`helmholtz`, which is where the meaning actually changes: a Fourier-Bessel
 column IS a function of `k*r`, and a tension is not such a thing.
 
-Basis planning is deferred (`docs/design/particular_solutions.md`, "Still deferred"), so
-`basis` is required. A default here would become load-bearing the way lappy's did, and lappy's
-`default_basis_for` still raises `NotImplementedError` for any non-polyline boundary.
+`basis` is required here: this is the hand-built path. The black-box path is
+`chladni.eigenproblem.Eigenproblem`, which plans a basis (`chladni.plan`) and builds this solver
+from it. Keeping the planner out of this class means no default basis becomes load-bearing the way
+lappy's `default_basis_for` did.
 """
 from __future__ import annotations
 

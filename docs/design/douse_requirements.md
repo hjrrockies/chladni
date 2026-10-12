@@ -204,6 +204,24 @@ So the per-level rule is a REPORTING change, with no new search machinery:
 * `Eigenproblem.solve(n)` should audit four levels past `n` and start its window well below
   Faber-Krahn.
 
+#### Phase 5, built 2026-10-12: the planner and `Eigenproblem`
+
+* `Eigenproblem(dom).solve(n, prec=..., plan=None, on_shortfall="flag", confirm=False)` returns
+  an extended `Spectrum`: `lam`/`mult`/`bound`, plus `levels` (`SpectrumLevel`: margin,
+  resolution, met, count_shortfall), `count_audit`, `flags` and `plan`. The level at `n` is
+  returned whole.
+* `ep.plan(n, prec)` climbs `chladni.plan.LADDER`: rung 0 is Fourier-Bessel at every corner
+  (sized with a precision term); rungs 1-2 are Fourier-Bessel at the singular corners plus
+  boundary-offset sources. A `Plan` is frozen, picklable and shape-relative (it stores source
+  COUNTS), and `Plan.realize(dom)` gives the same size on any nearby shape with the same corners.
+* A rung is accepted when every level up to `n + HEADROOM` meets `prec`, the count audit is ok
+  and nothing is uncertain. `confirm=True` adds the starved-basis guard. If no rung is accepted,
+  the best is returned with flags, or `PrecisionShortfall` is raised.
+* Dirichlet polygons only. Anything else raises `NotImplementedError`; build an
+  `MPSEigensolver` by hand.
+* On the douse benchmark: 33/35 right at 1e-10, 35/35 at 1e-8, the failures flagged
+  (`notes/phase5_benchmark.md`).
+
 ### Plans: plan once, realize per iterate
 
 `douse` freezes the basis plan at a starting shape so that `n_basis` is constant across iterates

@@ -119,6 +119,12 @@ The path, in order:
   L = the corner's clearance, order 1), lightning declined on almost every case, graded
   collocation included: very ill-conditioned columns. The shipped ladder uses Fourier-Bessel plus
   boundary-offset sources instead.
+* **[next]** **Rebuild T2.8-N5s2's reference on current code.** Its trusted value 179.302250990678
+  (status `fem_resolved`: one run, recipe B, plus a finite-element count) does not reproduce.
+  Recipe B on current code gives 179.3022510764, uncertified. Every current basis -- corner-only A
+  and C, and the planner's hybrid with sources (Moler-Payne 4.7e-11) -- agrees at 179.3022511196.
+  It is the only SILENT row of the Phase 5 benchmark at 1e-10 (`notes/phase5_benchmark.md`), and it
+  puts the "biased well" reading in `notes/admission_bound.md` in doubt.
 * **[with the planner]** **Re-base the Phase 3 contract test on a fair basis.**
   `tests/test_level_resolution.py` runs on the stand-in basis D (1.0x lappy's per-corner FB
   sizing), so it partly tests the basis. Move it to planner-built bases, and judge only levels
@@ -127,10 +133,13 @@ The path, in order:
 * **[next]** **The planner refuses a basis that fails `basis_sufficiency`'s multiplicity
   precondition.** It is the guard for a double read as simple on a MET level, which only starved
   bases showed (the `count_ratio` grid, R up to 18).
-* **[next]** **A minimal planner, then `Eigenproblem`, then the `douse` seam and M5 Hadamard** --
-  to the interface in `docs/design/douse_requirements.md`. The planner starts from the recipe the
-  references show works (Fourier-Bessel at every corner, lappy's per-corner sizing,
-  `benchmarks/douse/make_references.basis_for`) and enriches until the bound and the margin hold.
+* **Phase 5 BUILT 2026-10-12: the planner and `Eigenproblem`** (`chladni.plan`,
+  `chladni.eigenproblem`; `notes/phase5_benchmark.md`). With no basis supplied, the douse
+  benchmark comes back right on 33 of 35 cases at 1e-10 (30 unflagged) and 35 of 35 at 1e-8. T2.2
+  is flagged. The one silent row, T2.8, is a suspect reference (item above).
+* **[next]** **The `douse` seam, then M5 Hadamard** -- to the interface in
+  `docs/design/douse_requirements.md`. `Eigenproblem.solve(n, prec, plan, on_shortfall)` is the
+  backend call; `ep.plan(...)` plus `Plan.realize` is plan-once-realize-per-iterate.
 
 ## 1. The eigenvalue search
 
