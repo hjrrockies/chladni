@@ -55,6 +55,15 @@ _REF_MODES = 10
 #: before the METHOD changes. `method="random"` therefore stands.
 DEFAULT_RNG = 0
 
+#: `delta_res` is admitted into `Level.bound` only when Moler-Payne roughly agrees:
+#: `mp_bound <= MP_CROSSCHECK * prec * lam`, besides `delta_res <= prec * lam`. `delta_res`
+#: measures the WELL, and a basis can put a clean, deep well in the wrong place: T2.8-N5s2 on a
+#: Fourier-Bessel-only basis sat 7e-10 off at margin R = 56, under-covered at any admission
+#: margin, while Moler-Payne covered it (`notes/admission_bound.md`). On the douse benchmark,
+#: 20 removed that met-but-wrong level and the Linux edge case (MP 67000x the request), at a cost
+#: of 2-5 met levels per ~1200; honest levels have MP within ~2-5x of the request.
+MP_CROSSCHECK = 20.0
+
 
 @dataclass(frozen=True)
 class Eigenfunctions:
@@ -332,7 +341,9 @@ class MPSEigensolver(Eigensolver, Frozen):
                                       cancellation=float(np.max(mp.cancellation)),
                                       bound_reason=mp.reason,
                                       delta_res_admitted=bool(
-                                          L.delta_res <= prec * abs(L.lam))))
+                                          L.delta_res <= prec * abs(L.lam)
+                                          and not (np.max(mp.abs)
+                                                   > MP_CROSSCHECK * prec * abs(L.lam)))))
             levels = tuple(levels)
         unmet, attained = _precision_summary(levels, prec)
         return replace(res, levels=levels,

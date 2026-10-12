@@ -101,6 +101,11 @@ The path, in order:
   - too few interior points inside the wedges;
   - TAPERED lightning clusters (untapered ones made solves decline).
   Until then the planner ends these FLAGGED at its top rung.
+* **[next]** **Fourier-Bessel's accuracy warning is not substantive at 1e-10.** `Sampling.accuracy`
+  bounds read ~1e-7 to 1e-9 on planned bases, while 30-digit mpmath shows the columns good to
+  ~1e-14 (`notes/hard_cases.md`, part 3). So `PrecisionWarning: FourierBessel can deliver about
+  1e-9 ...` fires on ordinary 1e-10 solves, against the warn-only-when-substantive rule.
+  Tighten the bound, or stop warning on it.
 * **[with the planner]** **Re-base the Phase 3 contract test on a fair basis.**
   `tests/test_level_resolution.py` runs on the stand-in basis D (1.0x lappy's per-corner FB
   sizing), so it partly tests the basis. Move it to planner-built bases, and judge only levels

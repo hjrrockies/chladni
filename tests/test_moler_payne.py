@@ -16,6 +16,7 @@ from chladni.integrals import cauchy as C
 from chladni.integrals import certify as M
 from chladni.integrals import plan as P
 from chladni.mps import MPSPencil
+from chladni.mps.solver import MP_CROSSCHECK
 from chladni.mps.objective import Objective
 from chladni.mps.refine import refine
 
@@ -163,7 +164,9 @@ def test_every_level_of_a_dirichlet_solve_carries_a_bound_that_covers_its_error(
         true = float(truth[np.argmin(np.abs(truth - L.lam))])
         assert L.bound_reason == "" and np.isfinite(L.mp_bound), L
         assert L.mp_bound >= abs(L.lam - true) - 1e-14 * true, (L.lam, L.mp_bound, true)
-        if L.delta_res <= 1e-10 * L.lam:     # admitted: the tension's bar met the request
+        # Admitted: the tension's bar met the request AND Moler-Payne roughly agrees
+        # (`MP_CROSSCHECK`, 2026-10-12). Otherwise the level reports Moler-Payne alone.
+        if L.delta_res <= 1e-10 * L.lam and L.mp_bound <= MP_CROSSCHECK * 1e-10 * L.lam:
             assert L.bound == min(L.delta_res, L.mp_bound)
         else:
             assert L.bound == L.mp_bound
@@ -198,3 +201,58 @@ def test_a_neumann_solve_says_why_it_has_no_bound():
     res = s.search_interval(5.0, 30.0)
     assert res.levels and all("Dirichlet" in L.bound_reason for L in res.levels)
     assert all(L.bound == L.delta_res for L in res.levels)
+
+
+# --- the Moler-Payne cross-check on delta_res (2026-10-12) ----------------------------------
+
+def test_delta_res_is_admitted_only_where_moler_payne_agrees_roughly():
+    """`delta_res` measures the WELL; Moler-Payne bounds the distance to an eigenvalue. A basis
+    can put a clean, deep well in the wrong place (`notes/admission_bound.md`), and only
+    Moler-Payne sees it. So `delta_res` is admitted into `bound` only when it meets the request
+    AND `mp_bound <= MP_CROSSCHECK * prec * lam`. On the douse benchmark that removed the only
+    met-but-wrong level at a cost of 2-5 met levels per ~1200."""
+    s = _l_solver()
+    res = s.search_interval(8.0, 33.0)
+    for L in res.levels:
+        want = bool(L.delta_res <= 1e-10 * L.lam and L.mp_bound <= MP_CROSSCHECK * 1e-10 * L.lam)
+        assert L.delta_res_admitted == want, L
+
+
+@pytest.mark.slow
+@pytest.mark.filterwarnings("ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
+def test_no_level_claims_prec_past_a_tight_reference():
+    """The contract the cross-check exists for, against ground truth. T2.8-N5s2 on a Fourier-
+    Bessel-only basis (recipe A, the window the bias was seen on) converges to a well 7e-10 off
+    the eigenvalue that reference run B pins to 6.8e-13. A level may miss `prec`, but it must
+    not claim it: every MET level lies within `prec*lam` (plus the reference's own bound) of a
+    tight reference value."""
+    import json
+    import os
+
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "benchmarks", "douse"))
+    import make_references as MR
+    from chladni.mps import MPSEigensolver
+
+    cid, prec = "T2.8-N5s2", 1e-10
+    case = {c["id"]: c for c in MR.load_cases()}[cid]
+    ref = {r["id"]: r for r in json.load(open(os.path.join(
+        os.path.dirname(__file__), "..", "benchmarks", "douse", "references.json")))["cases"]}[cid]
+    lo, hi = ref["window"][0] * (1 - 1e-12), ref["window"][1] * (1 - 1e-12)
+    dom = MR.polygon(case["vertices"])
+    b = MR.basis_for(dom, "A", np.sqrt(hi))
+    n = len(b)
+    res = MPSEigensolver(dom, basis=b, n_bdry=3 * n, n_int=n, prec=prec, rng=0,
+                         reg="svd").search_interval(lo, hi)
+    tight = [T for T in ref["levels"]
+             if T["status"] != "provisional" and np.isfinite(T.get("bound", np.nan))
+             and T["bound"] <= 0.1 * prec * T["lam"]]
+    bad = []
+    for L in res.levels:
+        if not L.met(prec):
+            continue
+        T = min(tight, key=lambda T: abs(T["lam"] - L.lam), default=None)
+        if T is None or abs(T["lam"] - L.lam) > 1e-4 * L.lam:
+            continue
+        if abs(T["lam"] - L.lam) > prec * L.lam + T["bound"]:
+            bad.append((L.lam, T["lam"], L.bound, L.delta_res, L.mp_bound))
+    assert not bad, f"met levels off a tight reference by more than prec: {bad}"
