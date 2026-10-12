@@ -44,7 +44,7 @@ set up as in lappy. See `chladni.plan`.)
     would settle it.
 - **At 1e-8: 35 of 35 right (33 unflagged), none silent,** at a median of 17 s.
 - **Cost.** Planning pays for every rung tried. At 1e-10 the median is 79 s, and the worst case
-  (T2.2, which climbs all three rungs and still fails) is 992 s. douse plans once and re-uses the
+  (a case that climbs every rung and still fails) is 896 s. douse plans once and re-uses the
   plan (`Plan.realize`), so the steady-state cost per iterate is one solve at the chosen rung.
 
 ## Not established
