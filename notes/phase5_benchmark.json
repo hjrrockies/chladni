@@ -680,86 +680,6 @@
   },
   {
    "id": "T1.3",
-   "prec": 1e-10,
-   "n": 9,
-   "wall": 319.79539891699096,
-   "rung": 1,
-   "n_cols": 317,
-   "flags": [
-    "planner: no rung met prec=1e-10; returning rung 1 of 2, the one with the most levels met",
-    "unmet: 9 of 9 levels miss prec=1e-10, the first at lam = 248.6534195 (margin 0.409; 2 is needed)",
-    "uncertain: 9 count(s) could not be certified"
-   ],
-   "declined": false,
-   "audit": "ok",
-   "levels": [
-    {
-     "lam": 248.65341947481545,
-     "mult": 1,
-     "bound": 4.161496261311364e-07,
-     "met": false,
-     "count_flag": true
-    },
-    {
-     "lam": 344.59017180274986,
-     "mult": 1,
-     "bound": 4.6140831579902415e-07,
-     "met": false,
-     "count_flag": true
-    },
-    {
-     "lam": 430.38000570844673,
-     "mult": 1,
-     "bound": 4.637216843167987e-07,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 518.6158017570355,
-     "mult": 1,
-     "bound": 2.8985446383940577e-06,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 611.3374161041859,
-     "mult": 1,
-     "bound": 1.734395206946388e-06,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 705.7496638558773,
-     "mult": 1,
-     "bound": 2.332779388061957e-06,
-     "met": false,
-     "count_flag": true
-    },
-    {
-     "lam": 807.0076098171766,
-     "mult": 1,
-     "bound": 2.3369587476922476e-06,
-     "met": false,
-     "count_flag": true
-    },
-    {
-     "lam": 887.472441229704,
-     "mult": 1,
-     "bound": 7.710597599500034e-06,
-     "met": false,
-     "count_flag": true
-    },
-    {
-     "lam": 916.0815880717918,
-     "mult": 1,
-     "bound": 3.817318075496191e-06,
-     "met": false,
-     "count_flag": false
-    }
-   ]
-  },
-  {
-   "id": "T1.3",
    "prec": 1e-08,
    "n": 9,
    "wall": 109.30005537503166,
@@ -1542,162 +1462,6 @@
    ]
   },
   {
-   "id": "T1.5-r2",
-   "prec": 1e-08,
-   "n": 26,
-   "wall": 1717.2350832920056,
-   "rung": 0,
-   "n_cols": 128,
-   "flags": [
-    "planner: no rung met prec=1e-08; returning rung 0 of 2, the one with the most levels met",
-    "uncertain: 1 count(s) could not be certified"
-   ],
-   "declined": false,
-   "audit": "ok",
-   "levels": [
-    {
-     "lam": 27.758262378077273,
-     "mult": 1,
-     "bound": 2.689290624263229e-11,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 44.41321980491195,
-     "mult": 1,
-     "bound": 1.965334148639647e-11,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 72.17148218290525,
-     "mult": 1,
-     "bound": 1.2164521125120873e-10,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 94.3780920907176,
-     "mult": 1,
-     "bound": 1.059618884620528e-08,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 111.03304951141523,
-     "mult": 2,
-     "bound": 1.6808883174235234e-09,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 138.79131193761847,
-     "mult": 1,
-     "bound": 9.457393736973807e-08,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 160.99792178882404,
-     "mult": 1,
-     "bound": 7.874419404413455e-09,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 177.6528792178244,
-     "mult": 1,
-     "bound": 3.583354906592703e-09,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 205.41114164134257,
-     "mult": 1,
-     "bound": 8.73317766866693e-08,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 222.06609909601553,
-     "mult": 2,
-     "bound": 1.4225360477682918e-07,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 227.61775153745324,
-     "mult": 1,
-     "bound": 7.290039697095584e-08,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 249.82436144511473,
-     "mult": 1,
-     "bound": 8.632878128731513e-08,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 288.6859287360648,
-     "mult": 2,
-     "bound": 8.870301826391369e-09,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 294.2375811803621,
-     "mult": 1,
-     "bound": 4.9509632170154665e-08,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 338.65080100672697,
-     "mult": 1,
-     "bound": 7.657456535525853e-08,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 360.85741087032943,
-     "mult": 2,
-     "bound": 8.85668214323232e-08,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 377.51236822490233,
-     "mult": 2,
-     "bound": 2.5140047910099383e-07,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 399.71897812159204,
-     "mult": 1,
-     "bound": 2.4821069631155847e-07,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 405.2706306922805,
-     "mult": 1,
-     "bound": 5.453365427510143e-08,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 444.1321980549996,
-     "mult": 2,
-     "bound": 1.2544953685566207e-08,
-     "met": true,
-     "count_flag": false
-    }
-   ]
-  },
-  {
    "id": "T2.1-pass1",
    "prec": 1e-10,
    "n": 1,
@@ -1772,194 +1536,6 @@
      "lam": 17.05899882767274,
      "mult": 1,
      "bound": 8.216543085811512e-09,
-     "met": true,
-     "count_flag": false
-    }
-   ]
-  },
-  {
-   "id": "T2.2",
-   "prec": 1e-10,
-   "n": 11,
-   "wall": 991.5919137090095,
-   "rung": 0,
-   "n_cols": 218,
-   "flags": [
-    "planner: no rung met prec=1e-10; returning rung 0 of 2, the one with the most levels met",
-    "unmet: 11 of 11 levels miss prec=1e-10, the first at lam = 37.18312633 (margin 0.00104; 2 is needed)",
-    "count audit: short (mean Weyl deficit 0.862)"
-   ],
-   "declined": false,
-   "audit": "short",
-   "levels": [
-    {
-     "lam": 37.18312632687334,
-     "mult": 1,
-     "bound": 4.7599686436420966e-05,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 68.2602930285346,
-     "mult": 1,
-     "bound": 0.00019778640161686976,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 118.38806273983805,
-     "mult": 1,
-     "bound": 1.3424315119767991e-05,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 152.2958453487316,
-     "mult": 1,
-     "bound": 0.0005017619569151295,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 186.31624315496666,
-     "mult": 1,
-     "bound": 0.002257530156853407,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 205.18232697784612,
-     "mult": 1,
-     "bound": 0.0009227900735834141,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 253.17695096989766,
-     "mult": 1,
-     "bound": 0.00024776605110906323,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 265.96876624928655,
-     "mult": 1,
-     "bound": 0.004278829034603655,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 284.11689762195135,
-     "mult": 1,
-     "bound": 0.0010024709933641948,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 291.1871895095505,
-     "mult": 1,
-     "bound": 0.001340144151523381,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 343.99187876289074,
-     "mult": 1,
-     "bound": 0.003943599614724301,
-     "met": false,
-     "count_flag": false
-    }
-   ]
-  },
-  {
-   "id": "T2.2",
-   "prec": 1e-08,
-   "n": 11,
-   "wall": 600.1601160839782,
-   "rung": 2,
-   "n_cols": 695,
-   "flags": [
-    "planner: no rung met prec=1e-08; returning rung 2 of 2, the one with the most levels met",
-    "unmet: 7 of 11 levels miss prec=1e-08, the first at lam = 37.18312613 (margin 1.74; 2 is needed)",
-    "uncertain: 2 count(s) could not be certified"
-   ],
-   "declined": false,
-   "audit": "ok",
-   "levels": [
-    {
-     "lam": 37.183126129236825,
-     "mult": 1,
-     "bound": 1.8136804005089367e-06,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 68.26029214748904,
-     "mult": 1,
-     "bound": 7.330127232913242e-06,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 118.38392743800955,
-     "mult": 1,
-     "bound": 2.3755220398949215e-05,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 118.38806276811727,
-     "mult": 1,
-     "bound": 9.35821510919914e-08,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 152.29584497260169,
-     "mult": 1,
-     "bound": 1.8920175926231003e-05,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 186.316238711709,
-     "mult": 1,
-     "bound": 6.246562342579485e-05,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 205.1823246129167,
-     "mult": 1,
-     "bound": 2.834870526033901e-05,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 253.1769506238851,
-     "mult": 1,
-     "bound": 7.883274555702811e-07,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 265.968754982566,
-     "mult": 1,
-     "bound": 0.00013423902524332086,
-     "met": false,
-     "count_flag": true
-    },
-    {
-     "lam": 284.1168952944445,
-     "mult": 1,
-     "bound": 1.9639349735175766e-06,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 291.1871896247438,
-     "mult": 1,
-     "bound": 2.8552134182970858e-06,
      "met": true,
      "count_flag": false
     }
@@ -3516,110 +3092,6 @@
    "skipped": "no trusted reference levels"
   },
   {
-   "id": "T2.6-N3k5-L6-ref0",
-   "prec": 1e-10,
-   "n": 5,
-   "wall": 60.488917457987554,
-   "rung": 0,
-   "n_cols": 55,
-   "flags": [
-    "planner: no rung met prec=1e-10; returning rung 0 of 2, the one with the most levels met",
-    "unmet: 5 of 5 levels miss prec=1e-10, the first at lam = 35.34174978 (margin 0.000355; 2 is needed)",
-    "count audit: short (mean Weyl deficit 0.399)"
-   ],
-   "declined": false,
-   "audit": "short",
-   "levels": [
-    {
-     "lam": 35.341749781361024,
-     "mult": 1,
-     "bound": 0.00010163983195091702,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 70.91594413269112,
-     "mult": 1,
-     "bound": 0.0005557536120146201,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 92.68515017728099,
-     "mult": 1,
-     "bound": 0.0012307463260406903,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 118.16963398386808,
-     "mult": 1,
-     "bound": 0.0013843465730161496,
-     "met": false,
-     "count_flag": false
-    },
-    {
-     "lam": 146.6558909800885,
-     "mult": 1,
-     "bound": 0.005296004691190416,
-     "met": false,
-     "count_flag": false
-    }
-   ]
-  },
-  {
-   "id": "T2.6-N3k5-L6-ref0",
-   "prec": 1e-08,
-   "n": 5,
-   "wall": 53.13911424996331,
-   "rung": 2,
-   "n_cols": 215,
-   "flags": [
-    "planner: no rung met prec=1e-08; returning rung 2 of 2, the one with the most levels met",
-    "count audit: short (mean Weyl deficit 0.399)",
-    "uncertain: 1 count(s) could not be certified"
-   ],
-   "declined": false,
-   "audit": "short",
-   "levels": [
-    {
-     "lam": 35.34174970910365,
-     "mult": 1,
-     "bound": 7.781901646098101e-08,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 70.9159432923663,
-     "mult": 1,
-     "bound": 1.649681931895785e-07,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 92.68514955030908,
-     "mult": 1,
-     "bound": 7.990046864331396e-07,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 118.16963524443143,
-     "mult": 1,
-     "bound": 4.0080563700434814e-07,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 146.65588757025535,
-     "mult": 1,
-     "bound": 4.1738061853383835e-07,
-     "met": true,
-     "count_flag": false
-    }
-   ]
-  },
-  {
    "id": "T2.6-N3k4-L8-ref0",
    "prec": 1e-10,
    "n": 10,
@@ -4104,49 +3576,6 @@
    "id": "T2.8-N6s1",
    "prec": 1e-08,
    "skipped": "no trusted reference levels"
-  },
-  {
-   "id": "T2.8-kink",
-   "prec": 1e-10,
-   "n": 5,
-   "wall": 72.00402391597163,
-   "rung": 0,
-   "n_cols": 96,
-   "flags": [
-    "planner: no rung met prec=1e-10; returning rung 0 of 2, the one with the most levels met"
-   ],
-   "declined": false,
-   "audit": "ok",
-   "levels": [
-    {
-     "lam": 23.52024897236309,
-     "mult": 1,
-     "bound": 3.3427972043147916e-13,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 42.76408904053669,
-     "mult": 1,
-     "bound": 2.4634155559731984e-10,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 74.83715582130365,
-     "mult": 2,
-     "bound": 2.979163582494948e-10,
-     "met": true,
-     "count_flag": false
-    },
-    {
-     "lam": 94.08099588943998,
-     "mult": 1,
-     "bound": 2.5035769610079227e-11,
-     "met": true,
-     "count_flag": false
-    }
-   ]
   },
   {
    "id": "T2.8-kink",
@@ -5008,6 +4437,569 @@
      "lam": 285.6704292333273,
      "mult": 1,
      "bound": 2.646358140440554e-07,
+     "met": true,
+     "count_flag": false
+    }
+   ]
+  },
+  {
+   "id": "T1.3",
+   "prec": 1e-10,
+   "n": 9,
+   "wall": 227.15022387495264,
+   "rung": 1,
+   "n_cols": 317,
+   "flags": [
+    "planner: no rung met prec=1e-10; returning rung 1 of 3, the one with the most levels met",
+    "unmet: 9 of 9 levels miss prec=1e-10, the first at lam = 248.6534195 (margin 0.409; 2 is needed)",
+    "uncertain: 9 count(s) could not be certified"
+   ],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 248.65341947481545,
+     "mult": 1,
+     "bound": 4.161496261311364e-07,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 344.59017180274986,
+     "mult": 1,
+     "bound": 4.6140831579902415e-07,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 430.38000570844673,
+     "mult": 1,
+     "bound": 4.637216843167987e-07,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 518.6158017570355,
+     "mult": 1,
+     "bound": 2.8985446383940577e-06,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 611.3374161041859,
+     "mult": 1,
+     "bound": 1.734395206946388e-06,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 705.7496638558773,
+     "mult": 1,
+     "bound": 2.332779388061957e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 807.0076098171766,
+     "mult": 1,
+     "bound": 2.3369587476922476e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 887.472441229704,
+     "mult": 1,
+     "bound": 7.710597599500034e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 916.0815880717918,
+     "mult": 1,
+     "bound": 3.817318075496191e-06,
+     "met": false,
+     "count_flag": false
+    }
+   ]
+  },
+  {
+   "id": "T2.2",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 896.2818134999834,
+   "rung": 0,
+   "n_cols": 218,
+   "flags": [
+    "planner: no rung met prec=1e-10; returning rung 0 of 3, the one with the most levels met",
+    "unmet: 11 of 11 levels miss prec=1e-10, the first at lam = 37.18312633 (margin 0.00104; 2 is needed)",
+    "count audit: short (mean Weyl deficit 0.862)"
+   ],
+   "declined": false,
+   "audit": "short",
+   "levels": [
+    {
+     "lam": 37.18312632687334,
+     "mult": 1,
+     "bound": 4.7599686436420966e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 68.2602930285346,
+     "mult": 1,
+     "bound": 0.00019778640161686976,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 118.38806273983805,
+     "mult": 1,
+     "bound": 1.3424315119767991e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 152.2958453487316,
+     "mult": 1,
+     "bound": 0.0005017619569151295,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 186.31624315496666,
+     "mult": 1,
+     "bound": 0.002257530156853407,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 205.18232697784612,
+     "mult": 1,
+     "bound": 0.0009227900735834141,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 253.17695096989766,
+     "mult": 1,
+     "bound": 0.00024776605110906323,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 265.96876624928655,
+     "mult": 1,
+     "bound": 0.004278829034603655,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 284.11689762195135,
+     "mult": 1,
+     "bound": 0.0010024709933641948,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 291.1871895095505,
+     "mult": 1,
+     "bound": 0.001340144151523381,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 343.99187876289074,
+     "mult": 1,
+     "bound": 0.003943599614724301,
+     "met": false,
+     "count_flag": false
+    }
+   ]
+  },
+  {
+   "id": "T2.2",
+   "prec": 1e-08,
+   "n": 11,
+   "wall": 550.0819881670177,
+   "rung": 2,
+   "n_cols": 695,
+   "flags": [
+    "planner: no rung met prec=1e-08; returning rung 2 of 3, the one with the most levels met",
+    "unmet: 7 of 11 levels miss prec=1e-08, the first at lam = 37.18312613 (margin 1.74; 2 is needed)",
+    "uncertain: 2 count(s) could not be certified"
+   ],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 37.183126129236825,
+     "mult": 1,
+     "bound": 1.8136804005089367e-06,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 68.26029214748904,
+     "mult": 1,
+     "bound": 7.330127232913242e-06,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 118.38392743800955,
+     "mult": 1,
+     "bound": 2.3755220398949215e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 118.38806276811727,
+     "mult": 1,
+     "bound": 9.35821510919914e-08,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 152.29584497260169,
+     "mult": 1,
+     "bound": 1.8920175926231003e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 186.316238711709,
+     "mult": 1,
+     "bound": 6.246562342579485e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 205.1823246129167,
+     "mult": 1,
+     "bound": 2.834870526033901e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 253.1769506238851,
+     "mult": 1,
+     "bound": 7.883274555702811e-07,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 265.968754982566,
+     "mult": 1,
+     "bound": 0.00013423902524332086,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 284.1168952944445,
+     "mult": 1,
+     "bound": 1.9639349735175766e-06,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 291.1871896247438,
+     "mult": 1,
+     "bound": 2.8552134182970858e-06,
+     "met": true,
+     "count_flag": false
+    }
+   ]
+  },
+  {
+   "id": "T2.6-N3k5-L6-ref0",
+   "prec": 1e-10,
+   "n": 5,
+   "wall": 51.97094050003216,
+   "rung": 3,
+   "n_cols": 109,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 35.34174970882404,
+     "mult": 1,
+     "bound": 3.269295056878426e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 70.9159432955697,
+     "mult": 1,
+     "bound": 1.0349537717338368e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 92.6851495516334,
+     "mult": 1,
+     "bound": 6.453227630315556e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 118.16963524485092,
+     "mult": 1,
+     "bound": 4.79931503249274e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 146.6558875641564,
+     "mult": 1,
+     "bound": 1.2136069926782511e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ]
+  },
+  {
+   "id": "T2.6-N3k5-L6-ref0",
+   "prec": 1e-08,
+   "n": 5,
+   "wall": 46.734434083045926,
+   "rung": 3,
+   "n_cols": 105,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 35.34174970895593,
+     "mult": 1,
+     "bound": 2.90089441985957e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 70.91594329560465,
+     "mult": 1,
+     "bound": 1.1141964739485706e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 92.68514954999915,
+     "mult": 1,
+     "bound": 3.325007315539195e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 118.16963523447113,
+     "mult": 1,
+     "bound": 2.0398786489169836e-08,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 146.65588750070438,
+     "mult": 1,
+     "bound": 1.2794812744735573e-07,
+     "met": true,
+     "count_flag": false
+    }
+   ]
+  },
+  {
+   "id": "T1.5-r2",
+   "prec": 1e-08,
+   "n": 26,
+   "wall": 1326.6065786660183,
+   "rung": 0,
+   "n_cols": 128,
+   "flags": [
+    "planner: no rung met prec=1e-08; returning rung 0 of 3, the one with the most levels met",
+    "uncertain: 1 count(s) could not be certified"
+   ],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 27.758262378077273,
+     "mult": 1,
+     "bound": 2.689290624263229e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 44.41321980491195,
+     "mult": 1,
+     "bound": 1.965334148639647e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 72.17148218290525,
+     "mult": 1,
+     "bound": 1.2164521125120873e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 94.3780920907176,
+     "mult": 1,
+     "bound": 1.059618884620528e-08,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 111.03304951141523,
+     "mult": 2,
+     "bound": 1.6808883174235234e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 138.79131193761847,
+     "mult": 1,
+     "bound": 9.457393736973807e-08,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 160.99792178882404,
+     "mult": 1,
+     "bound": 7.874419404413455e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 177.6528792178244,
+     "mult": 1,
+     "bound": 3.583354906592703e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 205.41114164134257,
+     "mult": 1,
+     "bound": 8.73317766866693e-08,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 222.06609909601553,
+     "mult": 2,
+     "bound": 1.4225360477682918e-07,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 227.61775153745324,
+     "mult": 1,
+     "bound": 7.290039697095584e-08,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 249.82436144511473,
+     "mult": 1,
+     "bound": 8.632878128731513e-08,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 288.6859287360648,
+     "mult": 2,
+     "bound": 8.870301826391369e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 294.2375811803621,
+     "mult": 1,
+     "bound": 4.9509632170154665e-08,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 338.65080100672697,
+     "mult": 1,
+     "bound": 7.657456535525853e-08,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 360.85741087032943,
+     "mult": 2,
+     "bound": 8.85668214323232e-08,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 377.51236822490233,
+     "mult": 2,
+     "bound": 2.5140047910099383e-07,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 399.71897812159204,
+     "mult": 1,
+     "bound": 2.4821069631155847e-07,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 405.2706306922805,
+     "mult": 1,
+     "bound": 5.453365427510143e-08,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 444.1321980549996,
+     "mult": 2,
+     "bound": 1.2544953685566207e-08,
+     "met": true,
+     "count_flag": false
+    }
+   ]
+  },
+  {
+   "id": "T2.8-kink",
+   "prec": 1e-10,
+   "n": 5,
+   "wall": 39.38871187501354,
+   "rung": 0,
+   "n_cols": 96,
+   "flags": [
+    "planner: no rung met prec=1e-10; returning rung 0 of 3, the one with the most levels met"
+   ],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 23.52024897236309,
+     "mult": 1,
+     "bound": 3.3427972043147916e-13,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 42.76408904053669,
+     "mult": 1,
+     "bound": 2.4634155559731984e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 74.83715582130365,
+     "mult": 2,
+     "bound": 2.979163582494948e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 94.08099588943998,
+     "mult": 1,
+     "bound": 2.5035769610079227e-11,
      "met": true,
      "count_flag": false
     }

@@ -59,13 +59,16 @@ class Eigenproblem:
         def at(rung):
             if rung not in tried:
                 p = plan_for(self.domain, n, prec, rung)
-                res, window = self._solve_with(p, n, prec, "flag")
+                res, window = (self._solve_with(p, n, prec, "flag") if _usable(p)
+                               else (None, None))
                 tried[rung] = (p, res, window)
             return tried[rung]
 
         best = None
         for rung in range(len(LADDER)):
             p, res, window = at(rung)
+            if res is None:                     # nothing to place on this shape: skip the rung
+                continue
             ok = _accepts(res, n, prec)
             score = _met_fraction(res, n, prec)
             if best is None or score > best[0]:
@@ -75,7 +78,9 @@ class Eigenproblem:
             if confirm and rung + 1 < len(LADDER):
                 low = [L for L in _prefix(res, n) if np.isfinite(L.margin)
                        and L.margin < CONFIRM_MARGIN]
-                if low and not _same_counts(low, at(rung + 1)[1]):
+                nxt = next((at(r)[1] for r in range(rung + 1, len(LADDER))
+                            if at(r)[1] is not None), None) if low else None
+                if nxt is not None and not _same_counts(low, nxt):
                     continue                    # a hidden partner: the next rung sees more
             return p, res, window, True
         return best[1], best[2], best[3], False
@@ -127,6 +132,12 @@ class Eigenproblem:
 
 
 # --- helpers -------------------------------------------------------------------------------------
+
+def _usable(plan):
+    """A rung can place nothing on some shapes: singular-corner rungs on a shape whose corners are
+    all reflection-closed. Such a plan is skipped."""
+    return plan.n_cols > 0
+
 
 def _prefix(res, n):
     """The levels holding the first `n + HEADROOM` eigenvalues (the last one whole)."""

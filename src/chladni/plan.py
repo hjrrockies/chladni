@@ -49,15 +49,29 @@ class Recipe:
     corners: str = "all"
     source_density: float = 0.0
     source_offset: float = 0.0
+    lightning: bool = False
 
 
-#: The rungs, cheapest first (decided 2026-10-12, `notes/planner_recipes.md`,
-#: `notes/hybrid_bases.py`). Rung 2 is rung 1 with larger corner expansions; it was not measured
-#: on its own before shipping.
+#: lappy's lightning setup (`lappy/bases.py`, `FundamentalBasis.by_corners`;
+#: `jupyter_notebooks/corner_basis_tests.ipynb`): poles at `L exp(-sigma (sqrt(n) - sqrt(j)))` on
+#: the exterior bisector, order 2 (3 columns each), as many columns as the corner terms. With
+#: chladni's own defaults (sigma 4, L = the corner's clearance, order 1) the poles pack ~1e-7 L
+#: from the vertex and the solve declined on almost every case.
+LIGHTNING_SIGMA = 1.0
+LIGHTNING_REACH = 0.5                 # x the diameter
+LIGHTNING_ORDER = 2
+
+
+#: The rungs (decided 2026-10-12, `notes/planner_recipes.md`, `notes/hybrid_bases.py`). Rung 2 is
+#: rung 1 with larger corner expansions; it was not measured on its own before shipping. Rung 3,
+#: lightning, comes LAST although it is cheap: it solved a thin triangle that the offset layer
+#: could not (T2.6-N3k5-L6, 100% met at margin 25), and failed one the layer solved. As the last
+#: resort it changes no case that an earlier rung already accepts.
 LADDER = (
     Recipe(1.0),
     Recipe(2.0, "singular", 6.0, 0.05),
     Recipe(3.0, "singular", 6.0, 0.05),
+    Recipe(1.0, "singular", lightning=True),
 )
 #: Levels solved past the n a caller asked for: the count audit's headroom
 #: (`notes/count_audit.md`: a drop with four levels above it is caught ~94% of the time).
@@ -92,12 +106,14 @@ class Plan:
     rung: int = 0
     n_sources: int = 0                # a COUNT, so the size is identical on nearby shapes
     source_offset: float = 0.0        # x the diameter
+    lightning_n: int = 0              # poles per singular corner (order 2: 3 columns each)
     bdry_ratio: float = 3.0
     int_ratio: float = 1.0
 
     @property
     def n_cols(self):
-        return int(sum(self.corner_orders)) + int(self.n_sources)
+        n_light = sum(1 for n in self.corner_orders if n > 0) * int(self.lightning_n)
+        return int(sum(self.corner_orders)) + int(self.n_sources) + (2 * LIGHTNING_ORDER - 1) * n_light
 
     def realize(self, dom):
         """`(basis, n_bdry, n_int)` on `dom`, which must have the plan's corner structure."""
@@ -112,6 +128,13 @@ class Plan:
                  for c, n in zip(corners, self.corner_orders) if n > 0]
         if self.n_sources:
             parts.append(_offset_sources(dom, self.n_sources, self.source_offset, self.prec))
+        if self.lightning_n:
+            from .helmholtz import Fundamental
+            for c, n in zip(corners, self.corner_orders):
+                if n > 0:
+                    parts.append(Fundamental.lightning(
+                        c, int(self.lightning_n), sigma=LIGHTNING_SIGMA,
+                        L=LIGHTNING_REACH * dom.diameter, order=LIGHTNING_ORDER, prec=self.prec))
         if not parts:
             raise ValueError("the plan has neither corner terms nor sources")
         basis = parts[0]
@@ -179,5 +202,8 @@ def plan_for(dom, n, prec=PREC, rung=0):
         for c in dom.corners)
     n_src = (int(np.ceil(rc.source_density * k_max * dom.perimeter / (2 * np.pi)))
              if rc.source_density > 0 else 0)
+    n_sing = sum(1 for o in orders if o > 0)
+    n_light = (max(int(round(sum(orders) / ((2 * LIGHTNING_ORDER - 1) * n_sing))), 2)
+               if rc.lightning and n_sing else 0)
     return Plan(prec=prec, k_max=k_max, corner_orders=orders, rung=int(rung), n_sources=n_src,
-                source_offset=rc.source_offset)
+                source_offset=rc.source_offset, lightning_n=n_light)

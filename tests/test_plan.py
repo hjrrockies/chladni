@@ -37,10 +37,10 @@ def test_a_plan_is_frozen_and_sized_per_corner(dom):
         p.rung = 1
 
 
-def test_the_top_rung_enlarges_the_hybrid(dom):
+def test_rung_2_enlarges_the_hybrid(dom):
     """Rungs are different RECIPES, not one growing basis: the hybrid rung 1 can have fewer
-    columns than rung 0, since it skips reflection-closed corners. Above it, the same hybrid grows."""
-    p1, p2 = plan_for(dom, N, PREC, rung=1), plan_for(dom, N, PREC, rung=len(LADDER) - 1)
+    columns than rung 0, since it skips reflection-closed corners. Rung 2 is the same hybrid, grown."""
+    p1, p2 = plan_for(dom, N, PREC, rung=1), plan_for(dom, N, PREC, rung=2)
     assert sum(p2.corner_orders) > sum(p1.corner_orders) and p2.n_sources == p1.n_sources
 
 
@@ -111,3 +111,25 @@ def test_a_hybrid_plan_realizes_to_the_same_size_on_a_nearby_shape(dom):
     moved = Polygon([0, 1.03j, -1 + 1j, -1.02 - 1j, 1 - 0.98j, 1.01], bc="dir")
     b, _, _ = p.realize(moved)
     assert len(b) == p.n_cols
+
+
+def test_the_top_rung_adds_corner_clustered_sources(dom):
+    """The last rung: Fourier-Bessel at the singular corners plus lightning poles there, as lappy
+    set them up (sigma 1, reaching half the diameter, order 2, a 50/50 column split). It solved a
+    thin triangle the offset layer could not (`notes/hybrid_bases.py`, round 3)."""
+    p = plan_for(dom, N, PREC, rung=len(LADDER) - 1)
+    assert p.lightning_n > 0 and p.n_sources == 0
+    b, _, _ = p.realize(dom)
+    assert len(b) == p.n_cols
+    moved = Polygon([0, 1.03j, -1 + 1j, -1.02 - 1j, 1 - 0.98j, 1.01], bc="dir")
+    assert len(p.realize(moved)[0]) == p.n_cols
+
+
+def test_a_rung_with_nothing_to_place_is_empty_and_skipped():
+    """Every corner of a rectangle is reflection-closed, so the singular-corner lightning rung
+    places nothing. The plan is empty, and the planner must skip it, not crash (T2.8-kink and
+    T1.5-r2 on the benchmark, 2026-10-12)."""
+    from chladni.eigenproblem import _usable
+    p = plan_for(rect(1.0, 0.7), N, PREC, rung=len(LADDER) - 1)
+    assert p.n_cols == 0 and not _usable(p)
+    assert _usable(plan_for(rect(1.0, 0.7), N, PREC, rung=0))
