@@ -8,7 +8,8 @@ exactly.
 
 The sizing is lappy's per-corner rule with a PRECISION term (`notes/planner_recipes.md`): orders
 up to `k r + t(prec) (k r)^(1/3) + 3`, `t` where `J_nu(k r)` has decayed to `prec` past its
-turning point, times the ladder rung's multiplier.
+turning point, times the ladder rung's multiplier. Rungs above the first are HYBRID: Fourier-
+Bessel at the singular corners plus a boundary-offset source layer (`notes/hybrid_bases.py`).
 """
 import dataclasses
 import pickle
@@ -36,9 +37,11 @@ def test_a_plan_is_frozen_and_sized_per_corner(dom):
         p.rung = 1
 
 
-def test_higher_rungs_are_larger(dom):
-    sizes = [plan_for(dom, N, PREC, rung=r).n_cols for r in range(len(LADDER))]
-    assert sizes == sorted(sizes) and sizes[-1] > 2 * sizes[0]
+def test_the_top_rung_enlarges_the_hybrid(dom):
+    """Rungs are different RECIPES, not one growing basis: the hybrid rung 1 can have fewer
+    columns than rung 0, since it skips reflection-closed corners. Above it, the same hybrid grows."""
+    p1, p2 = plan_for(dom, N, PREC, rung=1), plan_for(dom, N, PREC, rung=len(LADDER) - 1)
+    assert sum(p2.corner_orders) > sum(p1.corner_orders) and p2.n_sources == p1.n_sources
 
 
 def test_the_sizing_carries_the_precision(dom):
@@ -90,3 +93,21 @@ def test_a_plan_builds_its_solver(dom):
     p = plan_for(dom, N, PREC)
     s = p.solver(dom)
     assert s.prec == PREC and s.n_cols == p.n_cols
+
+
+def test_a_hybrid_rung_skips_regular_corners_and_adds_sources(dom):
+    """Rung 1: Fourier-Bessel only where the corner is singular (the L-shape's re-entrant one; its
+    right angles are reflection-closed), plus a fixed number of offset sources."""
+    p = plan_for(dom, N, PREC, rung=1)
+    singular = [not c.is_reflection_closed for c in dom.corners]
+    assert all((n > 0) == sing for n, sing in zip(p.corner_orders, singular))
+    assert p.n_sources > 0 and p.source_offset > 0
+    b, _, _ = p.realize(dom)
+    assert len(b) == p.n_cols == sum(p.corner_orders) + p.n_sources
+
+
+def test_a_hybrid_plan_realizes_to_the_same_size_on_a_nearby_shape(dom):
+    p = plan_for(dom, N, PREC, rung=1)
+    moved = Polygon([0, 1.03j, -1 + 1j, -1.02 - 1j, 1 - 0.98j, 1.01], bc="dir")
+    b, _, _ = p.realize(moved)
+    assert len(b) == p.n_cols

@@ -106,6 +106,19 @@ The path, in order:
   ~1e-14 (`notes/hard_cases.md`, part 3). So `PrecisionWarning: FourierBessel can deliver about
   1e-9 ...` fires on ordinary 1e-10 solves, against the warn-only-when-substantive rule.
   Tighten the bound, or stop warning on it.
+* **[next]** **The search can ask the pencil for a NEGATIVE lam.** `notes/hybrid_bases.py`
+  round 2, T2.6-N3k4-L8-ref0 with Fourier-Bessel plus corner lightning (default sigma 4,
+  corner-graded collocation) at 1e-10. The window is [~25, ~300], and the solve raised
+  `ValueError: lam must be finite and strictly positive, got -348.16` from the Helmholtz layer.
+  Some stage evaluates outside `[lo, hi]`, probably extrapolating a step on an ill-conditioned,
+  flat objective. A search must clip every evaluation to its window, or decline. Reproduce with
+  `HYBRID_ROUND=2 .venv/bin/python notes/hybrid_bases.py` (variant "FBs+L16 graded").
+* **[later]** **Lightning sources, as lappy set them up, were not finished measuring.** Round 3 of
+  `notes/hybrid_bases.py` (`HYBRID_ROUND=3`: sigma 1 or 2, poles out to ~1, order 2, a 50/50
+  column split with Fourier-Bessel) was stopped to ship Phase 5. With chladni's defaults (sigma 4,
+  L = the corner's clearance, order 1), lightning declined on almost every case, graded
+  collocation included: very ill-conditioned columns. The shipped ladder uses Fourier-Bessel plus
+  boundary-offset sources instead.
 * **[with the planner]** **Re-base the Phase 3 contract test on a fair basis.**
   `tests/test_level_resolution.py` runs on the stand-in basis D (1.0x lappy's per-corner FB
   sizing), so it partly tests the basis. Move it to planner-built bases, and judge only levels
