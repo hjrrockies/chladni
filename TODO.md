@@ -92,6 +92,39 @@ The path, in order:
      invisible to counting.
   **Phase 4 done.** Left for the planner: drops on deep spectra (the audit weakens), and the
   Faber-Krahn prefix condition on elongated shapes (start windows low).
+* **[later]** **Sharp, thin-wedged douse shapes cap near 1e-7, whatever the basis size**
+  (`notes/hard_cases.md` parts 2-3): T1.3, T2.2, T2.6-N3k4-L8 and T2.6-N3k5-L6, with corners of
+  11-20 degrees (40-55 for the last). It is not Fourier-Bessel evaluation, which agrees with
+  30-digit mpmath to ~1e-14. Enriching any single corner does not help, nor does dropping
+  inaccurate columns or doubling collocation. Untested candidates:
+  - the corner expansions' convergence regions on thin wedges;
+  - too few interior points inside the wedges;
+  - TAPERED lightning clusters (untapered ones made solves decline).
+  Until then the planner ends these FLAGGED at its top rung.
+* **[next]** **Fourier-Bessel's accuracy warning is not substantive at 1e-10.** `Sampling.accuracy`
+  bounds read ~1e-7 to 1e-9 on planned bases, while 30-digit mpmath shows the columns good to
+  ~1e-14 (`notes/hard_cases.md`, part 3). So `PrecisionWarning: FourierBessel can deliver about
+  1e-9 ...` fires on ordinary 1e-10 solves, against the warn-only-when-substantive rule.
+  Tighten the bound, or stop warning on it.
+* **[next]** **The search can ask the pencil for a NEGATIVE lam.** `notes/hybrid_bases.py`
+  round 2, T2.6-N3k4-L8-ref0 with Fourier-Bessel plus corner lightning (default sigma 4,
+  corner-graded collocation) at 1e-10. The window is [~25, ~300], and the solve raised
+  `ValueError: lam must be finite and strictly positive, got -348.16` from the Helmholtz layer.
+  Some stage evaluates outside `[lo, hi]`, probably extrapolating a step on an ill-conditioned,
+  flat objective. A search must clip every evaluation to its window, or decline. Reproduce with
+  `HYBRID_ROUND=2 .venv/bin/python notes/hybrid_bases.py` (variant "FBs+L16 graded").
+* **[later]** **Lightning sources, as lappy set them up, were not finished measuring.** Round 3 of
+  `notes/hybrid_bases.py` (`HYBRID_ROUND=3`: sigma 1 or 2, poles out to ~1, order 2, a 50/50
+  column split with Fourier-Bessel) was stopped to ship Phase 5. With chladni's defaults (sigma 4,
+  L = the corner's clearance, order 1), lightning declined on almost every case, graded
+  collocation included: very ill-conditioned columns. The shipped ladder uses Fourier-Bessel plus
+  boundary-offset sources instead.
+* **[next]** **Rebuild T2.8-N5s2's reference on current code.** Its trusted value 179.302250990678
+  (status `fem_resolved`: one run, recipe B, plus a finite-element count) does not reproduce.
+  Recipe B on current code gives 179.3022510764, uncertified. Every current basis -- corner-only A
+  and C, and the planner's hybrid with sources (Moler-Payne 4.7e-11) -- agrees at 179.3022511196.
+  It is the only SILENT row of the Phase 5 benchmark at 1e-10 (`notes/phase5_benchmark.md`), and it
+  puts the "biased well" reading in `notes/admission_bound.md` in doubt.
 * **[with the planner]** **Re-base the Phase 3 contract test on a fair basis.**
   `tests/test_level_resolution.py` runs on the stand-in basis D (1.0x lappy's per-corner FB
   sizing), so it partly tests the basis. Move it to planner-built bases, and judge only levels
@@ -100,10 +133,13 @@ The path, in order:
 * **[next]** **The planner refuses a basis that fails `basis_sufficiency`'s multiplicity
   precondition.** It is the guard for a double read as simple on a MET level, which only starved
   bases showed (the `count_ratio` grid, R up to 18).
-* **[next]** **A minimal planner, then `Eigenproblem`, then the `douse` seam and M5 Hadamard** --
-  to the interface in `docs/design/douse_requirements.md`. The planner starts from the recipe the
-  references show works (Fourier-Bessel at every corner, lappy's per-corner sizing,
-  `benchmarks/douse/make_references.basis_for`) and enriches until the bound and the margin hold.
+* **Phase 5 BUILT 2026-10-12: the planner and `Eigenproblem`** (`chladni.plan`,
+  `chladni.eigenproblem`; `notes/phase5_benchmark.md`). With no basis supplied, the douse
+  benchmark comes back right on 33 of 35 cases at 1e-10 (30 unflagged) and 35 of 35 at 1e-8. T2.2
+  is flagged. The one silent row, T2.8, is a suspect reference (item above).
+* **[next]** **The `douse` seam, then M5 Hadamard** -- to the interface in
+  `docs/design/douse_requirements.md`. `Eigenproblem.solve(n, prec, plan, on_shortfall)` is the
+  backend call; `ep.plan(...)` plus `Plan.realize` is plan-once-realize-per-iterate.
 
 ## 1. The eigenvalue search
 

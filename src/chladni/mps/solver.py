@@ -11,9 +11,10 @@ changing across the hop and nothing about the numbers changing to justify it. Th
 sits at `mps`/`helmholtz`, which is where the meaning actually changes: a Fourier-Bessel
 column IS a function of `k*r`, and a tension is not such a thing.
 
-Basis planning is deferred (`docs/design/particular_solutions.md`, "Still deferred"), so
-`basis` is required. A default here would become load-bearing the way lappy's did, and lappy's
-`default_basis_for` still raises `NotImplementedError` for any non-polyline boundary.
+`basis` is required here: this is the hand-built path. The black-box path is
+`chladni.eigenproblem.Eigenproblem`, which plans a basis (`chladni.plan`) and builds this solver
+from it. Keeping the planner out of this class means no default basis becomes load-bearing the way
+lappy's `default_basis_for` did.
 """
 from __future__ import annotations
 
@@ -54,6 +55,15 @@ _REF_MODES = 10
 #: domain, and section 17 names the L-shape's thin-protrusion rejection case as the test to run
 #: before the METHOD changes. `method="random"` therefore stands.
 DEFAULT_RNG = 0
+
+#: `delta_res` is admitted into `Level.bound` only when Moler-Payne roughly agrees:
+#: `mp_bound <= MP_CROSSCHECK * prec * lam`, besides `delta_res <= prec * lam`. `delta_res`
+#: measures the WELL, and a basis can put a clean, deep well in the wrong place: T2.8-N5s2 on a
+#: Fourier-Bessel-only basis sat 7e-10 off at margin R = 56, under-covered at any admission
+#: margin, while Moler-Payne covered it (`notes/admission_bound.md`). On the douse benchmark,
+#: 20 removed that met-but-wrong level and the Linux edge case (MP 67000x the request), at a cost
+#: of 2-5 met levels per ~1200; honest levels have MP within ~2-5x of the request.
+MP_CROSSCHECK = 20.0
 
 
 @dataclass(frozen=True)
@@ -332,7 +342,9 @@ class MPSEigensolver(Eigensolver, Frozen):
                                       cancellation=float(np.max(mp.cancellation)),
                                       bound_reason=mp.reason,
                                       delta_res_admitted=bool(
-                                          L.delta_res <= prec * abs(L.lam))))
+                                          L.delta_res <= prec * abs(L.lam)
+                                          and not (np.max(mp.abs)
+                                                   > MP_CROSSCHECK * prec * abs(L.lam)))))
             levels = tuple(levels)
         unmet, attained = _precision_summary(levels, prec)
         return replace(res, levels=levels,

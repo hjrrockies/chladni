@@ -21,7 +21,7 @@ import numpy as np
 
 from ._core import PREC, PrecisionWarning, _set, check_prec
 
-__all__ = ["Eigensolver", "Spectrum", "lam_to_k", "k_to_lam", "weyl_window",
+__all__ = ["SpectrumLevel", "Eigensolver", "Spectrum", "lam_to_k", "k_to_lam", "weyl_window",
            "PREC", "PrecisionWarning"]
 
 #: Relative slack below the Faber-Krahn bound. Faber-Krahn is an EQUALITY for the disk, so an
@@ -88,6 +88,22 @@ def weyl_window(domain, n, pad=_WEYL_PAD):
 
 
 @dataclass(frozen=True)
+class SpectrumLevel:
+    """One level of a `Spectrum` from the black-box path. `margin` is how many local floor
+    scales the request spans (2 is needed), `resolution` the neighbourhood the count stands
+    for, `count_shortfall` that the count was read where the floor blurs it
+    (`chladni.mps.search.Level`)."""
+    lam: float
+    mult: int
+    bound: float
+    margin: float
+    resolution: float
+    met: bool
+    count_shortfall: bool
+    count_uncertain: bool = False
+
+
+@dataclass(frozen=True)
 class Spectrum:
     """What an eigensolver found in an interval: LEVELS, their multiplicities, and its bar.
 
@@ -116,6 +132,16 @@ class Spectrum:
     prec: float = PREC
     declined: bool = False
     reason: str = ""
+    #: Per level, what the black-box path (`chladni.eigenproblem`) knows beyond value,
+    #: multiplicity and bound: `SpectrumLevel`s in `lam` order. Empty from older solvers.
+    levels: tuple = ()
+    #: The returned count against Weyl's law (`asymp.CountAudit`), or None.
+    count_audit: object = None
+    #: Everything the caller should know before trusting this answer, as short strings. Empty
+    #: means: every level met `prec`, the count audited ok, nothing uncertain.
+    flags: tuple = ()
+    #: The `chladni.plan.Plan` that produced it, for re-use on a nearby shape.
+    plan: object = None
 
     def __post_init__(self):
         lam = np.atleast_1d(np.asarray(self.lam, dtype=float))
