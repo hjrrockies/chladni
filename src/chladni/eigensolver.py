@@ -163,15 +163,17 @@ class Spectrum:
         object.__setattr__(self, "prec", check_prec(self.prec))
 
     def hadamard(self, i, V):
-        """The Hadamard shape derivative of level `i`, `(n_fields, m, m)`: see
+        """The Hadamard shape derivative of level `i` -- or of levels `i = [i0, i1, ...]` as one
+        block, cross terms included -- `(n_fields, m, m)`: see
         `MPSEigensolver.hadamard`. Needs the solver that produced this spectrum (`source`), which
         the black-box path (`chladni.eigenproblem`) attaches."""
         if self.source is None:
             raise ValueError("this Spectrum carries no solver; solve it with "
                              "chladni.eigenproblem.Eigenproblem to get Hadamard derivatives")
         from types import SimpleNamespace
-        return self.source.hadamard(SimpleNamespace(lam=float(self.lam[i]),
-                                                    mult=int(self.mult[i])), V, prec=self.prec)
+        idx = [int(i)] if np.ndim(i) == 0 else [int(j) for j in i]
+        levels = [SimpleNamespace(lam=float(self.lam[j]), mult=int(self.mult[j])) for j in idx]
+        return self.source.hadamard(levels[0] if np.ndim(i) == 0 else levels, V, prec=self.prec)
 
     @classmethod
     def from_unfolded(cls, lam, prec=PREC, bound=None):

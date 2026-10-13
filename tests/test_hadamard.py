@@ -117,3 +117,35 @@ def test_the_L_shapes_reentrant_vertex_matches_finite_differences():
     # Measured 2026-10-12: rel diff 1.5e-6, 1.3e-7, 1.5e-8 at h = 1e-3, 3e-4, 1e-4 -- shrinking as
     # h^2, so the residue is the finite difference's, not the Hadamard value's.
     assert H_[0, 0, 0] == pytest.approx(fd, rel=1e-7), (H_[0, 0, 0], fd)
+
+
+# --- several levels at once: a NEARLY degenerate cluster (douse's cluster_matrices) -------------
+
+@pytest.mark.slow
+def test_two_distinct_levels_form_one_block_with_their_cross_terms():
+    """`hadamard([i, j], V)` over two distinct levels: the diagonal is each level's own
+    derivative and the off-diagonal the cross term. On a 1 x 0.7 rectangle, moving x = 1: lam_2
+    is (2,1), lam_3 is (1,2); their normal derivatives on that side are orthogonal in y, so the
+    cross term vanishes."""
+    dom = rect(1.0, 0.7)
+    spec = Eigenproblem(dom).solve(3, prec=PREC)
+    V = _edge_velocity(dom, lambda p0, p1: abs(p0.real - 1.0) < 1e-12
+                       and abs(p1.real - 1.0) < 1e-12)
+    H_ = spec.hadamard([1, 2], V)
+    assert H_.shape == (1, 2, 2)
+    np.testing.assert_allclose(np.diag(H_[0]), [-8 * np.pi ** 2, -2 * np.pi ** 2], rtol=1e-8)
+    assert abs(H_[0, 0, 1]) < 1e-8 * np.pi ** 2
+
+
+@pytest.mark.slow
+def test_a_split_pair_near_a_double_gives_the_doubles_derivatives():
+    """1 x 1.001: the square's 5 pi^2 double split into two close levels. Taken TOGETHER they
+    give a block whose eigenvalues are within O(1e-3) of the square's -2 pi^2 and -8 pi^2 --
+    the model a cluster optimizer needs on the way into a degeneracy."""
+    dom = rect(1.0, 1.001)
+    spec = Eigenproblem(dom).solve(3, prec=PREC)
+    assert spec.count >= 3 and len(spec.lam) >= 3 and spec.mult[1] == 1
+    V = _edge_velocity(dom, lambda p0, p1: abs(p0.real - 1.0) < 1e-12
+                       and abs(p1.real - 1.0) < 1e-12)
+    ev = np.sort(np.linalg.eigvalsh(spec.hadamard([1, 2], V)[0]))
+    np.testing.assert_allclose(ev, [-8 * np.pi ** 2, -2 * np.pi ** 2], rtol=5e-3)

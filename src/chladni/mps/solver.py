@@ -400,7 +400,13 @@ class MPSEigensolver(Eigensolver, Frozen):
                               reason=why)
 
     def hadamard(self, level, V, *, prec=None):
-        """The Hadamard shape derivative of a Dirichlet level: `(n_fields, m, m)`.
+        """The Hadamard shape derivative of a Dirichlet level, or of several: `(n_fields, m, m)`.
+
+        `level` may be a SEQUENCE of levels: a nearly degenerate cluster the solver resolved into
+        distinct levels. The block then spans all their members, cross terms included -- the
+        model a cluster optimizer needs on its way into a degeneracy. Each level is
+        orthonormalized on its own, and members of different levels are orthogonal as
+        eigenfunctions of different eigenvalues.
 
         `H[f, i, j] = - oint d_n u_i d_n u_j V_f ds` over the level's eigenfunctions,
         L2-orthonormalized (`eigenfunctions`); its eigenvalues are the derivatives of the level's
@@ -417,11 +423,16 @@ class MPSEigensolver(Eigensolver, Frozen):
             raise NotImplementedError("Hadamard derivatives are built for Dirichlet boundaries "
                                       "only (the Neumann and mixed formulas differ)")
         prec = self.prec if prec is None else check_prec(prec)
-        lam = float(level.lam)
-        ef = self.eigenfunctions(level, prec=prec)
-        if not ef.orthonormal:
-            raise ValueError(f"the level at lam = {lam:.10g} could not be orthonormalized "
-                             f"({ef.reason}); its Hadamard matrix would mix a wrong count")
+        levels = [level] if hasattr(level, "lam") else list(level)
+        efs = []
+        for L in levels:
+            ef = self.eigenfunctions(L, prec=prec)
+            if not ef.orthonormal:
+                raise ValueError(f"the level at lam = {float(L.lam):.10g} could not be "
+                                 f"orthonormalized ({ef.reason}); its Hadamard matrix would mix "
+                                 f"a wrong count")
+            efs.append(ef)
+        lam = max(float(L.lam) for L in levels)       # the rule is sized for the largest
         key = ("hadamard", lam, float(prec))
         cache = getattr(self, "_integral_quads", None)
         if cache is None:
@@ -430,7 +441,11 @@ class MPSEigensolver(Eigensolver, Frozen):
         if key not in cache:
             cache[key] = integral_quad(self.domain, lam, prec=prec, family="integer")
         q = cache[key].quad
-        cd = cauchy.cauchy_data(self._pencil.basis, ef.coef, lam, q)
+        cds = [cauchy.cauchy_data(self._pencil.basis, ef.coef, float(L.lam), q)
+               for L, ef in zip(levels, efs)]
+        cd = cds[0] if len(cds) == 1 else cauchy.CauchyData(
+            q, lam, np.hstack([c.u for c in cds]), np.hstack([c.u_n for c in cds]),
+            np.hstack([c.u_t for c in cds]))
         offsets = np.cumsum([0] + [len(b.segments) for b in self.domain.boundaries])
         curve = offsets[np.asarray(q.bdry_idx, int)] + np.asarray(q.seg_idx, int)
         vals = None
