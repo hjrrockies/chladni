@@ -341,3 +341,16 @@ def test_the_smooth_order_meets_its_target(k, prec):
 def test_the_smooth_order_scales_with_wavenumber_and_not_per_wavelength():
     orders = [R.smooth_order_for_prec(k, 1e-12)[0] for k in (10, 50, 100, 200)]
     assert orders == sorted(orders) and orders[-1] < 400
+
+
+def test_the_rule_caches_are_bounded():
+    """Corner rules are keyed by the corner's exponent `nu`, which moves on every shape-optimizer
+    step, so an unbounded cache grows for the life of a douse run (2026-10-13: ~0.75 MB per
+    solve). Bounded, with room for several solves' worth, so within-solve reuse is kept."""
+    from chladni.integrals import rules
+    cached = [f for f in vars(rules).values() if hasattr(f, "cache_info")]
+    assert cached
+    for f in cached:
+        assert f.cache_info().maxsize is not None, f.__name__
+        if f.__module__ == rules.__name__:          # `gauss_legendre` is keyed by order alone
+            assert f.cache_info().maxsize >= 1024, f.__name__

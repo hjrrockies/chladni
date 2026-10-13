@@ -48,6 +48,12 @@ from __future__ import annotations
 from functools import lru_cache
 from math import factorial
 
+#: Entries per rule cache. Corner rules are keyed by the corner's exponent `nu`, which moves on
+#: every step of a shape optimizer, so an unbounded cache grows for the life of a douse run
+#: (~0.75 MB per solve, 2026-10-13). One solve adds at most ~600 entries to the largest of them,
+#: so this keeps several solves' worth of within-solve reuse at well under a few MB per cache.
+_RULE_CACHE = 4096
+
 import numpy as np
 from scipy.special import roots_jacobi
 
@@ -74,7 +80,7 @@ def _frozen(*arrays):
     return arrays
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=_RULE_CACHE)
 def gauss_jacobi(order, a=0.0, b=0.0):
     """`(tau, w)` on `[0, 1]` integrating a RAW integrand that behaves like `tau^a` at 0 and
     `(1 - tau)^b` at 1: Gauss-Jacobi nodes, with the Jacobi weight divided back out of the
@@ -84,7 +90,7 @@ def gauss_jacobi(order, a=0.0, b=0.0):
     return _frozen((x + 1) / 2, w / 2)
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=_RULE_CACHE)
 def corner_rule(order, nu, gamma=None, sub=None):
     """The SUBSTITUTION rule. `(tau, w)` ascending on `[0, 1]`, exact on `tau^gamma` times a
     polynomial of degree `<= 2 order - 1` in `tau^sub`.
@@ -124,7 +130,7 @@ def corner_exponents(nu, gamma, n, curved=True):
     return np.array(E[:n])
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=_RULE_CACHE)
 def corner_interp_rule(order, nu, gamma=None, n_exp=None, curved=True):
     """The INTERPOLATORY rule: the substitution rule's `sub = nu` nodes, with weights refit so
     that `sum_i w_i tau_i^e = 1/(e + 1)` on the first `n_exp` exponents of the corner's family.
@@ -170,7 +176,7 @@ def _rule(kind, order, nu, gamma, sub, curved):
     raise ValueError(f"unknown corner rule {kind!r}; expected 'substitution' or 'interpolatory'")
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=_RULE_CACHE)
 def corner_model_error(kind, order, nu, gamma=None, sub=None, curved=True, k=1.0, n_j=6, n_m=8):
     """Relative error of a corner rule on a REPRESENTATIVE member of its class, in closed form.
 
@@ -202,7 +208,7 @@ def corner_model_error(kind, order, nu, gamma=None, sub=None, curved=True, k=1.0
     return abs(approx / exact - 1.0)
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=_RULE_CACHE)
 def order_cap(nu, gamma=None, sub=None, scale=1.0, order_max=128):
     """The largest order whose innermost node stays above `NODE_FLOOR / scale`, `scale` the
     panel's tau-length. Necessary, NOT sufficient: accuracy turns over well before the cap (at
@@ -215,7 +221,7 @@ def order_cap(nu, gamma=None, sub=None, scale=1.0, order_max=128):
     return cap
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=_RULE_CACHE)
 def corner_order_for_prec(kind, nu, gamma=None, sub=None, curved=True, prec=1e-14, scale=1.0,
                           k=1.0, order_min=4, order_max=64, step=2):
     """`(order, achieved)`: the smallest order whose `corner_model_error` meets `prec`, under
@@ -235,7 +241,7 @@ def corner_order_for_prec(kind, nu, gamma=None, sub=None, curved=True, prec=1e-1
     return best[1], best[0]
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=_RULE_CACHE)
 def smooth_power_error(gamma, order):
     """Relative error of `order`-point Gauss-Legendre on `int_0^1 tau^gamma dtau`: does a corner
     need the corner rule at all? An integer `gamma` is a polynomial; a large fractional one is
@@ -248,7 +254,7 @@ def smooth_power_error(gamma, order):
     return float(abs(np.sum(w * tau**gamma) - exact) / exact)
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=_RULE_CACHE)
 def smooth_order_for_prec(k, prec=1e-14, order_min=4, order_max=512, step=2):
     """`(order, achieved)`: the smallest Gauss-Legendre order integrating `exp(i k tau)` on
     `[0, 1]` to `prec`, ABSOLUTE against the unit measure. `k` is the integrand's wavenumber over

@@ -409,6 +409,13 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
+* **[done 2026-10-13]** **Memory: the pencil cached matrices.** Up to 64 `lam`s of equilibrated
+  blocks and reduced pencils per solver, ~0.5 GB held between douse steps; N = 6 ratio runs reached
+  3-4.4 GB and an 8+8-worker comparison exhausted 16 GB (kernel panic). The pencil now caches
+  vectors only (tensions, scales, ranks, coefficient vectors), and the integral-rule `lru_cache`s
+  are bounded. At a 562-column N = 6 hexagon: peak 2117 -> 545 MB, solve time unchanged.
+  `tests/test_pencil_cache.py`. The rule: never cache a full pencil; a handful of vectors is fine.
+
 * **[later]** **The factored Bessel kernel's accuracy advantage over plain `scipy.special.jv` is
   unproven end to end.** `helmholtz/_bessel.py` (series / scipy / Olver-Debye, values as
   `S * exp(sigma)`, with the Airy-regularized envelope in `fourier_bessel.py`) is validated as a
