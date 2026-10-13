@@ -113,11 +113,12 @@ def test_a_hybrid_plan_realizes_to_the_same_size_on_a_nearby_shape(dom):
     assert len(b) == p.n_cols
 
 
-def test_the_top_rung_adds_corner_clustered_sources(dom):
+def test_the_lightning_rung_adds_corner_clustered_sources(dom):
     """The last rung: Fourier-Bessel at the singular corners plus lightning poles there, as lappy
     set them up (sigma 1, reaching half the diameter, order 2, a 50/50 column split). It solved a
     thin triangle the offset layer could not (`notes/hybrid_bases.py`, round 3)."""
-    p = plan_for(dom, N, PREC, rung=len(LADDER) - 1)
+    rung = next(i for i, r in enumerate(LADDER) if r.lightning)
+    p = plan_for(dom, N, PREC, rung=rung)
     assert p.lightning_n > 0 and p.n_sources == 0
     b, _, _ = p.realize(dom)
     assert len(b) == p.n_cols
@@ -130,6 +131,18 @@ def test_a_rung_with_nothing_to_place_is_empty_and_skipped():
     places nothing. The plan is empty, and the planner must skip it, not crash (T2.8-kink and
     T1.5-r2 on the benchmark, 2026-10-12)."""
     from chladni.eigenproblem import _usable
-    p = plan_for(rect(1.0, 0.7), N, PREC, rung=len(LADDER) - 1)
+    rung = next(i for i, r in enumerate(LADDER) if r.lightning)
+    p = plan_for(rect(1.0, 0.7), N, PREC, rung=rung)
     assert p.n_cols == 0 and not _usable(p)
     assert _usable(plan_for(rect(1.0, 0.7), N, PREC, rung=0))
+
+
+def test_the_plane_wave_rung_covers_shapes_with_no_singular_corner():
+    """A rectangle's corners are all reflection-closed, so the singular-corner rungs place no
+    Fourier-Bessel term, and corner terms alone do not converge on a long thin rectangle. The
+    last rung adds plane waves (chladni's test roster's basis for such shapes, 2026-10-13: a
+    4:1 rectangle reached no rung at 1e-10 before it)."""
+    p = plan_for(rect(1.6, 0.4), N, PREC, rung=len(LADDER) - 1)
+    assert p.n_plane_waves > 0 and all(n == 0 for n in p.corner_orders)
+    b, _, _ = p.realize(rect(1.6, 0.4))
+    assert len(b) == p.n_cols == 2 * p.n_plane_waves
