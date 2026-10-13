@@ -47,11 +47,17 @@ from ._regularize import (_MODES, _PENALTY, _REACH_FLOOR, _REACH_ROUNDING, C_PEN
 
 __all__ = ["MPSPencil", "assemble", "equilibrate", "RankDiagnostics"]
 
-#: How many parameters' worth of reduced pencil to keep. Bounded because a scan visits
-#: hundreds of k and each entry costs O((m_B + m_I) * rank); NOT an eviction policy in
+#: How many VECTORS to keep -- tensions, equilibration scales, ranks and coefficient vectors,
+#: keyed by parameter. Never matrices: an equilibrated block or a reduced pencil is
+#: O((m_B + m_I) * n_cols), 10-20 MB on a 562-column basis, and caching 64 of them held ~0.5 GB
+#: per solver while the douse backend kept its last solver alive (2026-10-13: N = 6 runs at
+#: 3-4.4 GB). A search almost never asks for the same parameter's MATRICES twice; what it
+#: reuses is a tension (absorbed here and by the objective's own cache) and, at a found level,
+#: the scales `family_coef` needs right after `coef` (`tests/test_pencil_cache.py`). A vector
+#: entry is a few kB, so this bound is about entry count, not memory. NOT an eviction policy in
 #: lappy's sense -- there is no lock, no byte ledger and no weakref finalizer, because the
 #: object is immutable and nothing cached can go stale.
-_CACHE_MAX = 64
+_CACHE_MAX = 256
 
 #: How many wavenumbers to probe when the rank is chosen over a RANGE rather than at a
 #: point. The pencil's numerical rank grows with k -- measured on a 54-column disk at the
@@ -308,15 +314,20 @@ class MPSPencil(Frozen):
         return assemble(self.bdry, self.interior, lam_to_k(lam))
 
     def _equilibrated(self, lam):
-        key = ("eq", float(lam))
-        hit = self._cache.get(key)
-        if hit is None:
-            hit = equilibrate(*self.matrices(lam))
-            self._store(key, hit)
-        return hit
+        """`(B, I, scales)`, assembled fresh. Only the per-column SCALES are kept, so a
+        `family_coef` or `log_scale` after it does not assemble again."""
+        out = equilibrate(*self.matrices(lam))
+        self._store(("scale", float(lam)), out[2])
+        return out
+
+    def _scales(self, lam):
+        """This pencil's per-column equilibration log scales at `lam`: cached, a vector."""
+        hit = self._cache.get(("scale", float(lam)))
+        return hit if hit is not None else self._equilibrated(lam)[2]
 
     def pencil(self, lam):
-        """`(B, I)`: the equilibrated pencil, which is what the GSVD actually sees."""
+        """`(B, I)`: the equilibrated pencil, which is what the GSVD actually sees. Not
+        cached -- matrices never are."""
         B, I, _ = self._equilibrated(lam)
         return B, I
 
@@ -328,7 +339,7 @@ class MPSPencil(Frozen):
         `psi_j * exp(-log_scale(k)[j])`, and unscaled coefficients are never materialized --
         at a `pi/8` corner the family's half of this spans about 1149 nats.
         """
-        return self.basis.log_scale(lam_to_k(lam)) + self._equilibrated(lam)[2]
+        return self.basis.log_scale(lam_to_k(lam)) + self._scales(lam)
 
     @property
     def is_frozen(self):
@@ -354,7 +365,7 @@ class MPSPencil(Frozen):
             # `n_cols` is 50 throughout and `choose_rank` gives 42, 45, 48 at this rtol and
             # 50, 50, 50 at eps. It agrees with neither, and nothing short of the GSVD
             # predicts it -- so read it off the tension vector, whose length IS `k + l`.
-            # Cached, so this is not a second factorization.
+            # The tension vector is cached, so this is not a second factorization.
             #
             # This holds whether or not a rank was frozen: `None` truncates to the FIRST
             # `rank` columns without regard to conditioning, so LAPACK can still find that
@@ -370,19 +381,20 @@ class MPSPencil(Frozen):
         if self.rank is not None:
             return self.rank
         # A pre-truncating mode derives its rank from its own factorization, so read it back
-        # off the (cached) reduction rather than recomputing one here. Calling `choose_rank`
-        # would repeat the decomposition `regularize` has already performed.
-        return self.regularized(lam).rank
+        # off the reduction (its rank is cached, a scalar) rather than calling `choose_rank`,
+        # which would repeat the decomposition `regularize` performs.
+        hit = self._cache.get(("rank", float(lam)))
+        return hit if hit is not None else self.regularized(lam).rank
 
     def regularized(self, lam):
-        """The `RegularizedPencil` at `lam`: truncated to `rank_at(lam)`, or penalized."""
-        key = ("reg", float(lam))
-        hit = self._cache.get(key)
-        if hit is None:
-            B, I = self.pencil(lam)
-            hit = regularize(B, I, reg=self.reg, rank=self.rank, rtol=self.rtol)
-            self._store(key, hit)
-        return hit
+        """The `RegularizedPencil` at `lam`: truncated to `rank_at(lam)`, or penalized.
+
+        Built fresh on every call: it holds the reduced blocks, and matrices are never cached.
+        Its rank is kept (a scalar), and so are the scales from the equilibration under it."""
+        B, I = self.pencil(lam)
+        out = regularize(B, I, reg=self.reg, rank=self.rank, rtol=self.rtol)
+        self._store(("rank", float(lam)), out.rank)
+        return out
 
     def rank_diagnostics(self, lam):
         """The frozen rank and the singular values at `lam`, so the choice can be audited.
@@ -426,8 +438,16 @@ class MPSPencil(Frozen):
         )
 
     def tensions(self, lam):
-        """Every generalized singular value of the reduced pencil, ascending."""
-        return _gsvd.tensions_of(self.regularized(lam))
+        """Every generalized singular value of the reduced pencil, ascending. Cached: a vector.
+
+        Returned read-only, because the cached array is shared by every caller."""
+        key = ("tens", float(lam))
+        hit = self._cache.get(key)
+        if hit is None:
+            hit = _gsvd.tensions_of(self.regularized(lam))
+            hit.setflags(write=False)
+            self._store(key, hit)
+        return hit
 
     def tension(self, lam):
         """The smallest generalized singular value: the quantity the search minimizes."""
@@ -453,8 +473,14 @@ class MPSPencil(Frozen):
         Padding here too would be a one-line change to `regularize`; it is not made because
         nothing needs it and a silent shape change is worse than a documented one.
         """
-        c = _gsvd.coef_of(self.regularized(lam), mult)
-        return c if c.ndim == 2 else c[:, None]
+        key = ("coef", float(lam), int(mult))
+        hit = self._cache.get(key)
+        if hit is None:
+            c = _gsvd.coef_of(self.regularized(lam), mult)
+            hit = c if c.ndim == 2 else c[:, None]
+            hit.setflags(write=False)
+            self._store(key, hit)
+        return hit
 
     def family_coef(self, lam, x):
         """`x` from `coef(lam)` in the coordinates of the FAMILY's own columns.
@@ -472,7 +498,7 @@ class MPSPencil(Frozen):
         so the result always matches the family.
         """
         x = np.asarray(x)
-        own = self._equilibrated(float(lam))[2]
+        own = self._scales(float(lam))
         if x.shape[0] != own.size:
             full = np.zeros((own.size,) + x.shape[1:], dtype=x.dtype)
             full[:x.shape[0]] = x
@@ -501,22 +527,15 @@ class MPSPencil(Frozen):
         nothing about the eigenfunctions. `search.md` section 2.4 records this; it is repeated here
         because this method is where someone would reach for the wrong comparison.
 
-        Costs one GSVD in `separate` mode. At an `lam` the search has already tensioned, the
-        `RegularizedPencil` is cached, so no assembly, equilibration or factorization is
-        repeated -- but the `separate`-mode call is not free: measured 1.16 ms against 1.81 ms
-        for a complete fresh evaluation on a `family_B` pencil, so about 0.6 of one. At a cold
-        `lam` it pays the factorization too and costs a full evaluation (1.83 ms).
-
-        The cache that makes the cheap case cheap is `_cache`, FIFO with `_CACHE_MAX = 64`,
-        while a solve samples far more points than that -- so this only holds because
-        `search.md` section 2.6 asks for modes at the REPORTED ROOTS at the END, and those are
-        the freshest entries. Measured on the same case: 4 of 4 roots still cached after an
-        89-evaluation solve. A caller that asks mid-scan, or for a root found long before, pays
-        the full price and should expect to.
+        Costs one assembly and one factorization, plus the `separate`-mode GSVD for the
+        coefficient: no matrices are cached (`_CACHE_MAX`), so there is no cheap case. The
+        objective caches the returned VECTOR, which is what a search re-reads.
         """
         lam = float(lam)
-        _, I = self.pencil(lam)
-        c = self.coef(lam, 1)[:, 0]
+        B, I = self.pencil(lam)
+        reg = regularize(B, I, reg=self.reg, rank=self.rank, rtol=self.rtol)
+        c = _gsvd.coef_of(reg, 1)
+        c = (c if c.ndim == 1 else c[:, 0])
         if c.size != I.shape[1]:
             # `reg=None` with a frozen rank expresses the vector in the RETAINED columns rather
             # than in the full basis -- `coef`'s one documented shape exception. Scatter it back
