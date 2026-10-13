@@ -102,3 +102,11 @@ def test_the_planner_refuses_what_it_does_not_cover():
 def test_the_old_spectrum_still_builds():
     s = Spectrum.from_unfolded([1.0, 2.0, 2.0])
     assert s.count == 3 and s.levels == () and s.flags == () and s.count_audit is None
+
+
+@pytest.mark.slow
+def test_a_long_thin_rectangle_reaches_1e10():
+    """4:1. No corner is singular, so the plan has to reach its plane-wave rung."""
+    spec = Eigenproblem(rect(1.6, 0.4)).solve(3, prec=PREC)
+    assert not spec.flags, spec.flags
+    _check_against(spec, np.asarray(rect_eigs(12, 1.6, 0.4), float), 3, PREC)

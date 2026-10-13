@@ -50,6 +50,7 @@ class Recipe:
     source_density: float = 0.0
     source_offset: float = 0.0
     lightning: bool = False
+    plane_waves: float = 0.0          # x PlaneWave.n_useful(k_max * diameter); 0 = none
 
 
 #: lappy's lightning setup (`lappy/bases.py`, `FundamentalBasis.by_corners`;
@@ -66,12 +67,16 @@ LIGHTNING_ORDER = 2
 #: rung 1 with larger corner expansions; it was not measured on its own before shipping. Rung 3,
 #: lightning, comes LAST although it is cheap: it solved a thin triangle that the offset layer
 #: could not (T2.6-N3k5-L6, 100% met at margin 25), and failed one the layer solved. As the last
-#: resort it changes no case that an earlier rung already accepts.
+#: resort it changes no case that an earlier rung already accepts. Rung 4 adds PLANE WAVES to the
+#: singular-corner terms, for shapes whose corners are all reflection-closed (rectangles): the
+#: singular-corner rungs place nothing there, and a 4:1 rectangle reached no other rung at 1e-10
+#: (2026-10-13). Plane waves at 1.3x `n_useful` are `tests/hard_roster.py`'s basis for them.
 LADDER = (
     Recipe(1.0),
     Recipe(2.0, "singular", 6.0, 0.05),
     Recipe(3.0, "singular", 6.0, 0.05),
     Recipe(1.0, "singular", lightning=True),
+    Recipe(1.0, "singular", plane_waves=1.3),
 )
 #: Levels solved past the n a caller asked for: the count audit's headroom
 #: (`notes/count_audit.md`: a drop with four levels above it is caught ~94% of the time).
@@ -107,13 +112,15 @@ class Plan:
     n_sources: int = 0                # a COUNT, so the size is identical on nearby shapes
     source_offset: float = 0.0        # x the diameter
     lightning_n: int = 0              # poles per singular corner (order 2: 3 columns each)
+    n_plane_waves: int = 0            # directions (2 columns each), a COUNT like n_sources
     bdry_ratio: float = 3.0
     int_ratio: float = 1.0
 
     @property
     def n_cols(self):
         n_light = sum(1 for n in self.corner_orders if n > 0) * int(self.lightning_n)
-        return int(sum(self.corner_orders)) + int(self.n_sources) + (2 * LIGHTNING_ORDER - 1) * n_light
+        return (int(sum(self.corner_orders)) + int(self.n_sources)
+                + (2 * LIGHTNING_ORDER - 1) * n_light + 2 * int(self.n_plane_waves))
 
     def realize(self, dom):
         """`(basis, n_bdry, n_int)` on `dom`, which must have the plan's corner structure."""
@@ -135,6 +142,10 @@ class Plan:
                     parts.append(Fundamental.lightning(
                         c, int(self.lightning_n), sigma=LIGHTNING_SIGMA,
                         L=LIGHTNING_REACH * dom.diameter, order=LIGHTNING_ORDER, prec=self.prec))
+        if self.n_plane_waves:
+            from .helmholtz import PlaneWave
+            parts.append(PlaneWave.uniform(int(self.n_plane_waves), radius=dom.diameter,
+                                           prec=self.prec))
         if not parts:
             raise ValueError("the plan has neither corner terms nor sources")
         basis = parts[0]
@@ -205,5 +216,9 @@ def plan_for(dom, n, prec=PREC, rung=0):
     n_sing = sum(1 for o in orders if o > 0)
     n_light = (max(int(round(sum(orders) / ((2 * LIGHTNING_ORDER - 1) * n_sing))), 2)
                if rc.lightning and n_sing else 0)
+    n_pw = 0
+    if rc.plane_waves > 0:
+        from .helmholtz import PlaneWave
+        n_pw = int(np.ceil(rc.plane_waves * PlaneWave.n_useful(k_max * dom.diameter, prec)))
     return Plan(prec=prec, k_max=k_max, corner_orders=orders, rung=int(rung), n_sources=n_src,
-                source_offset=rc.source_offset, lightning_n=n_light)
+                source_offset=rc.source_offset, lightning_n=n_light, n_plane_waves=n_pw)
