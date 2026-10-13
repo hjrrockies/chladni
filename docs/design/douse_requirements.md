@@ -244,6 +244,22 @@ and the objective is continuous (`evaluate.py`, "Plan once, realize per iterate"
   than silently enriching. `douse` re-plans when it tightens `prec` and accepts one discontinuity
   in the objective there.
 
+### Warm start: track from the previous iterate (built 2026-10-13)
+
+    spec2 = Eigenproblem(dom2).solve(n, prec=..., plan=plan, near=spec1)
+
+* The window shrinks to `[min(0.98 FK, lam_1 - h_1), lam_n + h_n]`, `h` a third of the local mean
+  Weyl spacing (lappy's `track_set` rule). It is still a prefix, so nothing is missed below it,
+  but it drops the `n + HEADROOM` levels the cold window searches.
+* Completeness rests on continuity (decided with the user, 2026-10-13), checked every time:
+  not declined, nothing unmet or count-uncertain, at least `n` values, none moved more than its
+  `h`, the top level clear of the window's edge, the audit not short or excess. Any failure solves
+  cold, and so does every 10th warm solve. `spec.warm`, `warm_depth` and `warm_note` report it.
+* `near` must have been solved on the same plan; a re-plan always starts cold.
+* Measured at the N = 6, k = 2 ratio optimum after a 1e-3 move: 2.4x faster, the same values to
+  1.2e-13 (`notes/warm_start.md`). In douse, `ChladniEvaluator` seeds from `_last` and counts
+  `n_solves`, `n_tracks` and `n_track_refusals` as the lappy backend does.
+
 ### Hadamard integrals
 
     H = spec.hadamard(levels, V)        # (n_fields, m, m), plus the members' eigenvalues
