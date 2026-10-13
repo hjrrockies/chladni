@@ -142,6 +142,12 @@ class Spectrum:
     flags: tuple = ()
     #: The `chladni.plan.Plan` that produced it, for re-use on a nearby shape.
     plan: object = None
+    #: Warm start (`Eigenproblem.solve(..., near=prev)`): True when this answer came from the
+    #: narrow window around `prev` and passed every continuity check; `warm_depth` counts warm
+    #: solves since the last cold one; `warm_note` says why a requested warm solve went cold.
+    warm: bool = False
+    warm_depth: int = 0
+    warm_note: object = None
     #: The solver that produced it, for `hadamard`. Not part of the value.
     source: object = field(default=None, repr=False, compare=False)
 

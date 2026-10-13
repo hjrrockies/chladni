@@ -21,8 +21,18 @@ are REPORTED, never returned as if they met `prec`.
 **The window** starts at half the Faber-Krahn bound, so it is a prefix by construction and the
 count audit applies even to elongated shapes. Its top is the Weyl estimate of level
 `n + HEADROOM`, padded, and it widens until that many are found.
+
+**Warm start** (`solve(..., near=prev)`), for a sequence of nearby shapes on one plan, as douse
+runs them. The window shrinks to `[min(0.98 FK, lam_1 - h_1), lam_n + h_n]` around the previous
+values, `h` a third of the local mean Weyl spacing (lappy's tracking rule): still a prefix, but no
+headroom. Completeness then rests on continuity, checked every time (`_warm_verdict`), with a cold
+solve on any failure and every `WARM_COLD_EVERY` warm solves. Measured at douse's N = 6, k = 2
+optimum after a 1e-3 move: 84 tension evaluations against 177, 2.4x faster, the same values to
+1.2e-13 (`notes/warm_start.py`).
 """
 from __future__ import annotations
+
+from dataclasses import replace
 
 import numpy as np
 
@@ -37,6 +47,12 @@ __all__ = ["Eigenproblem"]
 CONFIRM_MARGIN = 20.0
 _TOP_PAD = 0.15
 _MAX_WIDEN = 8
+#: A warm solve's window half-width at each previous value, as a fraction of the local mean Weyl
+#: spacing: lappy's `track`/`track_set` rule (`lappy/evp.py:472`).
+WARM_SPACING_FRACTION = 1.0 / 3.0
+#: A cold solve after this many consecutive warm ones: a backstop against slow drift past the
+#: continuity checks (decided with the user, 2026-10-13).
+WARM_COLD_EVERY = 10
 
 
 class Eigenproblem:
@@ -87,18 +103,38 @@ class Eigenproblem:
 
     # --- solving -----------------------------------------------------------------------------
 
-    def solve(self, n, prec=PREC, plan=None, on_shortfall="flag", *, confirm=False):
+    def solve(self, n, prec=PREC, plan=None, on_shortfall="flag", *, confirm=False, near=None):
         """The first `n` levels (the level at `n` whole) as a `Spectrum`. See the module docstring.
 
         `plan=None` plans (`Eigenproblem.plan`). A given `plan` is realized on this domain. If it
         was made for a looser `prec` than requested, the shortfall is reported, not fixed by
         enlarging the basis: changing `prec` is a re-plan. `on_shortfall="raise"` raises
-        `PrecisionShortfall` instead of returning a flagged result."""
-        from .mps.solver import _raise_on_shortfall
+        `PrecisionShortfall` instead of returning a flagged result.
 
+        `near`, the `Spectrum` of a nearby shape solved on the same plan, asks for a WARM solve:
+        the narrow window around its values, accepted only if every continuity check holds
+        (`_warm_verdict`), otherwise a cold solve. `spec.warm`, `warm_depth` and `warm_note` say
+        which happened and why. With `plan=None`, `near.plan` is used. A warm answer is
+        accepted only unflagged, so `on_shortfall="raise"` has nothing to raise on it."""
         if on_shortfall not in ("flag", "raise"):
             raise ValueError(f"on_shortfall must be 'flag' or 'raise', got {on_shortfall!r}")
         n, prec = int(n), check_prec(prec)
+        if near is not None:
+            if plan is None:
+                plan = near.plan
+            spec, note = self._solve_warm(near, plan, n, prec)
+            if spec is not None:
+                return spec
+        else:
+            note = None
+        spec = self._solve_cold(n, prec, plan, on_shortfall, confirm)
+        if note is not None:
+            spec = replace(spec, warm_note=note)
+        return spec
+
+    def _solve_cold(self, n, prec, plan, on_shortfall, confirm):
+        from .mps.solver import _raise_on_shortfall
+
         flags = []
         if plan is None:
             plan, res, window, accepted = self._plan(n, prec, confirm)
@@ -131,8 +167,86 @@ class Eigenproblem:
         res.solver = solver                     # for `Spectrum.hadamard`
         return res, (lo, hi)
 
+    def _solve_warm(self, near, plan, n, prec):
+        """`(spectrum, None)` if the warm solve is accepted, else `(None, why)`."""
+        if plan is None or near.plan is not plan:
+            return None, "plan: `near` was solved on a different plan"
+        if near.warm_depth >= WARM_COLD_EVERY:
+            return None, f"cadence: a cold solve every {WARM_COLD_EVERY} warm ones"
+        if plan.prec > prec * (1 + 1e-9):
+            return None, "plan: made for a looser prec than requested"
+        prev = np.asarray(near.unfolded, dtype=float)[:n]
+        if prev.size < n:
+            return None, f"found: `near` holds {prev.size} values, fewer than {n}"
+        a, b, h = _warm_window(self.domain, prev)
+        solver = plan.solver(self.domain, prec=prec)
+        res = solver.search_interval(a, b, on_shortfall="flag")
+        res.solver = solver
+        d = res.diagnostics
+        found = np.sort(np.asarray(res.unfolded, dtype=float))
+        why = _warm_verdict(found=found, prev=prev, n=n, b=b, h=h,
+                            top=max((L.lam for L in res.levels), default=-np.inf),
+                            declined=bool(d.declined), unmet=len(d.unmet),
+                            uncertain=int(d.n_uncertain),
+                            audit=d.count_audit.verdict if d.count_audit is not None else None)
+        if why is not None:
+            return None, why
+        spec = _spectrum(res, n, prec, plan, [])
+        # A narrow window can leave the audit with nothing to say; continuity decided instead.
+        spec = replace(spec, flags=tuple(f for f in spec.flags
+                                         if not f.startswith("count audit: unaudited")),
+                       warm=True, warm_depth=near.warm_depth + 1)
+        if spec.flags:                          # anything else means the checks missed a case
+            return None, "flags: " + "; ".join(spec.flags)
+        return spec, None
+
 
 # --- helpers -------------------------------------------------------------------------------------
+
+def _mean_spacing(lam, domain):
+    """The local mean Weyl spacing at `lam`: the gap between consecutive Weyl estimates."""
+    from . import asymp
+    k = max(float(asymp.weyl_count_poly(lam, domain)), 0.5)
+    return float(asymp.weyl_est_poly(k + 1, domain) - asymp.weyl_est_poly(k, domain))
+
+
+def _warm_window(domain, prev):
+    """`(a, b, h)`: the warm window around the previous values `prev` (ascending, length n) and
+    each value's allowed move `h`. `a` sits below Faber-Krahn, so the window is a PREFIX: nothing
+    can be missed beneath it, and sorted index is eigenvalue index."""
+    from .bounds import faber_krahn
+    h = np.array([WARM_SPACING_FRACTION * _mean_spacing(v, domain) for v in prev])
+    a = min(0.98 * float(faber_krahn(domain)), float(prev[0] - h[0]))
+    a = max(a, 1e-3 * float(prev[0]))
+    b = float(prev[-1] + h[-1])
+    return a, b, h
+
+
+def _warm_verdict(*, found, prev, n, b, h, top, declined, unmet, uncertain, audit):
+    """None if a warm solve may be trusted, else the first continuity check it fails.
+
+    `found` the values in the window, ascending and unfolded; `prev` the previous first `n`;
+    `h` each one's allowed move; `top` the highest level found; the rest from the search."""
+    if declined:
+        return "declined: the search declined the warm window"
+    if unmet:
+        return f"unmet: {unmet} level(s) in the warm window miss prec"
+    if uncertain:
+        return f"uncertain: {uncertain} count(s) in the warm window could not be certified"
+    if found.size < n:
+        return f"found: {found.size} values in the warm window, fewer than {n}"
+    moved = np.abs(found[:n] - prev[:n]) > h[:n]
+    if np.any(moved):
+        i = int(np.argmax(moved))
+        return (f"moved: value {i + 1} moved {abs(found[i] - prev[i]):.3g}, more than its "
+                f"allowed {h[i]:.3g} (an index shift, or too large a step)")
+    if top > b - h[n - 1] / 3.0:
+        return (f"edge: a level at {top:.10g} sits within {h[n - 1] / 3.0:.3g} of the window's "
+                f"top {b:.10g}, where a cluster can be cut")
+    if audit in ("short", "excess"):
+        return f"audit: the count audit reads {audit}"
+    return None
+
 
 def _usable(plan):
     """A rung can place nothing on some shapes: singular-corner rungs on a shape whose corners are
