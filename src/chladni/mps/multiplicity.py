@@ -457,7 +457,7 @@ def floor_multiplicity(t, ratio=FLOOR_RATIO, band=FLOOR_BAND, max_branches=MAX_B
 def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
                        reject_above=REJECT_ABOVE, bias_lo=BIAS_LO, bias_hi=BIAS_HI,
                        side_ratio=SIDE_RATIO,
-                       max_branches=MAX_BRANCHES, counter=None):
+                       max_branches=MAX_BRANCHES, counter=None, window=None):
     """How many eigenvalues lie inside `[lo, hi]`. `(mu, declined, spent, branches)`.
 
     `branches` is one `Branch` per branch EXAMINED, in order, carrying the estimated distance and
@@ -532,10 +532,16 @@ def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
             break                                     # outside both ways; branches ascend
         # In the band: the answer depends on the side, so measure the side. Each side is judged on
         # its own: does it HOLD an eigenvalue near `d`? (`d*c` is `sigma_j`.)
-        v_lo = float(np.atleast_1d(tensions(x - d))[0])
-        v_hi = float(np.atleast_1d(tensions(x + d))[0])
+        # A probe that leaves the search WINDOW is not evaluated (`window`, 2026-10-13). The
+        # bracket lies inside the window, so an eigenvalue `d` away on that side cannot be inside
+        # the bracket: the side holds nothing for this count. On a flat, ill-conditioned
+        # objective `d` is large and `x - d` fell below zero, where the pencil refuses
+        # (`tests/test_reach_probe_window.py`).
+        def inside(z):
+            return window is None or window[0] <= z <= window[1]
         bar = side_ratio * d * c
-        has_lo, has_hi = v_lo < bar, v_hi < bar
+        has_lo = inside(x - d) and float(np.atleast_1d(tensions(x - d))[0]) < bar
+        has_hi = inside(x + d) and float(np.atleast_1d(tensions(x + d))[0]) < bar
         if has_lo != has_hi:
             # How far the bracket runs on the one side that holds the branch.
             side = -1 if has_lo else +1
@@ -580,12 +586,13 @@ def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
 
 def multiplicity(tensions, x, *, wide_bracket=None, prec=None, G=GAP_RATIO, P=PROMINENCE,
                  max_branches=MAX_BRANCHES, counter=None, rule="gap", bracket=None,
-                 c=None, reach_bounds=None):
+                 c=None, reach_bounds=None, window=None):
     """How many eigenvalues sit at `x`. Reads the cache; spends nothing.
 
     `rule="reach"` counts branches whose estimated distance `sigma_j/c` falls inside the
     bracket. It needs `bracket` and `c`, and it is the only rule that answers `mu*(B)`; the other
-    two answer different questions and are kept for comparison on one instrument.
+    two answer different questions and are kept for comparison on one instrument. `window`, the
+    search window, keeps its side probes inside it (`reach_multiplicity`).
 
     `rule="floor"` counts branches at the floor WITH `sigma_1` -- see `floor_multiplicity`. It
     needs no `wide_bracket`. NOT the default: the mechanism is right in kind and its constant is
@@ -608,7 +615,8 @@ def multiplicity(tensions, x, *, wide_bracket=None, prec=None, G=GAP_RATIO, P=PR
             count_below=reach_bounds[0], reject_above=reach_bounds[1],
             bias_lo=reach_bounds[2], bias_hi=reach_bounds[3])
         mu, declined, spent, seen = reach_multiplicity(
-            tensions, x, lo, hi, float(c), max_branches=max_branches, counter=counter, **kw)
+            tensions, x, lo, hi, float(c), max_branches=max_branches, counter=counter,
+            window=window, **kw)
         t = np.atleast_1d(np.asarray(tensions(x), dtype=float))
         n = min(t.size, max_branches)
         gap = float(t[mu] / t[mu - 1]) if mu < n and t[mu - 1] > 0 else float("inf")

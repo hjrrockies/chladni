@@ -1254,7 +1254,8 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
             bias_lo_eff, bias_hi_eff = ((BIAS_LO, BIAS_HI) if bounds is None
                                         else (bounds[2], bounds[3]))
             m = multiplicity(tens, r.lam, bracket=bracket, c=c_out, prec=prec, rule="reach",
-                             reach_bounds=bounds, counter=obj)
+                             reach_bounds=bounds, counter=obj,
+                             window=obj.in_lam_bracket(obj.lo, obj.hi))
             probe_evals += int(m.evaluations)
             # (C2) BACKSTOP on every branch the reach rule COUNTED. A counted branch whose sigma
             # does not dip at this root is not this level's: the spike triangle's 807.0076 came
