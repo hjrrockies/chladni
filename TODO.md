@@ -409,6 +409,13 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
+* **[done 2026-10-13]** **Warm start for douse: `solve(..., near=prev)`.** A narrow prefix window
+  around the previous values, no headroom, continuity checks, a cold solve on any failure and
+  every 10th warm solve. 2.4x on one N = 6 re-solve; on a douse N = 4, k = 1 run, 9 of 12 solves
+  ran warm with no refusals. `notes/warm_start.md`. **Next speed levers, not started:** the
+  search evaluates one `lam` at a time (186 serial evaluations per N = 6 cold solve, 10 cores
+  idle), so evaluating the seed/cover grids through the thread pool; and assembly at ~0.1 s per
+  `lam` on 562 columns.
 * **[done 2026-10-13]** **Memory: the pencil cached matrices.** Up to 64 `lam`s of equilibrated
   blocks and reduced pencils per solver, ~0.5 GB held between douse steps; N = 6 ratio runs reached
   3-4.4 GB and an 8+8-worker comparison exhausted 16 GB (kernel panic). The pencil now caches
