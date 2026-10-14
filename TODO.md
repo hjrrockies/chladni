@@ -409,6 +409,12 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
+* **[done 2026-10-13]** **Short edges get a local source patch.** douse's ratio runs drive an
+  edge toward zero (the N = 6, k = 2 seed-1 stall: an edge 0.042 of a 1.44 diameter). The offset
+  layer at 0.05 D sat farther out than the edge is long, and the plan met 1e-10 at margin 2.0
+  exactly. Now 9 sources sit around each edge shorter than 0.15 D, on the offset rungs:
+  margins 5-26 there, no other benchmark case worse (`notes/short_edge_sources.md`). Open: two
+  adjacent short edges; a short edge beside a reflex corner.
 * **[done 2026-10-13]** **Warm start for douse: `solve(..., near=prev)`.** A narrow prefix window
   around the previous values, no headroom, continuity checks, a cold solve on any failure and
   every 10th warm solve. 2.4x on one N = 6 re-solve; on a douse N = 4, k = 1 run, 9 of 12 solves

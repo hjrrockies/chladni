@@ -1,0 +1,1641 @@
+{
+ "runs": [
+  {
+   "id": "stall-N6k2s1",
+   "rule": "old",
+   "wall": 178.56474558300033,
+   "rung": 2,
+   "n_cols": 554,
+   "flags": [
+    "planner: no rung met prec=1e-10; returning rung 2 of 4, the one with the most levels met",
+    "unmet: 1 of 4 levels miss prec=1e-10, the first at lam = 40.63048546 (margin 2; 2 is needed)"
+   ],
+   "margins": [
+    2.3,
+    2.0,
+    6.84,
+    9.08
+   ],
+   "lam": [
+    18.845921853134193,
+    40.6304854566234,
+    53.23196785111678,
+    74.25874868710795
+   ]
+  },
+  {
+   "id": "stall-N6k2s1",
+   "rule": "feature",
+   "wall": 216.23948954200023,
+   "rung": 2,
+   "n_cols": 602,
+   "flags": [
+    "planner: no rung met prec=1e-10; returning rung 2 of 4, the one with the most levels met"
+   ],
+   "margins": [
+    8.34,
+    7.3,
+    8.85,
+    6.18
+   ],
+   "lam": [
+    18.84592185313981,
+    40.63048545660545,
+    53.23196785111707,
+    74.258748687156
+   ]
+  },
+  {
+   "id": "T1.3",
+   "prec": 1e-10,
+   "n": 9,
+   "wall": 561.6129075829995,
+   "rung": 1,
+   "n_cols": 317,
+   "flags": [
+    "planner: no rung met prec=1e-10; returning rung 1 of 4, the one with the most levels met",
+    "unmet: 9 of 9 levels miss prec=1e-10, the first at lam = 248.6534195 (margin 0.409; 2 is needed)",
+    "uncertain: 9 count(s) could not be certified"
+   ],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 248.65341947481545,
+     "mult": 1,
+     "bound": 4.161496261311364e-07,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 344.59017180274986,
+     "mult": 1,
+     "bound": 4.6140831579902415e-07,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 430.38000570844673,
+     "mult": 1,
+     "bound": 4.637216843167987e-07,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 518.6158017570355,
+     "mult": 1,
+     "bound": 2.8985446383940577e-06,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 611.3374161041859,
+     "mult": 1,
+     "bound": 1.734395206946388e-06,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 705.7496638558773,
+     "mult": 1,
+     "bound": 2.332779388061957e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 807.0076098171766,
+     "mult": 1,
+     "bound": 2.3369587476922476e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 887.472441229704,
+     "mult": 1,
+     "bound": 7.710597599500034e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 916.0815880717918,
+     "mult": 1,
+     "bound": 3.817318075496191e-06,
+     "met": false,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "FLAGGED-OK"
+  },
+  {
+   "id": "T1.3",
+   "prec": 1e-10,
+   "n": 9,
+   "wall": 605.8820610000002,
+   "rung": 1,
+   "n_cols": 317,
+   "flags": [
+    "planner: no rung met prec=1e-10; returning rung 1 of 4, the one with the most levels met",
+    "unmet: 9 of 9 levels miss prec=1e-10, the first at lam = 248.6534195 (margin 0.0725; 2 is needed)",
+    "uncertain: 15 count(s) could not be certified"
+   ],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 248.6534194732593,
+     "mult": 1,
+     "bound": 1.8510866803018395e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 344.59017181102894,
+     "mult": 1,
+     "bound": 1.382511320140398e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 430.38000569991794,
+     "mult": 1,
+     "bound": 2.0580168996140256e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 518.6158017551687,
+     "mult": 1,
+     "bound": 1.3822568548949733e-05,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 611.3374160417495,
+     "mult": 1,
+     "bound": 1.0558664166035106e-05,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 705.7496638528297,
+     "mult": 1,
+     "bound": 1.7764909999053482e-05,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 807.0076098165898,
+     "mult": 1,
+     "bound": 1.660105742389931e-05,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 887.4724413222651,
+     "mult": 1,
+     "bound": 4.381186532299245e-05,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 916.0815880934425,
+     "mult": 1,
+     "bound": 8.169141034700956e-06,
+     "met": false,
+     "count_flag": true
+    }
+   ],
+   "rule": "feature",
+   "verdict": "FLAGGED-OK"
+  },
+  {
+   "id": "T2.1-pass1",
+   "prec": 1e-10,
+   "n": 1,
+   "wall": 15.193741584000236,
+   "rung": 1,
+   "n_cols": 328,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 17.082832106930987,
+     "mult": 1,
+     "bound": 8.324776538663715e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.1-pass1",
+   "prec": 1e-10,
+   "n": 1,
+   "wall": 15.254545708998194,
+   "rung": 1,
+   "n_cols": 328,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 17.082832106935445,
+     "mult": 1,
+     "bound": 6.373261479480725e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "feature",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.1-rerun",
+   "prec": 1e-10,
+   "n": 1,
+   "wall": 43.32277370800148,
+   "rung": 2,
+   "n_cols": 475,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 17.058998827646203,
+     "mult": 1,
+     "bound": 4.2206200921578754e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.1-rerun",
+   "prec": 1e-10,
+   "n": 1,
+   "wall": 44.047360042000946,
+   "rung": 2,
+   "n_cols": 475,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 17.058998827646203,
+     "mult": 1,
+     "bound": 4.2206200921578754e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "feature",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.2",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 966.4793917919997,
+   "rung": 0,
+   "n_cols": 218,
+   "flags": [
+    "planner: no rung met prec=1e-10; returning rung 0 of 4, the one with the most levels met",
+    "unmet: 11 of 11 levels miss prec=1e-10, the first at lam = 37.18312633 (margin 0.00104; 2 is needed)",
+    "count audit: short (mean Weyl deficit 0.862)"
+   ],
+   "declined": false,
+   "audit": "short",
+   "levels": [
+    {
+     "lam": 37.18312632687334,
+     "mult": 1,
+     "bound": 4.7599686436420966e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 68.2602930285346,
+     "mult": 1,
+     "bound": 0.00019778640161686976,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 118.38806273983805,
+     "mult": 1,
+     "bound": 1.3424315119767991e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 152.2958453487316,
+     "mult": 1,
+     "bound": 0.0005017619569151295,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 186.31624315496666,
+     "mult": 1,
+     "bound": 0.002257530156853407,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 205.18232697784612,
+     "mult": 1,
+     "bound": 0.0009227900735834141,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 253.17695096989766,
+     "mult": 1,
+     "bound": 0.00024776605110906323,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 265.96876624928655,
+     "mult": 1,
+     "bound": 0.004278829034603655,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 284.11689762195135,
+     "mult": 1,
+     "bound": 0.0010024709933641948,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 291.1871895095505,
+     "mult": 1,
+     "bound": 0.001340144151523381,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 343.99187876289074,
+     "mult": 1,
+     "bound": 0.003943599614724301,
+     "met": false,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "FLAGGED-WRONG"
+  },
+  {
+   "id": "T2.2",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 966.2243201660021,
+   "rung": 0,
+   "n_cols": 218,
+   "flags": [
+    "planner: no rung met prec=1e-10; returning rung 0 of 4, the one with the most levels met",
+    "unmet: 11 of 11 levels miss prec=1e-10, the first at lam = 37.18312633 (margin 0.00104; 2 is needed)",
+    "count audit: short (mean Weyl deficit 0.862)"
+   ],
+   "declined": false,
+   "audit": "short",
+   "levels": [
+    {
+     "lam": 37.18312632687334,
+     "mult": 1,
+     "bound": 4.7599686436420966e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 68.2602930285346,
+     "mult": 1,
+     "bound": 0.00019778640161686976,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 118.38806273983805,
+     "mult": 1,
+     "bound": 1.3424315119767991e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 152.2958453487316,
+     "mult": 1,
+     "bound": 0.0005017619569151295,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 186.31624315496666,
+     "mult": 1,
+     "bound": 0.002257530156853407,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 205.18232697784612,
+     "mult": 1,
+     "bound": 0.0009227900735834141,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 253.17695096989766,
+     "mult": 1,
+     "bound": 0.00024776605110906323,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 265.96876624928655,
+     "mult": 1,
+     "bound": 0.004278829034603655,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 284.11689762195135,
+     "mult": 1,
+     "bound": 0.0010024709933641948,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 291.1871895095505,
+     "mult": 1,
+     "bound": 0.001340144151523381,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 343.99187876289074,
+     "mult": 1,
+     "bound": 0.003943599614724301,
+     "met": false,
+     "count_flag": false
+    }
+   ],
+   "rule": "feature",
+   "verdict": "FLAGGED-WRONG"
+  },
+  {
+   "id": "T2.3-endpoint",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 101.30729912500101,
+   "rung": 1,
+   "n_cols": 377,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 20.33765334908242,
+     "mult": 1,
+     "bound": 2.8882036352963343e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 48.68835819003513,
+     "mult": 1,
+     "bound": 8.465356324115421e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 52.982580829677374,
+     "mult": 1,
+     "bound": 3.6166613682502916e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.83453745085411,
+     "mult": 1,
+     "bound": 2.2035096005793023e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 101.57017023413067,
+     "mult": 1,
+     "bound": 6.76271480198025e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 103.20268054807619,
+     "mult": 1,
+     "bound": 5.85062593949875e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 124.4128945217907,
+     "mult": 1,
+     "bound": 4.4393984527423514e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 137.90626459574585,
+     "mult": 1,
+     "bound": 4.682731028157126e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 172.85123626466992,
+     "mult": 1,
+     "bound": 1.6092249201966146e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 174.26804522570967,
+     "mult": 1,
+     "bound": 4.94391041150465e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 175.658750289135,
+     "mult": 1,
+     "bound": 1.6293478042617754e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.3-endpoint",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 100.89970479100157,
+   "rung": 1,
+   "n_cols": 377,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 20.337653349072095,
+     "mult": 1,
+     "bound": 6.856377891550627e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 48.68835819002755,
+     "mult": 1,
+     "bound": 2.1494691431505274e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 52.98258082961217,
+     "mult": 1,
+     "bound": 4.933300577073227e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.83453745085389,
+     "mult": 1,
+     "bound": 8.10524122788654e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 101.5701702341402,
+     "mult": 1,
+     "bound": 1.0944460804309025e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 103.20268054792943,
+     "mult": 1,
+     "bound": 6.793168062369733e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 124.41289452186024,
+     "mult": 1,
+     "bound": 1.903205342035341e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 137.90626459598258,
+     "mult": 1,
+     "bound": 1.983276716539405e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 172.85123626568088,
+     "mult": 1,
+     "bound": 6.664322427241132e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 174.26804522562335,
+     "mult": 1,
+     "bound": 5.022033348495149e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 175.65875028889667,
+     "mult": 1,
+     "bound": 3.044583414843382e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "feature",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.3-pre-ref0",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 96.5262410409996,
+   "rung": 1,
+   "n_cols": 374,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 20.127751096498613,
+     "mult": 1,
+     "bound": 4.699030614027131e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.26646776177086,
+     "mult": 1,
+     "bound": 1.588037984678545e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 51.36656878407541,
+     "mult": 1,
+     "bound": 3.476716143159545e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 80.12220223380112,
+     "mult": 1,
+     "bound": 3.3816572968000454e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 100.59877973451026,
+     "mult": 1,
+     "bound": 5.812894699269132e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 101.0307293746636,
+     "mult": 1,
+     "bound": 3.3671514426841405e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 127.19366236705301,
+     "mult": 1,
+     "bound": 8.180122675328939e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 133.95878616067455,
+     "mult": 1,
+     "bound": 1.347032884387727e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 171.02784794595652,
+     "mult": 1,
+     "bound": 5.019574821005727e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 171.51623422740474,
+     "mult": 1,
+     "bound": 1.514746023059279e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 178.87793299480478,
+     "mult": 1,
+     "bound": 1.2432568458882466e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.3-pre-ref0",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 94.47775212499982,
+   "rung": 1,
+   "n_cols": 374,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 20.127751096496034,
+     "mult": 1,
+     "bound": 1.2404966166229233e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.26646776176501,
+     "mult": 1,
+     "bound": 7.988053481045763e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 51.36656878407494,
+     "mult": 1,
+     "bound": 6.385638463859665e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 80.12220223380503,
+     "mult": 1,
+     "bound": 1.434995850956252e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 100.5987797345125,
+     "mult": 1,
+     "bound": 1.9490306930429292e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 101.03072937467137,
+     "mult": 1,
+     "bound": 1.3895829297176091e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 127.19366236717428,
+     "mult": 1,
+     "bound": 3.608616287332801e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 133.95878616049163,
+     "mult": 1,
+     "bound": 5.802612681829834e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 171.0278479459362,
+     "mult": 1,
+     "bound": 1.7316991963653337e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 171.516234228845,
+     "mult": 1,
+     "bound": 1.617628320826892e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 178.87793299406783,
+     "mult": 1,
+     "bound": 5.192669750245028e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "feature",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.3-pre-ref3",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 100.60746995799855,
+   "rung": 1,
+   "n_cols": 375,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 20.104529724592187,
+     "mult": 1,
+     "bound": 3.797487964456718e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.16604865499846,
+     "mult": 1,
+     "bound": 1.2774245827746655e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 51.35113033469739,
+     "mult": 1,
+     "bound": 1.647037363986886e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.99676981249246,
+     "mult": 1,
+     "bound": 2.838299005309181e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 100.49224899097668,
+     "mult": 1,
+     "bound": 5.3818879861608717e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 100.93835969704506,
+     "mult": 1,
+     "bound": 2.788873088319992e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 126.88683859301163,
+     "mult": 1,
+     "bound": 6.592841081420875e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 133.91884102068593,
+     "mult": 1,
+     "bound": 3.7216434351527776e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 170.8808658214146,
+     "mult": 1,
+     "bound": 1.5726300262031145e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 171.31202122116642,
+     "mult": 1,
+     "bound": 1.4419474155199482e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 178.49953105274082,
+     "mult": 1,
+     "bound": 1.473875070098993e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.3-pre-ref3",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 95.2071329169994,
+   "rung": 1,
+   "n_cols": 375,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 20.104529724594737,
+     "mult": 1,
+     "bound": 9.644157005190967e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.16604865500576,
+     "mult": 1,
+     "bound": 2.215460791184179e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 51.35113033469716,
+     "mult": 1,
+     "bound": 2.7168905316129266e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.9967698125007,
+     "mult": 1,
+     "bound": 1.1359501621260354e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 100.49224899097045,
+     "mult": 1,
+     "bound": 1.0305333033895897e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 100.93835969686423,
+     "mult": 1,
+     "bound": 1.1281116776607402e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 126.8868385925989,
+     "mult": 1,
+     "bound": 2.504601657190265e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 133.9188410208429,
+     "mult": 1,
+     "bound": 1.546473284768773e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 170.8808658204409,
+     "mult": 1,
+     "bound": 1.3576864024496284e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 171.31202122123148,
+     "mult": 1,
+     "bound": 1.1041834113711957e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 178.4995310522094,
+     "mult": 1,
+     "bound": 3.6617589761403153e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "feature",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.5",
+   "prec": 1e-10,
+   "n": 9,
+   "wall": 109.86046179199911,
+   "rung": 1,
+   "n_cols": 489,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 29.243041495807127,
+     "mult": 1,
+     "bound": 2.4600767771262177e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 60.90124393798588,
+     "mult": 1,
+     "bound": 2.822144927929357e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 77.41303780480493,
+     "mult": 1,
+     "bound": 4.927606970416375e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 106.26068671073513,
+     "mult": 1,
+     "bound": 7.012141805410117e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 124.73367835460247,
+     "mult": 1,
+     "bound": 2.2142452066689658e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 148.60564808771568,
+     "mult": 1,
+     "bound": 7.962766606763367e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 163.1633859796542,
+     "mult": 1,
+     "bound": 4.225779438000841e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 189.21300534101772,
+     "mult": 1,
+     "bound": 5.732301662796725e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 208.41982501207104,
+     "mult": 1,
+     "bound": 6.679640059978711e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.5",
+   "prec": 1e-10,
+   "n": 9,
+   "wall": 105.42407612500028,
+   "rung": 1,
+   "n_cols": 489,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 29.24304149580155,
+     "mult": 1,
+     "bound": 1.8684793674337094e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 60.90124393798487,
+     "mult": 1,
+     "bound": 2.4795287166674337e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 77.41303780481164,
+     "mult": 1,
+     "bound": 5.966417141738957e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 106.26068671073789,
+     "mult": 1,
+     "bound": 3.79567273933923e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 124.73367835474829,
+     "mult": 1,
+     "bound": 3.886862280823418e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 148.60564808702802,
+     "mult": 1,
+     "bound": 6.518852293932872e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 163.163385979663,
+     "mult": 1,
+     "bound": 4.4069352775385155e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 189.21300534104915,
+     "mult": 1,
+     "bound": 7.677723333735713e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 208.41982500999922,
+     "mult": 1,
+     "bound": 3.752038486481281e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "feature",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.6-N5k4-L7-ref0",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 93.52978895900014,
+   "rung": 1,
+   "n_cols": 373,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 19.982589368239708,
+     "mult": 1,
+     "bound": 6.952330430657911e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.82275578192759,
+     "mult": 1,
+     "bound": 2.0407552324263213e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 50.08895762048543,
+     "mult": 1,
+     "bound": 1.7703953578871264e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.91931275338507,
+     "mult": 1,
+     "bound": 1.2269456554198967e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 99.91382384203635,
+     "mult": 1,
+     "bound": 4.643170460231873e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 99.91502894625818,
+     "mult": 1,
+     "bound": 3.9622705116926227e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 129.43164981319043,
+     "mult": 1,
+     "bound": 7.91212872270966e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 130.31169746272425,
+     "mult": 1,
+     "bound": 1.7189142609805158e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 169.82560716273025,
+     "mult": 1,
+     "bound": 7.50276285543805e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 169.87939642404785,
+     "mult": 1,
+     "bound": 2.746130151669348e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 179.77417365686443,
+     "mult": 1,
+     "bound": 1.4183595742411597e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.6-N5k4-L7-ref0",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 93.67321008299768,
+   "rung": 1,
+   "n_cols": 373,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 19.98258936824232,
+     "mult": 1,
+     "bound": 1.1527138056118832e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.82275578194633,
+     "mult": 1,
+     "bound": 2.806870026256904e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 50.08895762048325,
+     "mult": 1,
+     "bound": 3.9108544574632817e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.91931275336573,
+     "mult": 1,
+     "bound": 1.183133752895968e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 99.91382384184514,
+     "mult": 1,
+     "bound": 9.29971383693288e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 99.91502894627176,
+     "mult": 1,
+     "bound": 1.100580020418626e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 129.4316498132354,
+     "mult": 1,
+     "bound": 3.2800969055630396e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 130.31169746277746,
+     "mult": 1,
+     "bound": 2.0132413692510418e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 169.8256071628744,
+     "mult": 1,
+     "bound": 1.5342725985373175e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 169.87939642722944,
+     "mult": 1,
+     "bound": 6.397460216104621e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 179.7741736561132,
+     "mult": 1,
+     "bound": 2.468504041857018e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "feature",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.6-N5k4-L7-ref3",
+   "prec": 1e-10,
+   "n": 4,
+   "wall": 45.84717808300047,
+   "rung": 1,
+   "n_cols": 311,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 19.96395568467229,
+     "mult": 1,
+     "bound": 1.636593632438347e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.77837655172548,
+     "mult": 1,
+     "bound": 2.510927972389982e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 50.0402266521458,
+     "mult": 1,
+     "bound": 2.3017129390519474e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.84506195254147,
+     "mult": 1,
+     "bound": 1.4687551928026336e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.6-N5k4-L7-ref3",
+   "prec": 1e-10,
+   "n": 4,
+   "wall": 88.85651595799936,
+   "rung": 2,
+   "n_cols": 442,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 19.963955684678456,
+     "mult": 1,
+     "bound": 5.687357097804443e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.778376551763834,
+     "mult": 1,
+     "bound": 2.306238558072728e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 50.04022665214623,
+     "mult": 1,
+     "bound": 2.585981087638262e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.84506195252722,
+     "mult": 1,
+     "bound": 1.6465315267951672e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "feature",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.9-N5k3convex",
+   "prec": 1e-10,
+   "n": 10,
+   "wall": 119.24834875000306,
+   "rung": 1,
+   "n_cols": 441,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 43.988077958921906,
+     "mult": 1,
+     "bound": 7.154147654869474e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 77.71554877591251,
+     "mult": 1,
+     "bound": 2.106525397170438e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 117.52243718021965,
+     "mult": 1,
+     "bound": 2.40856209060055e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 128.172036533668,
+     "mult": 1,
+     "bound": 1.9227867812292383e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 165.273395262289,
+     "mult": 1,
+     "bound": 3.2563384985805666e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 189.47295781300662,
+     "mult": 1,
+     "bound": 3.872894931118572e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 221.25587448798137,
+     "mult": 1,
+     "bound": 1.8447963157086633e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 249.36203233167547,
+     "mult": 1,
+     "bound": 6.505729288619477e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 257.57966512605867,
+     "mult": 1,
+     "bound": 4.0956838548088626e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 285.6704292918149,
+     "mult": 1,
+     "bound": 6.038800041340912e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.9-N5k3convex",
+   "prec": 1e-10,
+   "n": 10,
+   "wall": 111.9807248750003,
+   "rung": 1,
+   "n_cols": 441,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 43.988077958922936,
+     "mult": 1,
+     "bound": 8.967005724553972e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 77.71554877591242,
+     "mult": 1,
+     "bound": 1.5404905079784567e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 117.52243718009476,
+     "mult": 1,
+     "bound": 3.239790657971753e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 128.17203653353855,
+     "mult": 1,
+     "bound": 1.7435815554943263e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 165.2733952617925,
+     "mult": 1,
+     "bound": 1.4555894267687108e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 189.47295781289375,
+     "mult": 1,
+     "bound": 4.901360005256916e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 221.2558744874591,
+     "mult": 1,
+     "bound": 6.196065099170903e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 249.36203233189616,
+     "mult": 1,
+     "bound": 4.1478329441771576e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 257.5796651254362,
+     "mult": 1,
+     "bound": 1.034675874778645e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 285.6704292916557,
+     "mult": 1,
+     "bound": 6.528081752926833e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "feature",
+   "verdict": "CLEAN"
+  }
+ ]
+}
