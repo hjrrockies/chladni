@@ -16,12 +16,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from functools import cached_property
 
 import numpy as np
 
 from ._core import PREC, PrecisionWarning, _set, check_prec
 
-__all__ = ["SpectrumLevel", "Eigensolver", "Spectrum", "lam_to_k", "k_to_lam", "weyl_window",
+__all__ = ["Level", "SpectrumLevel", "Eigensolver", "Spectrum", "lam_to_k", "k_to_lam", "weyl_window",
            "PREC", "PrecisionWarning"]
 
 #: Relative slack below the Faber-Krahn bound. Faber-Krahn is an EQUALITY for the disk, so an
@@ -88,19 +89,33 @@ def weyl_window(domain, n, pad=_WEYL_PAD):
 
 
 @dataclass(frozen=True)
-class SpectrumLevel:
-    """One level of a `Spectrum` from the black-box path. `margin` is how many local floor
-    scales the request spans (2 is needed), `resolution` the neighbourhood the count stands
-    for, `count_shortfall` that the count was read where the floor blurs it
-    (`chladni.mps.search.Level`)."""
+class Level:
+    """One level of a `Spectrum`: a value, how many eigenfunctions sit at it, and its bar.
+
+    `margin` is how many local floor scales the request spans (2 is needed), `resolution` the
+    neighbourhood the count stands for, `count_shortfall` that the count was read where the
+    floor blurs it, `count_uncertain` that it could not be certified at all
+    (`chladni.mps.search.Level`). `nan`/False where a solver does not measure them."""
     lam: float
     mult: int
     bound: float
-    margin: float
-    resolution: float
-    met: bool
-    count_shortfall: bool
+    margin: float = float("nan")
+    resolution: float = float("nan")
+    met: bool = False
+    count_shortfall: bool = False
     count_uncertain: bool = False
+
+    @classmethod
+    def from_search(cls, L, prec):
+        """From the search's own `Level` (`chladni.mps.search`), at the request `prec`."""
+        return cls(lam=float(L.lam), mult=int(L.mult), bound=float(L.bound),
+                   margin=float(L.margin), resolution=float(L.resolution),
+                   met=bool(L.met(prec)), count_shortfall=bool(L.count_shortfall),
+                   count_uncertain=bool(L.count_uncertain or L.grouping_ambiguous))
+
+
+#: The name `Level` had while it was only the black-box path's per-level record.
+SpectrumLevel = Level
 
 
 @dataclass(frozen=True)
@@ -111,79 +126,84 @@ class Spectrum:
     knows which levels it found, how many independent eigenfunctions sit at each, and how well
     it thinks it located them. None of them shares a tension, a bracket or a gap ratio, so
     those stay on the MPS-side result and out of this type -- the same rule that keeps
-    `Eigensolver` itself free of `basis` and `collocation`.
+    `Eigensolver` itself free of `basis` and `collocation`. What produced the spectrum -- the
+    plan, the solver, the search's diagnostics, whether it was a warm solve -- is a
+    `chladni.eigenproblem.SolveRecord`, not part of the value (2026-10-14).
 
-    **Why not just the array.** `unfolded` is one attribute away, and for a long time it was
-    the whole contract. Two things do not survive it. A COMPUTED multiplicity of 2 and two
-    distinct levels 1e-12 apart unfold to the same three numbers, and they are different
-    claims -- `douse` cares, because a crossing is exactly where a shape objective stops being
-    smooth. And a short answer is ambiguous between "there are only this many", "some were
-    missed" and "the search gave up", which `solve` used to resolve by widening the window
-    eight times and then blaming the spectrum. `declined` says which, so it no longer guesses.
+    **Levels are the content; the arrays are views.** `lam`, `mult` and `bound` are derived
+    from `levels`, so a level can never be half-present: a caller that indexes the unfolded
+    array (`unfolded[k]`) can ask which level holds that entry (`level_index`) and which levels
+    sit within a distance of it (`neighbourhood`), and the answer always covers whole levels.
+    douse's eps-active cluster is built on exactly that, because a computed double counted as
+    one member by the optimizer and two by the solver is a block that is not the cluster's.
+
+    **Why not just the array.** A COMPUTED multiplicity of 2 and two distinct levels 1e-12
+    apart unfold to the same three numbers, and they are different claims -- `douse` cares,
+    because a crossing is exactly where a shape objective stops being smooth. And a short
+    answer is ambiguous between "there are only this many", "some were missed" and "the search
+    gave up"; `declined` says which.
 
     `bound` is the attained ABSOLUTE bar per level, `nan` where the solver does not measure
     one. It is compared against `prec` -- the request this answers -- by `unmet`, so the
     honesty clause is a comparison the caller can redo rather than a flag to be trusted.
     """
 
-    lam: np.ndarray
-    mult: np.ndarray
-    bound: np.ndarray
+    levels: tuple = ()
     prec: float = PREC
     declined: bool = False
     reason: str = ""
-    #: Per level, what the black-box path (`chladni.eigenproblem`) knows beyond value,
-    #: multiplicity and bound: `SpectrumLevel`s in `lam` order. Empty from older solvers.
-    levels: tuple = ()
     #: The returned count against Weyl's law (`asymp.CountAudit`), or None.
     count_audit: object = None
     #: Everything the caller should know before trusting this answer, as short strings. Empty
     #: means: every level met `prec`, the count audited ok, nothing uncertain.
     flags: tuple = ()
-    #: The `chladni.plan.Plan` that produced it, for re-use on a nearby shape.
-    plan: object = None
-    #: Warm start (`Eigenproblem.solve(..., near=prev)`): True when this answer came from the
-    #: narrow window around `prev` and passed every continuity check; `warm_depth` counts warm
-    #: solves since the last cold one; `warm_note` says why a requested warm solve went cold.
-    warm: bool = False
-    warm_depth: int = 0
-    warm_note: object = None
-    #: The solver that produced it, for `hadamard`. Not part of the value.
-    source: object = field(default=None, repr=False, compare=False)
-    #: The search's `SolveDiagnostics` (`chladni.mps.search`): evaluation counts by stage,
-    #: for a caller logging where a solve's time went. Not part of the value; None from solvers
-    #: that keep none.
-    diagnostics: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
-        lam = np.atleast_1d(np.asarray(self.lam, dtype=float))
-        mult = np.atleast_1d(np.asarray(self.mult, dtype=int))
-        bound = np.atleast_1d(np.asarray(self.bound, dtype=float))
+        levels = tuple(self.levels)
+        for L in levels:
+            if not isinstance(L, Level):
+                raise TypeError(f"every level must be a Level, got {type(L).__name__}; use "
+                                f"Spectrum.from_arrays for arrays")
+            if L.mult < 1:
+                raise ValueError(f"every multiplicity must be at least 1, got {L.mult!r}")
+        lam = np.array([L.lam for L in levels], dtype=float)
+        if lam.size and np.any(np.diff(lam) <= 0):
+            raise ValueError("levels must be strictly ascending and distinct")
+        object.__setattr__(self, "levels", levels)
+        object.__setattr__(self, "flags", tuple(self.flags))
+        object.__setattr__(self, "prec", check_prec(self.prec))
+
+    # --- the arrays, derived ------------------------------------------------------------------
+
+    @cached_property
+    def lam(self):
+        """Level values, ascending."""
+        return np.array([L.lam for L in self.levels], dtype=float)
+
+    @cached_property
+    def mult(self):
+        return np.array([L.mult for L in self.levels], dtype=int)
+
+    @cached_property
+    def bound(self):
+        return np.array([L.bound for L in self.levels], dtype=float)
+
+    @classmethod
+    def from_arrays(cls, lam, mult, bound=None, prec=PREC, **kw):
+        """Levels from `(lam, mult, bound)` arrays, for solvers that keep nothing else per
+        level. The write-side shim for the array contract this type used to be."""
+        lam = np.atleast_1d(np.asarray(lam, dtype=float))
+        mult = np.atleast_1d(np.asarray(mult, dtype=int))
+        bound = (np.full(lam.shape, np.nan) if bound is None
+                 else np.atleast_1d(np.asarray(bound, dtype=float)))
         if not (lam.shape == mult.shape == bound.shape):
             raise ValueError(
                 f"lam, mult and bound must agree in shape, got {lam.shape}, {mult.shape} "
                 f"and {bound.shape}")
         if np.any(mult < 1):
             raise ValueError(f"every multiplicity must be at least 1, got {mult!r}")
-        if lam.size and np.any(np.diff(lam) <= 0):
-            raise ValueError("levels must be strictly ascending and distinct")
-        object.__setattr__(self, "lam", lam)
-        object.__setattr__(self, "mult", mult)
-        object.__setattr__(self, "bound", bound)
-        object.__setattr__(self, "prec", check_prec(self.prec))
-
-    def hadamard(self, i, V):
-        """The Hadamard shape derivative of level `i` -- or of levels `i = [i0, i1, ...]` as one
-        block, cross terms included -- `(n_fields, m, m)`: see
-        `MPSEigensolver.hadamard`. Needs the solver that produced this spectrum (`source`), which
-        the black-box path (`chladni.eigenproblem`) attaches."""
-        if self.source is None:
-            raise ValueError("this Spectrum carries no solver; solve it with "
-                             "chladni.eigenproblem.Eigenproblem to get Hadamard derivatives")
-        from types import SimpleNamespace
-        idx = [int(i)] if np.ndim(i) == 0 else [int(j) for j in i]
-        levels = [SimpleNamespace(lam=float(self.lam[j]), mult=int(self.mult[j])) for j in idx]
-        return self.source.hadamard(levels[0] if np.ndim(i) == 0 else levels, V, prec=self.prec)
+        return cls(tuple(Level(float(l), int(m), float(b)) for l, m, b in zip(lam, mult, bound)),
+                   prec=prec, **kw)
 
     @classmethod
     def from_unfolded(cls, lam, prec=PREC, bound=None):
@@ -195,9 +215,7 @@ class Spectrum:
         """
         lam = np.atleast_1d(np.asarray(lam, dtype=float))
         levels, mult = np.unique(lam, return_counts=True)
-        if bound is None:
-            bound = np.full(levels.shape, np.nan)
-        return cls(levels, mult, bound, prec=prec)
+        return cls.from_arrays(levels, mult, bound, prec=prec)
 
     @classmethod
     def declining(cls, reason, prec=PREC):
@@ -206,14 +224,14 @@ class Spectrum:
         Neither a pass nor a failure (`docs/design/candidates.md` section 5), and a VALUE
         rather than an exception, so a caller can inspect it.
         """
-        empty = np.empty(0)
-        return cls(empty, np.empty(0, dtype=int), empty, prec=prec,
-                   declined=True, reason=str(reason))
+        return cls((), prec=prec, declined=True, reason=str(reason))
 
     def __bool__(self):
         """False only when DECLINED. An empty non-declined spectrum is a usable answer --
         "there are none in this interval" -- and must not read as a failure."""
         return not self.declined
+
+    # --- the array contract -------------------------------------------------------------------
 
     @property
     def unfolded(self):
@@ -243,6 +261,56 @@ class Spectrum:
                     and self.bound.size
                     and np.all(np.isfinite(self.bound))
                     and not self.unmet.any())
+
+    # --- levels and clusters, for a caller that indexes the unfolded array ---------------------
+
+    def level_of(self, lam, rtol=1e-6):
+        """The index of the level at `lam`, which must sit within `rtol` of one."""
+        if not self.levels:
+            raise ValueError("an empty spectrum has no levels")
+        i = int(np.argmin(np.abs(self.lam - float(lam))))
+        if abs(self.lam[i] - float(lam)) > rtol * abs(float(lam)):
+            raise ValueError(f"lam = {lam} is not a level of this spectrum")
+        return i
+
+    def level_index(self, k):
+        """The index of the level holding the `k`-th (0-based) entry of `unfolded`."""
+        ends = np.cumsum(self.mult)
+        if not (0 <= int(k) < (ends[-1] if ends.size else 0)):
+            raise IndexError(f"unfolded index {k} out of range for {self.count} eigenvalues")
+        return int(np.searchsorted(ends, int(k), side="right"))
+
+    def neighbourhood(self, i, eps_abs):
+        """`(lo, hi)`: the range of LEVELS around level `i` whose values sit within `eps_abs`
+        of their neighbour, extended outward from `i`. Always whole levels: a double is in or
+        out, never half. Unfolded indices follow from `cumsum(mult)`."""
+        lam, lo, hi = self.lam, int(i), int(i)
+        while lo > 0 and lam[lo] - lam[lo - 1] <= eps_abs:
+            lo -= 1
+        while hi + 1 < len(lam) and lam[hi + 1] - lam[hi] <= eps_abs:
+            hi += 1
+        return lo, hi + 1
+
+    def cluster(self, lams=None, *, near=None, mult=None, rtol=1e-6):
+        """`(indices, total_mult)`: the levels making up a cluster -- those at the member values
+        `lams` when given, else the levels nearest `near` whose multiplicities reach `mult`.
+        The caller compares `total_mult` with the count it expected; a mismatch means its
+        eps-active set and the solver's levels disagree on how many eigenvalues sit here, and
+        no block built from these levels is the cluster's."""
+        if lams is not None:
+            idx = sorted({self.level_of(l, rtol) for l in lams})
+        else:
+            if near is None or mult is None:
+                raise ValueError("give the member values, or `near` and `mult`")
+            order = np.argsort(np.abs(self.lam - float(near)))
+            idx, got = [], 0
+            for i in order:
+                if got >= int(mult):
+                    break
+                idx.append(int(i))
+                got += int(self.mult[i])
+            idx.sort()
+        return idx, int(sum(int(self.mult[i]) for i in idx))
 
 
 class Eigensolver(ABC):

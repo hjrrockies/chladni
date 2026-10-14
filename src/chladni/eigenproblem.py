@@ -32,15 +32,15 @@ optimum after a 1e-3 move: 84 tension evaluations against 177, 2.4x faster, the 
 """
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
 from ._core import PREC, check_prec
-from .eigensolver import Spectrum, SpectrumLevel
+from .eigensolver import Level, Spectrum
 from .plan import HEADROOM, LADDER, plan_for
 
-__all__ = ["Eigenproblem"]
+__all__ = ["Eigenproblem", "SolveRecord"]
 
 #: A level with margin below this has its count confirmed on the next rung (`confirm=True`):
 #: `basis_sufficiency`'s multiplicity precondition (`20 eps/c <= prec lam`).
@@ -53,6 +53,83 @@ WARM_SPACING_FRACTION = 1.0 / 3.0
 #: A cold solve after this many consecutive warm ones: a backstop against slow drift past the
 #: continuity checks (decided with the user, 2026-10-13).
 WARM_COLD_EVERY = 10
+
+
+@dataclass(frozen=True)
+class SolveRecord:
+    """What `Eigenproblem.solve` returns: the `Spectrum` (the value) and what produced it.
+
+    `plan` is the frozen `chladni.plan.Plan` (realize it on a nearby shape, pass the record as
+    `near=` for a warm solve); `solver` the `MPSEigensolver` the answer came from, which
+    `hadamard` needs; `diagnostics` the search's `SolveDiagnostics` (evaluation counts by
+    stage); `warm`, `warm_depth`, `warm_note` say whether this was a warm solve and, when a
+    requested warm solve went cold, why. The spectrum's own fields are forwarded (`lam`,
+    `unfolded`, `flags`, ...) so a record reads like the `Spectrum` it carries; prefer
+    `.spectrum` in new code (2026-10-14)."""
+    spectrum: Spectrum
+    plan: object = None
+    solver: object = field(default=None, repr=False, compare=False)
+    diagnostics: object = field(default=None, repr=False, compare=False)
+    warm: bool = False
+    warm_depth: int = 0
+    warm_note: object = None
+
+    # --- what only the record can do -------------------------------------------------------
+
+    def hadamard(self, i, V):
+        """The Hadamard shape derivative of level `i` -- or of levels `i = [i0, i1, ...]` as one
+        block, cross terms included -- `(n_fields, m, m)`: see `MPSEigensolver.hadamard`."""
+        if self.solver is None:
+            raise ValueError("this record carries no solver; solve with "
+                             "chladni.eigenproblem.Eigenproblem to get Hadamard derivatives")
+        idx = [int(i)] if np.ndim(i) == 0 else [int(j) for j in i]
+        levels = [self.spectrum.levels[j] for j in idx]
+        return self.solver.hadamard(levels[0] if np.ndim(i) == 0 else levels, V,
+                                    prec=self.spectrum.prec)
+
+    @property
+    def domain(self):
+        return self.solver.domain
+
+    @property
+    def basis(self):
+        return self.solver.basis
+
+    @property
+    def source(self):
+        """DEPRECATED name of `solver`."""
+        return self.solver
+
+    # --- the spectrum, forwarded -----------------------------------------------------------
+
+    def __bool__(self):
+        return bool(self.spectrum)
+
+    lam = property(lambda self: self.spectrum.lam)
+    mult = property(lambda self: self.spectrum.mult)
+    bound = property(lambda self: self.spectrum.bound)
+    levels = property(lambda self: self.spectrum.levels)
+    unfolded = property(lambda self: self.spectrum.unfolded)
+    count = property(lambda self: self.spectrum.count)
+    unmet = property(lambda self: self.spectrum.unmet)
+    achieved = property(lambda self: self.spectrum.achieved)
+    prec = property(lambda self: self.spectrum.prec)
+    flags = property(lambda self: self.spectrum.flags)
+    declined = property(lambda self: self.spectrum.declined)
+    reason = property(lambda self: self.spectrum.reason)
+    count_audit = property(lambda self: self.spectrum.count_audit)
+
+    def level_of(self, lam, rtol=1e-6):
+        return self.spectrum.level_of(lam, rtol)
+
+    def level_index(self, k):
+        return self.spectrum.level_index(k)
+
+    def neighbourhood(self, i, eps_abs):
+        return self.spectrum.neighbourhood(i, eps_abs)
+
+    def cluster(self, lams=None, **kw):
+        return self.spectrum.cluster(lams, **kw)
 
 
 class Eigenproblem:
@@ -111,7 +188,8 @@ class Eigenproblem:
     # --- solving -----------------------------------------------------------------------------
 
     def solve(self, n, prec=None, plan=None, on_shortfall="flag", *, confirm=False, near=None):
-        """The first `n` levels (the level at `n` whole) as a `Spectrum`. See the module docstring.
+        """The first `n` levels (the level at `n` whole) as a `SolveRecord`: the `Spectrum` plus
+        the plan, the solver and the search diagnostics. See the module docstring.
 
         `plan=None` plans (`Eigenproblem.plan`). A given `plan` is realized on this domain. If it
         was made for a looser `prec` than requested, the shortfall is reported, not fixed by
@@ -161,7 +239,7 @@ class Eigenproblem:
                 flags.append(f"plan: made for prec={plan.prec:.0e}, looser than the requested "
                              f"{prec:.0e}; re-plan to meet it")
             res, window = self._solve_with(plan, n, prec, on_shortfall, solver)
-        return _spectrum(res, n, prec, plan, flags)
+        return _record(res, n, prec, plan, flags)
 
     def _solve_with(self, plan, n, prec, on_shortfall, solver=None):
         """`(result, (lo, hi))`: the prefix window solved on `plan`'s basis, widened until
@@ -207,14 +285,14 @@ class Eigenproblem:
                             audit=d.count_audit.verdict if d.count_audit is not None else None)
         if why is not None:
             return None, why
-        spec = _spectrum(res, n, prec, plan, [])
+        rec = _record(res, n, prec, plan, [])
         # A narrow window can leave the audit with nothing to say; continuity decided instead.
-        spec = replace(spec, flags=tuple(f for f in spec.flags
-                                         if not f.startswith("count audit: unaudited")),
-                       warm=True, warm_depth=near.warm_depth + 1)
-        if spec.flags:                          # anything else means the checks missed a case
-            return None, "flags: " + "; ".join(spec.flags)
-        return spec, None
+        spectrum = replace(rec.spectrum, flags=tuple(f for f in rec.spectrum.flags
+                                                     if not f.startswith("count audit: unaudited")))
+        rec = replace(rec, spectrum=spectrum, warm=True, warm_depth=near.warm_depth + 1)
+        if rec.flags:                           # anything else means the checks missed a case
+            return None, "flags: " + "; ".join(rec.flags)
+        return rec, None
 
 
 # --- helpers -------------------------------------------------------------------------------------
@@ -312,7 +390,7 @@ def _same_counts(low, res2):
     return True
 
 
-def _spectrum(res, n, prec, plan, flags):
+def _record(res, n, prec, plan, flags):
     d = res.diagnostics
     kept, count = [], 0
     for L in sorted(res.levels, key=lambda L: L.lam):
@@ -336,15 +414,8 @@ def _spectrum(res, n, prec, plan, flags):
         flags.append(f"uncertain: {d.n_uncertain} count(s) could not be certified")
     if d.declined:
         flags.append(f"declined: {d.decline_reason}")
-    lam = np.array([L.lam for L in kept], dtype=float)
-    mult = np.array([L.mult for L in kept], dtype=int)
-    bound = np.array([L.bound for L in kept], dtype=float)
-    levels = tuple(SpectrumLevel(lam=float(L.lam), mult=int(L.mult), bound=float(L.bound),
-                                 margin=float(L.margin), resolution=float(L.resolution),
-                                 met=bool(L.met(prec)), count_shortfall=bool(L.count_shortfall),
-                                 count_uncertain=bool(L.count_uncertain or L.grouping_ambiguous))
-                   for L in kept)
-    return Spectrum(lam, mult, bound, prec=prec, declined=bool(d.declined),
-                    reason=d.decline_reason if d.declined else "", levels=levels,
-                    count_audit=audit, flags=tuple(flags), plan=plan,
-                    source=getattr(res, "solver", None), diagnostics=d)
+    spectrum = Spectrum(tuple(Level.from_search(L, prec) for L in kept), prec=prec,
+                        declined=bool(d.declined),
+                        reason=d.decline_reason if d.declined else "",
+                        count_audit=audit, flags=tuple(flags))
+    return SolveRecord(spectrum, plan=plan, solver=getattr(res, "solver", None), diagnostics=d)

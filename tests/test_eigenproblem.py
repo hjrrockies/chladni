@@ -101,7 +101,8 @@ def test_the_planner_refuses_what_it_does_not_cover():
 
 def test_the_old_spectrum_still_builds():
     s = Spectrum.from_unfolded([1.0, 2.0, 2.0])
-    assert s.count == 3 and s.levels == () and s.flags == () and s.count_audit is None
+    assert s.count == 3 and len(s.levels) == 2 and s.flags == () and s.count_audit is None
+    assert all(np.isnan(L.margin) for L in s.levels)             # nothing measured per level
 
 
 @pytest.mark.slow

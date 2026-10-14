@@ -513,11 +513,10 @@ class MPSEigensolver(Eigensolver, Frozen):
                 f"Spectrum; the pencil is what binds here, not the request.",
                 PrecisionWarning, stacklevel=2,
             )
-        lam = np.array([x.lam for x in res.levels], dtype=float)
-        mult = np.array([x.mult for x in res.levels], dtype=int)
-        bound = np.array([x.bound for x in res.levels], dtype=float)
-        order = np.argsort(lam)
-        return Spectrum(lam[order], mult[order], bound[order], prec=self.prec)
+        from ..eigensolver import Level
+        return Spectrum(tuple(Level.from_search(x, self.prec)
+                              for x in sorted(res.levels, key=lambda x: x.lam)),
+                        prec=self.prec)
 
     def __repr__(self):
         return (f"MPSEigensolver({self.domain!r}, n_cols={self.n_cols}, "
