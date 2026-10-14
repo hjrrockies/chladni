@@ -29,6 +29,14 @@ the floor** (`docs/design/douse_requirements.md`, "Precision per level"). Nearly
 (eps/c)` small; the remedy is to stay out of that regime and say so. Work below 1e-10 is in the
 "Parked" section at the end.
 
+**Where douse-readiness stands (2026-10-13, `notes/session_2026-10-13.md`).** douse calls chladni
+through `ChladniEvaluator` (douse branch `chladni-backend`, pushed, awaiting review; lappy stays
+the default). On douse's constrained ratio workload (N <= 6, k <= 2) all 36 comparison runs
+complete with no errors or stalls, and the backends agree to 1e-10 where the optimizer converges.
+chladni matches lappy's speed at N = 6, k = 1 and is 4-9x slower on k = 2. **Next:** the user's
+review of the douse branch, the douse problems the thesis needs, then speed (the parallel-search
+item in section 4).
+
 The path, in order:
 
 * **[blocking]** **Prune the test suite** (agreed 2026-10-09). Much of it pins trajectories,
@@ -41,7 +49,7 @@ The path, in order:
   answer inside a declared-undecidable band is unfair; it should accept any honest outcome
   (right, declined, flagged) or move off the boundary. The user reviews it, then the
   pruning goes in a few commits that say where any evidence went.
-* **[blocking]** **Make the `douse` benchmark a reliable instrument at 1e-10.** It exists
+* **[done 2026-10-10, Phase 1, PR #3]** **Make the `douse` benchmark a reliable instrument at 1e-10.** It exists
   (`benchmarks/douse/scoreboard.md`: 41 catalogued shapes, references by three chladni bases plus
   FEM counts, `lappy`'s cold solves, a scorer). It is not yet reproducible: the window comes from
   ARPACK FEM eigenvalues with a random start, and counts at near-degeneracies change with ulps of
@@ -69,7 +77,7 @@ The path, in order:
   count is silently wrong on bases D or A at 1e-10 or 1e-8. What is left is DROP rows (Phase 4)
   and one value bound (the `delta_res` item below). The scoreboard itself still matches at 1e-6;
   move it to resolution groups when it is next regenerated.
-* **[next]** **Phase 4, planned 2026-10-11: the count audit, then `on_shortfall`.**
+* **Phase 4 BUILT 2026-10-11: the count audit, then `on_shortfall`.**
   Calibration on the 31 complete douse reference spectra: the MEAN Weyl deficit over mid-gap cuts
   (corner-corrected `weyl_count_poly`) sits in [-0.07, 0.04] on complete spectra. A simulated
   whole-level drop scores >= 0.16 when it lies in the lower two-thirds of the spectrum (all
@@ -106,7 +114,8 @@ The path, in order:
   ~1e-14 (`notes/hard_cases.md`, part 3). So `PrecisionWarning: FourierBessel can deliver about
   1e-9 ...` fires on ordinary 1e-10 solves, against the warn-only-when-substantive rule.
   Tighten the bound, or stop warning on it.
-* **[next]** **The search can ask the pencil for a NEGATIVE lam.** `notes/hybrid_bases.py`
+* **[done 2026-10-13, PR #13: probes outside the window are not evaluated]** **The search can ask the
+  pencil for a NEGATIVE lam.** `notes/hybrid_bases.py`
   round 2, T2.6-N3k4-L8-ref0 with Fourier-Bessel plus corner lightning (default sigma 4,
   corner-graded collocation) at 1e-10. The window is [~25, ~300], and the solve raised
   `ValueError: lam must be finite and strictly positive, got -348.16` from the Helmholtz layer.
@@ -137,9 +146,10 @@ The path, in order:
   `chladni.eigenproblem`; `notes/phase5_benchmark.md`). With no basis supplied, the douse
   benchmark comes back right on 33 of 35 cases at 1e-10 (30 unflagged) and 35 of 35 at 1e-8. T2.2
   is flagged. The one silent row, T2.8, is a suspect reference (item above).
-* **[next]** **The `douse` seam, then M5 Hadamard** -- to the interface in
-  `docs/design/douse_requirements.md`. `Eigenproblem.solve(n, prec, plan, on_shortfall)` is the
-  backend call; `ep.plan(...)` plus `Plan.realize` is plan-once-realize-per-iterate.
+* **[done 2026-10-12/13]** **The `douse` seam, then M5 Hadamard.** Multi-level Hadamard is PR #12;
+  the seam is douse's `ChladniEvaluator` (branch `chladni-backend`). It re-plans on drift and
+  tracks with the warm start (PR #16), and it was compared against lappy on the constrained ratio
+  workload (`notes/session_2026-10-13.md`).
 
 ## 1. The eigenvalue search
 
