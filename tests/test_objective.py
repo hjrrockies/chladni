@@ -281,3 +281,45 @@ def test_the_currency_is_UNCHANGED_when_no_modes_are_in_play():
     for x in np.linspace(1.0, 5.0, 40):
         capped.tension(x)
     assert capped.n_evals == 16, "eviction still governs the tension cache"
+
+
+# --- the batch seam ----------------------------------------------------------------------
+
+
+def _serial_and_batched(xs, max_cache=None):
+    calls = []
+
+    def batch(misses):
+        calls.append(list(misses))
+        return [cone(k) for k in misses]
+    a = Objective(cone, 1.0, 5.0, max_cache=max_cache)
+    for x in xs:
+        a.tension(x)
+    b = Objective(cone, 1.0, 5.0, max_cache=max_cache, batch=batch)
+    b.tensions_many(xs)
+    return a, b, calls
+
+
+def test_a_batch_leaves_the_cache_and_the_count_as_the_serial_loop_would():
+    """The seam's contract: misses are evaluated together and inserted in input order, so
+    `n_evals`, `samples` and the cache's contents are bit-identical to a loop of `tension`."""
+    xs = [1.5, 2.0, 2.0, 3.5, 1.5, 4.25]
+    a, b, calls = _serial_and_batched(xs)
+    assert a.n_evals == b.n_evals == 4
+    assert calls == [[1.5, 2.0, 3.5, 4.25]]          # deduped, in input order, no hits
+    assert list(a._cache) == list(b._cache)
+    np.testing.assert_array_equal(a.samples[1], b.samples[1])
+    assert b.tensions_many([2.0, 9.9]) and calls[-1] == [9.9]   # a later call batches only misses
+
+
+def test_a_batch_evicts_exactly_as_the_serial_loop_does():
+    xs = [1.0 + 0.5 * i for i in range(8)]
+    a, b, _ = _serial_and_batched(xs, max_cache=3)
+    assert list(a._cache) == list(b._cache) == xs[-3:]
+    assert a.n_evals == b.n_evals == 3
+
+
+def test_tensions_many_falls_back_to_the_scalar_function_without_a_batch():
+    a = Objective(cone, 1.0, 5.0)
+    vals = a.tensions_many([2.0, 3.0, 2.0])
+    assert len(vals) == 3 and a.n_evals == 2 and vals[0] is vals[2]
