@@ -151,6 +151,15 @@ The path, in order:
   tracks with the warm start (PR #16), and it was compared against lappy on the constrained ratio
   workload (`notes/session_2026-10-13.md`).
 
+* **[next]** **A refusal at a wild shape can cost minutes.** Measured 2026-10-14 from douse:
+  an L-BFGS trial step landed on an admissible-by-arithmetic but wild quadrilateral, and the
+  re-plan at that shape climbed every rung of `LADDER` before refusing -- 583 s for one
+  `ShapeRefusal`, against ~3 s for a solve on a reasonable shape. A shape optimizer wants a
+  cheap "no": a budget on the ladder climb when the first rung already misses badly (margin far
+  below 1 at every level), or a geometric pre-check (thin wedge, near-self-intersection) in
+  `plan_for` that declines before any solve. douse's `gauss_newton` sidesteps it with a step cap;
+  `maximize_ratio` with its constraints rarely proposes such shapes; `descend` has no guard.
+
 ## 1. The eigenvalue search
 
 The search SHIPS. `chladni.mps.{bracket,refine,multiplicity,search}` are the four stages and
@@ -686,6 +695,12 @@ GIL. Everything below is what that leaves open.
   inserts them on the calling thread in input order, so the miss count and the cache are the
   serial loop's exactly; `Objective` itself stays lock-free. `bracket._seed` submits the seed
   grid and each doubling this way. `tests/test_objective.py`, `tests/test_mps_seam.py`.
+  **Measured** (`notes/seed_workers.py`, douse's N = 6, k = 2 optimum, rung 1, 391 columns, cold
+  solve): 193 evaluations, of which the seed is 31 and the cover 67; 5 workers 27.2 s against
+  29.5 s on 1 -- an 8% saving, identical counts and values. The seed is a smaller share than
+  the 20% estimate; the remaining cost is the sequential cover and the refine/multiplicity
+  stages. Parallelism inside one search has about this much left to give; the next lever is
+  per-evaluation cost (assembly) or fewer evaluations.
 * **[next]** Bound the thread pools, and measure the interaction with BLAS. `max_workers` is
   now exposed on `Objective.from_pencil` (default `DEFAULT_WORKERS`, half the cores up to 8)
   and `MPSEigensolver.tensions(array)` still takes the executor default; each worker calls into
