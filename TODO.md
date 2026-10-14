@@ -440,8 +440,13 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   ran warm with no refusals. `notes/warm_start.md`. **Speed levers:** the seed grid (and each doubling) now goes
   through a thread pool (`Objective.tensions_many`, 2026-10-14; the cover pass is sequential by
   nature, so this is the ~20% of a cold solve that parallelizes); a refused warm solve no
-  longer rebuilds the pencil for the cold retry. Not started: assembly at ~0.1 s per `lam` on
-  562 columns, and the measurement of the seed speedup on the N = 6 shape.
+  longer rebuilds the pencil for the cold retry. **Measured 2026-10-14
+  (`notes/warm_trace_2026-10-14.md`): the gap to lappy at k = 2 is the warm solve itself** --
+  65-70% of a run, ~90 evaluations each because the warm window is a full prefix; replans are
+  3-9% and all `unmet`. Next: per-level warm windows (refine each previous value in
+  `[lam_i - h_i, lam_i + h_i]` instead of searching the prefix), then cadence 10 -> 20, then
+  `log_j` once per distinct `(nu, k r)`; assembly at ~0.1 s per `lam` on 562 columns is the
+  multiplier on all of it.
 * **[done 2026-10-13]** **Memory: the pencil cached matrices.** Up to 64 `lam`s of equilibrated
   blocks and reduced pencils per solver, ~0.5 GB held between douse steps; N = 6 ratio runs reached
   3-4.4 GB and an 8+8-worker comparison exhausted 16 GB (kernel panic). The pencil now caches
