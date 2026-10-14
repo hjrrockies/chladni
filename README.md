@@ -10,10 +10,12 @@ geometry, a clean separation between geometry / basis / solver, and a black-box 
 works without hand-tuning.
 
 > **Status: in development.** The geometry layer, the Helmholtz particular-solution families,
-> the MPS pencil and the eigenvalue search are implemented and tested: `MPSEigensolver` solves
-> for eigenvalues and multiplicities on a supplied basis. What is not written is the BASIS
-> PLANNER, so the black-box path below still needs a basis chosen by hand, and Rellich-identity
-> orthonormalization of eigenfunctions.
+> the MPS pencil, the eigenvalue search, the basis planner and Rellich-identity orthonormalization
+> are implemented and tested. The black-box path, `Eigenproblem(dom).solve(n, prec)`, plans its
+> own basis for Dirichlet polygons and returns a `Spectrum` with a certified bound per level; it
+> is the eigensolver `douse` runs its shape optimization on. Curved and multiply-connected
+> domains, and Neumann boundaries, are supported by the geometry and basis layers but not yet by
+> the planner.
 
 ## A first look
 
@@ -23,7 +25,7 @@ import chladni.geometry as G
 d = G.L_shape()
 d.area, d.perimeter, d.inradius     # 3.0, 8.0, 0.5857864376 (= 2 - sqrt(2))
 
-[c.theta / 3.14159 for c in d.corners]   # five 0.5 pi corners and one reentrant 1.5 pi
+[c.omega / 3.14159 for c in d.corners]   # five 0.5 pi corners and one reentrant 1.5 pi
 
 q = d.bdry_quad(400)                # boundary quadrature: nodes, weights, provenance
 q.wts.sum()                         # 8.0, the perimeter
@@ -32,7 +34,19 @@ q.wts.sum()                         # 8.0, the perimeter
 d.plot_diagnostic()                 # colour-coded segments, annotated corners
 ```
 
-And the eigenvalues, on a basis supplied by hand until the planner exists:
+The black-box path, which plans the basis itself:
+
+```python
+from chladni.eigenproblem import Eigenproblem
+
+spec = Eigenproblem(G.L_shape()).solve(4, prec=1e-10)
+spec.lam, spec.mult      # levels and multiplicities, the level at 4 returned whole
+spec.bound / spec.lam    # the certified relative bound per level
+spec.flags               # () when every level met prec and the Weyl count audited ok
+spec.plan                # frozen and picklable: realize it on a nearby shape, solve warm
+```
+
+And the same eigenvalues on a basis supplied by hand, for bespoke work:
 
 ```python
 import numpy as np
@@ -90,7 +104,11 @@ numbers, so the test suite runs them end to end.
 | `geometry` | **implemented** | Segments with arclength parameterization; boundaries, orientation and frames; domains with holes; corners carrying angle, boundary conditions, clearance and branch cuts; boundary quadrature with weights and provenance. |
 | `helmholtz` | **implemented** | Corner-adapted Fourier-Bessel families with branch cuts and Zaremba (mixed-BC) corners; `Y_m` multipoles at exterior sources, offset layers and lightning clusters; plane waves; a composite `Basis`. A scaled Bessel kernel that keeps full relative accuracy past the point where `scipy.special.jv` underflows to zero, and an analytic per-column scale that leaves the columns O(1). |
 | `plotting` | **implemented** | Domains, boundary conditions, normals and tangents, and a colour-coded diagnostic view. Kept in its own layer so `geometry` never imports matplotlib. |
-| `mps` | **partial** | Collocation matrix assembly, column equilibration, index-truncated SVD and column-pivoted-QR regularization, the `gsvd4py` call, the tension and eigenfunction coefficients. `MPSPencil` is domain-free and speaks `k`; `MPSEigensolver` owns the domain and speaks `lam`. The L-shape reaches 1.7e-12 at its first eigenvalue. The eigenvalue search and multiplicity estimation are built -- `bracket`, `refine`, `multiplicity` and `search`, reached through `MPSEigensolver.solve_interval`, which returns a `Spectrum` of levels with multiplicities and a per-level bound. Basis planning and Rellich-identity orthonormalization are not written yet. |
+| `mps` | **implemented** | Collocation matrix assembly, column equilibration, index-truncated SVD and column-pivoted-QR regularization, the `gsvd4py` call, the tension and eigenfunction coefficients. `MPSPencil` is domain-free; `MPSEigensolver` owns the domain; both speak `lam`, with the `k` seam at the `helmholtz` boundary. The L-shape reaches 1.7e-12 at its first eigenvalue. The eigenvalue search and multiplicity estimation are built -- `bracket`, `refine`, `multiplicity` and `search`, reached through `MPSEigensolver.solve_interval`, which returns a `Spectrum` of levels with multiplicities and a per-level bound. `MPSEigensolver.eigenfunctions(level)` returns a level's eigenfunctions L2-orthonormalized through the Rellich identity. |
+| `integrals` | **implemented** | Corner-adapted boundary quadrature rules, Cauchy data, Rellich norms and Gram matrices, Löwdin orthonormalization, and the Moler-Payne bound that certifies each level. |
+| `reference` | **implemented** | Closed-form spectra (rectangle, disk, sector, triangles, polyominoes) and tabulated ones, each carrying its accuracy as data. |
+| `asymp`, `bounds` | **implemented** | Weyl's law with the corner correction, the count audit, Faber-Krahn and the other eigenvalue bounds that size search windows. |
+| `plan`, `eigenproblem` | **implemented** (Dirichlet polygons) | The basis planner: a ladder of recipes climbed until every requested level meets `prec`, frozen as a picklable `Plan`; `Eigenproblem.solve(n, prec, plan=, near=)`, with warm starts on a nearby shape. |
 
 ## Installation
 
