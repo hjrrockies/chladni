@@ -37,7 +37,7 @@ def _check_against(spec, truth, n, prec):
 @pytest.mark.slow
 def test_the_L_shape_to_1e10_against_its_table():
     spec = Eigenproblem(L_shape()).solve(10, prec=PREC)
-    assert isinstance(spec, Spectrum) and spec.plan is not None
+    assert isinstance(spec.spectrum, Spectrum) and spec.plan is not None
     _check_against(spec, L_shape_eigs(25), 10, PREC)
     assert spec.achieved and not spec.flags, spec.flags
     assert spec.count_audit is not None and spec.count_audit.verdict == "ok"
