@@ -1,0 +1,820 @@
+{
+ "runs": [
+  {
+   "id": "stall-N6k2s1",
+   "rule": "old",
+   "wall": 115.73270945799959,
+   "rung": 2,
+   "n_cols": 563,
+   "flags": [],
+   "margins": [
+    7.06,
+    5.0,
+    6.02,
+    25.7
+   ],
+   "lam": [
+    18.84592185313734,
+    40.630485456605165,
+    53.231967851118085,
+    74.25874868728167
+   ]
+  },
+  {
+   "id": "T1.3",
+   "prec": 1e-10,
+   "n": 9,
+   "wall": 613.9620752090013,
+   "rung": 1,
+   "n_cols": 317,
+   "flags": [
+    "planner: no rung met prec=1e-10; returning rung 1 of 4, the one with the most levels met",
+    "unmet: 9 of 9 levels miss prec=1e-10, the first at lam = 248.6534195 (margin 0.409; 2 is needed)",
+    "uncertain: 9 count(s) could not be certified"
+   ],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 248.65341947481545,
+     "mult": 1,
+     "bound": 4.161496261311364e-07,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 344.59017180274986,
+     "mult": 1,
+     "bound": 4.6140831579902415e-07,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 430.38000570844673,
+     "mult": 1,
+     "bound": 4.637216843167987e-07,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 518.6158017570355,
+     "mult": 1,
+     "bound": 2.8985446383940577e-06,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 611.3374161041859,
+     "mult": 1,
+     "bound": 1.734395206946388e-06,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 705.7496638558773,
+     "mult": 1,
+     "bound": 2.332779388061957e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 807.0076098171766,
+     "mult": 1,
+     "bound": 2.3369587476922476e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 887.472441229704,
+     "mult": 1,
+     "bound": 7.710597599500034e-06,
+     "met": false,
+     "count_flag": true
+    },
+    {
+     "lam": 916.0815880717918,
+     "mult": 1,
+     "bound": 3.817318075496191e-06,
+     "met": false,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "FLAGGED-OK"
+  },
+  {
+   "id": "T2.1-pass1",
+   "prec": 1e-10,
+   "n": 1,
+   "wall": 20.128652332998172,
+   "rung": 1,
+   "n_cols": 337,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 17.082832106938554,
+     "mult": 1,
+     "bound": 6.761383898007766e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.1-rerun",
+   "prec": 1e-10,
+   "n": 1,
+   "wall": 20.833253666998644,
+   "rung": 1,
+   "n_cols": 339,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 17.05899882764508,
+     "mult": 1,
+     "bound": 7.895044400079552e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.2",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 1014.182763959001,
+   "rung": 0,
+   "n_cols": 218,
+   "flags": [
+    "planner: no rung met prec=1e-10; returning rung 0 of 4, the one with the most levels met",
+    "unmet: 11 of 11 levels miss prec=1e-10, the first at lam = 37.18312633 (margin 0.00104; 2 is needed)",
+    "count audit: short (mean Weyl deficit 0.862)"
+   ],
+   "declined": false,
+   "audit": "short",
+   "levels": [
+    {
+     "lam": 37.18312632687334,
+     "mult": 1,
+     "bound": 4.7599686436420966e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 68.2602930285346,
+     "mult": 1,
+     "bound": 0.00019778640161686976,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 118.38806273983805,
+     "mult": 1,
+     "bound": 1.3424315119767991e-05,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 152.2958453487316,
+     "mult": 1,
+     "bound": 0.0005017619569151295,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 186.31624315496666,
+     "mult": 1,
+     "bound": 0.002257530156853407,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 205.18232697784612,
+     "mult": 1,
+     "bound": 0.0009227900735834141,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 253.17695096989766,
+     "mult": 1,
+     "bound": 0.00024776605110906323,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 265.96876624928655,
+     "mult": 1,
+     "bound": 0.004278829034603655,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 284.11689762195135,
+     "mult": 1,
+     "bound": 0.0010024709933641948,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 291.1871895095505,
+     "mult": 1,
+     "bound": 0.001340144151523381,
+     "met": false,
+     "count_flag": false
+    },
+    {
+     "lam": 343.99187876289074,
+     "mult": 1,
+     "bound": 0.003943599614724301,
+     "met": false,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "FLAGGED-WRONG"
+  },
+  {
+   "id": "T2.3-endpoint",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 112.09169454199946,
+   "rung": 1,
+   "n_cols": 386,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 20.337653349025455,
+     "mult": 1,
+     "bound": 1.23837304820361e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 48.68835819005185,
+     "mult": 1,
+     "bound": 2.2122562893472746e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 52.9825808299949,
+     "mult": 1,
+     "bound": 2.7930843282331847e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.83453745097478,
+     "mult": 1,
+     "bound": 3.782138600684487e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 101.57017023413908,
+     "mult": 1,
+     "bound": 5.7530023249452335e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 103.20268054779925,
+     "mult": 1,
+     "bound": 1.288382967335641e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 124.41289452182278,
+     "mult": 1,
+     "bound": 6.698101734954247e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 137.90626459590786,
+     "mult": 1,
+     "bound": 1.6999341204028047e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 172.85123626533908,
+     "mult": 1,
+     "bound": 3.0180424041061287e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 174.26804522548807,
+     "mult": 1,
+     "bound": 1.653688124032301e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 175.65875028820236,
+     "mult": 1,
+     "bound": 7.508039454415656e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.3-pre-ref0",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 106.46296237500064,
+   "rung": 1,
+   "n_cols": 383,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 20.12775109648061,
+     "mult": 1,
+     "bound": 1.0227880077038352e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.266467761795184,
+     "mult": 1,
+     "bound": 2.1230695191026599e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 51.366568784077316,
+     "mult": 1,
+     "bound": 1.8856935944413652e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 80.12220223383902,
+     "mult": 1,
+     "bound": 5.452048531626359e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 100.5987797345162,
+     "mult": 1,
+     "bound": 5.074677391788102e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 101.03072937463911,
+     "mult": 1,
+     "bound": 3.818665527148851e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 127.19366236684458,
+     "mult": 1,
+     "bound": 4.744889985196683e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 133.95878616055742,
+     "mult": 1,
+     "bound": 3.12785699270412e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 171.02784794653914,
+     "mult": 1,
+     "bound": 9.078853604221207e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 171.51623422892322,
+     "mult": 1,
+     "bound": 1.6075318853836507e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 178.87793299471159,
+     "mult": 1,
+     "bound": 7.960456951476475e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.3-pre-ref3",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 220.48220570800186,
+   "rung": 1,
+   "n_cols": 384,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 20.10452972454319,
+     "mult": 1,
+     "bound": 2.5032173373814393e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.16604865501543,
+     "mult": 1,
+     "bound": 1.0073618584427021e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 51.35113033467686,
+     "mult": 1,
+     "bound": 4.8543008323628346e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.99676981248984,
+     "mult": 1,
+     "bound": 3.0887534174963785e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 100.49224899097383,
+     "mult": 1,
+     "bound": 5.0661228835693723e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 100.93835969704858,
+     "mult": 1,
+     "bound": 1.8030187522178391e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 126.88683859241634,
+     "mult": 1,
+     "bound": 1.3659007843725898e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 133.9188410208373,
+     "mult": 1,
+     "bound": 9.233918739644768e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 170.88086582056232,
+     "mult": 1,
+     "bound": 2.2235437772199876e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 171.3120212212746,
+     "mult": 1,
+     "bound": 3.045948064913981e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 178.49953105207624,
+     "mult": 1,
+     "bound": 4.961576312437364e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.5",
+   "prec": 1e-10,
+   "n": 9,
+   "wall": 127.08823720800137,
+   "rung": 1,
+   "n_cols": 489,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 29.243041495807127,
+     "mult": 1,
+     "bound": 2.4600767771262177e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 60.90124393798588,
+     "mult": 1,
+     "bound": 2.822144927929357e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 77.41303780480493,
+     "mult": 1,
+     "bound": 4.927606970416375e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 106.26068671073513,
+     "mult": 1,
+     "bound": 7.012141805410117e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 124.73367835460247,
+     "mult": 1,
+     "bound": 2.2142452066689658e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 148.60564808771568,
+     "mult": 1,
+     "bound": 7.962766606763367e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 163.1633859796542,
+     "mult": 1,
+     "bound": 4.225779438000841e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 189.21300534101772,
+     "mult": 1,
+     "bound": 5.732301662796725e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 208.41982501207104,
+     "mult": 1,
+     "bound": 6.679640059978711e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.6-N5k4-L7-ref0",
+   "prec": 1e-10,
+   "n": 11,
+   "wall": 115.42390791700018,
+   "rung": 1,
+   "n_cols": 382,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 19.982589368244888,
+     "mult": 1,
+     "bound": 2.588397472131627e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.822755781926986,
+     "mult": 1,
+     "bound": 3.3323636780013616e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 50.08895762048487,
+     "mult": 1,
+     "bound": 7.383817482079521e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.91931275338717,
+     "mult": 1,
+     "bound": 6.894879315769241e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 99.91382384143577,
+     "mult": 1,
+     "bound": 8.397669199462245e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 99.91502894672851,
+     "mult": 1,
+     "bound": 9.6640167550146e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 129.4316498131871,
+     "mult": 1,
+     "bound": 5.979383830062868e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 130.3116974627692,
+     "mult": 1,
+     "bound": 1.6613762800084159e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 169.8256071629301,
+     "mult": 1,
+     "bound": 3.430564692575699e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 169.87939642370924,
+     "mult": 1,
+     "bound": 6.309542918029501e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 179.77417365596528,
+     "mult": 1,
+     "bound": 1.0419925314363294e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.6-N5k4-L7-ref3",
+   "prec": 1e-10,
+   "n": 4,
+   "wall": 74.25435033399845,
+   "rung": 1,
+   "n_cols": 320,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 19.96395568467669,
+     "mult": 1,
+     "bound": 5.113343538143151e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 49.77837655172904,
+     "mult": 1,
+     "bound": 1.4462728303655588e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 50.040226652146075,
+     "mult": 1,
+     "bound": 4.280890021741338e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 79.84506195253641,
+     "mult": 1,
+     "bound": 1.296113175667198e-09,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  },
+  {
+   "id": "T2.9-N5k3convex",
+   "prec": 1e-10,
+   "n": 10,
+   "wall": 133.59682437500305,
+   "rung": 1,
+   "n_cols": 441,
+   "flags": [],
+   "declined": false,
+   "audit": "ok",
+   "levels": [
+    {
+     "lam": 43.988077958921906,
+     "mult": 1,
+     "bound": 7.154147654869474e-11,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 77.71554877591251,
+     "mult": 1,
+     "bound": 2.106525397170438e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 117.52243718021965,
+     "mult": 1,
+     "bound": 2.40856209060055e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 128.172036533668,
+     "mult": 1,
+     "bound": 1.9227867812292383e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 165.273395262289,
+     "mult": 1,
+     "bound": 3.2563384985805666e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 189.47295781300662,
+     "mult": 1,
+     "bound": 3.872894931118572e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 221.25587448798137,
+     "mult": 1,
+     "bound": 1.8447963157086633e-09,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 249.36203233167547,
+     "mult": 1,
+     "bound": 6.505729288619477e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 257.57966512605867,
+     "mult": 1,
+     "bound": 4.0956838548088626e-10,
+     "met": true,
+     "count_flag": false
+    },
+    {
+     "lam": 285.6704292918149,
+     "mult": 1,
+     "bound": 6.038800041340912e-10,
+     "met": true,
+     "count_flag": false
+    }
+   ],
+   "rule": "old",
+   "verdict": "CLEAN"
+  }
+ ]
+}

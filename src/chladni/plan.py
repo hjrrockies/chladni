@@ -78,6 +78,19 @@ LADDER = (
     Recipe(1.0, "singular", lightning=True),
     Recipe(1.0, "singular", plane_waves=1.3),
 )
+#: Short edges get a local source PATCH on the rungs with an offset layer (2026-10-13,
+#: `notes/short_edge_sources.py`). The layer sits `source_offset` x the diameter out, which on
+#: douse's collapsing-edge hexagon (an edge 0.042 of a 1.44 diameter) is farther than the edge is
+#: long: every rung but 2 missed 1e-10 there, and rung 2 met it at margin 2.0 exactly. Moving the
+#: whole layer closer made other cases climb a rung; this patch -- `PATCH_N` sources spread over
+#: `PATCH_REACH` x e of boundary either side of the edge's midpoint, `PATCH_OFFSET` x e out --
+#: gave margins 5-27 there, took T2.1-rerun from rung 2 to rung 1, and changed no other douse
+#: benchmark case. An edge is short below `SHORT_EDGE` x the diameter.
+SHORT_EDGE = 0.15
+PATCH_REACH = 2.0
+PATCH_OFFSET = 1.0 / 3.0
+PATCH_N = 9                           # spacing e/2 over 4e of boundary, both ends included
+
 #: Levels solved past the n a caller asked for: the count audit's headroom
 #: (`notes/count_audit.md`: a drop with four levels above it is caught ~94% of the time).
 HEADROOM = 4
@@ -113,6 +126,7 @@ class Plan:
     source_offset: float = 0.0        # x the diameter
     lightning_n: int = 0              # poles per singular corner (order 2: 3 columns each)
     n_plane_waves: int = 0            # directions (2 columns each), a COUNT like n_sources
+    edge_patches: tuple = ()          # ((segment index, sources), ...) at short edges
     bdry_ratio: float = 3.0
     int_ratio: float = 1.0
 
@@ -120,7 +134,8 @@ class Plan:
     def n_cols(self):
         n_light = sum(1 for n in self.corner_orders if n > 0) * int(self.lightning_n)
         return (int(sum(self.corner_orders)) + int(self.n_sources)
-                + (2 * LIGHTNING_ORDER - 1) * n_light + 2 * int(self.n_plane_waves))
+                + (2 * LIGHTNING_ORDER - 1) * n_light + 2 * int(self.n_plane_waves)
+                + sum(int(m) for _, m in self.edge_patches))
 
     def realize(self, dom):
         """`(basis, n_bdry, n_int)` on `dom`, which must have the plan's corner structure."""
@@ -135,6 +150,8 @@ class Plan:
                  for c, n in zip(corners, self.corner_orders) if n > 0]
         if self.n_sources:
             parts.append(_offset_sources(dom, self.n_sources, self.source_offset, self.prec))
+        for i, m in self.edge_patches:
+            parts.append(_edge_patch(dom, int(i), int(m), self.prec))
         if self.lightning_n:
             from .helmholtz import Fundamental
             for c, n in zip(corners, self.corner_orders):
@@ -182,6 +199,42 @@ def _offset_sources(dom, n, offset, prec):
                      f"outside this domain: {err}")
 
 
+def _segments(dom):
+    return [s for b in dom.boundaries for s in b.segments]
+
+
+def _short_edges(dom):
+    """Indices (in `_segments` order) of the edges shorter than `SHORT_EDGE` x the diameter."""
+    return [i for i, s in enumerate(_segments(dom)) if s.length < SHORT_EDGE * dom.diameter]
+
+
+def _edge_patch(dom, i, m, prec):
+    """`m` sources over `PATCH_REACH` x e of boundary either side of edge `i`'s midpoint (e its
+    length), each `PATCH_OFFSET` x e out along its own segment's outward normal. Placed by
+    arclength from the shape, so the count -- not the positions -- is what the plan fixes."""
+    from .helmholtz import Fundamental
+
+    segs = [s for s in dom.boundaries[0].segments]
+    if len(segs) != len(_segments(dom)):
+        raise ValueError("edge patches are placed on the outer boundary only")
+    e = segs[i].length
+    lengths = np.array([s.length for s in segs])
+    starts = np.concatenate([[0.0], np.cumsum(lengths)[:-1]])
+    total = lengths.sum()
+    origins = []
+    for t in np.linspace(-PATCH_REACH * e, PATCH_REACH * e, int(m)):
+        u = (starts[i] + 0.5 * e + t) % total
+        j = int(np.searchsorted(starts, u, side="right") - 1)
+        tau = (u - starts[j]) / lengths[j]
+        origins.append(segs[j].p(tau) + PATCH_OFFSET * e * segs[j].N(tau))
+    fam = Fundamental(np.array(origins, dtype=complex), radius=PATCH_OFFSET * e,
+                      extent=dom.diameter + e, prec=prec)
+    try:
+        return fam.check_exterior(dom)
+    except Exception as err:  # noqa: BLE001 -- a reflex neighbour pulled a source inside
+        raise ValueError(f"the source patch at edge {i} falls inside this domain: {err}") from err
+
+
 def _require_dirichlet_polygon(dom):
     from .geometry import Polygon
 
@@ -220,5 +273,7 @@ def plan_for(dom, n, prec=PREC, rung=0):
     if rc.plane_waves > 0:
         from .helmholtz import PlaneWave
         n_pw = int(np.ceil(rc.plane_waves * PlaneWave.n_useful(k_max * dom.diameter, prec)))
+    patches = (tuple((i, PATCH_N) for i in _short_edges(dom)) if rc.source_offset > 0 else ())
     return Plan(prec=prec, k_max=k_max, corner_orders=orders, rung=int(rung), n_sources=n_src,
-                source_offset=rc.source_offset, lightning_n=n_light, n_plane_waves=n_pw)
+                source_offset=rc.source_offset, lightning_n=n_light, n_plane_waves=n_pw,
+                edge_patches=patches)

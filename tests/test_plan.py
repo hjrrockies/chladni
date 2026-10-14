@@ -146,3 +146,60 @@ def test_the_plane_wave_rung_covers_shapes_with_no_singular_corner():
     assert p.n_plane_waves > 0 and all(n == 0 for n in p.corner_orders)
     b, _, _ = p.realize(rect(1.6, 0.4))
     assert len(b) == p.n_cols == 2 * p.n_plane_waves
+
+
+# --- short edges get a local source patch (2026-10-13) -----------------------------------------
+# douse's N = 6, k = 2 ratio run (seed 1) drives one hexagon edge toward zero: 0.042 of a 1.44
+# diameter. The offset layer sits 0.05 D = 0.072 out, farther than the edge is long, and every
+# rung but 2 missed 1e-10 there; rung 2 met it at margin 2.0 exactly, so the run stalled on
+# refusals. Moving the whole layer closer made other cases climb a rung; a small dense patch of
+# sources around each short edge (offset e/3, spacing e/2, over 2e either side of its midpoint)
+# fixed the stall shape and changed no other douse benchmark case for the worse
+# (`notes/short_edge_sources.py`).
+
+STALL = Polygon([0.0417, 1.1091 + 0.5169j, 0.9097 + 1.1191j, 0.2018 + 1.2364j,
+                 -0.2318 + 0.6575j, 0.0], bc="dir")
+#: Its first four eigenvalues: two independent bases (rung 2 with and without the patch) agree
+#: to 3e-13.
+STALL_LAMS = np.array([18.8459218531, 40.6304854566, 53.2319678511, 74.2587486871])
+
+
+def _short_edge(dom):
+    segs = [s for b in dom.boundaries for s in b.segments]
+    return int(np.argmin([abs(s.p1 - s.p0) for s in segs]))
+
+
+def test_ordinary_shapes_get_no_patch(dom):
+    from chladni.geometry import reg_ngon
+    for d in (dom, reg_ngon(6), rect(1.0, 0.7)):
+        for rung in range(len(LADDER)):
+            assert plan_for(d, N, PREC, rung=rung).edge_patches == ()
+
+
+def test_a_short_edge_gets_a_patch_on_the_offset_rungs_only():
+    i = _short_edge(STALL)
+    for rung in range(len(LADDER)):
+        p = plan_for(STALL, 4, PREC, rung=rung)
+        if LADDER[rung].source_offset > 0:
+            assert p.edge_patches == ((i, 9),), p.edge_patches
+        else:
+            assert p.edge_patches == ()
+
+
+def test_a_patch_realizes_at_its_planned_size_here_and_nearby():
+    p = plan_for(STALL, 4, PREC, rung=2)
+    b, _, _ = p.realize(STALL)
+    assert len(b) == p.n_cols == sum(p.corner_orders) + p.n_sources + 9
+    v = np.array([c.z for c in STALL.corners])
+    moved = Polygon(v + 2e-3 * np.exp(1j * np.arange(len(v))), bc="dir")
+    assert len(p.realize(moved)[0]) == p.n_cols
+
+
+@pytest.mark.slow
+@pytest.mark.filterwarnings("ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
+def test_the_stalled_hexagon_now_plans_cleanly():
+    from chladni.eigenproblem import Eigenproblem
+    spec = Eigenproblem(STALL).solve(4, prec=PREC)
+    assert not spec.flags, spec.flags
+    assert all(L.margin >= 4 for L in spec.levels), [L.margin for L in spec.levels]
+    np.testing.assert_allclose(spec.unfolded[:4], STALL_LAMS, rtol=PREC)
