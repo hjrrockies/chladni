@@ -63,10 +63,17 @@ class Eigenproblem:
 
     # --- planning ----------------------------------------------------------------------------
 
-    def plan(self, n, prec=PREC, *, confirm=False):
+    def plan(self, n, prec=None, *, confirm=False):
         """The first `Plan` on the ladder that meets the request for the first `n` levels, or the
-        best one if none does. Cheap to keep: it is frozen, picklable and shape-relative."""
-        return self._plan(int(n), check_prec(prec), confirm)[0]
+        best one if none does. Cheap to keep: it is frozen, picklable and shape-relative.
+
+        `prec=None` means the domain's own `prec` (`Domain.prec`), as `Eigensolver` reads it;
+        the black-box path used to fall back to the global default instead, so a domain built
+        with `prec=1e-12` was silently planned at 1e-8 (2026-10-14)."""
+        return self._plan(int(n), self._prec(prec), confirm)[0]
+
+    def _prec(self, prec):
+        return check_prec(self.domain.prec if prec is None else prec)
 
     def _plan(self, n, prec, confirm):
         """`(plan, result, window, accepted)`."""
@@ -103,7 +110,7 @@ class Eigenproblem:
 
     # --- solving -----------------------------------------------------------------------------
 
-    def solve(self, n, prec=PREC, plan=None, on_shortfall="flag", *, confirm=False, near=None):
+    def solve(self, n, prec=None, plan=None, on_shortfall="flag", *, confirm=False, near=None):
         """The first `n` levels (the level at `n` whole) as a `Spectrum`. See the module docstring.
 
         `plan=None` plans (`Eigenproblem.plan`). A given `plan` is realized on this domain. If it
@@ -118,21 +125,27 @@ class Eigenproblem:
         accepted only unflagged, so `on_shortfall="raise"` has nothing to raise on it."""
         if on_shortfall not in ("flag", "raise"):
             raise ValueError(f"on_shortfall must be 'flag' or 'raise', got {on_shortfall!r}")
-        n, prec = int(n), check_prec(prec)
+        n, prec = int(n), self._prec(prec)
+        # ONE SOLVER PER SOLVE. The basis is realized and the pencil built once here and shared
+        # by the warm attempt and the cold fallback; a refused warm solve used to pay for a
+        # second realize + pencil on the same domain (2026-10-14).
+        solver = None
         if near is not None:
             if plan is None:
                 plan = near.plan
-            spec, note = self._solve_warm(near, plan, n, prec)
+            if plan is not None:
+                solver = plan.solver(self.domain, prec=prec)
+            spec, note = self._solve_warm(near, plan, n, prec, solver)
             if spec is not None:
                 return spec
         else:
             note = None
-        spec = self._solve_cold(n, prec, plan, on_shortfall, confirm)
+        spec = self._solve_cold(n, prec, plan, on_shortfall, confirm, solver)
         if note is not None:
             spec = replace(spec, warm_note=note)
         return spec
 
-    def _solve_cold(self, n, prec, plan, on_shortfall, confirm):
+    def _solve_cold(self, n, prec, plan, on_shortfall, confirm, solver=None):
         from .mps.solver import _raise_on_shortfall
 
         flags = []
@@ -147,18 +160,20 @@ class Eigenproblem:
             if plan.prec > prec * (1 + 1e-9):
                 flags.append(f"plan: made for prec={plan.prec:.0e}, looser than the requested "
                              f"{prec:.0e}; re-plan to meet it")
-            res, window = self._solve_with(plan, n, prec, on_shortfall)
+            res, window = self._solve_with(plan, n, prec, on_shortfall, solver)
         return _spectrum(res, n, prec, plan, flags)
 
-    def _solve_with(self, plan, n, prec, on_shortfall):
+    def _solve_with(self, plan, n, prec, on_shortfall, solver=None):
         """`(result, (lo, hi))`: the prefix window solved on `plan`'s basis, widened until
-        `n + HEADROOM` eigenvalues are found (or the search declines)."""
+        `n + HEADROOM` eigenvalues are found (or the search declines). `solver` is the realized
+        solver when the caller already built one."""
         from . import asymp
         from .bounds import faber_krahn
 
         lo = 0.5 * float(faber_krahn(self.domain))
         hi = float(asymp.weyl_est_poly(n + HEADROOM, self.domain)) * (1.0 + _TOP_PAD)
-        solver = plan.solver(self.domain, prec=prec)
+        if solver is None:
+            solver = plan.solver(self.domain, prec=prec)
         for _ in range(_MAX_WIDEN):
             res = solver.search_interval(lo, hi, on_shortfall=on_shortfall)
             if res.declined or sum(L.mult for L in res.levels) >= n + HEADROOM:
@@ -167,7 +182,7 @@ class Eigenproblem:
         res.solver = solver                     # for `Spectrum.hadamard`
         return res, (lo, hi)
 
-    def _solve_warm(self, near, plan, n, prec):
+    def _solve_warm(self, near, plan, n, prec, solver=None):
         """`(spectrum, None)` if the warm solve is accepted, else `(None, why)`."""
         if plan is None or near.plan is not plan:
             return None, "plan: `near` was solved on a different plan"
@@ -179,7 +194,8 @@ class Eigenproblem:
         if prev.size < n:
             return None, f"found: `near` holds {prev.size} values, fewer than {n}"
         a, b, h = _warm_window(self.domain, prev)
-        solver = plan.solver(self.domain, prec=prec)
+        if solver is None:
+            solver = plan.solver(self.domain, prec=prec)
         res = solver.search_interval(a, b, on_shortfall="flag")
         res.solver = solver
         d = res.diagnostics
@@ -331,4 +347,4 @@ def _spectrum(res, n, prec, plan, flags):
     return Spectrum(lam, mult, bound, prec=prec, declined=bool(d.declined),
                     reason=d.decline_reason if d.declined else "", levels=levels,
                     count_audit=audit, flags=tuple(flags), plan=plan,
-                    source=getattr(res, "solver", None))
+                    source=getattr(res, "solver", None), diagnostics=d)

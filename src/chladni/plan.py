@@ -248,12 +248,13 @@ def _require_dirichlet_polygon(dom):
             f"{dom.bc_type!r}: build an MPSEigensolver with an explicit basis")
 
 
-def plan_for(dom, n, prec=PREC, rung=0):
-    """The plan at ladder rung `rung` for the first `n` levels of `dom` (plus `HEADROOM`)."""
+def plan_for(dom, n, prec=None, rung=0):
+    """The plan at ladder rung `rung` for the first `n` levels of `dom` (plus `HEADROOM`).
+    `prec=None` is the domain's own `prec`."""
     from . import asymp
 
     _require_dirichlet_polygon(dom)
-    prec = check_prec(prec)
+    prec = check_prec(dom.prec if prec is None else prec)
     if not 0 <= int(rung) < len(LADDER):
         raise ValueError(f"rung must lie in [0, {len(LADDER) - 1}], got {rung}")
     rc = LADDER[int(rung)]

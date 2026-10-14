@@ -203,3 +203,13 @@ def test_the_stalled_hexagon_now_plans_cleanly():
     assert not spec.flags, spec.flags
     assert all(L.margin >= 4 for L in spec.levels), [L.margin for L in spec.levels]
     np.testing.assert_allclose(spec.unfolded[:4], STALL_LAMS, rtol=PREC)
+
+
+def test_the_plan_defaults_to_the_domains_own_prec():
+    """`Domain.prec` is where the conventions say precision is set, and the black-box path used
+    to ignore it: `plan_for(rect(prec=1e-12), 3).prec` read 1e-8 (2026-10-14)."""
+    from chladni.eigenproblem import Eigenproblem
+    d = rect(1.0, 1.0, prec=1e-12)
+    assert plan_for(d, 3).prec == 1e-12
+    assert plan_for(d, 3, prec=1e-8).prec == 1e-8
+    assert Eigenproblem(d)._prec(None) == 1e-12

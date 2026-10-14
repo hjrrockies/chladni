@@ -550,9 +550,19 @@ class MPSPencil(Frozen):
     # --- the cache -------------------------------------------------------------------------
 
     def _store(self, key, value):
+        # Tolerant of concurrent writers: `MPSEigensolver.tensions(array)` maps over a thread
+        # pool, and a 186-evaluation solve writes ~560 entries against `_CACHE_MAX`, so eviction
+        # runs under threads. Two threads may pick the same oldest key (`pop` with a default), or
+        # the dict may change between `iter` and `next` (`RuntimeError`, retried once). The
+        # cache is a memo, so a lost or duplicate eviction costs nothing (2026-10-14).
         cache = self._cache
         if len(cache) >= _CACHE_MAX:
-            cache.pop(next(iter(cache)))
+            for _ in range(2):
+                try:
+                    cache.pop(next(iter(cache), None), None)
+                    break
+                except RuntimeError:            # dictionary changed size during iteration
+                    continue
         cache[key] = value
 
     def __repr__(self):

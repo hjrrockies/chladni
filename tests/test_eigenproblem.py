@@ -110,3 +110,12 @@ def test_a_long_thin_rectangle_reaches_1e10():
     spec = Eigenproblem(rect(1.6, 0.4)).solve(3, prec=PREC)
     assert not spec.flags, spec.flags
     _check_against(spec, np.asarray(rect_eigs(12, 1.6, 0.4), float), 3, PREC)
+
+
+@pytest.mark.slow
+def test_a_spectrum_carries_the_searchs_evaluation_counts():
+    """What a solve cost, by stage, for a caller (douse) logging it per iterate."""
+    spec = Eigenproblem(rect(1.0, 1.0)).solve(2, prec=1e-8)
+    d = spec.diagnostics
+    assert d is not None and d.evaluations > 0
+    assert d.search_evals + d.refine_evals + d.multiplicity_evals <= d.evaluations

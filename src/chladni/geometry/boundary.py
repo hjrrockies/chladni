@@ -582,9 +582,13 @@ class Boundary(Frozen):
         starts, ends = self._grade_flags(grading)
         panel0 = 0
         blocks, panels = [], []
+        if np.any(counts <= 0):
+            # Refused, not skipped: a segment with no nodes used to drop out of the rule
+            # silently, leaving a boundary with a short perimeter and no error (2026-10-14).
+            bad = [int(i) for i in np.flatnonzero(counts <= 0)]
+            raise ValueError(f"every segment needs at least one node; n_per_seg gives "
+                             f"{[int(counts[i]) for i in bad]} to segment(s) {bad}")
         for i, seg in enumerate(segs):
-            if counts[i] <= 0:
-                continue
             d = segment_nodes(seg, int(counts[i]), rule=rule,
                               grade_start=starts[i], grade_end=ends[i], panel0=panel0)
             panel0 += d["n_panels"]

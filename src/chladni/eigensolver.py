@@ -150,6 +150,10 @@ class Spectrum:
     warm_note: object = None
     #: The solver that produced it, for `hadamard`. Not part of the value.
     source: object = field(default=None, repr=False, compare=False)
+    #: The search's `SolveDiagnostics` (`chladni.mps.search`): evaluation counts by stage,
+    #: for a caller logging where a solve's time went. Not part of the value; None from solvers
+    #: that keep none.
+    diagnostics: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
         lam = np.atleast_1d(np.asarray(self.lam, dtype=float))
