@@ -428,10 +428,11 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 * **[done 2026-10-13]** **Warm start for douse: `solve(..., near=prev)`.** A narrow prefix window
   around the previous values, no headroom, continuity checks, a cold solve on any failure and
   every 10th warm solve. 2.4x on one N = 6 re-solve; on a douse N = 4, k = 1 run, 9 of 12 solves
-  ran warm with no refusals. `notes/warm_start.md`. **Next speed levers, not started:** the
-  search evaluates one `lam` at a time (186 serial evaluations per N = 6 cold solve, 10 cores
-  idle), so evaluating the seed/cover grids through the thread pool; and assembly at ~0.1 s per
-  `lam` on 562 columns.
+  ran warm with no refusals. `notes/warm_start.md`. **Speed levers:** the seed grid (and each doubling) now goes
+  through a thread pool (`Objective.tensions_many`, 2026-10-14; the cover pass is sequential by
+  nature, so this is the ~20% of a cold solve that parallelizes); a refused warm solve no
+  longer rebuilds the pencil for the cold retry. Not started: assembly at ~0.1 s per `lam` on
+  562 columns, and the measurement of the seed speedup on the N = 6 shape.
 * **[done 2026-10-13]** **Memory: the pencil cached matrices.** Up to 64 `lam`s of equilibrated
   blocks and reduced pencils per solver, ~0.5 GB held between douse steps; N = 6 ratio runs reached
   3-4.4 GB and an 8+8-worker comparison exhausted 16 GB (kernel panic). The pencil now caches
@@ -680,24 +681,20 @@ GIL. Everything below is what that leaves open.
   adaptivity is worth less when points are nearly free. This is an ordering risk, not a
   refinement: an evaluation-count-only instrument can crown a winner that a parallel machine
   would not choose.
-* **[next]** `chladni.mps.objective`'s `Objective` is deliberately not thread-safe -- a lock there would make
-  the miss count depend on scheduling. So no parallel candidate can be scored on the current
-  instrument at all. The way out is a batch seam, `Objective` taking a vector of points and
-  counting misses deterministically, rather than a lock; a batch-submitting search is also the
-  shape the parallel argument above wants.
-* **[next]** Bound the thread pools, and measure the interaction with BLAS.
-  `cf.ThreadPoolExecutor()` at `src/chladni/mps/solver.py:100` takes the default worker
-  count, each worker calls into a multithreaded BLAS (Accelerate on macOS,
-  `scipy-openblas32` elsewhere, per `pyproject.toml:23-33`), and `douse` runs whole solves
-  across threads on top of both. That
-  is three nested levels of concurrency with no cap at any of them and no measurement
-  anywhere. Expose `max_workers`, and measure before choosing a default.
-* **[next]** Batch the phases that are already embarrassingly parallel. `CHLADNI_V1.md`
-  section 10 item 5: the cover phase is inherently sequential, but the seed is not and is
-  ~20% of cost. `lipschitz-cone-mps.md` section 8 adds two more -- the pilot pass that
-  calibrates `L`, and Phase B refinements, which are independent across brackets. All three
-  can go through the existing array path in `tensions` as soon as a search submits points as
-  a vector rather than one at a time.
+* **[done 2026-10-14]** The batch seam: `Objective.tensions_many(xs)` evaluates a grid's cache
+  MISSES through a `batch` callable (a thread pool over the pencil in `from_pencil`) and
+  inserts them on the calling thread in input order, so the miss count and the cache are the
+  serial loop's exactly; `Objective` itself stays lock-free. `bracket._seed` submits the seed
+  grid and each doubling this way. `tests/test_objective.py`, `tests/test_mps_seam.py`.
+* **[next]** Bound the thread pools, and measure the interaction with BLAS. `max_workers` is
+  now exposed on `Objective.from_pencil` (default `DEFAULT_WORKERS`, half the cores up to 8)
+  and `MPSEigensolver.tensions(array)` still takes the executor default; each worker calls into
+  a multithreaded BLAS, and douse runs whole solves in separate processes on top. Measure the
+  seed speedup on the N = 6 shape (`notes/warm_start.py` times the search) at 1, 2, 4 and 8
+  workers with `OPENBLAS_NUM_THREADS`/Accelerate as they are, before choosing a default.
+* **[next]** Batch the remaining embarrassingly parallel phases: the pilot pass that calibrates
+  `L` and Phase B refinements, independent across brackets (`lipschitz-cone-mps.md` section 8),
+  through `tensions_many`. The cover phase is inherently sequential.
 * **[later]** Batched evaluation *inside* the pencil -- several `lam` in one assembly, if the
   factorizations allow it. This is vectorization rather than threading and is a separate
   question from the pool above; `CHLADNI_V1.md` section 10 item 5.
