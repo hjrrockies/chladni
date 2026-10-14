@@ -38,7 +38,8 @@ import numpy as np
 
 from ._core import PREC, check_prec
 
-__all__ = ["Plan", "Recipe", "plan_for", "corner_order", "LADDER", "HEADROOM"]
+__all__ = ["Plan", "Recipe", "plan_for", "corner_order", "LADDER", "HEADROOM", "shape_refusal",
+           "CLEARANCE_FLOOR"]
 
 @dataclass(frozen=True)
 class Recipe:
@@ -233,6 +234,31 @@ def _edge_patch(dom, i, m, prec):
         return fam.check_exterior(dom)
     except Exception as err:  # noqa: BLE001 -- a reflex neighbour pulled a source inside
         raise ValueError(f"the source patch at edge {i} falls inside this domain: {err}") from err
+
+
+#: A corner whose clearance (distance to the nearest NON-adjacent boundary) is below this
+#: fraction of the diameter sits on a near self-intersection: a slit, a pinched neck, a notch a
+#: thousandth of the domain wide. No rung resolves such a shape and every rung costs a full
+#: solve to find out -- one such trial cost 583 s (chladni/TODO.md, 2026-10-14). Conservative on
+#: purpose: a merely SHORT edge (douse's edge floor is perimeter/(10 N)) clears it by an order.
+CLEARANCE_FLOOR = 1e-3
+
+
+def shape_refusal(dom, prec):
+    """Why no plan could meet `prec` on `dom`, from its geometry alone, or None. Microseconds:
+    `achievable_prec` (float spacing against the bounding box and the shortest edge) and the
+    corners' clearance. The planner declines on it before any solve."""
+    ap = float(dom.achievable_prec)
+    if ap > prec:
+        return (f"the geometry supports about {ap:.1e} relative precision in float64 "
+                f"(offset or feature contrast), looser than the requested {prec:.0e}")
+    D = float(dom.diameter)
+    for c in dom.corners:
+        clear = float(getattr(c, "clearance", np.inf))
+        if np.isfinite(clear) and D > 0 and clear < CLEARANCE_FLOOR * D:
+            return (f"a corner at {c.z:.6g} sits {clear:.2e} from a non-adjacent boundary, "
+                    f"under {CLEARANCE_FLOOR:g} x the diameter {D:.3g}: a near self-intersection")
+    return None
 
 
 def _require_dirichlet_polygon(dom):

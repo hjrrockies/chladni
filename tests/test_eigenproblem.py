@@ -120,3 +120,14 @@ def test_a_spectrum_carries_the_searchs_evaluation_counts():
     d = spec.diagnostics
     assert d is not None and d.evaluations > 0
     assert d.search_evals + d.refine_evals + d.multiplicity_evals <= d.evaluations
+
+
+@pytest.mark.slow
+def test_plan_and_solve_hands_back_the_rung_it_accepted():
+    """The planner solved the accepted rung to select it; `plan_and_solve` returns that answer,
+    and it is the one `solve(plan=plan)` recomputes (same basis, same domain, deterministic)."""
+    ep = Eigenproblem(L_shape())
+    plan, rec = ep.plan_and_solve(3, prec=1e-8)
+    again = ep.solve(3, prec=1e-8, plan=plan)
+    np.testing.assert_array_equal(rec.unfolded, again.unfolded)
+    assert rec.flags == again.flags and rec.plan is plan and rec.diagnostics is not None

@@ -146,44 +146,99 @@ class Eigenproblem:
 
         `prec=None` means the domain's own `prec` (`Domain.prec`), as `Eigensolver` reads it;
         the black-box path used to fall back to the global default instead, so a domain built
-        with `prec=1e-12` was silently planned at 1e-8 (2026-10-14)."""
-        return self._plan(int(n), self._prec(prec), confirm)[0]
+        with `prec=1e-12` was silently planned at 1e-8 (2026-10-14).
+
+        Planning SOLVES the accepted rung; `plan_and_solve` returns that answer too, so a caller
+        who wants both does not solve the same shape on the same basis twice."""
+        return self.plan_and_solve(n, prec, confirm=confirm)[0]
+
+    def plan_and_solve(self, n, prec=None, *, confirm=False):
+        """`(plan, record)`: the plan `plan` would return, and the `SolveRecord` of the solve
+        that selected it -- flagged as `solve` would flag it when no rung met the request.
+        douse re-plans a drifted shape and then solved it again on the new plan; this is that
+        second solve, for free (2026-10-14)."""
+        n, prec = int(n), self._prec(prec)
+        declined = self._declined(n, prec)
+        if declined is not None:
+            return declined.plan, declined
+        plan, res, window, accepted = self._plan(n, prec, confirm)
+        flags = []
+        if not accepted:
+            flags.append(f"planner: no rung met prec={prec:.0e}; returning rung {plan.rung} "
+                          f"of {len(LADDER) - 1}, the one with the most levels met")
+        return plan, _record(res, n, prec, plan, flags)
+
+    def _declined(self, n, prec):
+        """A DECLINED record when the geometry alone says no plan can meet `prec`
+        (`plan.shape_refusal`), else None. A cheap "no" for a shape optimizer's wild trial: a
+        value with `declined=True` and a `declined:` flag, as a search that gave up reports, not
+        an exception, and before any solve (2026-10-14)."""
+        from .plan import shape_refusal
+        why = shape_refusal(self.domain, prec)
+        if why is None:
+            return None
+        spectrum = replace(Spectrum.declining(why, prec), flags=(f"declined: {why}",))
+        return SolveRecord(spectrum, plan=plan_for(self.domain, n, prec, 0))
 
     def _prec(self, prec):
         return check_prec(self.domain.prec if prec is None else prec)
 
     def _plan(self, n, prec, confirm):
-        """`(plan, result, window, accepted)`."""
-        tried = {}
+        """`(plan, result, window, accepted)`.
 
-        def at(rung):
-            if rung not in tried:
-                p = plan_for(self.domain, n, prec, rung)
-                res, window = (self._solve_with(p, n, prec, "flag") if _usable(p)
-                               else (None, None))
-                tried[rung] = (p, res, window)
+        THE CLIMB ABORTS A RUNG EARLY. Each rung is solved with `on_shortfall="raise"`, so the
+        search stops at the first refined level that misses `prec` (`mps.search._abort_if_unmet`:
+        a level with margin < 2 was never certified met afterwards on 8062 benchmark levels, and
+        stopping there saves a median 57% of a failing solve, `notes/early_shortfall.md`). Until
+        2026-10-14 the climb solved every rung to the end with "flag". An aborted rung is ranked
+        by what it had met before stopping; only when NO rung is accepted is the best-ranked rung
+        solved in full, so the returned result is always a whole one."""
+        from ._core import PrecisionShortfall
+        tried = {}                              # rung -> (plan, res, window, aborted, score)
+
+        def at(rung, full=False):
+            if rung in tried and not (full and tried[rung][3]):
+                return tried[rung]
+            p = plan_for(self.domain, n, prec, rung)
+            if not _usable(p):
+                tried[rung] = (p, None, None, False, -1.0)
+            elif full:
+                res, window = self._solve_with(p, n, prec, "flag")
+                tried[rung] = (p, res, window, False, _met_fraction(res, n, prec))
+            else:
+                try:
+                    res, window = self._solve_with(p, n, prec, "raise")
+                except PrecisionShortfall as e:
+                    if e.result is not None:    # a late raise: the whole result is in hand
+                        tried[rung] = (p, e.result, None, False,
+                                       _met_fraction(e.result, n, prec))
+                    else:                       # an early abort: rank by what was met so far
+                        tried[rung] = (p, None, None, True, _aborted_fraction(e, n, prec))
+                else:
+                    tried[rung] = (p, res, window, False, _met_fraction(res, n, prec))
             return tried[rung]
 
         best = None
         for rung in range(len(LADDER)):
-            p, res, window = at(rung)
-            if res is None:                     # nothing to place on this shape: skip the rung
+            p, res, window, aborted, score = at(rung)
+            if res is None and not aborted:     # nothing to place on this shape: skip the rung
                 continue
-            ok = _accepts(res, n, prec)
-            score = _met_fraction(res, n, prec)
             if best is None or score > best[0]:
-                best = (score, p, res, window)
-            if not ok:
+                best = (score, rung)
+            if res is not None and res.diagnostics.declined:
+                break                           # the search gave up here; a richer basis will not help
+            if aborted or not _accepts(res, n, prec):
                 continue
             if confirm and rung + 1 < len(LADDER):
                 low = [L for L in _prefix(res, n) if np.isfinite(L.margin)
                        and L.margin < CONFIRM_MARGIN]
-                nxt = next((at(r)[1] for r in range(rung + 1, len(LADDER))
-                            if at(r)[1] is not None), None) if low else None
+                nxt = next((at(r, full=True)[1] for r in range(rung + 1, len(LADDER))
+                            if at(r, full=True)[1] is not None), None) if low else None
                 if nxt is not None and not _same_counts(low, nxt):
                     continue                    # a hidden partner: the next rung sees more
             return p, res, window, True
-        return best[1], best[2], best[3], False
+        p, res, window, _, _ = at(best[1], full=True)
+        return p, res, window, False
 
     # --- solving -----------------------------------------------------------------------------
 
@@ -228,6 +283,11 @@ class Eigenproblem:
 
         flags = []
         if plan is None:
+            declined = self._declined(n, prec)
+            if declined is not None:
+                if on_shortfall == "raise":
+                    raise PrecisionShortfall(declined.reason)
+                return declined
             plan, res, window, accepted = self._plan(n, prec, confirm)
             if not accepted:
                 flags.append(f"planner: no rung met prec={prec:.0e}; returning rung {plan.rung} "
@@ -340,6 +400,19 @@ def _warm_verdict(*, found, prev, n, b, h, top, declined, unmet, uncertain, audi
     if audit in ("short", "excess"):
         return f"audit: the count audit reads {audit}"
     return None
+
+
+def _aborted_fraction(e, n, prec):
+    """How much of the request an early-aborted rung had met before it stopped: the located
+    values that met `prec` (each counted once; multiplicities are not read before the abort),
+    over `n + HEADROOM`. A ranking for the best-rung fallback, not a measurement."""
+    met = 0
+    for item in e.located:
+        r = item[0] if isinstance(item, tuple) else item
+        lam, dres = getattr(r, "lam", None), getattr(r, "delta_res", None)
+        if lam is not None and dres is not None and np.isfinite(dres) and dres <= prec * abs(lam):
+            met += 1
+    return met / max(n + HEADROOM, 1)
 
 
 def _usable(plan):

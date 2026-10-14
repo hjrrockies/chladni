@@ -213,3 +213,33 @@ def test_the_plan_defaults_to_the_domains_own_prec():
     assert plan_for(d, 3).prec == 1e-12
     assert plan_for(d, 3, prec=1e-8).prec == 1e-8
     assert Eigenproblem(d)._prec(None) == 1e-12
+
+
+@pytest.mark.filterwarnings("ignore:geometry supports about:chladni._core.PrecisionWarning")
+def test_a_shape_the_geometry_cannot_support_is_declined_before_any_solve():
+    """A cheap "no": an edge of 1e-13 on a unit square puts `achievable_prec` far above 1e-10,
+    and a notch a thousandth of the domain wide puts a corner on a near self-intersection.
+    Both decline in milliseconds with a `declined:` flag; neither costs a solve."""
+    import time
+    from chladni.eigenproblem import Eigenproblem
+    from chladni.plan import shape_refusal
+    sliver = Polygon([0, 1, 1 + 1j, 1e-13 + 1j, 1j], bc="dir")
+    assert "precision" in shape_refusal(sliver, 1e-10)
+    notch = Polygon([0, 2, 2 + 2j, 1.0005 + 2j, 1.0005 + 0.05j, 0.9995 + 0.05j, 0.9995 + 2j, 2j],
+                    bc="dir")
+    assert "self-intersection" in shape_refusal(notch, 1e-10)
+    assert shape_refusal(rect(1.2, 0.8), 1e-10) is None
+    assert shape_refusal(reg_ngon_with_short_edge(), 1e-10) is None
+    t0 = time.perf_counter()
+    rec = Eigenproblem(notch).solve(3, prec=1e-10)
+    assert rec.declined and rec.flags[0].startswith("declined:") and rec.count == 0
+    assert time.perf_counter() - t0 < 1.0
+    plan, rec2 = Eigenproblem(sliver).plan_and_solve(3, prec=1e-10)
+    assert rec2.declined and plan.rung == 0
+
+
+def reg_ngon_with_short_edge():
+    """A hexagon with one edge at douse's floor, perimeter/(10 N): short, not wild."""
+    v = 4.0 / 6 / (2 * np.sin(np.pi / 6)) * np.exp(2j * np.pi * np.arange(6) / 6)
+    v[1] = v[0] + (v[1] - v[0]) * (4.0 / 60) / abs(v[1] - v[0])
+    return Polygon(v, bc="dir")
