@@ -151,14 +151,14 @@ The path, in order:
   tracks with the warm start (PR #16), and it was compared against lappy on the constrained ratio
   workload (`notes/session_2026-10-13.md`).
 
-* **[next]** **A refusal at a wild shape can cost minutes.** Measured 2026-10-14 from douse:
-  an L-BFGS trial step landed on an admissible-by-arithmetic but wild quadrilateral, and the
-  re-plan at that shape climbed every rung of `LADDER` before refusing -- 583 s for one
-  `ShapeRefusal`, against ~3 s for a solve on a reasonable shape. A shape optimizer wants a
-  cheap "no": a budget on the ladder climb when the first rung already misses badly (margin far
-  below 1 at every level), or a geometric pre-check (thin wedge, near-self-intersection) in
-  `plan_for` that declines before any solve. douse's `gauss_newton` sidesteps it with a step cap;
-  `maximize_ratio` with its constraints rarely proposes such shapes; `descend` has no guard.
+* **[done 2026-10-14]** **A refusal at a wild shape cost minutes; the planner now declines wild
+  geometry before any solve** (`plan.shape_refusal`: `achievable_prec` above the request, or a
+  corner within `CLEARANCE_FLOOR` x diameter of a non-adjacent boundary), climbs the ladder with
+  early abort (`on_shortfall="raise"` per rung, the best-ranked rung solved in full only when
+  none is accepted), stops after a rung whose search declined, and hands the accepted rung's
+  solve back (`Eigenproblem.plan_and_solve`) so douse no longer solves a replanned shape twice.
+  Still open: a thin-wedge angle gate (`notes/hard_cases.md` has the shapes), and a wall-time
+  budget on the climb for shapes that pass the geometry but reach no rung.
 
 ## 1. The eigenvalue search
 
