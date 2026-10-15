@@ -155,7 +155,8 @@ The path, in order:
   geometry before any solve** (`plan.shape_refusal`: `achievable_prec` above the request, or a
   corner within `CLEARANCE_FLOOR` x diameter of a non-adjacent boundary), climbs the ladder with
   early abort (`on_shortfall="raise"` per rung, the best-ranked rung solved in full only when
-  none is accepted), stops after a rung whose search declined, and hands the accepted rung's
+  none is accepted; a rung whose search declined does NOT stop the climb -- the 1.6 x 0.4
+  rectangle declines at rung 0 and plans at the plane-wave rung), and hands the accepted rung's
   solve back (`Eigenproblem.plan_and_solve`) so douse no longer solves a replanned shape twice.
   Still open: a thin-wedge angle gate (`notes/hard_cases.md` has the shapes), and a wall-time
   budget on the climb for shapes that pass the geometry but reach no rung.
