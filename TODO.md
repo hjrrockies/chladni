@@ -151,7 +151,25 @@ The path, in order:
   tracks with the warm start (PR #16), and it was compared against lappy on the constrained ratio
   workload (`notes/session_2026-10-13.md`).
 
+* **[done 2026-10-14]** **A refusal at a wild shape cost minutes; the planner now declines wild
+  geometry before any solve** (`plan.shape_refusal`: `achievable_prec` above the request, or a
+  corner within `CLEARANCE_FLOOR` x diameter of a non-adjacent boundary), climbs the ladder with
+  early abort (`on_shortfall="raise"` per rung, the best-ranked rung solved in full only when
+  none is accepted; a rung whose search declined does NOT stop the climb -- the 1.6 x 0.4
+  rectangle declines at rung 0 and plans at the plane-wave rung), and hands the accepted rung's
+  solve back (`Eigenproblem.plan_and_solve`) so douse no longer solves a replanned shape twice.
+  Still open: a thin-wedge angle gate (`notes/hard_cases.md` has the shapes), and a wall-time
+  budget on the climb for shapes that pass the geometry but reach no rung.
+
 ## 1. The eigenvalue search
+
+* **[done 2026-10-14]** **`search.solve` in named steps, behind a golden trace.**
+  `tests/test_search_golden.py` (36 rectangle-suite solves) replays exactly on the split:
+  `_refine_stage`, `_group_roots`, `_count_root` -> `_side_search` + `_attribute`. The retired
+  options (`collapse`, licence merge, gap/floor rules, outside slope, Gram angle) are
+  `notes/evidence_tests/search_ablations.py::solve_with_options`, not parameters of `solve`.
+  `refine._end_verdict` holds the end probe; `objective.BRACKET_ULPS` is the one widening/
+  margin constant. `docs/design/search.md`, "As built, 2026-10-14".
 
 The search SHIPS. `chladni.mps.{bracket,refine,multiplicity,search}` are the four stages and
 `MPSEigensolver.solve_interval` returns a `Spectrum`, so a `Domain` goes in and eigenvalues
@@ -428,10 +446,27 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 * **[done 2026-10-13]** **Warm start for douse: `solve(..., near=prev)`.** A narrow prefix window
   around the previous values, no headroom, continuity checks, a cold solve on any failure and
   every 10th warm solve. 2.4x on one N = 6 re-solve; on a douse N = 4, k = 1 run, 9 of 12 solves
-  ran warm with no refusals. `notes/warm_start.md`. **Next speed levers, not started:** the
-  search evaluates one `lam` at a time (186 serial evaluations per N = 6 cold solve, 10 cores
-  idle), so evaluating the seed/cover grids through the thread pool; and assembly at ~0.1 s per
-  `lam` on 562 columns.
+  ran warm with no refusals. `notes/warm_start.md`. **Speed levers:** the seed grid (and each doubling) now goes
+  through a thread pool (`Objective.tensions_many`, 2026-10-14; the cover pass is sequential by
+  nature, so this is the ~20% of a cold solve that parallelizes); a refused warm solve no
+  longer rebuilds the pencil for the cold retry. **Measured 2026-10-14
+  (`notes/warm_trace_2026-10-14.md`): the gap to lappy at k = 2 is the warm solve itself** --
+  65-70% of a run, ~90 evaluations each because the warm window is a full prefix; replans are
+  3-9% and all `unmet`. BUILT the same evening: per-level warm windows with the half-widths SET BY
+  THE CALLER (`track_levels`, `solve(windows=)`; douse bounds each level's move from its own
+  Jacobian and the step, and caps the step so windows stay disjoint). Measured: evaluations per
+  warm solve 92 -> 61 on four levels, i.e. the refiner's own ~15 per level, wall -22% and -51%
+  on the two comparable seeds. Next: the refiner's cost per level (start from the predicted
+  position; 6-8 evaluations), cadence 10 -> 20 (now half the cold solves, ~7% of a run), then
+  the Fourier-Bessel kernel, which is where both assembly (93%) and certification go: profiled
+  2026-10-15 on one tracked N = 6 warm solve, certification is 28% of the solve (8.0 s with,
+  5.8 s without), and 60% of that is `_bessel._j_series` evaluating the basis on the Moler-Payne
+  sup-norm sample at each level's own `k`. Columns at one corner share `r` but each has its own
+  order, so deduplicating `(nu, k r)` saves nothing; the series kernel is already
+  ~0.12 us per entry (an active-set variant is slower and changes nothing), so the 0.67 s is
+  VOLUME -- columns x points x levels; the lever is fewer entries: a Moler-Payne sup-norm sample
+  sized by what the bound needs, certify only the levels asked for. Assembly at ~0.1 s per `lam`
+  multiplier on all of it.
 * **[done 2026-10-13]** **Memory: the pencil cached matrices.** Up to 64 `lam`s of equilibrated
   blocks and reduced pencils per solver, ~0.5 GB held between douse steps; N = 6 ratio runs reached
   3-4.4 GB and an 8+8-worker comparison exhausted 16 GB (kernel panic). The pencil now caches
@@ -680,24 +715,26 @@ GIL. Everything below is what that leaves open.
   adaptivity is worth less when points are nearly free. This is an ordering risk, not a
   refinement: an evaluation-count-only instrument can crown a winner that a parallel machine
   would not choose.
-* **[next]** `chladni.mps.objective`'s `Objective` is deliberately not thread-safe -- a lock there would make
-  the miss count depend on scheduling. So no parallel candidate can be scored on the current
-  instrument at all. The way out is a batch seam, `Objective` taking a vector of points and
-  counting misses deterministically, rather than a lock; a batch-submitting search is also the
-  shape the parallel argument above wants.
-* **[next]** Bound the thread pools, and measure the interaction with BLAS.
-  `cf.ThreadPoolExecutor()` at `src/chladni/mps/solver.py:100` takes the default worker
-  count, each worker calls into a multithreaded BLAS (Accelerate on macOS,
-  `scipy-openblas32` elsewhere, per `pyproject.toml:23-33`), and `douse` runs whole solves
-  across threads on top of both. That
-  is three nested levels of concurrency with no cap at any of them and no measurement
-  anywhere. Expose `max_workers`, and measure before choosing a default.
-* **[next]** Batch the phases that are already embarrassingly parallel. `CHLADNI_V1.md`
-  section 10 item 5: the cover phase is inherently sequential, but the seed is not and is
-  ~20% of cost. `lipschitz-cone-mps.md` section 8 adds two more -- the pilot pass that
-  calibrates `L`, and Phase B refinements, which are independent across brackets. All three
-  can go through the existing array path in `tensions` as soon as a search submits points as
-  a vector rather than one at a time.
+* **[done 2026-10-14]** The batch seam: `Objective.tensions_many(xs)` evaluates a grid's cache
+  MISSES through a `batch` callable (a thread pool over the pencil in `from_pencil`) and
+  inserts them on the calling thread in input order, so the miss count and the cache are the
+  serial loop's exactly; `Objective` itself stays lock-free. `bracket._seed` submits the seed
+  grid and each doubling this way. `tests/test_objective.py`, `tests/test_mps_seam.py`.
+  **Measured** (`notes/seed_workers.py`, douse's N = 6, k = 2 optimum, rung 1, 391 columns, cold
+  solve): 193 evaluations, of which the seed is 31 and the cover 67; 5 workers 27.2 s against
+  29.5 s on 1 -- an 8% saving, identical counts and values. The seed is a smaller share than
+  the 20% estimate; the remaining cost is the sequential cover and the refine/multiplicity
+  stages. Parallelism inside one search has about this much left to give; the next lever is
+  per-evaluation cost (assembly) or fewer evaluations.
+* **[next]** Bound the thread pools, and measure the interaction with BLAS. `max_workers` is
+  now exposed on `Objective.from_pencil` (default `DEFAULT_WORKERS`, half the cores up to 8)
+  and `MPSEigensolver.tensions(array)` still takes the executor default; each worker calls into
+  a multithreaded BLAS, and douse runs whole solves in separate processes on top. Measure the
+  seed speedup on the N = 6 shape (`notes/warm_start.py` times the search) at 1, 2, 4 and 8
+  workers with `OPENBLAS_NUM_THREADS`/Accelerate as they are, before choosing a default.
+* **[next]** Batch the remaining embarrassingly parallel phases: the pilot pass that calibrates
+  `L` and Phase B refinements, independent across brackets (`lipschitz-cone-mps.md` section 8),
+  through `tensions_many`. The cover phase is inherently sequential.
 * **[later]** Batched evaluation *inside* the pencil -- several `lam` in one assembly, if the
   factorizations allow it. This is vectorization rather than threading and is a separate
   question from the pool above; `CHLADNI_V1.md` section 10 item 5.

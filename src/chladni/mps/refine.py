@@ -38,6 +38,8 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
+from .objective import BRACKET_ULPS
+
 __all__ = ["RefineResult", "refine", "DELTA_SAFETY"]
 
 #: Evaluations before giving up. Generous: a bracket costs 3 to 12 in practice, and the point
@@ -50,7 +52,7 @@ _ENDPOINT_STEPS = 4
 
 #: Relative closeness at which two sample points are treated as the same point. Below this the
 #: vertex formula's `dx` is rounding rather than geometry.
-_SAME_POINT = 4.0
+_SAME_POINT = BRACKET_ULPS         # the bracket widening's own constant (`objective.py`)
 
 #: Consecutive vertices landing on already-sampled points, away from the best one, before the
 #: refinement is declared `stalled`. Confirming the best point is handled by fencing and never
@@ -470,108 +472,133 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None, interi
         #                 ulps of widening against a 4-ulp margin let exactly that sample -- on the
         #                 wall of a NEIGHBOUR's well, 0.48 licences from the eigenvalue -- through as
         #                 a root, below the widened end by rounding alone.
-        ilo, ihi = (float(v) for v in interior)
-        x_best, _, s_best = best
-        tie = _SAME_POINT * np.spacing(abs(x_best))
-        side = 1.0 if abs(x_best - ihi) <= abs(x_best - ilo) else -1.0
-        end = ihi if side > 0 else ilo
-        # `c` is the STEEPEST secant from the best point to a sample at least a quarter of the
-        # search bracket away. Not the fitted curvature: the last triple sits in the ulp-scale
-        # noise pressed against the end, and its curvature read a slope 25x too large -- the
-        # probe fell back onto the phantom's own wall and passed it. The quarter-width floor
-        # keeps that noise out of every secant.
-        #
-        # Not the far end alone either, which assumed a phantom's bracket lies on ONE monotone
-        # wall (1.14e-2 against a true 1.17e-2 at 130*pi^2). A bracket over a HUMP breaks it:
-        # 125*pi^2, prec 1e-8, band 1.6, from member 3's wall over the hump to member 4's, the far
-        # end read 7.09e-8 against the phantom's 6.60e-8, a slope 18x too shallow; the probe
-        # overshot member 4 onto its far wall (1.15e-6) and the phantom passed as a fifth level.
-        # Samples past a hump lie BELOW the wall, so they only make a secant shallower -- the
-        # steepest is the wall's; the mid sample there, on the hump, gave 1.15e-2.
-        span = max(ihi - ilo, np.spacing(abs(x_best)))
-        secants = [abs(p[2] - s_best) / abs(p[0] - x_best) for p in hist
-                   if abs(p[0] - x_best) >= 0.25 * span]
-        if not secants:
-            far_x, _, far_s = hist[0] if side > 0 else hist[2]
-            secants = [abs(far_s - s_best) / max(abs(far_x - x_best), np.spacing(abs(x_best)))]
-        c_wall = max(secants)
-        # The best point's own resolution radius: the cone puts the minimum `sigma/c` away.
-        reach = s_best / c_wall if c_wall > 0 else (ihi - ilo)
-        # "At an end" is a question about that RADIUS, not about ulps. A 4-ulp tie let a phantom
-        # 4 ulps inside the upper end through -- 125*pi^2, prec 1e-8, band 1.6, a bracket
-        # narrower than `_xatol`, sigma 6.6e-8 against 1e-10 at the real roots -- as a fifth
-        # level of a four-member cluster. Its radius reached 0.7 bracket widths past the end.
-        at_end = side * (end - x_best) <= max(tie, reach)
-        if not at_end:
-            inside = lo < x_best < hi
-        else:
-            # The best point is ON an end of the search's bracket, in the sliver the widening
-            # added, or close enough that its radius crosses the end. Neither position nor
-            # provenance can say which case this is: the phantom and a genuine eigenvalue exactly
-            # at the search's end (the evenly spaced cluster at 1e-14, band 2.0) both arrive
-            # there, and the first version of this test -- keyed on the point being bit-identical
-            # to a HANDED one -- was defeated by a vertex step landing a tenth of an ulp away.
-            # What differs is the curve BEYOND the end. One evaluation, spent only when this fires.
-            #
-            # Aimed at where the cone puts the minimum: `sigma/c` outward. A FIXED reach cannot
-            # serve both phantoms measured -- one bracket width landed on the well 0.48 licences
-            # out at 130*pi^2 and OVERSHOT the one 0.255 licences out at 25*pi^2, reading the far
-            # wall and passing it. On a genuine root at the end `sigma` IS the floor and the reach
-            # is a few ulps, where the probe reads the same.
-            #
-            # A probe reads "falling" only within 1.5x of the minimum's true distance, so a slope
-            # still off by a factor would overshoot again. Halving twice covers a reach up to 6x
-            # long, at one evaluation a step, stopping at the first probe that falls.
-            phantom = False
-            for frac in _PROBE_STEPS:
-                step = max(frac * reach, 4.0 * np.spacing(abs(x_best)))
-                probe = x_best + side * step
-                # Straight through the objective, NOT through `f`: `f` clamps into the bracket,
-                # and the whole point of this probe is to look outside it. The first version
-                # called `f` and the probe landed back on the widened end, four ulps away, where
-                # it read the same as the phantom and passed it.
-                s_probe = obj.tension(obj.from_lam(probe))
-                if s_probe < _DESCENT_RATIO * s_best:
-                    # A falling curve alone does not make a phantom once the radius, not the tie,
-                    # decides "at an end": a genuine root located only to `_xatol` close to the
-                    # end has a radius that crosses the end too, and its probe lands ON the root
-                    # and reads low. Where the minimum is separates them. A probe falls only
-                    # within half a step of the minimum, so a minimum inside the bracket leaves
-                    # the probe at most half a step past the end; the phantom's lies outside.
-                    phantom = side * (probe - end) > max(tie, 0.5 * step)
-                    break
-            inside = (lo < x_best < hi) and not phantom
-            if not phantom and _walk:
-                # No outward probe fell, so the minimum is NOT outside -- it is inside, about the
-                # same reach in, and nothing sampled it. That is what a start one ulp from an end
-                # produces: on a bracket nested in another, the deepest cached sample is the outer
-                # bracket's end, the triple collapses there and the width rule calls it converged.
-                # 50*pi^2, prec 1e-8, band 0.8 refused a side sub-bracket holding a member 1.58e-7
-                # in (`not_a_minimum`, certified one short); 170*pi^2, band 0.3 accepted a root ON
-                # its end 1.95e-7 from the member. Probe inward at the same steps; the first point
-                # lower than the end starts one nested refinement over the rest of the bracket.
-                # Nothing lower means the end IS the minimum, which the logic above already judges.
-                for frac in _PROBE_STEPS:
-                    step = max(frac * reach, 4.0 * np.spacing(abs(x_best)))
-                    z = float(np.clip(x_best - side * step, lo, hi))
-                    if z == x_best:
-                        continue
-                    if obj.tension(obj.from_lam(z)) < s_best:
-                        far = lo if side > 0 else hi
-                        a_in, b_in = sorted((x_best, far))
-                        inner = refine(obj, a_in, b_in, prec=prec, max_evals=max_evals,
-                                       lam_hint=z, interior=(a_in, b_in), _walk=False)
-                        if inner.accepted:
-                            return replace(inner, evaluations=obj.n_evals - start,
-                                           bracket=(lo, hi), steps=steps + inner.steps)
-                        break
-        accepted = bool(inside and s_best < min(ends))
+        inside, walked = _end_verdict(obj, best, hist, lo, hi, interior, prec, max_evals,
+                                      steps, start, _walk)
+        if walked is not None:
+            return walked
+        accepted = bool(inside and best[2] < min(ends))
     if not accepted and reason in ("converged", "flat", "stalled"):
         reason = "not_a_minimum"
 
     return RefineResult(lam=best[0], sigma=best[2], accepted=bool(accepted), reason=reason,
                         evaluations=obj.n_evals - start, bracket=(lo, hi),
                         delta_res=delta_res, steps=steps, width=width)
+
+
+
+def _end_verdict(obj, best, hist, lo, hi, interior, prec, max_evals, steps, start, walk):
+    """Is a best point at (or near) an end of the search's bracket a genuine interior minimum?
+    `(inside, walked)`: `inside` the verdict; `walked` a complete `RefineResult` when the probe
+    found the curve still descending INTO the bracket and a second refine on that stretch
+    accepted, which replaces this one.
+
+    `[lo, hi]` was widened from the search's bracket `interior` (`objective.BRACKET_ULPS`) so a
+    minimum whose exact square rounds just outside it is not lost. That makes the ends
+    artificial, so "interior" is judged by where the best point came from: well inside the
+    search's bracket, strictly inside the widened one is enough; at an end -- within the wall's
+    reach of it, read off the secants in `hist` -- by the curve past the end. The search's
+    deepest sample can BE its bracket end, and 4 ulps of widening against a 4-ulp margin let
+    exactly that sample, on a neighbour's wall 0.48 licences from the eigenvalue, through as a
+    root; the probes beyond the end (`_PROBE_STEPS` x the reach) are what catch that PHANTOM:
+    a descent of `_DESCENT_RATIO` past the end says the well is outside. A descent INTO the
+    bracket instead says the parabola stopped on a shoulder, and the stretch from the best
+    point to the far end is refined once more (`walk`, not recursive beyond one level)."""
+    ilo, ihi = (float(v) for v in interior)
+    x_best, _, s_best = best
+    tie = _SAME_POINT * np.spacing(abs(x_best))
+    side = 1.0 if abs(x_best - ihi) <= abs(x_best - ilo) else -1.0
+    end = ihi if side > 0 else ilo
+    # `c` is the STEEPEST secant from the best point to a sample at least a quarter of the
+    # search bracket away. Not the fitted curvature: the last triple sits in the ulp-scale
+    # noise pressed against the end, and its curvature read a slope 25x too large -- the
+    # probe fell back onto the phantom's own wall and passed it. The quarter-width floor
+    # keeps that noise out of every secant.
+    #
+    # Not the far end alone either, which assumed a phantom's bracket lies on ONE monotone
+    # wall (1.14e-2 against a true 1.17e-2 at 130*pi^2). A bracket over a HUMP breaks it:
+    # 125*pi^2, prec 1e-8, band 1.6, from member 3's wall over the hump to member 4's, the far
+    # end read 7.09e-8 against the phantom's 6.60e-8, a slope 18x too shallow; the probe
+    # overshot member 4 onto its far wall (1.15e-6) and the phantom passed as a fifth level.
+    # Samples past a hump lie BELOW the wall, so they only make a secant shallower -- the
+    # steepest is the wall's; the mid sample there, on the hump, gave 1.15e-2.
+    span = max(ihi - ilo, np.spacing(abs(x_best)))
+    secants = [abs(p[2] - s_best) / abs(p[0] - x_best) for p in hist
+               if abs(p[0] - x_best) >= 0.25 * span]
+    if not secants:
+        far_x, _, far_s = hist[0] if side > 0 else hist[2]
+        secants = [abs(far_s - s_best) / max(abs(far_x - x_best), np.spacing(abs(x_best)))]
+    c_wall = max(secants)
+    # The best point's own resolution radius: the cone puts the minimum `sigma/c` away.
+    reach = s_best / c_wall if c_wall > 0 else (ihi - ilo)
+    # "At an end" is a question about that RADIUS, not about ulps. A 4-ulp tie let a phantom
+    # 4 ulps inside the upper end through -- 125*pi^2, prec 1e-8, band 1.6, a bracket
+    # narrower than `_xatol`, sigma 6.6e-8 against 1e-10 at the real roots -- as a fifth
+    # level of a four-member cluster. Its radius reached 0.7 bracket widths past the end.
+    at_end = side * (end - x_best) <= max(tie, reach)
+    if not at_end:
+        inside = lo < x_best < hi
+    else:
+        # The best point is ON an end of the search's bracket, in the sliver the widening
+        # added, or close enough that its radius crosses the end. Neither position nor
+        # provenance can say which case this is: the phantom and a genuine eigenvalue exactly
+        # at the search's end (the evenly spaced cluster at 1e-14, band 2.0) both arrive
+        # there, and the first version of this test -- keyed on the point being bit-identical
+        # to a HANDED one -- was defeated by a vertex step landing a tenth of an ulp away.
+        # What differs is the curve BEYOND the end. One evaluation, spent only when this fires.
+        #
+        # Aimed at where the cone puts the minimum: `sigma/c` outward. A FIXED reach cannot
+        # serve both phantoms measured -- one bracket width landed on the well 0.48 licences
+        # out at 130*pi^2 and OVERSHOT the one 0.255 licences out at 25*pi^2, reading the far
+        # wall and passing it. On a genuine root at the end `sigma` IS the floor and the reach
+        # is a few ulps, where the probe reads the same.
+        #
+        # A probe reads "falling" only within 1.5x of the minimum's true distance, so a slope
+        # still off by a factor would overshoot again. Halving twice covers a reach up to 6x
+        # long, at one evaluation a step, stopping at the first probe that falls.
+        phantom = False
+        for frac in _PROBE_STEPS:
+            step = max(frac * reach, 4.0 * np.spacing(abs(x_best)))
+            probe = x_best + side * step
+            # Straight through the objective, NOT through `f`: `f` clamps into the bracket,
+            # and the whole point of this probe is to look outside it. The first version
+            # called `f` and the probe landed back on the widened end, four ulps away, where
+            # it read the same as the phantom and passed it.
+            s_probe = obj.tension(obj.from_lam(probe))
+            if s_probe < _DESCENT_RATIO * s_best:
+                # A falling curve alone does not make a phantom once the radius, not the tie,
+                # decides "at an end": a genuine root located only to `_xatol` close to the
+                # end has a radius that crosses the end too, and its probe lands ON the root
+                # and reads low. Where the minimum is separates them. A probe falls only
+                # within half a step of the minimum, so a minimum inside the bracket leaves
+                # the probe at most half a step past the end; the phantom's lies outside.
+                phantom = side * (probe - end) > max(tie, 0.5 * step)
+                break
+        inside = (lo < x_best < hi) and not phantom
+        if not phantom and walk:
+            # No outward probe fell, so the minimum is NOT outside -- it is inside, about the
+            # same reach in, and nothing sampled it. That is what a start one ulp from an end
+            # produces: on a bracket nested in another, the deepest cached sample is the outer
+            # bracket's end, the triple collapses there and the width rule calls it converged.
+            # 50*pi^2, prec 1e-8, band 0.8 refused a side sub-bracket holding a member 1.58e-7
+            # in (`not_a_minimum`, certified one short); 170*pi^2, band 0.3 accepted a root ON
+            # its end 1.95e-7 from the member. Probe inward at the same steps; the first point
+            # lower than the end starts one nested refinement over the rest of the bracket.
+            # Nothing lower means the end IS the minimum, which the logic above already judges.
+            for frac in _PROBE_STEPS:
+                step = max(frac * reach, 4.0 * np.spacing(abs(x_best)))
+                z = float(np.clip(x_best - side * step, lo, hi))
+                if z == x_best:
+                    continue
+                if obj.tension(obj.from_lam(z)) < s_best:
+                    far = lo if side > 0 else hi
+                    a_in, b_in = sorted((x_best, far))
+                    inner = refine(obj, a_in, b_in, prec=prec, max_evals=max_evals,
+                                   lam_hint=z, interior=(a_in, b_in), _walk=False)
+                    if inner.accepted:
+                        return inside, replace(inner, evaluations=obj.n_evals - start,
+                                               bracket=(lo, hi), steps=steps + inner.steps)
+                    break
+    return inside, None
 
 
 def _accept(best, lo, hi, prec, ends):

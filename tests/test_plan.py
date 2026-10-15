@@ -203,3 +203,59 @@ def test_the_stalled_hexagon_now_plans_cleanly():
     assert not spec.flags, spec.flags
     assert all(L.margin >= 4 for L in spec.levels), [L.margin for L in spec.levels]
     np.testing.assert_allclose(spec.unfolded[:4], STALL_LAMS, rtol=PREC)
+
+
+def test_the_plan_defaults_to_the_domains_own_prec():
+    """`Domain.prec` is where the conventions say precision is set, and the black-box path used
+    to ignore it: `plan_for(rect(prec=1e-12), 3).prec` read 1e-8 (2026-10-14)."""
+    from chladni.eigenproblem import Eigenproblem
+    d = rect(1.0, 1.0, prec=1e-12)
+    assert plan_for(d, 3).prec == 1e-12
+    assert plan_for(d, 3, prec=1e-8).prec == 1e-8
+    assert Eigenproblem(d)._prec(None) == 1e-12
+
+
+@pytest.mark.filterwarnings("ignore:geometry supports about:chladni._core.PrecisionWarning")
+def test_a_shape_the_geometry_cannot_support_is_declined_before_any_solve():
+    """A cheap "no": an edge of 1e-13 on a unit square puts `achievable_prec` far above 1e-10,
+    and a notch a thousandth of the domain wide puts a corner on a near self-intersection.
+    Both decline in milliseconds with a `declined:` flag; neither costs a solve."""
+    import time
+    from chladni.eigenproblem import Eigenproblem
+    from chladni.plan import shape_refusal
+    sliver = Polygon([0, 1, 1 + 1j, 1e-13 + 1j, 1j], bc="dir")
+    assert "precision" in shape_refusal(sliver, 1e-10)
+    notch = Polygon([0, 2, 2 + 2j, 1.0005 + 2j, 1.0005 + 0.05j, 0.9995 + 0.05j, 0.9995 + 2j, 2j],
+                    bc="dir")
+    assert "self-intersection" in shape_refusal(notch, 1e-10)
+    assert shape_refusal(rect(1.2, 0.8), 1e-10) is None
+    assert shape_refusal(reg_ngon_with_short_edge(), 1e-10) is None
+    t0 = time.perf_counter()
+    rec = Eigenproblem(notch).solve(3, prec=1e-10)
+    assert rec.declined and rec.flags[0].startswith("declined:") and rec.count == 0
+    assert time.perf_counter() - t0 < 1.0
+    plan, rec2 = Eigenproblem(sliver).plan_and_solve(3, prec=1e-10)
+    assert rec2.declined and plan.rung == 0
+
+
+def reg_ngon_with_short_edge():
+    """A hexagon with one edge at douse's floor, perimeter/(10 N): short, not wild."""
+    v = 4.0 / 6 / (2 * np.sin(np.pi / 6)) * np.exp(2j * np.pi * np.arange(6) / 6)
+    v[1] = v[0] + (v[1] - v[0]) * (4.0 / 60) / abs(v[1] - v[0])
+    return Polygon(v, bc="dir")
+
+
+@pytest.mark.slow
+def test_a_rung_that_declines_does_not_stop_the_climb():
+    """A 1.6 x 0.4 rectangle, in two placements. In one the corner-term rung's search declines
+    ("the slope estimate never settled") and the plane-wave rung above it reaches 1e-10; a climb
+    that stopped at the decline refused the shape (douse's drift test, 2026-10-14). Whichever
+    rung each placement ends on, both must plan without flags."""
+    from chladni.eigenproblem import Eigenproblem
+    from chladni.geometry import Polygon
+    L, H = 1.6, 0.4
+    for verts in ([0, L, L + 1j * H, 1j * H],                      # as chladni's own test
+                  [0.2 + 0.3j, 0.2 + 0.3j + 1j * L, 0.2 + 0.3j + 1j * L - H, 0.2 + 0.3j - H]):
+        plan, rec = Eigenproblem(Polygon(verts, bc="dir")).plan_and_solve(3, prec=1e-10)
+        assert not rec.declined and not rec.flags, (verts, rec.flags)
+        assert rec.count >= 3

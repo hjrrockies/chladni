@@ -1,8 +1,8 @@
-name: nightly (gate and robust)
+name: nightly (robust)
 
-# The expensive tier, off the per-push path: the robustness campaign. (The acceptance gate,
-# `-m gate`, was retired from the suite to notes/evidence_tests/ on 2026-10-09.)
-# and the robustness campaign (`-m robust`, 30-60 min). Nightly on main, and on demand.
+# The expensive tier, off the per-push path: the robustness campaign (`-m robust`, 30-60 min).
+# Nightly on main, and on demand. (The acceptance gate, `-m gate`, was retired from the suite to
+# notes/evidence_tests/ on 2026-10-09 and collects nothing under tests/.)
 on:
   schedule:
     - cron: "17 7 * * *"
@@ -64,4 +64,4 @@ jobs:
       # the project environment itself and could undo the `[test]` install above.
 
       - name: Run the gate and the robust tier
-        run: .venv/bin/python -m pytest -m "(gate or robust) and not ulp_sensitive" -W error::UserWarning
+        run: .venv/bin/python -m pytest -m "robust and not ulp_sensitive" -W error::UserWarning

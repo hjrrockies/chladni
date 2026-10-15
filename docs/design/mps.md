@@ -405,9 +405,16 @@ makes the tension look better while meaning less.
 
 ## Still deferred
 
-Unchanged: the eigenvalue search and multiplicity estimation, Rellich orthonormalization,
-basis planning and the point budget, and whether `k` or `lam` is the better variable for the
-minimization.
+*Superseded 2026-10-14.* Everything this section deferred has since shipped: the eigenvalue
+search and multiplicity estimation (`search.md`, reached through `MPSEigensolver.solve_interval`),
+Rellich orthonormalization (`MPSEigensolver.eigenfunctions`, `integrals/identities.py`), basis
+planning and the point budget (`chladni.plan`, `chladni.eigenproblem`; spec in
+`douse_requirements.md`), and the variable question (`lam` everywhere above `helmholtz`,
+`conventions.md`). The original text, for the record:
+
+> Unchanged: the eigenvalue search and multiplicity estimation, Rellich orthonormalization,
+> basis planning and the point budget, and whether `k` or `lam` is the better variable for the
+> minimization.
 
 ## The rank must be chosen over a RANGE, and the default is now threshold
 

@@ -238,7 +238,8 @@ def test_the_rectangle_pair_is_STABLE_across_six_orders_of_separation():
 # defined by the verdict being arbitrary.
 
 from chladni.mps.objective import Objective                         # noqa: E402
-from chladni.mps.search import Level, _gram_group, solve            # noqa: E402
+from chladni.mps.search import Level
+from search_ablations import _gram_group, solve_with_options as solve
 
 
 def _pair_objective(centres, directions, *, eps=1e-13, c_k=0.27, plateau=0.2,

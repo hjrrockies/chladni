@@ -7,7 +7,7 @@ than by whether they were written before or after the code. The test each one ha
 > *at this commit*?
 
 Yes to both, and it belongs here. Helpful but true only as of a date, and it belongs in
-`notes/`, which is not tracked.
+`notes/`, which is tracked but makes no claim to be true at HEAD.
 
 ### `conventions.md` --- a contract
 
@@ -58,8 +58,10 @@ whoever picks the work up, not to a reader of the code.
 
 Working notes, research memos, work orders, benchmark run logs --- anything addressed to a
 particular moment and a reader who no longer exists. Useful while it is useful; not part of
-what the repository claims to be true. `CLAUDE.md` is ignored separately, being tooling
-configuration rather than documentation.
+what the repository claims to be true. It IS tracked (since 2026-10-09; `TODO.md` says why:
+the sharpest open items were measured there and exist nowhere else), dated and superseded
+rather than revised, and excluded from a release rather than from the repository. `CLAUDE.md`
+is ignored separately, being tooling configuration rather than documentation.
 
 ### Later
 

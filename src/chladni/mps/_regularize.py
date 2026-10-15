@@ -117,19 +117,6 @@ _MODES = ("svd", "qrp", None) + _PENALTY
 #: family.
 C_PEN = 0.02
 
-#: The tightest `prec` at which `reg="auto"` chooses the penalty. Below it `"auto"` is the
-#: threshold, whose floor is set by the basis and not by `prec`. Measured on the 50/65*pi^2
-#: cluster grid against the threshold at its OWN derived `rtol` -- what `"auto"` falls back to, and
-#: what shipped before -- (`notes/smooth_filter.md` section 11): 22 of 22 each at 1e-6 and 1e-8,
-#: but at 1e-10 the penalty lost a member where the threshold did not (50*pi^2, band 0.3, flagged).
-#: A feasible `tau` still exists down to 1e-12 (10.6); this is where it is measured NOT WORSE.
-#:
-#: Infinite since 2026-10-10: `"auto"` never chooses the penalty. On the douse benchmark the
-#: threshold beat it at 1e-6, 1e-8 and 1e-10 -- 1 silent loss against 9 at 1e-8, 0 against 5 at
-#: 1e-6, as stable or more, a 2x tighter bound, 0.6x the wall time -- and the cluster grids tied,
-#: 391 of 391 under 16 jitter seeds at 1e-6 and 1e-8 (`notes/regularization_1e10.md`). The
-#: penalty stays available as an explicit `reg=`.
-PENALTY_PREC_MIN = float("inf")
 
 #: The penalty's REACH, the two jaws `tau` must sit between (`notes/penalty_prec_limit_explained.md`
 #: section 6). Above `_REACH_FLOOR * prec` the floor blurs members `prec` apart: members were lost

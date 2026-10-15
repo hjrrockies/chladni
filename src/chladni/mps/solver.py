@@ -31,10 +31,6 @@ from .pencil import MPSPencil
 
 __all__ = ["MPSEigensolver", "Eigenfunctions", "DEFAULT_RNG"]
 
-#: How many eigenvalues the default reference window is sized for, when `lam_ref` is not
-#: given. Only sets where the rank is chosen, so it wants to be a typical scan rather than a
-#: precise one.
-_REF_MODES = 10
 
 #: Seed for the interior fill when the caller names none. A FIXED CONSTANT, not `None`.
 #:
@@ -64,6 +60,11 @@ DEFAULT_RNG = 0
 #: 20 removed that met-but-wrong level and the Linux edge case (MP 67000x the request), at a cost
 #: of 2-5 met levels per ~1200; honest levels have MP within ~2-5x of the request.
 MP_CROSSCHECK = 20.0
+
+#: A tracked window wider than this many local mean Weyl spacings is searched, not refined: it
+#: may hold more than one well, and the refiner answers "no well" on such a window at the cost
+#: of its evaluations plus a cold solve (`track_levels`).
+WIDE_WINDOW = 1.0
 
 
 @dataclass(frozen=True)
@@ -285,6 +286,100 @@ class MPSEigensolver(Eigensolver, Frozen):
         if on_shortfall == "raise":
             _raise_on_shortfall(res, a, b, prec)
         return res
+
+    def track_levels(self, prev, h, *, mults=None, prec=None):
+        """Re-locate known levels in small windows around their previous values: `(result,
+        None)`, or `(None, why)` when a window does not hold what it should.
+
+        THE CALLER SETS THE WINDOWS. `prev` are the previous level values (ascending), `mults`
+        their multiplicities, `h` the half-width each may have moved by -- which a shape
+        optimizer knows before it steps, from the level's own shape derivative and its step
+        (douse: `h_i = c |g_i . d|`). A window with one previous level is REFINED, not searched:
+        the bracket refiner locates the well (`mps.refine`, ~15-20 evaluations), and the
+        multiplicity is the previous one, verified on the tension vector there -- an m-fold
+        level has m small tensions and a gap of `multiplicity.GAP_RATIO` above them. Windows that
+        overlap are merged and SEARCHED (`search_interval`): that is a cluster, and the search's
+        multiplicity machinery decides it. Measured need (`notes/warm_trace_2026-10-14.md`): the
+        prefix warm solve spent ~90 evaluations per solve re-covering the whole range below
+        `lam_n`; 65-70% of a douse run.
+
+        Completeness is the caller's: nothing between the windows is looked at. The return is a
+        `SolveResult` like `search_interval`'s (certified when `certify`), with the count audit
+        marked unaudited.
+        """
+        from dataclasses import replace as _replace
+
+        from .. import asymp
+        from .multiplicity import GAP_RATIO
+        from .refine import refine
+        from .search import Level, SolveDiagnostics, SolveResult
+
+        prec = self.prec if prec is None else check_prec(prec)
+        prev = np.atleast_1d(np.asarray(prev, dtype=float))
+        h = np.broadcast_to(np.asarray(h, dtype=float), prev.shape)
+        mults = (np.ones(prev.shape, dtype=int) if mults is None
+                 else np.broadcast_to(np.asarray(mults, dtype=int), prev.shape))
+        if prev.size == 0:
+            return SolveResult(), None
+        if np.any(h <= 0) or np.any(prev - h <= 0):
+            return None, "windows: every half-width must be positive and below its value"
+        # merge overlapping windows, in ascending order
+        windows = []
+        for i in np.argsort(prev):
+            lo, hi = float(prev[i] - h[i]), float(prev[i] + h[i])
+            if windows and lo <= windows[-1][1]:
+                windows[-1] = (windows[-1][0], max(windows[-1][1], hi), windows[-1][2] + [int(i)])
+            else:
+                windows.append((lo, hi, [int(i)]))
+        levels, n_evals, refine_evals = [], 0, 0
+        for lo, hi, members in windows:
+            # A window holding several previous levels, or one wide enough to hold several
+            # wells (wider than `WIDE_WINDOW` x the local mean Weyl spacing: an early, large
+            # optimizer step), is SEARCHED; the refiner is the tool for one well (measured: ten
+            # of 28 cold fallbacks over three seeds were refines on wide windows that found "no
+            # well", `notes/warm_trace_2026-10-14.md`).
+            if len(members) > 1 or (hi - lo) > WIDE_WINDOW * self._mean_spacing(0.5 * (lo + hi)):
+                res_w = self.search_interval(lo, hi, prec=prec)
+                if res_w.declined:
+                    return None, f"search: the merged window [{lo:.6g}, {hi:.6g}] declined"
+                levels.extend(res_w.levels)
+                n_evals += res_w.diagnostics.evaluations
+                continue
+            i = members[0]
+            obj = self.objective(lo, hi, prec=prec)
+            r = refine(obj, lo, hi, prec=prec, interior=(lo, hi))
+            refine_evals += r.evaluations
+            n_evals += r.evaluations
+            if not r.accepted:
+                return None, (f"refine: no well in [{lo:.6g}, {hi:.6g}] around {prev[i]:.10g} "
+                              f"({r.reason})")
+            m = int(mults[i])
+            t = np.asarray(obj.tensions(r.lam), dtype=float)
+            if t.size < m or (m > 1 and t[m - 1] > GAP_RATIO * t[0]):
+                return None, (f"multiplicity: {prev[i]:.10g} was {m}-fold and the tensions at "
+                              f"{r.lam:.10g} no longer show {m} small values")
+            if t.size > m and t[m] < GAP_RATIO * t[m - 1]:
+                return None, (f"multiplicity: a neighbour has joined {prev[i]:.10g} "
+                              f"(sigma_{m + 1}/sigma_{m} = {t[m] / t[m - 1]:.2g})")
+            levels.append(Level(lam=float(r.lam), mult=m, sigma=float(r.sigma),
+                                delta_res=float(r.delta_res), bracket=(lo, hi), prec=prec,
+                                count_decided_by="tracked"))
+        levels = tuple(sorted(levels, key=lambda L: L.lam))
+        audit = asymp.CountAudit("unaudited", reason="tracked windows are not a prefix")
+        res = SolveResult(levels=levels,
+                          diagnostics=SolveDiagnostics(refine_evals=refine_evals,
+                                                       evaluations=n_evals,
+                                                       prec_requested=prec, count_audit=audit))
+        if self.certify and res.levels:
+            res = self.certify_levels(res, lam_max=float(windows[-1][1]), prec=prec)
+            res = _replace(res, diagnostics=_replace(res.diagnostics, count_audit=audit))
+        return res, None
+
+    def _mean_spacing(self, lam):
+        """The local mean Weyl spacing at `lam` (the gap between consecutive Weyl estimates)."""
+        from .. import asymp
+        k = max(float(asymp.weyl_count_poly(lam, self.domain)), 0.5)
+        return float(asymp.weyl_est_poly(k + 1, self.domain) - asymp.weyl_est_poly(k, self.domain))
 
     def audit_count(self, res, a, b):
         """`res` with `diagnostics.count_audit`: the returned count against Weyl's law
@@ -513,11 +608,10 @@ class MPSEigensolver(Eigensolver, Frozen):
                 f"Spectrum; the pencil is what binds here, not the request.",
                 PrecisionWarning, stacklevel=2,
             )
-        lam = np.array([x.lam for x in res.levels], dtype=float)
-        mult = np.array([x.mult for x in res.levels], dtype=int)
-        bound = np.array([x.bound for x in res.levels], dtype=float)
-        order = np.argsort(lam)
-        return Spectrum(lam[order], mult[order], bound[order], prec=self.prec)
+        from ..eigensolver import Level
+        return Spectrum(tuple(Level.from_search(x, self.prec)
+                              for x in sorted(res.levels, key=lambda x: x.lam)),
+                        prec=self.prec)
 
     def __repr__(self):
         return (f"MPSEigensolver({self.domain!r}, n_cols={self.n_cols}, "
