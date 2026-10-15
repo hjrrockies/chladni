@@ -124,3 +124,12 @@ basis evaluated on the sup-norm sample set at each level's own `k` -- all of it 
 per level) 0.52 s. So the Bessel series is the common cost of assembly AND certification, and
 it is the next thing to make fast. Deduplicating `(nu, k r)` does not apply (one order per
 column); the series evaluation itself, or an order-ladder recurrence, does.
+
+**The series kernel is not the problem (2026-10-15).** `_bessel._j_series` on a realistic
+block -- 28 orders x 300 points, 8191 entries on the series branch -- takes 1.0 ms, about
+0.12 us per entry; an active-set variant that retires converged entries from the term loop is
+slower (1.7 ms, the fancy indexing costs more than the spare terms) and changes no value. So
+the 0.67 s in the profile is VOLUME: ~120 calls on blocks of hundreds of columns by a thousand
+or more points. The lever is fewer entries, not a faster series: a smaller Moler-Payne
+sup-norm sample sized by what the bound needs, fewer certified levels when the caller asks for
+fewer, and the order-ladder recurrence only if it cuts the per-entry cost below 0.1 us.
