@@ -163,3 +163,36 @@ def test_near_without_a_plan_uses_the_previous_ones():
     assert "near" in Eigenproblem.solve.__code__.co_varnames
     assert WARM_COLD_EVERY == 10
     assert hasattr(EP, "_warm_window")
+
+
+@pytest.mark.slow
+def test_a_tracked_warm_solve_on_caller_windows_matches_a_cold_solve_and_costs_less():
+    """The caller bounds each level's move; the solve refines a window per level instead of
+    searching the prefix. Same values as a cold solve on the moved shape, far fewer
+    evaluations than the prefix warm solve (2026-10-14)."""
+    from chladni.geometry import rect
+    ep0 = Eigenproblem(rect(1.2, 0.8))
+    plan, prev = ep0.plan_and_solve(3, prec=1e-10)
+    moved = rect(1.2, 0.8 * 1.002)
+    ep = Eigenproblem(moved)
+    cold = ep.solve(3, prec=1e-10, plan=plan)
+    prefix = ep.solve(3, prec=1e-10, plan=plan, near=prev)
+    h = 0.05 * prev.unfolded[:3]                                  # a generous move bound
+    tracked = ep.solve(3, prec=1e-10, plan=plan, near=prev, windows=h)
+    assert tracked.warm and prefix.warm, (tracked.warm_note, prefix.warm_note)
+    np.testing.assert_allclose(tracked.unfolded, cold.unfolded, rtol=1e-9)
+    assert tracked.achieved and not tracked.flags
+    assert tracked.diagnostics.evaluations < 0.6 * prefix.diagnostics.evaluations, (
+        tracked.diagnostics.evaluations, prefix.diagnostics.evaluations)
+
+
+@pytest.mark.slow
+def test_a_window_that_lost_its_level_goes_cold_and_says_why():
+    """A half-width too small for the move: no well in the window, so the warm solve is refused
+    with a `track:` note and the answer is the cold one."""
+    from chladni.geometry import rect
+    plan, prev = Eigenproblem(rect(1.2, 0.8)).plan_and_solve(3, prec=1e-10)
+    rec = Eigenproblem(rect(1.2, 0.8 * 1.05)).solve(3, prec=1e-10, plan=plan, near=prev,
+                                                   windows=1e-6 * prev.unfolded[:3])
+    assert not rec.warm and rec.warm_note.startswith("track:"), rec.warm_note
+    assert rec.achieved

@@ -242,7 +242,8 @@ class Eigenproblem:
 
     # --- solving -----------------------------------------------------------------------------
 
-    def solve(self, n, prec=None, plan=None, on_shortfall="flag", *, confirm=False, near=None):
+    def solve(self, n, prec=None, plan=None, on_shortfall="flag", *, confirm=False, near=None,
+              windows=None):
         """The first `n` levels (the level at `n` whole) as a `SolveRecord`: the `Spectrum` plus
         the plan, the solver and the search diagnostics. See the module docstring.
 
@@ -255,7 +256,15 @@ class Eigenproblem:
         the narrow window around its values, accepted only if every continuity check holds
         (`_warm_verdict`), otherwise a cold solve. `spec.warm`, `warm_depth` and `warm_note` say
         which happened and why. With `plan=None`, `near.plan` is used. A warm answer is
-        accepted only unflagged, so `on_shortfall="raise"` has nothing to raise on it."""
+        accepted only unflagged, so `on_shortfall="raise"` has nothing to raise on it.
+
+        `windows`, with `near`: per-value half-widths `h_i` for the first `n` values of `near`,
+        from a caller that knows how far each can have moved (a shape optimizer, from the
+        level's shape derivative and its step). The warm solve then re-locates each level in
+        `[lam_i - h_i, lam_i + h_i]` (`MPSEigensolver.track_levels`) instead of searching the
+        prefix: the solve is cheaper by the range it no longer covers, and COMPLETENESS IS THE
+        CALLER'S -- nothing between the windows is examined, so the caller's step bound and a
+        periodic cold solve (`WARM_COLD_EVERY`) are the guarantee (2026-10-14)."""
         if on_shortfall not in ("flag", "raise"):
             raise ValueError(f"on_shortfall must be 'flag' or 'raise', got {on_shortfall!r}")
         n, prec = int(n), self._prec(prec)
@@ -268,7 +277,7 @@ class Eigenproblem:
                 plan = near.plan
             if plan is not None:
                 solver = plan.solver(self.domain, prec=prec)
-            spec, note = self._solve_warm(near, plan, n, prec, solver)
+            spec, note = self._solve_warm(near, plan, n, prec, solver, windows)
             if spec is not None:
                 return spec
         else:
@@ -320,7 +329,7 @@ class Eigenproblem:
         res.solver = solver                     # for `Spectrum.hadamard`
         return res, (lo, hi)
 
-    def _solve_warm(self, near, plan, n, prec, solver=None):
+    def _solve_warm(self, near, plan, n, prec, solver=None, windows=None):
         """`(spectrum, None)` if the warm solve is accepted, else `(None, why)`."""
         if plan is None or near.plan is not plan:
             return None, "plan: `near` was solved on a different plan"
@@ -331,9 +340,11 @@ class Eigenproblem:
         prev = np.asarray(near.unfolded, dtype=float)[:n]
         if prev.size < n:
             return None, f"found: `near` holds {prev.size} values, fewer than {n}"
-        a, b, h = _warm_window(self.domain, prev)
         if solver is None:
             solver = plan.solver(self.domain, prec=prec)
+        if windows is not None:
+            return self._solve_tracked(near, plan, n, prec, solver, prev, windows)
+        a, b, h = _warm_window(self.domain, prev)
         res = solver.search_interval(a, b, on_shortfall="flag")
         res.solver = solver
         d = res.diagnostics
@@ -351,6 +362,40 @@ class Eigenproblem:
                                                      if not f.startswith("count audit: unaudited")))
         rec = replace(rec, spectrum=spectrum, warm=True, warm_depth=near.warm_depth + 1)
         if rec.flags:                           # anything else means the checks missed a case
+            return None, "flags: " + "; ".join(rec.flags)
+        return rec, None
+
+
+    def _solve_tracked(self, near, plan, n, prec, solver, prev, windows):
+        """The warm solve on caller-supplied windows: `track_levels` on the previous LEVELS (the
+        first `n` values of `near` grouped by its levels, each level's half-width the largest
+        of its copies'), then the continuity verdicts that still apply."""
+        h = np.broadcast_to(np.asarray(windows, dtype=float), prev.shape)
+        lams, mults, hs, count = [], [], [], 0
+        for L in near.levels:
+            if count >= n:
+                break
+            take = min(int(L.mult), n - count)
+            lams.append(float(L.lam))
+            mults.append(int(L.mult))
+            hs.append(float(np.max(h[count:count + take])))
+            count += take
+        res, why = solver.track_levels(np.array(lams), np.array(hs), mults=np.array(mults),
+                                       prec=prec)
+        if why is not None:
+            return None, "track: " + why
+        res.solver = solver
+        d = res.diagnostics
+        found = np.sort(np.asarray(res.unfolded, dtype=float))
+        if len(d.unmet):
+            return None, f"unmet: {len(d.unmet)} level(s) in the tracked windows miss prec"
+        if found.size < n:
+            return None, f"found: {found.size} values in the tracked windows, fewer than {n}"
+        rec = _record(res, n, prec, plan, [])
+        spectrum = replace(rec.spectrum, flags=tuple(f for f in rec.spectrum.flags
+                                                     if not f.startswith("count audit: unaudited")))
+        rec = replace(rec, spectrum=spectrum, warm=True, warm_depth=near.warm_depth + 1)
+        if rec.flags:
             return None, "flags: " + "; ".join(rec.flags)
         return rec, None
 

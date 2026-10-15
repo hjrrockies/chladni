@@ -286,6 +286,89 @@ class MPSEigensolver(Eigensolver, Frozen):
             _raise_on_shortfall(res, a, b, prec)
         return res
 
+    def track_levels(self, prev, h, *, mults=None, prec=None):
+        """Re-locate known levels in small windows around their previous values: `(result,
+        None)`, or `(None, why)` when a window does not hold what it should.
+
+        THE CALLER SETS THE WINDOWS. `prev` are the previous level values (ascending), `mults`
+        their multiplicities, `h` the half-width each may have moved by -- which a shape
+        optimizer knows before it steps, from the level's own shape derivative and its step
+        (douse: `h_i = c |g_i . d|`). A window with one previous level is REFINED, not searched:
+        the bracket refiner locates the well (`mps.refine`, ~15-20 evaluations), and the
+        multiplicity is the previous one, verified on the tension vector there -- an m-fold
+        level has m small tensions and a gap of `multiplicity.GAP_RATIO` above them. Windows that
+        overlap are merged and SEARCHED (`search_interval`): that is a cluster, and the search's
+        multiplicity machinery decides it. Measured need (`notes/warm_trace_2026-10-14.md`): the
+        prefix warm solve spent ~90 evaluations per solve re-covering the whole range below
+        `lam_n`; 65-70% of a douse run.
+
+        Completeness is the caller's: nothing between the windows is looked at. The return is a
+        `SolveResult` like `search_interval`'s (certified when `certify`), with the count audit
+        marked unaudited.
+        """
+        from dataclasses import replace as _replace
+
+        from .. import asymp
+        from .multiplicity import GAP_RATIO
+        from .refine import refine
+        from .search import Level, SolveDiagnostics, SolveResult
+
+        prec = self.prec if prec is None else check_prec(prec)
+        prev = np.atleast_1d(np.asarray(prev, dtype=float))
+        h = np.broadcast_to(np.asarray(h, dtype=float), prev.shape)
+        mults = (np.ones(prev.shape, dtype=int) if mults is None
+                 else np.broadcast_to(np.asarray(mults, dtype=int), prev.shape))
+        if prev.size == 0:
+            return SolveResult(), None
+        if np.any(h <= 0) or np.any(prev - h <= 0):
+            return None, "windows: every half-width must be positive and below its value"
+        # merge overlapping windows, in ascending order
+        windows = []
+        for i in np.argsort(prev):
+            lo, hi = float(prev[i] - h[i]), float(prev[i] + h[i])
+            if windows and lo <= windows[-1][1]:
+                windows[-1] = (windows[-1][0], max(windows[-1][1], hi), windows[-1][2] + [int(i)])
+            else:
+                windows.append((lo, hi, [int(i)]))
+        levels, n_evals, refine_evals = [], 0, 0
+        for lo, hi, members in windows:
+            if len(members) > 1:
+                res_w = self.search_interval(lo, hi, prec=prec)
+                if res_w.declined:
+                    return None, f"search: the merged window [{lo:.6g}, {hi:.6g}] declined"
+                levels.extend(res_w.levels)
+                n_evals += res_w.diagnostics.evaluations
+                continue
+            i = members[0]
+            obj = self.objective(lo, hi, prec=prec)
+            r = refine(obj, lo, hi, prec=prec, interior=(lo, hi))
+            refine_evals += r.evaluations
+            n_evals += r.evaluations
+            if not r.accepted:
+                return None, (f"refine: no well in [{lo:.6g}, {hi:.6g}] around {prev[i]:.10g} "
+                              f"({r.reason})")
+            m = int(mults[i])
+            t = np.asarray(obj.tensions(r.lam), dtype=float)
+            if t.size < m or (m > 1 and t[m - 1] > GAP_RATIO * t[0]):
+                return None, (f"multiplicity: {prev[i]:.10g} was {m}-fold and the tensions at "
+                              f"{r.lam:.10g} no longer show {m} small values")
+            if t.size > m and t[m] < GAP_RATIO * t[m - 1]:
+                return None, (f"multiplicity: a neighbour has joined {prev[i]:.10g} "
+                              f"(sigma_{m + 1}/sigma_{m} = {t[m] / t[m - 1]:.2g})")
+            levels.append(Level(lam=float(r.lam), mult=m, sigma=float(r.sigma),
+                                delta_res=float(r.delta_res), bracket=(lo, hi), prec=prec,
+                                count_decided_by="tracked"))
+        levels = tuple(sorted(levels, key=lambda L: L.lam))
+        audit = asymp.CountAudit("unaudited", reason="tracked windows are not a prefix")
+        res = SolveResult(levels=levels,
+                          diagnostics=SolveDiagnostics(refine_evals=refine_evals,
+                                                       evaluations=n_evals,
+                                                       prec_requested=prec, count_audit=audit))
+        if self.certify and res.levels:
+            res = self.certify_levels(res, lam_max=float(windows[-1][1]), prec=prec)
+            res = _replace(res, diagnostics=_replace(res.diagnostics, count_audit=audit))
+        return res, None
+
     def audit_count(self, res, a, b):
         """`res` with `diagnostics.count_audit`: the returned count against Weyl's law
         (`asymp.count_audit`). The one check for a DROPPED eigenvalue, which no level can flag.
