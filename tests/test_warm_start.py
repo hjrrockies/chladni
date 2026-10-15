@@ -196,3 +196,18 @@ def test_a_window_that_lost_its_level_goes_cold_and_says_why():
                                                    windows=1e-6 * prev.unfolded[:3])
     assert not rec.warm and rec.warm_note.startswith("track:"), rec.warm_note
     assert rec.achieved
+
+
+@pytest.mark.slow
+def test_a_wide_tracked_window_is_searched_not_refined():
+    """A half-width of several Weyl spacings (an early, large optimizer step) may hold more
+    than one well; the refiner would answer "no well". Such a window is searched instead, and
+    the warm solve still matches a cold one."""
+    from chladni.geometry import rect
+    plan, prev = Eigenproblem(rect(1.2, 0.8)).plan_and_solve(3, prec=1e-10)
+    moved = rect(1.2, 0.8 * 1.02)
+    cold = Eigenproblem(moved).solve(3, prec=1e-10, plan=plan)
+    rec = Eigenproblem(moved).solve(3, prec=1e-10, plan=plan, near=prev,
+                                    windows=0.5 * prev.unfolded[:3])
+    assert rec.warm, rec.warm_note
+    np.testing.assert_allclose(rec.unfolded, cold.unfolded, rtol=1e-9)

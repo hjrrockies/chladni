@@ -54,3 +54,41 @@ below is the solver's half of that; the optimizer's half is in douse's plan.
 3. The Fourier-Bessel pass: evaluate `log_j` once per distinct `(nu, k r)`.
 4. The shared objective cache across the warm/cold pair (now that cold follows warm less often,
    a smaller win than the plan assumed).
+
+## After step-controlled windows (same seeds, same evening)
+
+chladni `fefad6a` (`track_levels`, `solve(windows=)`), douse `691c649` (`predicted_moves`,
+`_warm_windows`, the step cap at half the gap to a neighbour, `window_factor = 2.5`). Rows:
+`douse/benchmarks/run/diagnostics/warm_trace.jsonl` (before: `warm_trace_before_windows.jsonl`).
+
+| seed | wall before -> after | warm solves | evals per warm before -> after | s per warm before -> after |
+|---|---|---|---|---|
+| 0 | 1054 -> 825 s | 68 -> 70 | 92 -> 61 | 10.2 -> 6.8 |
+| 1 | 493 -> 837 s (*) | 25 -> 73 | 79 -> 67 | 9.0 -> 7.4 |
+| 2 | 1568 -> 761 s | 66 -> 72 | 93 -> 61 | 15.6 -> 6.8 |
+
+(*) The before-run of seed 1 took only 37 solves in 80 iterations (many infeasible or refused
+trials); its wall is not comparable. All six runs hit the 80-iteration cap, so `fun` is not
+comparable either (the step cap changes the path): converged runs are needed for the
+1e-9 agreement check.
+
+**What moved.** Evaluations per warm solve fell by a third, to ~61 for four tracked levels --
+which is the bracket refiner's own cost, ~15 per level. That is the floor of this design: the
+prefix search is gone, and what remains is one refine per level plus certification.
+
+**Why warm solves still went cold** (28 over the three seeds): the cadence backstop 13; `unmet`
+4 (each a replan); `track: refine: no well` 10, all on WIDE windows (half-widths of 1-10 on
+values of 18-87, i.e. early large steps where the predicted move is large): the refiner is
+the wrong tool for a window holding several wells, and those went cold at the cost of a wasted
+refine; `found` 1.
+
+**Next, in order.**
+1. In `track_levels`, SEARCH a window instead of refining it when its width exceeds a fraction
+   of the local mean Weyl spacing (the window may hold more than one well), so the wide early
+   windows cost a small search rather than a failed refine plus a cold solve. [built below]
+2. The refiner's cost per level (~15 evaluations): start it from the predicted position
+   (`lam_hint = prev + signed move`) and let a converged parabola stop earlier; target 6-8.
+3. Cadence 10 -> 20: the backstop is now half the cold solves, ~7% of a run. The user decided
+   the cadence; a measured 2-3% is the case for changing it.
+4. Certification (Moler-Payne per level, no tension evaluations but boundary integrals) is the
+   next fixed cost per warm solve; profile it before touching assembly.

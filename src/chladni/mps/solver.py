@@ -65,6 +65,11 @@ DEFAULT_RNG = 0
 #: of 2-5 met levels per ~1200; honest levels have MP within ~2-5x of the request.
 MP_CROSSCHECK = 20.0
 
+#: A tracked window wider than this many local mean Weyl spacings is searched, not refined: it
+#: may hold more than one well, and the refiner answers "no well" on such a window at the cost
+#: of its evaluations plus a cold solve (`track_levels`).
+WIDE_WINDOW = 1.0
+
 
 @dataclass(frozen=True)
 class Eigenfunctions:
@@ -332,7 +337,12 @@ class MPSEigensolver(Eigensolver, Frozen):
                 windows.append((lo, hi, [int(i)]))
         levels, n_evals, refine_evals = [], 0, 0
         for lo, hi, members in windows:
-            if len(members) > 1:
+            # A window holding several previous levels, or one wide enough to hold several
+            # wells (wider than `WIDE_WINDOW` x the local mean Weyl spacing: an early, large
+            # optimizer step), is SEARCHED; the refiner is the tool for one well (measured: ten
+            # of 28 cold fallbacks over three seeds were refines on wide windows that found "no
+            # well", `notes/warm_trace_2026-10-14.md`).
+            if len(members) > 1 or (hi - lo) > WIDE_WINDOW * self._mean_spacing(0.5 * (lo + hi)):
                 res_w = self.search_interval(lo, hi, prec=prec)
                 if res_w.declined:
                     return None, f"search: the merged window [{lo:.6g}, {hi:.6g}] declined"
@@ -368,6 +378,12 @@ class MPSEigensolver(Eigensolver, Frozen):
             res = self.certify_levels(res, lam_max=float(windows[-1][1]), prec=prec)
             res = _replace(res, diagnostics=_replace(res.diagnostics, count_audit=audit))
         return res, None
+
+    def _mean_spacing(self, lam):
+        """The local mean Weyl spacing at `lam` (the gap between consecutive Weyl estimates)."""
+        from .. import asymp
+        k = max(float(asymp.weyl_count_poly(lam, self.domain)), 0.5)
+        return float(asymp.weyl_est_poly(k + 1, self.domain) - asymp.weyl_est_poly(k, self.domain))
 
     def audit_count(self, res, a, b):
         """`res` with `diagnostics.count_audit`: the returned count against Weyl's law

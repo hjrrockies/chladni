@@ -443,10 +443,12 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   longer rebuilds the pencil for the cold retry. **Measured 2026-10-14
   (`notes/warm_trace_2026-10-14.md`): the gap to lappy at k = 2 is the warm solve itself** --
   65-70% of a run, ~90 evaluations each because the warm window is a full prefix; replans are
-  3-9% and all `unmet`. Next: per-level warm windows with the half-widths SET BY THE CALLER
-  (`_solve_warm(near, windows=...)`: douse bounds each level's move from its own Jacobian and
-  the step, and caps the step so windows stay disjoint; decided with the user 2026-10-14), then
-  cadence 10 -> 20, then
+  3-9% and all `unmet`. BUILT the same evening: per-level warm windows with the half-widths SET BY
+  THE CALLER (`track_levels`, `solve(windows=)`; douse bounds each level's move from its own
+  Jacobian and the step, and caps the step so windows stay disjoint). Measured: evaluations per
+  warm solve 92 -> 61 on four levels, i.e. the refiner's own ~15 per level, wall -22% and -51%
+  on the two comparable seeds. Next: the refiner's cost per level (start from the predicted
+  position; 6-8 evaluations), cadence 10 -> 20 (now half the cold solves, ~7% of a run), then
   `log_j` once per distinct `(nu, k r)`; assembly at ~0.1 s per `lam` on 562 columns is the
   multiplier on all of it.
 * **[done 2026-10-13]** **Memory: the pencil cached matrices.** Up to 64 `lam`s of equilibrated
