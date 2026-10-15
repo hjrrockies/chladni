@@ -243,3 +243,19 @@ def reg_ngon_with_short_edge():
     v = 4.0 / 6 / (2 * np.sin(np.pi / 6)) * np.exp(2j * np.pi * np.arange(6) / 6)
     v[1] = v[0] + (v[1] - v[0]) * (4.0 / 60) / abs(v[1] - v[0])
     return Polygon(v, bc="dir")
+
+
+@pytest.mark.slow
+def test_a_rung_that_declines_does_not_stop_the_climb():
+    """A 1.6 x 0.4 rectangle, in two placements. In one the corner-term rung's search declines
+    ("the slope estimate never settled") and the plane-wave rung above it reaches 1e-10; a climb
+    that stopped at the decline refused the shape (douse's drift test, 2026-10-14). Whichever
+    rung each placement ends on, both must plan without flags."""
+    from chladni.eigenproblem import Eigenproblem
+    from chladni.geometry import Polygon
+    L, H = 1.6, 0.4
+    for verts in ([0, L, L + 1j * H, 1j * H],                      # as chladni's own test
+                  [0.2 + 0.3j, 0.2 + 0.3j + 1j * L, 0.2 + 0.3j + 1j * L - H, 0.2 + 0.3j - H]):
+        plan, rec = Eigenproblem(Polygon(verts, bc="dir")).plan_and_solve(3, prec=1e-10)
+        assert not rec.declined and not rec.flags, (verts, rec.flags)
+        assert rec.count >= 3

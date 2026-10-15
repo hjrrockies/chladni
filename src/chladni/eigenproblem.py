@@ -192,7 +192,8 @@ class Eigenproblem:
         stopping there saves a median 57% of a failing solve, `notes/early_shortfall.md`). Until
         2026-10-14 the climb solved every rung to the end with "flag". An aborted rung is ranked
         by what it had met before stopping; only when NO rung is accepted is the best-ranked rung
-        solved in full, so the returned result is always a whole one."""
+        solved in full, so the returned result is always a whole one. A rung whose search
+        declined does not stop the climb: a richer rung may well succeed where it failed."""
         from ._core import PrecisionShortfall
         tried = {}                              # rung -> (plan, res, window, aborted, score)
 
@@ -225,8 +226,11 @@ class Eigenproblem:
                 continue
             if best is None or score > best[0]:
                 best = (score, rung)
-            if res is not None and res.diagnostics.declined:
-                break                           # the search gave up here; a richer basis will not help
+            # A DECLINE ON A LOW RUNG SAYS NOTHING ABOUT THE RUNGS ABOVE IT. The climb once
+            # stopped after a rung whose search declined; on the 1.6 x 0.4 rectangle the
+            # corner-term rung declines ("the slope estimate never settled") and the plane-wave
+            # rung above it reaches 1e-10, so that rule turned douse's routine replan into a
+            # refusal (2026-10-14). Keep climbing.
             if aborted or not _accepts(res, n, prec):
                 continue
             if confirm and rung + 1 < len(LADDER):
