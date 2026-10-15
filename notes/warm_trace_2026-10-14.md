@@ -33,6 +33,15 @@ moved more than its allowed h, i.e. a large early step) 8; `edge` 1.
 
 ## Next levers, in order (Session 4 of the follow-up plan, revised)
 
+**Decided with the user, 2026-10-14: the windows are set by the OPTIMIZER'S STEP, not by a
+prior.** douse knows how far each tracked level will move before it steps -- `g_i . d` from the
+Hadamard Jacobian (or the cluster block) and the trust-region step -- so it hands the warm solve
+per-level half-widths `h_i = max(c |g_i . d|, resolution_i)`, `c` in 2-3 for the second-order
+margin, and caps `delta` so no window exceeds half the gap to its neighbours. Completeness is
+then first-order exact (no tracked level can jump its window), the headroom level `k + 2` is the
+tracked ceiling an intruder must cross, and the cadence cold solve stays as the backstop. Item 1
+below is the solver's half of that; the optimizer's half is in douse's plan.
+
 1. **Per-level warm windows.** In `Eigenproblem._solve_warm`, refine each previous value in
    `[lam_i - h_i, lam_i + h_i]` directly (`mps.refine` on a bracket, then the multiplicity read)
    instead of searching the prefix: ~15-20 evaluations per level against ~90 per solve.
