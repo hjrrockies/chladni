@@ -92,3 +92,24 @@ refine; `found` 1.
    the cadence; a measured 2-3% is the case for changing it.
 4. Certification (Moler-Payne per level, no tension evaluations but boundary integrals) is the
    next fixed cost per warm solve; profile it before touching assembly.
+
+## Two more measurements the same evening (micro-benchmark on the N = 6, k = 2 optimum)
+
+Plan once, perturb `p` by a Gaussian step, solve the moved shape cold, prefix-warm, and
+windowed (`windows = 2.5 |predicted move|`); evaluations and the relative error against cold:
+
+| step | cold | prefix warm | windowed | note |
+|---|---|---|---|---|
+| 1e-3 | 182 | 87 | 65, err 1e-12 | |
+| 3e-3 | 175 | 81 | went COLD (175) | per-level prediction wrong at a near-double |
+| 3e-3, joint-block prediction | 175 | 81 | 66, err 3e-13 | fixed |
+
+- **Refiner hints** (start the refiner at the predicted position): 64 against 65 evaluations.
+  No gain; reverted. The refiner's three starting points and parabola steps are its cost.
+- **Near-degenerate levels must be predicted together.** At this shape levels 3 and 4 are
+  1e-3 apart; their own blocks predicted moves of 0.32 and 0.13 and they moved 0.12 and 0.32 --
+  the branch moves on the wrong members, which is degenerate perturbation theory doing what
+  it does. douse's `predicted_moves` now groups levels whose gaps are within reach of their
+  joint motion and gives every member the spectral radius of the JOINT block (cross terms),
+  plus a floor of a quarter of the largest move for near-stationary levels (one predicted
+  2e-4 and moved 7e-3, second order). With that the 3e-3 step tracks warm.
