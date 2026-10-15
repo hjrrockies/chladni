@@ -163,6 +163,14 @@ The path, in order:
 
 ## 1. The eigenvalue search
 
+* **[done 2026-10-14]** **`search.solve` in named steps, behind a golden trace.**
+  `tests/test_search_golden.py` (36 rectangle-suite solves) replays exactly on the split:
+  `_refine_stage`, `_group_roots`, `_count_root` -> `_side_search` + `_attribute`. The retired
+  options (`collapse`, licence merge, gap/floor rules, outside slope, Gram angle) are
+  `notes/evidence_tests/search_ablations.py::solve_with_options`, not parameters of `solve`.
+  `refine._end_verdict` holds the end probe; `objective.BRACKET_ULPS` is the one widening/
+  margin constant. `docs/design/search.md`, "As built, 2026-10-14".
+
 The search SHIPS. `chladni.mps.{bracket,refine,multiplicity,search}` are the four stages and
 `MPSEigensolver.solve_interval` returns a `Spectrum`, so a `Domain` goes in and eigenvalues
 with multiplicities come out. `tests/candidates_v1.py` holds the two adapters that keep V1 on

@@ -76,9 +76,9 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 
 from .bracket import bracket_interval
-from .multiplicity import (BIAS_HI, BIAS_HI_CACHE, BIAS_LO, BIAS_LO_CACHE, COUNT_BELOW_CACHE,
-                           MAX_BRANCHES, PROMINENCE, REJECT_ABOVE_CACHE, SIDE_RATIO,
-                           SLOPE_STANDOFF, TAU_GRAM, WIDE_FACTOR, multiplicity, wide_bracket_for)
+from .multiplicity import (BIAS_HI_CACHE, BIAS_LO_CACHE, COUNT_BELOW_CACHE, MAX_BRANCHES,
+                           PROMINENCE, REJECT_ABOVE_CACHE, SIDE_RATIO, multiplicity,
+                           wide_bracket_for)
 from .refine import DELTA_SAFETY, refine
 
 __all__ = ["Level", "SolveResult", "SolveDiagnostics", "solve"]
@@ -499,28 +499,6 @@ def _cone_slope(lams, vs, lam, usable, floor):
     return (v_lo + v_hi) / (hi - lo) if hi > lo else 0.0
 
 
-def _slope_outside(lams, vs, lam, min_dist):
-    """`c` from the nearest cached samples at least `min_dist` away on each side, or `None`.
-
-    The wall slope is a property of the OUTER cone and has to be measured there. Inside a bracket
-    holding more than one eigenvalue the other members depress `sigma_1` at the flanks, so `c`
-    reads too small and every distance `sigma_j/c` too large -- an eigenvalue inside the bracket
-    then reads as outside and the count goes under. Measured on the wip branch on a pair 0.3
-    licences apart: `d/reach` inflated from a true 0.6 to 1.156.
-
-    Cancellation-free as `_slope_from_cache` is. `None` when the cache has nothing far enough
-    out, which a caller must read as "cannot estimate", never as zero.
-    """
-    left = lams < lam - min_dist
-    right = lams > lam + min_dist
-    if not np.any(left) or not np.any(right):
-        return None
-    i, j = int(np.argmax(lams[left])), int(np.argmin(lams[right]))
-    lo, hi = float(lams[left][i]), float(lams[right][j])
-    v_lo, v_hi = float(vs[left][i]), float(vs[right][j])
-    return (v_lo + v_hi) / (hi - lo) if hi > lo else None
-
-
 def _claim(branches, lam_root, claimants, bias_lo, bias_hi, *, with_ambiguity=False):
     """Which branches the read counted are ALREADY ACCOUNTED FOR by a located level.
 
@@ -623,269 +601,6 @@ def _claim(branches, lam_root, claimants, bias_lo, bias_hi, *, with_ambiguity=Fa
     if with_ambiguity:
         return len(claimed), claimed, ambiguous
     return len(claimed), claimed
-
-
-def _gram(obj, a, b):
-    """`|<u(a), u(b)>|` between two reported roots. Never within one `lam`.
-
-    Both vectors are sampled on the pencil's own interior points, which are fixed at
-    construction, so this is a plain dot product -- no common refinement, no quadrature, no
-    lifting to `L2(Omega)`.
-    """
-    u, v = obj.modes(obj.from_lam(a)), obj.modes(obj.from_lam(b))
-    return abs(float(u @ v))
-
-
-def _gram_group(obj, levels, prec, tau=TAU_GRAM):
-    """PHASE D. Decide collapse-versus-merge among reported roots by the INTERIOR GRAM ANGLE.
-
-    Returns `(levels, n_pairs, n_collapsed, n_summed)`.
-
-    # The question, and why nothing else can answer it
-
-    Two roots reported within `prec*lam` of each other are ONE level of `S(prec)` either way.
-    What is not settled is its multiplicity: one eigenvalue located twice must COLLAPSE and be
-    RECOUNTED, while two genuine eigenvalues must MERGE and be SUMMED -- and the two occur at
-    the SAME separation, so no rule on `|lam_i - lam_j|` can separate them.
-    `_flag_uncertain_counts` states this exactly and refuses to decide it; this is what decides
-    it.
-
-    # The verdicts
-
-        |cos| >= tau    the same eigenfunction: COLLAPSE, and recount rather than sum.
-                        Summation IS the double count, which is why the recount is not optional.
-        |cos| <  tau    independent: MERGE and SUM, at the sigma-weighted centroid.
-
-    The recount costs nothing here. Each member's own read already answered "how many eigenvalues
-    are at this location", and members of one collapse class are at the same location by the
-    angle's verdict, so their reads answer the same question -- the recount is taking one of them
-    rather than adding them up. Members that DISAGREE are the interesting case and are flagged
-    rather than silently resolved.
-
-    # Both arms produce ONE level, and that is not a loss
-
-    Leaving a distinct pair as two levels carries more information, and is wrong for this scorer:
-    `S(prec)` defines two eigenvalues inside `tol_merge` to be one level, so reporting two would
-    score as a spurious level against every committed grid. The distinction the angle buys is in
-    the MULTIPLICITY, not in the count of levels.
-
-    # Cost
-
-    One `separate`-mode GSVD per level in a group, and groups are rare -- only roots the
-    prefilter left within a licence of each other reach here. `search.md` section 2.6 budgets one
-    such call per reported root, at the end, which is where this runs.
-    """
-    if not levels:
-        return levels, 0, 0, 0
-    # Grouped against the group's FIRST member, never its predecessor: `S(prec)` groups by
-    # DIAMETER, and chaining is the mistake `_same_point` already records as made twice.
-    groups = []
-    for x in levels:
-        if groups and abs(x.lam - groups[-1][0].lam) <= prec * max(abs(x.lam), 1.0):
-            groups[-1].append(x)
-        else:
-            groups.append([x])
-
-    out, n_pairs, n_coll, n_sum = [], 0, 0, 0
-    for g in groups:
-        if len(g) == 1:
-            out.append(g[0])
-            continue
-        n_pairs += len(g) - 1
-        # Classes of "the same eigenfunction". Greedy against each class's own representative,
-        # which is enough at these sizes -- a group is two or three roots inside one licence.
-        classes = []
-        for x in g:
-            for c in classes:
-                if _gram(obj, c[0].lam, x.lam) >= tau:
-                    c.append(x)
-                    break
-            else:
-                classes.append([x])
-
-        mults, reps, disagreed = [], [], False   # noqa: E501 -- see the SUM guard below
-        for c in classes:
-            rep = min(c, key=lambda y: y.sigma)      # deepest: the best-located member
-            reps.append(rep)
-            seen = {y.mult for y in c}
-            disagreed |= len(seen) > 1
-            mults.append(int(rep.mult))
-        total = int(sum(mults))
-        deepest = min(g, key=lambda y: y.sigma)
-        n_roots = sum(y.n_roots for y in g)
-        gaps = tuple(float(b.lam - a.lam) for a, b in zip(g[:-1], g[1:]))
-
-        # THE SUM ARM IS ONLY SOUND WHEN EACH READ COUNTS ONE EIGENVALUE, and `search.md` does
-        # not say so. Its claim that the ambiguous eigenspace is benign -- "parallel collapses and
-        # recounts to 2, orthogonal sums 1 + 1 to 2" -- assumes every member read 1. Under the
-        # reach rule a read answers "how many eigenvalues are inside MY bracket", so a degenerate
-        # level located twice has both members reading the full multiplicity and the sum doubles
-        # it. Measured on `_gram_group` directly, two roots inside one licence:
-        #
-        #     each member reads   parallel (collapse)   orthogonal (sum)   truth
-        #     1                          1                    2            both arms right
-        #     2                          2                    4            sum is WRONG
-        #
-        # Attribution is what makes the first row hold: it already removes the eigenvalues one
-        # root's read counted that another root owns. It cannot help here, because both members
-        # own the same degenerate eigenspace and neither is the other's partner.
-        #
-        # No guess is available, so the level is FLAGGED and carries the other reading. Capping by
-        # a recount over the union bracket was considered and not done: `_collapse_ambiguous`
-        # records that a spanning read folds four correct levels into two on the `65*pi^2`
-        # cluster, so it is not the safe direction either.
-        suspect_sum = len(classes) > 1 and max(mults) > 1
-
-        if len(classes) == 1:
-            n_coll += 1
-            lam, delta = deepest.lam, deepest.delta_res
-        else:
-            n_sum += 1
-            # The sigma-weighted centroid: deeper roots are better located, so they pull harder.
-            w = np.array([1.0 / max(r.sigma, np.finfo(float).tiny) for r in reps])
-            lam = float(np.array([r.lam for r in reps]) @ w / w.sum())
-            # The level now stands for eigenvalues either side of `lam`, so its bar must reach
-            # them or clause (2)'s honesty fails. Bounded by half the licence, so this can never
-            # by itself put the level in `unmet`.
-            half = 0.5 * (max(y.lam for y in g) - min(y.lam for y in g))
-            delta = max(half, *(y.delta_res if np.isfinite(y.delta_res) else 0.0 for y in g))
-
-        out.append(replace(deepest, lam=lam, mult=total, delta_res=delta, n_roots=n_roots,
-                           spacings=gaps, count_decided_by="gram",
-                           # DECIDED, so not ambiguous. Saying otherwise would be a lie about
-                           # the one thing this function exists to settle.
-                           grouping_ambiguous=False,
-                           count_uncertain=(disagreed or suspect_sum),
-                           count_alt=(max(mults) if suspect_sum
-                                      else min(y.mult for y in g) if disagreed else 0),
-                           uncertain_reason=(
-                               f"the Gram angle read {len(classes)} independent eigenfunctions "
-                               f"here and summed their counts to {total}, but a member reads "
-                               f"multiplicity {max(mults)} -- so each read may already count the "
-                               f"other's eigenvalues, which is what a degenerate eigenspace "
-                               f"located twice looks like. The sum is not certified"
-                               if suspect_sum else
-                               "the Gram angle put these roots at one eigenfunction, but their "
-                               "individual multiplicity reads disagree, so which count the "
-                               "collapse should carry is not decided" if disagreed else "")))
-    return out, n_pairs, n_coll, n_sum
-
-
-def _spanning_bracket(lams, roots, reach):
-    """Cached samples at least `reach` outside the whole span of `roots`, or `None`."""
-    lo_t, hi_t = min(roots) - reach, max(roots) + reach
-    left, right = lams[lams <= lo_t], lams[lams >= hi_t]
-    if left.size == 0 or right.size == 0:
-        return None
-    return float(left.max()), float(right.min())
-
-
-def _collapse_ambiguous(obj, lams, levels, prec, reach_factor, rule="gap"):
-    """Cross-check each neighbourhood's total, and collapse the ones whose grouping is arbitrary.
-
-    # The failure this exists for
-
-    Where several eigenvalues sit within about `prec*lam` of each other, the way they group into
-    LEVELS can be genuinely undetermined -- and then so are the individual counts, while the
-    TOTAL is not. Three eigenvalues evenly spaced at 0, 0.8 and 1.6 in units of the merge
-    licence cannot all be one level (the span is 1.6 > 1), and either pairing is legal, so the
-    split is arbitrary. Worse, a count taken at the middle one must look 0.8 to see its partner
-    and therefore also sees the stranger at 0.8 on the other side: **no radius includes one and
-    excludes the other**, measured exactly equidistant.
-
-    So the counts came out as 3 and 1, totalling **4 where 3 exist** -- and at a span of exactly
-    one licence, 3 and 3, totalling 6. For a shape optimization that is the worst kind of error:
-    a wrong total shifts the INDEXING, so `lam_3` becomes a different eigenvalue, which is how
-    a solver comes to report an accurate but non-consecutive spectrum.
-
-    # The test is a consistency check, not a threshold
-
-    Chain the located roots into neighbourhoods, consecutive members within the counting reach.
-    For each, compare the SUM of the individual counts against ONE count taken over a bracket
-    spanning the whole neighbourhood:
-
-        they agree      the fine grouping is self-consistent -- keep it
-        they disagree   the grouping is arbitrary -- collapse to one level and use the
-                        spanning count, which is the quantity that was never in doubt
-
-    Measured, in units of the licence, on the multiplicity-3 cluster at `50*pi^2`:
-
-        span   individual counts   spanning count   action     total
-        1.0         3 + 3                3          collapse   3  (was 6)
-        1.6         3 + 1                3          collapse   3  (was 4)
-        2.0         3 + 1                3          collapse   3  (was 4)
-        2.6         1 + 1 + 1            3          keep       3
-        6.0         1 + 1 + 1            3          keep       3
-
-    The last two rows are why this is a cross-check and not a merge radius: at spans of 2.6 and
-    6.0 the roots are still within reach of one another, so a radius rule would collapse them
-    and throw away a correct fine answer. Their counts agree with the total, so they stand.
-
-    # What it deliberately gives up
-
-    A collapsed level is WIDER than `prec*lam`, so it fails purity on purpose. That is the
-    trade: a level that is too wide but correctly counted beats two levels correctly narrow and
-    wrongly counted, because only the second corrupts an index. It is flagged rather than
-    silent, and it carries the spacings, so a caller can escape the regime in either direction
-    -- more precision splits the neighbourhood, less merges it, and both give a correct total.
-    """
-    if len(levels) < 2:
-        return levels, 0
-
-    reach = [reach_factor * max(prec * abs(x.lam), 4.0 * np.spacing(abs(x.lam)))
-             for x in levels]
-    groups, cur = [], [0]
-    for i in range(1, len(levels)):
-        if levels[i].lam - levels[i - 1].lam <= max(reach[i], reach[i - 1]):
-            cur.append(i)
-        else:
-            groups.append(cur)
-            cur = [i]
-    groups.append(cur)
-
-    out, collapsed = [], 0
-    for g in groups:
-        if len(g) == 1:
-            out.append(levels[g[0]])
-            continue
-        members = [levels[i] for i in g]
-        deepest = min(members, key=lambda x: x.sigma)
-        wb = _spanning_bracket(lams, [x.lam for x in members],
-                               max(reach[i] for i in g))
-        if wb is None:
-            out.extend(members)
-            continue
-        # The spanning read keeps the rule this component was designed with when the caller asks
-        # for `reach`: `reach` compares a distance against the bracket that was EMITTED, and this
-        # reads over one the cross-check synthesised -- a different interval, so a different
-        # question. The wip seam twice failed to thread `rule` here at all; it is threaded, and
-        # this is the one deliberate exception.
-        total = multiplicity(lambda z: obj.tensions(obj.from_lam(z)), deepest.lam,
-                             wide_bracket=wb, prec=prec,
-                             rule="gap" if rule == "reach" else rule).mu
-        if total == sum(x.mult for x in members):
-            out.extend(members)             # self-consistent: the fine grouping stands
-            continue
-        gaps = tuple(float(b.lam - a.lam) for a, b in zip(members[:-1], members[1:]))
-        fine = sum(x.mult for x in members)
-        # The disagreement is REPORTED, and the value does not move. The spanning count is not
-        # the safe reading -- on the `65*pi^2` cluster at bands 1.3 to 2.0 the fine grouping is
-        # the truth and the spanning read folds four levels into two -- but `fine` is not safe
-        # either: 6 and 4 against 3 on the evenly spaced triple. No choice between them is right
-        # on both families, so the level is flagged and carries the other reading.
-        out.append(Level(lam=deepest.lam, mult=total, sigma=deepest.sigma,
-                         delta_res=deepest.delta_res, bracket=deepest.bracket,
-                         wide_bracket=wb, gap_ratio=deepest.gap_ratio,
-                         n_roots=sum(x.n_roots for x in members),
-                         count_uncertain=True, count_alt=min(total, fine),
-                         uncertain_reason=(
-                             f"a neighbourhood of {len(members)} located levels: the individual "
-                             f"counts sum to {fine} and one count over the whole neighbourhood "
-                             f"reads {total}. The grouping is arbitrary at this prec and the two "
-                             f"readings disagree, so neither is certified"),
-                         grouping_ambiguous=True, spacings=gaps))
-        collapsed += 1
-    return out, collapsed
 
 
 def _flag_uncertain_counts(levels, folds_are_duplicates=False):
@@ -1104,14 +819,13 @@ def _refine_stage(obj, res, prec, abort_unmet):
     return located, refused
 
 
-def _same_point(obj, first, r, prec, merge):
-    """Are two located roots one level? Under "licence" any pair within `prec*lam`; under
-    "attained" only a pair the refinement could not tell apart -- within the attained bars,
-    or, when the bars disagree, within the shallower root's reach down the deeper root's
-    wall. The search never merges deliberately, only what it could not resolve."""
+def _same_point(obj, first, r, prec):
+    """Are two located roots one level? Only a pair the refinement could not tell apart --
+    within the attained bars, or, when the bars disagree, within the shallower root's reach
+    down the deeper root's wall -- and never further apart than the licence `prec*lam`. The
+    search never merges deliberately, only what it could not resolve. (The "licence" merge,
+    every pair within the licence, is in the ablations.)"""
     licence = prec * max(abs(r.lam), 1.0)
-    if merge == "licence":
-        return abs(r.lam - first.lam) <= licence
     d = abs(r.lam - first.lam)
     if d > licence:
         return False
@@ -1128,14 +842,14 @@ def _same_point(obj, first, r, prec, merge):
     return d <= (shallow.sigma / c_deep) / BIAS_LO_CACHE
 
 
-def _group_roots(obj, located, prec, merge):
+def _group_roots(obj, located, prec):
     """Phase D's distance prefilter: fold roots that are one level into the deepest of them.
     `(located, merged)`, located now `((RefineResult, bracket), n_roots)`. Two located roots
     within `prec*lam` are one level of `S(prec)`, and reading multiplicity at each separately
     double-counts (measured on the sub-licence cluster: two roots each declared 3 against 3)."""
     groups = []
     for r, bracket in sorted(located, key=lambda p: p[0].lam):
-        if groups and _same_point(obj, groups[-1][0][0], r, prec, merge):
+        if groups and _same_point(obj, groups[-1][0][0], r, prec):
             groups[-1].append((r, bracket))
         else:
             groups.append([(r, bracket)])
@@ -1281,7 +995,7 @@ def _attribute(obj, m, r, bracket, width, extra, taken, found, uncertain, bias_l
     return mu, uncertain, claim_reason, count_decided_by
 
 
-def _count_root(obj, item, lams, svals, located, prec, rule, reach_slope):
+def _count_root(obj, item, lams, svals, located, prec):
     """Stage 3 for one queue item: read the multiplicity at the root. Under the reach rule the
     estimate may leave branches undecided; a side search then looks for them, a deeper find
     within the root's own reach RE-CENTRES the root on it (once), and attribution settles the
@@ -1293,26 +1007,16 @@ def _count_root(obj, item, lams, svals, located, prec, rule, reach_slope):
     nb = (s2 / c) if (c > 0 and np.isfinite(s2)) else None
     wb = wide_bracket_for(lams, r.lam, r.sigma, c, prec=prec, neighbour=nb)
     tens = (lambda z: obj.tensions(obj.from_lam(z)))
-    if rule != "reach":
-        if wb is None:
-            return _Counted(levels=(Level(lam=r.lam, mult=1, sigma=r.sigma,
-                                          delta_res=r.delta_res, bracket=bracket,
-                                          n_roots=n_roots),))
-        m = multiplicity(tens, r.lam, wide_bracket=wb, prec=prec, rule=rule)
-        return _Counted(levels=(_level_for(r, bracket, wb, m, n_roots, None, "", ""),))
     width = abs(bracket[1] - bracket[0])
-    c_out = (_slope_outside(lams, svals, r.lam, SLOPE_STANDOFF * width)
-             if reach_slope == "outside" else c)
+    c_out = c
     if c_out is None or not (c_out > 0):
         return _Counted(levels=(Level(
             lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res, bracket=bracket,
             wide_bracket=wb or (), n_roots=n_roots, count_uncertain=True,
-            uncertain_reason=f"the reach rule could not read a wall slope "
-                             f"({reach_slope}) from the cache at this root"),))
-    bounds = (None if reach_slope == "outside" else
-              (COUNT_BELOW_CACHE, REJECT_ABOVE_CACHE, BIAS_LO_CACHE, BIAS_HI_CACHE))
-    bias_lo_eff, bias_hi_eff = ((BIAS_LO, BIAS_HI) if bounds is None
-                                else (bounds[2], bounds[3]))
+            uncertain_reason="the reach rule could not read a wall slope (cache) from the "
+                             "cache at this root"),))
+    bounds = (COUNT_BELOW_CACHE, REJECT_ABOVE_CACHE, BIAS_LO_CACHE, BIAS_HI_CACHE)
+    bias_lo_eff, bias_hi_eff = BIAS_LO_CACHE, BIAS_HI_CACHE
     m = multiplicity(tens, r.lam, bracket=bracket, c=c_out, prec=prec, rule="reach",
                      reach_bounds=bounds, counter=obj,
                      window=obj.in_lam_bracket(obj.lo, obj.hi))
@@ -1368,16 +1072,18 @@ def _level_for(r, bracket, wb, m, n_roots, uncertain, claim_reason, count_decide
                      if amb else ""))
 
 
-def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
-          reach_slope="cache", phase_d="distance", abort_unmet=False):
+def solve(obj, *, prec=None, abort_unmet=False):
     """Locate every eigenvalue in the objective's window, with its multiplicity.
 
     All three stages share one `Objective`, so the cost is the union of what they sampled and
     not the sum -- stage 3 in particular spends nothing, and that is asserted rather than hoped.
 
-    **The defaults are attained merge, the reach rule on the cache slope, and no cross-check.**
+    ONE configuration: attained merge (roots are folded into one level only when the
+    refinement could not tell them apart, capped at the licence `prec*lam`), the reach rule on
+    the cache slope (the multiplicity is the number of eigenvalues INSIDE the emitted bracket,
+    the wall slope read from the nearest cached samples), and Phase D's distance prefilter.
     Promoted on held-out cluster grids against the previous defaults (licence merge, the gap
-    rule, the cross-check on):
+    rule, the grouping cross-check):
 
         grid                        these defaults                 previous defaults
         145*pi^2 (held out, 45)     24 right, 0 wrong, 21 declined  11 right, 13 wrong, 21 declined
@@ -1385,42 +1091,14 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
         50/65*pi^2 (110)            103 right, 2 basis-excused      72 right, 33 wrong (1 silent)
         precision ladder            every cell acceptable           2 wrong totals at 1e-4
 
-    The previous configuration stays reachable, as the ABLATION that shows what this replaced.
+    The alternatives (`collapse`, `merge="licence"`, `rule="gap"`/`"floor"`,
+    `reach_slope="outside"`, `phase_d="angle"`) are EVIDENCE, not options: they live in
+    `notes/evidence_tests/search_ablations.py` as `solve_with_options`, runnable against the
+    current stages, so the table above can be regenerated (moved 2026-10-14).
 
-    `merge` decides which located roots are folded into one level: "attained" folds only roots
-    that agree to within the accuracy the refinement actually reached, capped at the licence --
-    the search never merges deliberately, only what it could not resolve; "licence" folds every
-    pair within `prec*lam`. `rule` picks the multiplicity count: "reach" the number of eigenvalues
-    INSIDE the emitted bracket, "gap" (C1)+(C2) over a wide bracket, "floor" coincidence with
-    `sigma_1`. Attained merge must be paired with "reach": under "gap" each root of a resolved
-    pair reads the pair from its own wide bracket and the total double-counts.
-
-    `collapse=True` restores the grouping cross-check, `_collapse_ambiguous`, which recounts over
-    a synthesised bracket of radius `WIDE_FACTOR`. Its radius is what placed the failing band of
-    wrong totals at 1-8 merge licences, so it is off by default.
-
-    `reach_slope` is where "reach" reads the wall slope `c` in `sigma_j/c`: "cache", the nearest
-    cached samples either side of the root, with bounds recalibrated on a held-out set; or
-    "outside", three bracket widths out, what the rule was first calibrated on. On a cluster wider
-    than the standoff the outside samples sit in other members' wells and `c` reads low --
-    measured 1.86x on the distance where "cache" read 1.02.
+    `abort_unmet` raises `PrecisionShortfall` at the first refined level that misses `prec`
+    (`_abort_if_unmet`), which the planner's ladder climb uses.
     """
-    if merge not in ("licence", "attained"):
-        raise ValueError(f"merge must be 'licence' or 'attained', got {merge!r}")
-    if rule not in ("gap", "floor", "reach"):
-        raise ValueError(f"rule must be 'gap', 'floor' or 'reach', got {rule!r}")
-    if reach_slope not in ("outside", "cache"):
-        raise ValueError(f"reach_slope must be 'outside' or 'cache', got {reach_slope!r}")
-    if phase_d not in ("distance", "angle"):
-        raise ValueError(f"phase_d must be 'distance' or 'angle', got {phase_d!r}")
-    if phase_d == "angle" and not getattr(obj, "has_modes", False):
-        # Refused rather than silently no-op: a caller that asked for the angle and got the
-        # distance rule would be told nothing, and the whole point of the seam is that the two
-        # are measured one at a time.
-        raise ValueError(
-            'phase_d="angle" needs candidate eigenfunctions, and this objective carries none. '
-            "Build it with `Objective(..., modes=...)` or `Objective.from_pencil`, which wires "
-            "`MPSPencil.interior_image` in; a bare tension function cannot answer Phase D.")
     prec = obj.prec if prec is None else float(prec)
 
     mark = obj.n_evals
@@ -1440,14 +1118,14 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     located, refused = _refine_stage(obj, res, prec, abort_unmet)
     rejected = len(refused)
     refine_evals = obj.n_evals - mark
-    located, merged = _group_roots(obj, located, prec, merge)
+    located, merged = _group_roots(obj, located, prec)
 
     mark = obj.n_evals
     lams, svals = _samples(obj)
     levels, probe_evals, side_evals = [], 0, 0
     queue = [_Root(r, bracket, n_roots) for (r, bracket), n_roots in located]
     while queue:
-        out = _count_root(obj, queue.pop(0), lams, svals, located, prec, rule, reach_slope)
+        out = _count_root(obj, queue.pop(0), lams, svals, located, prec)
         probe_evals += out.probe_evals
         side_evals += out.side_evals
         if out.recentre is not None:
@@ -1458,19 +1136,8 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
         levels.extend(out.levels)
     levels.sort(key=lambda x: x.lam)
 
-    if phase_d == "angle":
-        gram_mark = obj.n_evals
-        levels, n_gram_pairs, n_gram_coll, n_gram_sum = _gram_group(obj, levels, prec)
-        mode_evals = obj.n_evals - gram_mark
-    else:
-        n_gram_pairs = n_gram_coll = n_gram_sum = mode_evals = 0
-    if collapse:
-        levels, n_amb = _collapse_ambiguous(obj, lams, levels, prec, WIDE_FACTOR, rule)
-    else:
-        n_amb = 0
-    levels, uncertain = _flag_uncertain_counts(
-        levels, folds_are_duplicates=(merge == "attained" and rule == "reach"))
-    mult_evals = (obj.n_evals - mark) - probe_evals - side_evals - mode_evals
+    levels, uncertain = _flag_uncertain_counts(levels, folds_are_duplicates=True)
+    mult_evals = (obj.n_evals - mark) - probe_evals - side_evals
     deep = _deep_rejections(refused, levels)
     levels = [replace(x, prec=prec) for x in levels]
     unmet, attained = _precision_summary(levels, prec)
@@ -1478,9 +1145,7 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
         search=sd, n_brackets=len(res.brackets), n_rejected=rejected, n_merged=merged,
         search_evals=search_evals, refine_evals=refine_evals,
         multiplicity_evals=mult_evals, probe_evals=probe_evals, side_evals=side_evals,
-        evaluations=obj.n_evals, n_ambiguous=n_amb, n_gram_pairs=n_gram_pairs,
-        n_gram_collapsed=n_gram_coll, n_gram_summed=n_gram_sum,
-        rejected_deep=deep,
+        evaluations=obj.n_evals, rejected_deep=deep,
         n_uncertain=len(uncertain) + len(deep),
         uncertain=(tuple((x.lam, x.mult, x.count_alt, x.uncertain_reason) for x in uncertain)
                    + tuple((lam, 0, None,

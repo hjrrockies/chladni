@@ -31,10 +31,6 @@ from .pencil import MPSPencil
 
 __all__ = ["MPSEigensolver", "Eigenfunctions", "DEFAULT_RNG"]
 
-#: How many eigenvalues the default reference window is sized for, when `lam_ref` is not
-#: given. Only sets where the rank is chosen, so it wants to be a typical scan rather than a
-#: precise one.
-_REF_MODES = 10
 
 #: Seed for the interior fill when the caller names none. A FIXED CONSTANT, not `None`.
 #:

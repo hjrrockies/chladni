@@ -43,7 +43,7 @@ from ..eigensolver import lam_to_k
 from ..helmholtz import check_k
 from . import _gsvd
 from ._regularize import (_MODES, _PENALTY, _REACH_FLOOR, _REACH_ROUNDING, C_PEN,
-                          PENALTY_PREC_MIN, choose_rank, regularize)
+                          choose_rank, regularize)
 
 __all__ = ["MPSPencil", "assemble", "equilibrate", "RankDiagnostics"]
 
@@ -221,9 +221,10 @@ class MPSPencil(Frozen):
             raise ValueError(f"unknown regularization {reg!r}; expected one of "
                              f"{_MODES + ('auto',)}")
         if reg == "auto":
-            # The threshold at every `prec` since 2026-10-10 (`PENALTY_PREC_MIN` is infinite).
-            explicit = rtol is not None or rank is not None or lam_ref is not None
-            reg = ("tikhonov_qr" if not explicit and prec >= PENALTY_PREC_MIN else "svd")
+            # The threshold at every `prec`, decided 2026-10-10 (`notes/regularization_1e10.md`):
+            # on the douse benchmark truncation beat the penalty on every axis. The penalty is
+            # `reg="tikhonov_qr"`, explicitly.
+            reg = "svd"
         n_cols = len(bdry.family)
         if rtol is None:
             # A penalty's floor is its `tau`, so `tau` scales with `prec`; a truncation's floor is

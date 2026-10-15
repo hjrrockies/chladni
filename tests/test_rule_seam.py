@@ -36,14 +36,14 @@ def cones(*centres):
     return tensions
 
 
-def test_the_defaults_are_the_shipped_behaviour():
+def test_the_shipped_behaviour_is_the_only_one():
     """`solve` ships attained merge, the reach rule on the cache slope, and Phase D by distance --
-    promoted on the held-out 145*pi^2 grid. Only the shipped defaults are pinned: the retired
-    options (the gap and floor rules, the `collapse` cross-check) may stay reachable as ablations
-    or go, and neither is a contract."""
+    promoted on the held-out 145*pi^2 grid. Since 2026-10-14 those are not options: the retired
+    alternatives (licence merge, the gap and floor rules, the outside slope, the Gram angle, the
+    `collapse` cross-check) are evidence, kept runnable in
+    `notes/evidence_tests/search_ablations.py` as `solve_with_options`."""
     p = inspect.signature(solve).parameters
-    assert (p["merge"].default, p["rule"].default, p["reach_slope"].default,
-            p["phase_d"].default) == ("attained", "reach", "cache", "distance")
+    assert set(p) == {"obj", "prec", "abort_unmet"}, set(p)
 
 
 def test_reach_needs_the_bracket_and_the_slope():
@@ -320,23 +320,25 @@ def test_the_promoted_defaults_leave_no_SILENT_wrong_total(N, m, band, prec, cau
         f"declared {total} of {truth}, unflagged -- a silent wrong total ({cause})")
 
 
-def test_the_reach_slope_is_a_choice_and_CACHE_is_the_default():
-    """`reach_slope` picks where the reach rule reads its wall slope. "cache" reads the nearest
-    cached samples either side of the root, which measured within 7% of the true distance on the
-    cells where "outside" -- three bracket widths out, what the rule was first calibrated on --
-    read 1.86x: on a cluster wider than the standoff, the outside samples sit in other members'
-    wells. "cache" became the default once its recalibrated bounds cleared the held-out grid."""
-    p = inspect.signature(solve).parameters
-    assert p["reach_slope"].default == "cache"
-    with pytest.raises(ValueError, match="reach_slope"):
-        from chladni.mps.objective import Objective
-        solve(Objective(lambda k: [0.2, 0.3], 3.0, 4.0, variable="k", prec=1e-8),
-              rule="reach", reach_slope="sideways")
+def test_the_reach_slope_is_read_from_the_cache():
+    """The reach rule reads its wall slope from the nearest cached samples either side of the
+    root, which measured within 7% of the true distance on the cells where the "outside" slope
+    -- three bracket widths out, what the rule was first calibrated on -- read 1.86x: on a
+    cluster wider than the standoff the outside samples sit in other members' wells. "cache"
+    became the only slope once its recalibrated bounds cleared the held-out grid; the outside
+    slope survives in the ablations (`_slope_outside`)."""
+    assert "reach_slope" not in inspect.signature(solve).parameters
+    import importlib.util
+    spec = importlib.util.find_spec("chladni.mps.search")
+    src = open(spec.origin).read()
+    assert "BIAS_LO_CACHE" in src and "_slope_outside" not in src.split("def _count_root")[1]
 
 
 # --- the reach rule LOCATES a partner it cannot count ----------------------------------------------
 
-_REACH = dict(merge="attained", rule="reach", reach_slope="cache", collapse=False)
+# The shipped configuration IS `solve` (2026-10-14): the options this dict once named are
+# ablations in `notes/evidence_tests/search_ablations.py`, so there is nothing to pass.
+_REACH = {}
 
 
 def _flagged(res):

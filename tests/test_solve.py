@@ -406,11 +406,15 @@ def test_a_MILD_disagreement_keeps_the_calibrated_blind_slope():
     assert got == blind
 
 
-def test_phase_d_defaults_to_DISTANCE_and_refuses_an_unknown_rule():
+def test_phase_d_is_the_distance_prefilter_and_nothing_else():
     """Moved from the retired Phase D file (now `notes/evidence_tests/test_search_collapse.py`):
-    the shipped default is named for what it does, and a typo is an error, not a silent fallback."""
+    the shipped rule is the distance prefilter (`_group_roots`); the Gram angle is an ablation
+    (`notes/evidence_tests/search_ablations.py`), not an option, so there is no `phase_d` to
+    mistype."""
     import inspect
-    assert inspect.signature(solve).parameters["phase_d"].default == "distance"
+    assert "phase_d" not in inspect.signature(solve).parameters
     obj = Objective(lambda x: np.array([abs(x - 50.0) + 1e-9, 1.0]), 15.0, 110.0, variable="lam")
-    with pytest.raises(ValueError, match="phase_d"):
+    with pytest.raises(TypeError):
         solve(obj, prec=1e-8, phase_d="gram")
+
+

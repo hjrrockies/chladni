@@ -88,6 +88,14 @@ class Declined:
 #: douse runs several solves in separate processes besides.
 DEFAULT_WORKERS = max(1, min(8, (os.cpu_count() or 2) // 2))
 
+#: How far (in ulps of `lam`) a bracket converted to `lam` is widened at each end, so that a
+#: minimum whose exact square rounds just outside the `k` bracket is not lost; and, in
+#: `refine`, the margin within which two points are the SAME point. One constant, because the
+#: two interact: a 4-ulp margin against a 4-ulp widening is exactly what let a search's deepest
+#: sample -- on a neighbour's wall -- through as a root, which is why `refine` judges a point at
+#: a widened end by the curve beyond it (`refine._end_verdict`) rather than by the margin.
+BRACKET_ULPS = 4.0
+
 class Objective:
     """A counted, memoized tension function on `[lo, hi]`.
 
@@ -370,7 +378,7 @@ class Objective:
         converts a bracket passes, rather than at each call site.
         """
         a, b = self.in_lam(lo), self.in_lam(hi)
-        return a - 4.0 * np.spacing(abs(a)), b + 4.0 * np.spacing(abs(b))
+        return a - BRACKET_ULPS * np.spacing(abs(a)), b + BRACKET_ULPS * np.spacing(abs(b))
 
     def from_lam(self, lam):
         """A `lam` as an `x` in this objective's variable."""
