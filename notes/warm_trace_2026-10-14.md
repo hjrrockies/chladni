@@ -113,3 +113,14 @@ windowed (`windows = 2.5 |predicted move|`); evaluations and the relative error 
   joint motion and gives every member the spectral radius of the JOINT block (cross terms),
   plus a floor of a quarter of the largest move for near-stationary levels (one predicted
   2e-4 and moved 7e-3, second order). With that the 3e-3 step tracks warm.
+
+## Certification, profiled (2026-10-15, one tracked N = 6 warm solve, 4 levels)
+
+`track_levels` with certification 8.0 s, without 5.8 s (best of 3; 65 evaluations either
+way): the Moler-Payne certificates are 28% of a tracked warm solve. Inside `certify_levels`
+(1.56 s under cProfile): `moler_payne -> boundary_sup -> sample -> evaluate` 0.94 s, i.e. the
+basis evaluated on the sup-norm sample set at each level's own `k` -- all of it in
+`_bessel._j_series` (0.67 s self time over 120 calls); the coefficient vectors (`coef`, a GSVD
+per level) 0.52 s. So the Bessel series is the common cost of assembly AND certification, and
+it is the next thing to make fast. Deduplicating `(nu, k r)` does not apply (one order per
+column); the series evaluation itself, or an order-ladder recurrence, does.

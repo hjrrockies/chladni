@@ -458,7 +458,13 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   warm solve 92 -> 61 on four levels, i.e. the refiner's own ~15 per level, wall -22% and -51%
   on the two comparable seeds. Next: the refiner's cost per level (start from the predicted
   position; 6-8 evaluations), cadence 10 -> 20 (now half the cold solves, ~7% of a run), then
-  `log_j` once per distinct `(nu, k r)`; assembly at ~0.1 s per `lam` on 562 columns is the
+  the Fourier-Bessel kernel, which is where both assembly (93%) and certification go: profiled
+  2026-10-15 on one tracked N = 6 warm solve, certification is 28% of the solve (8.0 s with,
+  5.8 s without), and 60% of that is `_bessel._j_series` evaluating the basis on the Moler-Payne
+  sup-norm sample at each level's own `k`. Columns at one corner share `r` but each has its own
+  order, so deduplicating `(nu, k r)` saves nothing; the lever is the series itself
+  (`_j_series`: 0.67 s for 120 calls) -- vectorise it, or build the order ladder at one `x` by
+  a stable recurrence. Assembly at ~0.1 s per `lam`
   multiplier on all of it.
 * **[done 2026-10-13]** **Memory: the pencil cached matrices.** Up to 64 `lam`s of equilibrated
   blocks and reduced pencils per solver, ~0.5 GB held between douse steps; N = 6 ratio runs reached
