@@ -1015,6 +1015,359 @@ def _precision_summary(levels, prec):
     return unmet, float(attained)
 
 
+
+# --- the solve, in named steps ----------------------------------------------------------------
+#
+# `solve` ran as one ~600-line function whose stage-3 loop held four retry mechanisms inline.
+# It is now a driver over the steps below (2026-10-14); `tests/test_search_golden.py` replays a
+# recorded trace of the rectangle suite, so behaviour is byte-identical to the loop it replaces.
+# The measurements behind each step live in `docs/design/search.md` and `notes/`.
+
+
+@dataclass(frozen=True)
+class _Root:
+    """One queue item of stage 3: a located root, the bracket it came from, how many roots
+    were folded into it, and whether it has already been re-centred on a deeper wall find."""
+    r: object
+    bracket: tuple
+    n_roots: int
+    recentred: bool = False
+
+
+@dataclass(frozen=True)
+class _Side:
+    """What a side search around one root found."""
+    finds: tuple = ()            # RefineResults located beside the root
+    extra: tuple = ()            # the Levels for them
+    found: int = 0
+    inconclusive: bool = False   # a refusal that neither found nor excluded a neighbour
+    drop: bool = False           # the root sits on a hump between two finds: not a level
+    evals: int = 0
+
+
+@dataclass(frozen=True)
+class _Counted:
+    """Stage 3's answer for one queue item."""
+    levels: tuple = ()           # Levels to append, in order
+    recentre: object = None      # a `_Root` to put at the queue's head instead
+    located: object = None       # the located list after a re-centre
+    probe_evals: int = 0
+    side_evals: int = 0
+
+
+def _refine_stage(obj, res, prec, abort_unmet):
+    """Stage 2: refine every bracket the search emitted, then re-examine the ends of the
+    brackets the refiner refused as endpoints. `(located, refused)`: located is a list of
+    `(RefineResult, (lo, hi))`.
+
+    A bracket the search kept and the refiner threw away is usually not a failure of either:
+    dropping a doubtful region costs an eigenvalue and keeping one costs about three
+    evaluations. But a refusal AT AN END says the well is just outside: the end was this
+    find's wall, so the adjacent gap (bounded by the neighbouring brackets and the window) is
+    refined once more, and a find there explains the refusal."""
+    located, refused, ends = [], [], []
+    for b in res.brackets:
+        lo, hi = obj.in_lam_bracket(b.lo, b.hi)
+        hint = obj.in_lam(b.k_hint) if np.isfinite(b.k_hint) else None
+        r = refine(obj, lo, hi, prec=prec, lam_hint=hint,
+                   interior=(obj.in_lam(b.lo), obj.in_lam(b.hi)))
+        if r.accepted:
+            located.append((r, (lo, hi)))
+            if abort_unmet:
+                _abort_if_unmet(r, (lo, hi), located, prec)
+        else:
+            refused.append(r)
+            ends.append((r, (lo, hi)))
+    spans = [obj.in_lam_bracket(b.lo, b.hi) for b in res.brackets]
+    edge_lo, edge_hi = obj.in_lam_bracket(obj.lo, obj.hi)
+    for r, (lo, hi) in ends:
+        w = hi - lo
+        if not (r.reason in ("not_a_minimum", "endpoint") and w > 0):
+            continue
+        others = [s for s in spans if s != (lo, hi)]
+        if abs(r.lam - lo) <= 0.01 * w:
+            a = max([lo - w, edge_lo] + [s_hi for s_lo, s_hi in others if s_hi <= lo])
+            b = lo
+        elif abs(r.lam - hi) <= 0.01 * w:
+            a = hi
+            b = min([hi + w, edge_hi] + [s_lo for s_lo, s_hi in others if s_lo >= hi])
+        else:
+            continue
+        if not b - a > 4.0 * np.spacing(abs(r.lam)):
+            continue
+        r_out = refine(obj, a, b, prec=prec, interior=(a, b))
+        if r_out.accepted:
+            located.append((r_out, (a, b)))
+            if abort_unmet:
+                _abort_if_unmet(r_out, (a, b), located, prec)
+            refused.remove(r)               # explained: the end was this find's wall
+    return located, refused
+
+
+def _same_point(obj, first, r, prec, merge):
+    """Are two located roots one level? Under "licence" any pair within `prec*lam`; under
+    "attained" only a pair the refinement could not tell apart -- within the attained bars,
+    or, when the bars disagree, within the shallower root's reach down the deeper root's
+    wall. The search never merges deliberately, only what it could not resolve."""
+    licence = prec * max(abs(r.lam), 1.0)
+    if merge == "licence":
+        return abs(r.lam - first.lam) <= licence
+    d = abs(r.lam - first.lam)
+    if d > licence:
+        return False
+    bars = [x.delta_res for x in (first, r) if np.isfinite(x.delta_res)]
+    if d <= max(min(bars, default=0.0), 4.0 * np.spacing(abs(r.lam))):
+        return True
+    if d > max(bars, default=0.0):
+        return False
+    deep, shallow = (first, r) if first.sigma <= r.sigma else (r, first)
+    lams_, svals_ = _samples(obj)
+    c_deep = _slope_from_cache(lams_, svals_, deep.lam, floor=deep.sigma)
+    if c_deep is None or not c_deep > 0:
+        return True
+    return d <= (shallow.sigma / c_deep) / BIAS_LO_CACHE
+
+
+def _group_roots(obj, located, prec, merge):
+    """Phase D's distance prefilter: fold roots that are one level into the deepest of them.
+    `(located, merged)`, located now `((RefineResult, bracket), n_roots)`. Two located roots
+    within `prec*lam` are one level of `S(prec)`, and reading multiplicity at each separately
+    double-counts (measured on the sub-licence cluster: two roots each declared 3 against 3)."""
+    groups = []
+    for r, bracket in sorted(located, key=lambda p: p[0].lam):
+        if groups and _same_point(obj, groups[-1][0][0], r, prec, merge):
+            groups[-1].append((r, bracket))
+        else:
+            groups.append([(r, bracket)])
+    located = [(min(g, key=lambda p: p[0].sigma), len(g)) for g in groups]
+    return located, sum(len(g) - 1 for g in groups)
+
+
+def _side_search(obj, r, bracket, c_out, m, t_here, taken, prec, bias_lo_eff):
+    """Look for the branches the multiplicity estimate could not place, either side of the
+    root inside its bracket, each side a refine on the stretch beyond `half` (half the
+    undecided branch's tension over the wall slope). Three retries live here, each bounded:
+
+    * NARROWING (`narrowed`, at most twice per side): a refusal "not a minimum" at the inner
+      end, unexplained by another root and too low to be the wall, says the branch sits
+      closer than `half`; the side is re-posed from the root's own reach, then from a standoff.
+    * RESAMPLING (`resampled`, once per stretch): a stretch posed after a find that refuses at
+      its inner end is sampled at `_RESAMPLE` interior points and posed again, so a well the
+      refiner's three starting points straddled is seen.
+    * EXCLUSION after a find (`post_find`): the stretch beyond the find, past its reach and a
+      standoff, is queued, so several branches on one side are found in turn.
+
+    `taken` (the other roots, then every find) is appended to in place, so attribution sees
+    the finds. A find that lands within another root's attained bar or reach is that root."""
+    tens = (lambda z: obj.tensions(obj.from_lam(z)))
+    side_mark = obj.n_evals
+    j = min(int(m.mu), t_here.size - 1)
+    half = 0.5 * float(t_here[j]) / c_out if j > 0 else float("inf")
+    finds, extra = [], []
+    found, inconclusive = 0, not np.isfinite(half)
+    sides = [(bracket[0], r.lam - half, -1), (r.lam + half, bracket[1], +1)]
+    budget, narrowed, post_find, resampled = _SIDE_SEARCH_MAX, {}, set(), set()
+    while sides and budget > 0:
+        a, b2, side = sides.pop(0)
+        if not (np.isfinite(half) and a < b2):
+            continue                    # too short to hold the branch: resolved
+        budget -= 1
+        r2 = refine(obj, a, b2, prec=prec, interior=(a, b2))
+        if not r2.accepted:
+            reach_side = (r2.sigma / c_out) / BIAS_LO_CACHE + 2.0 * (b2 - a)
+            explained = any(abs(q.lam - r2.lam) <= reach_side for q in taken if q is not r)
+            inner = b2 if side < 0 else a
+            off_r = abs(inner - r.lam) <= half + 4.0 * np.spacing(abs(r.lam))
+            low_inner = (r2.reason == "not_a_minimum" and not explained and off_r
+                         and abs(r2.lam - inner) <= 0.01 * (b2 - a)
+                         and r2.sigma < 0.5 * BIAS_LO_CACHE * float(t_here[j]))
+            tries = narrowed.get(side, 0)
+            if low_inner and tries < 2:
+                narrowed[side] = tries + 1
+                outer = a if side < 0 else b2
+                near = max((r.sigma / c_out) / bias_lo_eff, 4.0 * np.spacing(abs(r.lam)))
+                if tries == 1:
+                    near = max(near, _SIDE_STANDOFF * abs(r.lam - outer))
+                if near < half:
+                    sides.insert(0, (a, r.lam - near, side) if side < 0
+                                 else (r.lam + near, b2, side))
+                    continue
+            key = (a, b2)
+            if (key in post_find and key not in resampled
+                    and r2.reason == "not_a_minimum"
+                    and abs(r2.lam - inner) <= 0.01 * (b2 - a)):
+                resampled.add(key)
+                for z in a + (b2 - a) * np.arange(1, _RESAMPLE + 1) / (_RESAMPLE + 1):
+                    tens(z)
+                sides.insert(0, (a, b2, side))
+                continue
+            inconclusive |= low_inner or (
+                r2.reason != "not_a_minimum" and not explained
+                and r2.sigma < SIDE_RATIO * float(t_here[j]))
+            continue
+        if any(abs(r2.lam - q.lam) <= max(
+                min(r2.delta_res if np.isfinite(r2.delta_res) else 0.0,
+                    q.delta_res if np.isfinite(q.delta_res) else 0.0),
+                4.0 * np.spacing(abs(r2.lam))) for q in taken):
+            continue
+        reach_find = (r2.sigma / c_out) / BIAS_LO_CACHE
+        if any(abs(r2.lam - q.lam) <= reach_find for q in taken):
+            continue
+        taken.append(r2)
+        finds.append(r2)
+        found += 1
+        extra.append(Level(lam=r2.lam, mult=1, sigma=r2.sigma,
+                           delta_res=r2.delta_res, bracket=(a, b2), n_roots=1))
+        span = (r2.lam - a) if side < 0 else (b2 - r2.lam)
+        excl = max((r2.sigma / c_out) / bias_lo_eff, _SIDE_STANDOFF * span,
+                   4.0 * np.spacing(abs(r2.lam)))
+        nxt = (a, r2.lam - excl) if side < 0 else (r2.lam + excl, b2)
+        if nxt[1] - nxt[0] > 4.0 * np.spacing(abs(r2.lam)):
+            sides.append((nxt[0], nxt[1], side))
+            post_find.add((nxt[0], nxt[1]))
+    drop = False
+    if found:
+        # Two finds either side of the root: is the root a well of its own or a HUMP between
+        # them? Read the tension three quarters of the way towards each; a root higher than
+        # both by `_HUMP_RATIO` is the barrier, not a level.
+        near = [q.lam for q in taken if q is not r and bracket[0] <= q.lam <= bracket[1]]
+        below = [q for q in near if q < r.lam]
+        above = [q for q in near if q > r.lam]
+        if below and above:
+            towards = (r.lam + 0.75 * (max(below) - r.lam), r.lam + 0.75 * (min(above) - r.lam))
+            reads = [float(np.atleast_1d(tens(z))[0]) for z in towards]
+            drop = max(reads) < _HUMP_RATIO * r.sigma
+    return _Side(finds=tuple(finds), extra=tuple(extra), found=found,
+                 inconclusive=inconclusive, drop=drop, evals=obj.n_evals - side_mark)
+
+
+def _attribute(obj, m, r, bracket, width, extra, taken, found, uncertain, bias_lo_eff,
+               bias_hi_eff, wb):
+    """Attribution: which of the estimate's counted branches are the side finds, so a find is
+    not counted twice; then the (C2) backstop for a branch the estimate declined that no find
+    accounts for -- it is counted only if the tension at the root dips as a branch there
+    would. `(mu, uncertain, claim_reason, count_decided_by)`."""
+    tens = (lambda z: obj.tensions(obj.from_lam(z)))
+    claim_reason, count_decided_by = "", ""
+    claimants = [q.lam for q in extra if bracket[0] <= q.lam <= bracket[1]]
+    n_claimed, _, claim_amb = _claim(m.branches, r.lam, claimants, bias_lo_eff,
+                                     bias_hi_eff, with_ambiguity=True)
+    if claim_amb:
+        uncertain, claim_reason = True, (
+            "a side-search find is admissible to both a counted and an undecided branch, "
+            "so whether it adds to this level's count or duplicates it is not decided")
+    mu = int(m.mu) - n_claimed
+    assert mu >= 1, (f"attribution took the root's own branch: mu={m.mu}, "
+                     f"claimed={n_claimed}")
+    undecided = [b for b in m.branches if b.verdict == "undecided"]
+    if m.ambiguous and undecided and not uncertain and found == 0:
+        j0 = undecided[0].index
+        reach_j = undecided[0].d_est / bias_lo_eff + 2.0 * width
+        accounted = any(abs(q.lam - r.lam) <= reach_j for q in taken if q is not r)
+        if not accounted:
+            j, added = j0, 0
+            t_x = np.atleast_1d(np.asarray(tens(r.lam), dtype=float))
+            while j < min(t_x.size, MAX_BRANCHES) and _c2_holds(tens, r.lam, wb, j):
+                added += 1
+                j += 1
+            if added:
+                mu += added
+                count_decided_by = "c2"
+            else:
+                uncertain, claim_reason = True, (
+                    "a declined branch is unaccounted -- no root located within its reach "
+                    "-- and does not dip at this root, so it is either a dropped "
+                    "eigenvalue or the estimate was noise; not decided")
+    return mu, uncertain, claim_reason, count_decided_by
+
+
+def _count_root(obj, item, lams, svals, located, prec, rule, reach_slope):
+    """Stage 3 for one queue item: read the multiplicity at the root. Under the reach rule the
+    estimate may leave branches undecided; a side search then looks for them, a deeper find
+    within the root's own reach RE-CENTRES the root on it (once), and attribution settles the
+    count. Spends from the cache where it can; `probe_evals` and `side_evals` say what it
+    paid beyond that."""
+    r, bracket, n_roots, recentred = item.r, item.bracket, item.n_roots, item.recentred
+    c = _slope_from_cache(lams, svals, r.lam, floor=r.sigma)
+    s2 = obj.sigma(obj.from_lam(r.lam), 1)
+    nb = (s2 / c) if (c > 0 and np.isfinite(s2)) else None
+    wb = wide_bracket_for(lams, r.lam, r.sigma, c, prec=prec, neighbour=nb)
+    tens = (lambda z: obj.tensions(obj.from_lam(z)))
+    if rule != "reach":
+        if wb is None:
+            return _Counted(levels=(Level(lam=r.lam, mult=1, sigma=r.sigma,
+                                          delta_res=r.delta_res, bracket=bracket,
+                                          n_roots=n_roots),))
+        m = multiplicity(tens, r.lam, wide_bracket=wb, prec=prec, rule=rule)
+        return _Counted(levels=(_level_for(r, bracket, wb, m, n_roots, None, "", ""),))
+    width = abs(bracket[1] - bracket[0])
+    c_out = (_slope_outside(lams, svals, r.lam, SLOPE_STANDOFF * width)
+             if reach_slope == "outside" else c)
+    if c_out is None or not (c_out > 0):
+        return _Counted(levels=(Level(
+            lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res, bracket=bracket,
+            wide_bracket=wb or (), n_roots=n_roots, count_uncertain=True,
+            uncertain_reason=f"the reach rule could not read a wall slope "
+                             f"({reach_slope}) from the cache at this root"),))
+    bounds = (None if reach_slope == "outside" else
+              (COUNT_BELOW_CACHE, REJECT_ABOVE_CACHE, BIAS_LO_CACHE, BIAS_HI_CACHE))
+    bias_lo_eff, bias_hi_eff = ((BIAS_LO, BIAS_HI) if bounds is None
+                                else (bounds[2], bounds[3]))
+    m = multiplicity(tens, r.lam, bracket=bracket, c=c_out, prec=prec, rule="reach",
+                     reach_bounds=bounds, counter=obj,
+                     window=obj.in_lam_bracket(obj.lo, obj.hi))
+    probe_evals = int(m.evaluations)
+    c2_cut = [b.index for b in m.branches
+              if b.verdict == "counted" and b.index > 0
+              and _c2_holds(tens, r.lam, wb, b.index) is False]
+    if c2_cut:
+        m = replace(m, mu=int(m.mu) - len(c2_cut), branches=tuple(
+            replace(b, verdict="c2_rejected") if b.index in c2_cut else b
+            for b in m.branches))
+    extra, uncertain, drop, found, side_evals = (), None, False, 0, 0
+    taken = [p[0][0] for p in located if p[0][0] is not r]
+    if m.ambiguous:
+        t_here = np.atleast_1d(np.asarray(tens(r.lam), dtype=float))
+        side = _side_search(obj, r, bracket, c_out, m, t_here, taken, prec, bias_lo_eff)
+        extra, found, drop, side_evals = list(side.extra), side.found, side.drop, side.evals
+        uncertain = side.inconclusive and found == 0
+        reach_r = (r.sigma / c_out) / bias_lo_eff
+        walls = [q for q in side.finds if q.sigma < r.sigma and abs(q.lam - r.lam) <= reach_r]
+        if walls and not recentred:
+            # A DEEPER WELL WITHIN THE ROOT'S OWN REACH is the level; the root was a shoulder
+            # of it. Re-centre once: the located list carries the find in the root's place, the
+            # cache is re-read, and the item goes back to the head of the queue.
+            q = min(walls, key=lambda q: q.sigma)
+            new_located = [(p, k) if p[0] is not r else ((q, bracket), k) for p, k in located]
+            return _Counted(recentre=_Root(q, bracket, n_roots, True), located=new_located,
+                            probe_evals=probe_evals, side_evals=side_evals)
+    mu, uncertain, claim_reason, count_decided_by = _attribute(
+        obj, m, r, bracket, width, extra, taken, found, uncertain, bias_lo_eff, bias_hi_eff, wb)
+    m = replace(m, mu=mu)
+    levels = []
+    if not drop:
+        levels.append(_level_for(r, bracket, wb, m, n_roots, uncertain, claim_reason,
+                                 count_decided_by))
+    levels.extend(extra)
+    return _Counted(levels=tuple(levels), probe_evals=probe_evals, side_evals=side_evals)
+
+
+def _level_for(r, bracket, wb, m, n_roots, uncertain, claim_reason, count_decided_by):
+    amb = bool(m.ambiguous) if uncertain is None else uncertain
+    return Level(lam=r.lam, mult=m.mu, sigma=r.sigma, delta_res=r.delta_res,
+                 bracket=bracket, wide_bracket=wb or (), gap_ratio=m.gap_ratio,
+                 c2_rejected=m.c2_rejected, n_roots=n_roots,
+                 count_decided_by=count_decided_by,
+                 count_uncertain=amb,
+                 uncertain_reason=(
+                     claim_reason or
+                     "the multiplicity estimator declined: a branch's estimated "
+                     "distance landed where the inside and outside populations "
+                     "overlap, so the evidence does not decide whether that "
+                     "eigenvalue is in this bracket"
+                     if amb else ""))
+
+
 def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
           reach_slope="cache", phase_d="distance", abort_unmet=False):
     """Locate every eigenvalue in the objective's window, with its multiplicity.
@@ -1084,518 +1437,43 @@ def solve(obj, *, prec=None, collapse=False, merge="attained", rule="reach",
     # Stage 2. `bracket_interval` returns brackets in the objective's OWN variable, so this
     # converts once, here, to the `lam` the refiner works in.
     mark = obj.n_evals
-    located, refused, ends = [], [], []
-    for b in res.brackets:
-        lo, hi = obj.in_lam_bracket(b.lo, b.hi)
-        hint = obj.in_lam(b.k_hint) if np.isfinite(b.k_hint) else None
-        r = refine(obj, lo, hi, prec=prec, lam_hint=hint,
-                   interior=(obj.in_lam(b.lo), obj.in_lam(b.hi)))
-        if r.accepted:
-            located.append((r, (lo, hi)))
-            if abort_unmet:
-                _abort_if_unmet(r, (lo, hi), located, prec)
-        else:
-            # A bracket the search kept on purpose and the refiner threw away. USUALLY not a
-            # failure of either: dropping a doubtful region costs an eigenvalue and keeping one
-            # costs about three evaluations, so the search is right to hand it on and the refiner
-            # is right to refuse it.
-            #
-            # But "usually" was doing unpaid work here. The refiner's `sigma` says which case this
-            # is, at no cost, and `_deep_rejections` below reads it: an empty region is refused at
-            # a `sigma` sitting on the barrier between wells, ORDERS above any root, while a
-            # bracket that dipped as far as a located eigenvalue and was still refused is a
-            # candidate lost eigenvalue.
-            #
-            # A refusal can also be SHALLOW and still lose an eigenvalue, and this does not see
-            # it: the Linux wrong total on the N65 cluster was a rank flip making the bracket's
-            # upper END look deepest, so the refiner walked away from the root and refused at the
-            # flipped end, above every located level. The depth test cannot tell that from an
-            # empty bracket; only an objective continuous in `lam` removes it.
-            refused.append(r)
-            ends.append((r, (lo, hi)))
-    # A bracket refused AT ITS OWN END, with the descent leading out of it, can hold the wall of
-    # a member stage 1 placed just outside. 65*pi^2, band 1.3, prec 1e-12, `tau = 0.1 prec`: the
-    # fourth bracket began 0.1 licences above member 3, the refiner walked to its lower end and
-    # refused it -- correctly, the minimum was outside -- and nothing looked there. 3 of 4, and
-    # silent, since the refusal read 1.0e-12 against located levels down to 2.6e-13.
-    #
-    # So step out once, one bracket width past that end, clipped to the interval and to every
-    # other stage-1 bracket so the step cannot re-find a root located from its own. An empty
-    # region stays refused at the cost of one more refinement; a find is located like any other.
-    spans = [obj.in_lam_bracket(b.lo, b.hi) for b in res.brackets]
-    edge_lo, edge_hi = obj.in_lam_bracket(obj.lo, obj.hi)
-    for r, (lo, hi) in ends:
-        w = hi - lo
-        if not (r.reason in ("not_a_minimum", "endpoint") and w > 0):
-            continue
-        others = [s for s in spans if s != (lo, hi)]
-        if abs(r.lam - lo) <= 0.01 * w:
-            a = max([lo - w, edge_lo] + [s_hi for s_lo, s_hi in others if s_hi <= lo])
-            b = lo
-        elif abs(r.lam - hi) <= 0.01 * w:
-            a = hi
-            b = min([hi + w, edge_hi] + [s_lo for s_lo, s_hi in others if s_lo >= hi])
-        else:
-            continue
-        if not b - a > 4.0 * np.spacing(abs(r.lam)):
-            continue
-        r_out = refine(obj, a, b, prec=prec, interior=(a, b))
-        if r_out.accepted:
-            located.append((r_out, (a, b)))
-            if abort_unmet:
-                _abort_if_unmet(r_out, (a, b), located, prec)
-            refused.remove(r)               # explained: the end was this find's wall
+    located, refused = _refine_stage(obj, res, prec, abort_unmet)
     rejected = len(refused)
     refine_evals = obj.n_evals - mark
+    located, merged = _group_roots(obj, located, prec, merge)
 
-    # Phase D's DISTANCE PREFILTER, before stage 3 rather than after it.
-    #
-    # Two located roots within `prec*lam` of each other are one level of `S(prec)`, and reading
-    # multiplicity at each of them separately double-counts: the wide bracket spans the whole
-    # group -- correctly, since the group IS the level -- so each fragment declares the group's
-    # total. Measured on the sub-licence cluster, two roots each declared 3 against 3 true.
-    #
-    # **Reading ONCE per group also gets Phase D's collapse behaviour without the Gram angle.**
-    # `search.md` gives two outcomes for roots this close: the same eigenfunction found twice,
-    # which must COLLAPSE and RECOUNT, or two independent ones, which must MERGE and SUM -- and
-    # says "do NOT sum" on the first, because summation is the double count. A single
-    # multiplicity read on the merged group recounts by construction, and it is right in both
-    # cases: one well found twice reads its own multiplicity, and two genuine eigenvalues within
-    # `prec` both dip and are both counted. The Gram angle is what would be needed to choose
-    # between collapse and sum, and recounting removes the choice.
-    #
-    # What is still missing is the case Phase D's angle is really for: two roots at the same
-    # separation where one is a duplicate and one is not. Distance cannot tell them apart, and
-    # neither can this.
-    #
-    # **"Recounting is the safe branch of the two" was written here, and it is false.** It is
-    # right for a duplicate and wrong for two genuine eigenvalues inside the licence: the recount
-    # reads at ONE representative, the partner's branch is minimal at the partner, so (C2)
-    # refuses it and the level reads 1 where it is 2. So the number of roots folded is carried
-    # on the level, and `_flag_uncertain_counts` flags the contradiction.
-    # Compared against the group's FIRST member, never its predecessor: `S(prec)` groups by
-    # diameter, and chaining is a mistake `bracket_search/SUCCESS.md` records as made twice.
-    def _same_point(first, r):
-        licence = prec * max(abs(r.lam), 1.0)
-        if merge == "licence":
-            return abs(r.lam - first.lam) <= licence
-        d = abs(r.lam - first.lam)
-        if d > licence:
-            return False
-        bars = [x.delta_res for x in (first, r) if np.isfinite(x.delta_res)]
-        if d <= max(min(bars, default=0.0), 4.0 * np.spacing(abs(r.lam))):
-            return True
-        if d > max(bars, default=0.0):
-            return False
-        # Within the WIDER bar only. A refiner bar can be wider than the gap to a genuine
-        # neighbour: 65*pi^2, band 0.3, 1e-12, posterior tensions, a root landed BETWEEN the two
-        # members of its bracket with a bar of ~0.5 licences, merged into a root 0.33 licences
-        # away, and the group read its count in the OTHER root's bracket -- 2 of 4, silent, twice
-        # (`notes/posterior_penalty.md`, "The 1e-12 singles"). So the wide bar merges only a
-        # SHALLOWER root that sits on the deeper one's wall: its own reading, at the calibrated
-        # bound, must reach the deeper root -- the side search's "found again" test. Where no slope
-        # can be read the old reading stands.
-        deep, shallow = (first, r) if first.sigma <= r.sigma else (r, first)
-        lams_, svals_ = _samples(obj)
-        c_deep = _slope_from_cache(lams_, svals_, deep.lam, floor=deep.sigma)
-        if c_deep is None or not c_deep > 0:
-            return True
-        return d <= (shallow.sigma / c_deep) / BIAS_LO_CACHE
-
-    groups = []
-    for r, bracket in sorted(located, key=lambda p: p[0].lam):
-        if groups and _same_point(groups[-1][0][0], r):
-            groups[-1].append((r, bracket))
-        else:
-            groups.append([(r, bracket)])
-    # One representative per group: the deepest, which is the best-located member.
-    located = [(min(g, key=lambda p: p[0].sigma), len(g)) for g in groups]
-    merged = sum(len(g) - 1 for g in groups)
-
-    # Stage 3. From the cache, and it must cost nothing.
     mark = obj.n_evals
     lams, svals = _samples(obj)
-    levels = []
-    probe_evals = side_evals = 0
-    queue = [(r, bracket, n_roots, False) for (r, bracket), n_roots in located]
+    levels, probe_evals, side_evals = [], 0, 0
+    queue = [_Root(r, bracket, n_roots) for (r, bracket), n_roots in located]
     while queue:
-        r, bracket, n_roots, recentred = queue.pop(0)
-        c = _slope_from_cache(lams, svals, r.lam, floor=r.sigma)
-        # The distance to the next eigenvalue, from the free `sigma_2` the search already has.
-        # It bounds the wide bracket from ABOVE, so the flanks cannot reach a neighbour and
-        # count its branch as one of this level's.
-        s2 = obj.sigma(obj.from_lam(r.lam), 1)
-        nb = (s2 / c) if (c > 0 and np.isfinite(s2)) else None
-        wb = wide_bracket_for(lams, r.lam, r.sigma, c, prec=prec, neighbour=nb)
-        tens = (lambda z: obj.tensions(obj.from_lam(z)))
-        extra, uncertain, drop, claim_reason = [], None, False, ""
-        count_decided_by = ""
-        if rule == "reach":
-            # `mu*(B)` needs the EMITTED bracket and a slope from outside it; the wide bracket plays
-            # no part in the count and is carried only as the record of what "gap" would have seen.
-            width = abs(bracket[1] - bracket[0])
-            c_out = (_slope_outside(lams, svals, r.lam, SLOPE_STANDOFF * width)
-                     if reach_slope == "outside" else c)
-            if c_out is None or not (c_out > 0):
-                levels.append(Level(
-                    lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res, bracket=bracket,
-                    wide_bracket=wb or (), n_roots=n_roots, count_uncertain=True,
-                    uncertain_reason=f"the reach rule could not read a wall slope "
-                                     f"({reach_slope}) from the cache at this root"))
-                continue
-            # Each slope carries the bounds measured for IT; the outside-slope set is the wip
-            # branch's, the cache-slope set is recalibrated on a held-out set -- see
-            # `multiplicity.COUNT_BELOW_CACHE`.
-            bounds = (None if reach_slope == "outside" else
-                      (COUNT_BELOW_CACHE, REJECT_ABOVE_CACHE, BIAS_LO_CACHE, BIAS_HI_CACHE))
-            # The bias pair the READ was given, so attribution below inverts the same estimate the
-            # count made. Hardcoding the cache pair would claim with the wrong band whenever
-            # `reach_slope="outside"` -- the ablation path, whose bounds are the wip branch's.
-            bias_lo_eff, bias_hi_eff = ((BIAS_LO, BIAS_HI) if bounds is None
-                                        else (bounds[2], bounds[3]))
-            m = multiplicity(tens, r.lam, bracket=bracket, c=c_out, prec=prec, rule="reach",
-                             reach_bounds=bounds, counter=obj,
-                             window=obj.in_lam_bracket(obj.lo, obj.hi))
-            probe_evals += int(m.evaluations)
-            # (C2) BACKSTOP on every branch the reach rule COUNTED. A counted branch whose sigma
-            # does not dip at this root is not this level's: the spike triangle's 807.0076 came
-            # back x8 because a slope read inside a noisy floor made `sigma_2..8 = 0.22..0.83`
-            # read as distances 0.005..0.017 (`_c2_holds`). Only a branch that FAILS is
-            # uncounted; one that cannot be read keeps the rule's verdict.
-            c2_cut = [b.index for b in m.branches
-                      if b.verdict == "counted" and b.index > 0
-                      and _c2_holds(tens, r.lam, wb, b.index) is False]
-            if c2_cut:
-                m = replace(m, mu=int(m.mu) - len(c2_cut), branches=tuple(
-                    replace(b, verdict="c2_rejected") if b.index in c2_cut else b
-                    for b in m.branches))
-            if m.ambiguous:
-                # The rule could not place a branch inside the bracket or out. Every wrong total it
-                # left on the cluster grid was this: one bracket holding two DISTINCT eigenvalues,
-                # the partner at the bracket edge. Merging is permitted and never required, so the
-                # partner need not be counted at all -- LOCATE it. Refine the bracket either side
-                # of the root, outside half the branch's estimated distance so the sub-bracket's
-                # inner end is off the root's own wall. A root found is its own level.
-                #
-                # A side is RESOLVED when it is searched and firmly rejected, or when it is too
-                # short to hold the branch at all: the calibrated bias puts the eigenvalue at least
-                # `BIAS_LO_CACHE * d` away, and a side shorter than `d/2` is shorter than that.
-                # Requiring both sides SEARCHED kept a correct count flagged -- the uneven cluster
-                # at 1e-8, band 0.3, where the declined branch belonged to a member 0.96 licences
-                # out, located as its own level, with this bracket reaching 0.27 on that side. Only
-                # an inconclusive search, or no distance to search at, leaves the level flagged.
-                side_mark = obj.n_evals
-                t_here = np.atleast_1d(np.asarray(tens(r.lam), dtype=float))
-                j = min(int(m.mu), t_here.size - 1)
-                half = 0.5 * float(t_here[j]) / c_out if j > 0 else float("inf")
-                # Not `r` itself: each sub-bracket excludes `r +- half` by construction, so a root
-                # found there is not `r`, and `r`'s own bar can be as wide as the partner's
-                # distance -- 125*pi^2, prec 1e-10, band 0.5, bar 5.6e-8, partner 5.5e-8 away,
-                # found and then discarded as "already located", leaving the total one short and
-                # unflagged. A find that is really `r`'s own wall is a phantom at the inner end,
-                # which the refiner's end probe rejects.
-                taken = [p[0][0] for p in located if p[0][0] is not r]
-                finds = []
-                found, inconclusive = 0, not np.isfinite(half)
-                # A WORK LIST per side, not one interval each. Refining each side exactly once
-                # left a member unfound wherever a side held two: 170*pi^2, band 0.3, prec 1e-12,
-                # 7 of 8, certified. Searching on after a find was measured and REVERTED once --
-                # 4 of 3 at 50*pi^2, 1e-12, band 0.3 -- because a second find was added to a total
-                # that had already counted it inside. Attribution is what makes it safe: below,
-                # every find CLAIMS a branch rather than adding to `mu`.
-                #
-                # OUTWARD only. The residual on the inner side of a find is `r`'s own wall, and
-                # refining there fits a parabola to rounding -- the phantom class the reach dedup
-                # below records at 65*pi^2, prec 1e-10, band 1.0.
-                sides = [(bracket[0], r.lam - half, -1), (r.lam + half, bracket[1], +1)]
-                budget, narrowed, post_find, resampled = _SIDE_SEARCH_MAX, {}, set(), set()
-                while sides and budget > 0:
-                    a, b2, side = sides.pop(0)
-                    if not (np.isfinite(half) and a < b2):
-                        continue                    # too short to hold the branch: resolved
-                    budget -= 1
-                    r2 = refine(obj, a, b2, prec=prec, interior=(a, b2))
-                    if not r2.accepted:
-                        # A side is resolved by a firm rejection, by a root ALREADY located there --
-                        # the branch is that root -- or by a curve that never dips toward a well.
-                        # Only an unexplained dip leaves it undetermined: 50*pi^2, prec 1e-8, band
-                        # 0.8, a partner 0.3e-9 relative inside the sub-bracket's end gave
-                        # `no_parabola` at sigma 2.9e-9 against sigma_j 6.9e-8, and reading that as
-                        # resolved left the total one short and certified. Flagging every
-                        # `no_parabola` instead flagged 15 correct counts on the 50/65 grid, most of
-                        # them sub-brackets a few ulps wide beside a partner already located.
-                        # Explained means a root already located lies within the distance the
-                        # side's own reading implies: `sigma/c`, at the calibrated bound on how far
-                        # the true distance can exceed that estimate. A window of one sub-bracket
-                        # width missed exactly that at 125*pi^2, prec 1e-8, band 0.8: the side read
-                        # 5.1e-8 on the wall of a member located 4.5e-6 away, outside the bracket,
-                        # and a correct count came back flagged -- ten such on the 50/65 grid.
-                        # Plus two sub-bracket widths, for the ulp scale: at 1e-14 the side's best
-                        # reading is rounding (50*pi^2, band 0.8: 7x the floor) and its implied
-                        # reach fell a hair short of a member located 12 ulps away.
-                        reach_side = (r2.sigma / c_out) / BIAS_LO_CACHE + 2.0 * (b2 - a)
-                        explained = any(abs(q.lam - r2.lam) <= reach_side
-                                        for q in taken if q is not r)
-                        # A refusal at the INNER end is not a rejection when it reads too LOW for
-                        # `r`'s own wall. The end sits `half = 0.5 sigma_j/c` from `r`, where that
-                        # wall reads `0.5 sigma_j` times the slope's bias -- at least BIAS_LO_CACHE.
-                        # Lower than that, the descent is into a well INSIDE the exclusion: 50*pi^2,
-                        # band 0.3, prec 1e-12, a cache slope half the typical one put `half` at
-                        # 0.32 licences, member 0 at 0.27 was inside it, and the inner end read
-                        # 0.18 sigma_j. Counted as resolved, the total was 2 of 3, silent. Search
-                        # the side once more with the exclusion `r`'s own reading implies -- the
-                        # radius a find gets below -- and if that too stops at its inner end
-                        # reading low, the side is undetermined.
-                        inner = b2 if side < 0 else a
-                        off_r = abs(inner - r.lam) <= half + 4.0 * np.spacing(abs(r.lam))
-                        low_inner = (r2.reason == "not_a_minimum" and not explained and off_r
-                                     and abs(r2.lam - inner) <= 0.01 * (b2 - a)
-                                     and r2.sigma < 0.5 * BIAS_LO_CACHE * float(t_here[j]))
-                        tries = narrowed.get(side, 0)
-                        if low_inner and tries < 2:
-                            narrowed[side] = tries + 1
-                            # Two retries, tight first. The FIRST excludes only `r`'s own reach,
-                            # which at a converged root is the floor: the retry runs up to `r`, and
-                            # where `r`'s wall is all there is it converges ON `r` and the dedup
-                            # resolves the side -- the reading every shipped path relied on
-                            # (default pencil, 50*pi^2, 1e-6, band 1.0, where an over-read cache
-                            # slope makes the inner end read falsely low). The SECOND, only if the
-                            # first also stops low at its inner end, uses the standoff rule finds
-                            # use: 50*pi^2, band 0.3, 1e-12, posterior tensions, the tight retry
-                            # refused on `r`'s own wall and flagged a level whose member lay inside
-                            # (`notes/posterior_penalty.md`, "The 1e-12 singles") -- the trap
-                            # `_SIDE_STANDOFF` documents. Then the side is undetermined.
-                            outer = a if side < 0 else b2
-                            near = max((r.sigma / c_out) / bias_lo_eff,
-                                       4.0 * np.spacing(abs(r.lam)))
-                            if tries == 1:
-                                near = max(near, _SIDE_STANDOFF * abs(r.lam - outer))
-                            if near < half:
-                                sides.insert(0, (a, r.lam - near, side) if side < 0
-                                             else (r.lam + near, b2, side))
-                                continue
-                        # A sub-bracket that STARTS AT A FIND, refused at that inner end: the
-                        # resume point can land on the hump between the find and the next member,
-                        # whose well is inside and unsampled, and the end then reads exactly the
-                        # find's wall, so nothing above can tell it from an empty side. 50*pi^2,
-                        # band 0.3, 1e-12, posterior tensions: member 2 0.15 licences inside, 2 of
-                        # 3, silent (`notes/posterior_penalty.md`). Sample the interior once --
-                        # `refine` starts from the deepest cached sample -- and refine it again.
-                        key = (a, b2)
-                        if (key in post_find and key not in resampled
-                                and r2.reason == "not_a_minimum"
-                                and abs(r2.lam - inner) <= 0.01 * (b2 - a)):
-                            resampled.add(key)
-                            for z in a + (b2 - a) * np.arange(1, _RESAMPLE + 1) / (_RESAMPLE + 1):
-                                tens(z)
-                            sides.insert(0, (a, b2, side))
-                            continue
-                        inconclusive |= low_inner or (
-                            r2.reason != "not_a_minimum" and not explained
-                            and r2.sigma < SIDE_RATIO * float(t_here[j]))
-                        continue
-                    # Already a located root, from its own bracket -- within the NARROWER of the two
-                    # bars, never the wider. One wide bar used to swallow a genuine neighbour: 50*pi^2,
-                    # band 0.3, prec 1e-10, on posterior tensions (`notes/posterior_penalty.md`), the
-                    # side search found all three members and discarded the third, 0.22 licences from
-                    # the second, because the second's refiner bar was 0.24 licences. 2 of 3, silent.
-                    # The same shape `r`'s own bar has, which is why `r` is not in `taken`. A true
-                    # duplicate does not need the wide bar: re-found on the same well, its reading puts
-                    # that well within its reach, and the check below discards it.
-                    if any(abs(r2.lam - q.lam) <= max(
-                            min(r2.delta_res if np.isfinite(r2.delta_res) else 0.0,
-                                q.delta_res if np.isfinite(q.delta_res) else 0.0),
-                            4.0 * np.spacing(abs(r2.lam))) for q in taken):
-                        continue
-                    # Found AGAIN, by distance. A find's own reading says how far the nearest
-                    # eigenvalue can be -- `sigma/c`, at the calibrated bound -- and a root already
-                    # located within that reach IS that eigenvalue. The bars above are not enough:
-                    # at 65*pi^2, prec 1e-10, band 1.0 a side sub-bracket 2.2e-9 wide sat on the
-                    # hump top between two located members, the refiner's fallback fitted a parabola
-                    # to rounding there and reported a bar of 7.2e-12, and the point (sigma 4.8e-10,
-                    # 3.2e-8 from both members) became a fifth level of four.
-                    reach_find = (r2.sigma / c_out) / BIAS_LO_CACHE
-                    if any(abs(r2.lam - q.lam) <= reach_find for q in taken):
-                        continue
-                    taken.append(r2)
-                    finds.append(r2)
-                    found += 1
-                    extra.append(Level(lam=r2.lam, mult=1, sigma=r2.sigma,
-                                       delta_res=r2.delta_res, bracket=(a, b2), n_roots=1))
-                    # Search ON, outward, past an exclusion of the width this find's own reading
-                    # implies -- the same "any root within this reach IS r2" quantity the dedup
-                    # above uses, reused as a radius rather than re-derived.
-                    span = (r2.lam - a) if side < 0 else (b2 - r2.lam)
-                    excl = max((r2.sigma / c_out) / bias_lo_eff, _SIDE_STANDOFF * span,
-                               4.0 * np.spacing(abs(r2.lam)))
-                    nxt = (a, r2.lam - excl) if side < 0 else (r2.lam + excl, b2)
-                    if nxt[1] - nxt[0] > 4.0 * np.spacing(abs(r2.lam)):
-                        sides.append((nxt[0], nxt[1], side))
-                        post_find.add((nxt[0], nxt[1]))
-                uncertain = inconclusive and found == 0
-                # Is `r` itself a minimum, or the HUMP between two members? 65*pi^2, prec 1e-8,
-                # band 0.3: a bracket narrower than the licence held two members, the refiner
-                # accepted the hump between them (sigma 1.35e-8 against 1e-12 at the members), the
-                # side search found both -- and the hump stayed as a third level, 5 of 4, certified.
-                # A hump needs a well on BOTH sides, so it is only asked where roots lie both ways
-                # inside the bracket; and sigma_1 falls toward both. Refining `r`'s own cell instead
-                # dropped a GENUINE coarse member at 50*pi^2, prec 1e-6, band 0.3, whose cell held a
-                # third member never located, and turned 3 of 3 into 1 of 3.
-                if found:
-                    near = [q.lam for q in taken
-                            if q is not r and bracket[0] <= q.lam <= bracket[1]]
-                    below = [q for q in near if q < r.lam]
-                    above = [q for q in near if q > r.lam]
-                    if below and above:
-                        towards = (r.lam + 0.75 * (max(below) - r.lam),
-                                   r.lam + 0.75 * (min(above) - r.lam))
-                        reads = [float(np.atleast_1d(tens(z))[0]) for z in towards]
-                        drop = max(reads) < _HUMP_RATIO * r.sigma
-                side_evals += obj.n_evals - side_mark
-                # RE-CENTRE when `r` is a find's WALL. The refiner may accept a point off the
-                # bottom whenever its bar covers the error, and the read taken there is a read of
-                # the wrong point: the disk's double at 57.58, prec 1e-8, `rtol = 1.25
-                # SUITE_RTOL`, accepted `r` 0.0245 licences up the wall at sigma 1.2e-9, counted
-                # one, left the partner branch undecided -- and the side search found the true
-                # root at sigma 1.5e-15, which that branch then owned. One exact double came back
-                # as two simple levels, total right, the solver contract broken (Linux CI, the
-                # same shape). `r`'s own reading puts the nearest eigenvalue within
-                # `(sigma/c)/bias_lo`, so a DEEPER find inside that reach is what `r` was reading:
-                # the find replaces `r`, and the whole read is redone there. Once per entry.
-                reach_r = (r.sigma / c_out) / bias_lo_eff
-                walls = [q for q in finds if q.sigma < r.sigma and abs(q.lam - r.lam) <= reach_r]
-                if walls and not recentred:
-                    q = min(walls, key=lambda q: q.sigma)
-                    located = [(p, k) if p[0] is not r else ((q, bracket), k)
-                               for p, k in located]
-                    lams, svals = _samples(obj)
-                    queue.insert(0, (q, bracket, n_roots, True))
-                    continue
-            # ATTRIBUTION. A branch the read counted INSIDE the bracket and a level located inside
-            # the same bracket can be the same eigenvalue, and until now nothing compared them --
-            # so the member was reported twice (170*pi^2, band 0.3, prec 1e-8: 9 of 8, certified).
-            # Each such branch is owned ONCE: by a located level near where `sigma_j/c` puts it,
-            # or else by the root. Only counted branches are claimable, so this can never take out
-            # what the read did not put in -- the failure capping produced at 2 of 3, prec 1e-6.
-            #
-            # ONLY levels the SIDE SEARCH just located may claim, not levels already located from
-            # their own bracket. Both were measured, and the wider source REGRESSES the committed
-            # grid: at 50*pi^2, band 0.3, prec 1e-12 and 1e-14 it takes 3 of 3 to 2 of 3, silently.
-            #
-            # And the cell says something worth keeping, because the 3 was never right. The read
-            # at the first member counts the second inside (branch 1, d_est 1.59e-10, side +1) and
-            # the second is ALSO reported from its own bracket -- a double count -- while the
-            # third member at 493.480220054462 is never located at all. Two errors cancelling.
-            # Letting the wider source claim removes the double count and leaves the miss visible,
-            # which is the honest state and a WRONG TOTAL either way. The miss is the same refiner
-            # defect the 170*pi^2 xfail records: the side search's residual starts one exclusion
-            # radius past its find, that radius is `(sigma/c)/bias_lo` on a CONVERGED find where
-            # `sigma` is the floor rather than a neighbour distance, so the residual begins on the
-            # find's own wall and the refiner returns that endpoint (`not_a_minimum` at
-            # 493.480220054315, with the member 1.5e-10 further in). Fix that first; the wider
-            # claimant source is then a strict improvement rather than a trade.
-            claimants = [q.lam for q in extra if bracket[0] <= q.lam <= bracket[1]]
-            n_claimed, _, claim_amb = _claim(m.branches, r.lam, claimants, bias_lo_eff,
-                                             bias_hi_eff, with_ambiguity=True)
-            if claim_amb:
-                # A find both a counted and an undecided branch admit: the total is one of two
-                # and nothing here decides which. Say so rather than guess (section 10.7).
-                uncertain, claim_reason = True, (
-                    "a side-search find is admissible to both a counted and an undecided branch, "
-                    "so whether it adds to this level's count or duplicates it is not decided")
-            mu = int(m.mu) - n_claimed
-            assert mu >= 1, (f"attribution took the root's own branch: mu={m.mu}, "
-                             f"claimed={n_claimed}")
-            # A DECLINED branch the side search left UNACCOUNTED -- nothing found, and no located
-            # root anywhere within its reach -- is either a copy AT this root or an eigenvalue
-            # nobody located. The side search can only find the second kind; an exact double at
-            # the floor is the first (the L-shape's `10 pi^2`: `sigma_2` at the root is its own
-            # floor, its `d_est` lands at the bracket edge, both sides come back empty, and the
-            # level was certified simple). (C2) tells them apart: a copy at the root makes
-            # `sigma_j` dip HERE. Count it, and any branch above it that also dips; a branch that
-            # does not dip, or cannot be read, leaves the count flagged rather than guessed.
-            undecided = [b for b in m.branches if b.verdict == "undecided"]
-            if m.ambiguous and undecided and not uncertain and found == 0:
-                j0 = undecided[0].index
-                reach_j = undecided[0].d_est / bias_lo_eff + 2.0 * width
-                accounted = any(abs(q.lam - r.lam) <= reach_j for q in taken if q is not r)
-                if not accounted:
-                    j, added = j0, 0
-                    t_x = np.atleast_1d(np.asarray(tens(r.lam), dtype=float))
-                    while j < min(t_x.size, MAX_BRANCHES) and _c2_holds(tens, r.lam, wb, j):
-                        added += 1
-                        j += 1
-                    if added:
-                        mu += added
-                        count_decided_by = "c2"
-                    else:
-                        uncertain, claim_reason = True, (
-                            "a declined branch is unaccounted -- no root located within its reach "
-                            "-- and does not dip at this root, so it is either a dropped "
-                            "eigenvalue or the estimate was noise; not decided")
-            m = replace(m, mu=mu)
-        elif wb is None:
-            levels.append(Level(lam=r.lam, mult=1, sigma=r.sigma, delta_res=r.delta_res,
-                                bracket=bracket, n_roots=n_roots))
+        out = _count_root(obj, queue.pop(0), lams, svals, located, prec, rule, reach_slope)
+        probe_evals += out.probe_evals
+        side_evals += out.side_evals
+        if out.recentre is not None:
+            located = out.located
+            lams, svals = _samples(obj)
+            queue.insert(0, out.recentre)
             continue
-        else:
-            m = multiplicity(tens, r.lam, wide_bracket=wb, prec=prec, rule=rule)
-        if not drop:
-            levels.append(Level(lam=r.lam, mult=m.mu, sigma=r.sigma, delta_res=r.delta_res,
-                                bracket=bracket, wide_bracket=wb or (), gap_ratio=m.gap_ratio,
-                                c2_rejected=m.c2_rejected, n_roots=n_roots,
-                                count_decided_by=count_decided_by,
-                                # The estimator's own DECLINE, carried through. Dropping it made every
-                                # wrong total under the reach rule silent on the wip branch -- 0 of 15
-                                # flagged -- which was a wiring omission, not a property of the rule.
-                                count_uncertain=(bool(m.ambiguous) if uncertain is None
-                                                 else uncertain),
-                                uncertain_reason=(
-                                    claim_reason or
-                                    "the multiplicity estimator declined: a branch's estimated "
-                                    "distance landed where the inside and outside populations "
-                                    "overlap, so the evidence does not decide whether that "
-                                    "eigenvalue is in this bracket"
-                                    if (m.ambiguous if uncertain is None else uncertain) else "")))
-        levels.extend(extra)
-
+        levels.extend(out.levels)
     levels.sort(key=lambda x: x.lam)
 
-    # PHASE D, before both checks below. The angle needs REPORTED ROOTS, the side search has
-    # just created some, and `_flag_uncertain_counts` is the consumer whose doubt it removes --
-    # so it has to run first or that doubt is reported after it was settled.
     if phase_d == "angle":
         gram_mark = obj.n_evals
         levels, n_gram_pairs, n_gram_coll, n_gram_sum = _gram_group(obj, levels, prec)
         mode_evals = obj.n_evals - gram_mark
     else:
         n_gram_pairs = n_gram_coll = n_gram_sum = mode_evals = 0
-
-    # The grouping cross-check. Reads only cached points, so it is charged to stage 3's window
-    # and must leave it at zero.
     if collapse:
         levels, n_amb = _collapse_ambiguous(obj, lams, levels, prec, WIDE_FACTOR, rule)
     else:
         n_amb = 0
-
-    # The count consistency check. Free -- it compares numbers the pipeline already has -- and
-    # last, so it sees the levels a caller will actually receive.
     levels, uncertain = _flag_uncertain_counts(
         levels, folds_are_duplicates=(merge == "attained" and rule == "reach"))
-    # The READ's own spend: the whole stage-3 window less the probes and the side search, both of
-    # which are evaluations by design and are reported as themselves.
     mult_evals = (obj.n_evals - mark) - probe_evals - side_evals - mode_evals
-
-    # A refused bracket that dipped as deep as a located root is a candidate LOST eigenvalue, and
-    # it reaches `n_uncertain` so that `certified_counts` is False and `solve_interval` raises.
-    # LAST, so the comparison sees the levels a caller actually receives rather than an
-    # intermediate set that Phase D or the cross-check may still have folded.
     deep = _deep_rejections(refused, levels)
-
-    # The request, on every level, so `margin`, `resolution` and `count_shortfall` read it.
     levels = [replace(x, prec=prec) for x in levels]
     unmet, attained = _precision_summary(levels, prec)
-
     return SolveResult(tuple(levels), SolveDiagnostics(
         search=sd, n_brackets=len(res.brackets), n_rejected=rejected, n_merged=merged,
         search_evals=search_evals, refine_evals=refine_evals,
