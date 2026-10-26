@@ -437,6 +437,11 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
+* **[next]** **Sharp triangles certify nothing, and the planner returns its worst rung.** Apexes
+  near (0.1, 0.25) on base [0, 1] (a 12-18 deg corner, all corners singular): 4 of 7 nearby apexes
+  meet 0 of 15 at 1e-10, 3 return rung 0 wrong by 1e-6 .. 2e-5 while rungs 1-2 held ~1e-10 values
+  (tie-break in `_plan`); rich FB + source bases certify at margins 19-100 but the search declines
+  them on threshold-rank jitter (`_seed`). Fixes proposed, not built: `notes/triangle_apex_planner.md`.
 * **[done 2026-10-13]** **Short edges get a local source patch.** douse's ratio runs drive an
   edge toward zero (the N = 6, k = 2 seed-1 stall: an edge 0.042 of a 1.44 diameter). The offset
   layer at 0.05 D sat farther out than the edge is long, and the plan met 1e-10 at margin 2.0
