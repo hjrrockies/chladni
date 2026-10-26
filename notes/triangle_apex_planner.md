@@ -194,6 +194,10 @@ fixed:
   can overstate a poor basis, so they only break ties. The returned answer still carries its own
   Moler-Payne bounds and flags.
 
+Cost, apex (0.1, 0.25), stock and fixed run side by side on the same machine: 2539 s and 3003 s
+wall (+18%). The extra time is the full re-solve of rung 2 (389 columns) instead of rung 0 (90).
+Both runs got ~35% CPU, so read the ratio, not the absolute times.
+
 Tests: `tests/test_eigenproblem.py`, the last four. The suite's default tier passes (1785), and
 so does the slow tier of `test_eigenproblem.py` (8).
 
