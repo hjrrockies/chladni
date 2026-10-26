@@ -193,39 +193,43 @@ class Eigenproblem:
         2026-10-14 the climb solved every rung to the end with "flag". An aborted rung is ranked
         by what it had met before stopping; only when NO rung is accepted is the best-ranked rung
         solved in full, so the returned result is always a whole one. A rung whose search
-        declined does not stop the climb: a richer rung may well succeed where it failed."""
+        declined does not stop the climb: a richer rung may well succeed where it failed.
+
+        THE FALLBACK RANKS BY `_rank`: levels met first, then the margins of the levels that
+        missed. Until 2026-10-26 an aborted rung always scored 0 and a tie kept the FIRST rung,
+        so on a sharp triangle the poorest basis came back, wrong by 2e-5, while the rungs above
+        it held values right to ~1e-10 (`notes/triangle_apex_planner.md`)."""
         from ._core import PrecisionShortfall
-        tried = {}                              # rung -> (plan, res, window, aborted, score)
+        tried = {}                              # rung -> (plan, res, window, aborted, rank)
 
         def at(rung, full=False):
             if rung in tried and not (full and tried[rung][3]):
                 return tried[rung]
             p = plan_for(self.domain, n, prec, rung)
             if not _usable(p):
-                tried[rung] = (p, None, None, False, -1.0)
+                tried[rung] = (p, None, None, False, _UNRANKED)
             elif full:
                 res, window = self._solve_with(p, n, prec, "flag")
-                tried[rung] = (p, res, window, False, _met_fraction(res, n, prec))
+                tried[rung] = (p, res, window, False, _rank(res, n, prec))
             else:
                 try:
                     res, window = self._solve_with(p, n, prec, "raise")
                 except PrecisionShortfall as e:
                     if e.result is not None:    # a late raise: the whole result is in hand
-                        tried[rung] = (p, e.result, None, False,
-                                       _met_fraction(e.result, n, prec))
+                        tried[rung] = (p, e.result, None, False, _rank(e.result, n, prec))
                     else:                       # an early abort: rank by what was met so far
-                        tried[rung] = (p, None, None, True, _aborted_fraction(e, n, prec))
+                        tried[rung] = (p, None, None, True, _rank(e, n, prec))
                 else:
-                    tried[rung] = (p, res, window, False, _met_fraction(res, n, prec))
+                    tried[rung] = (p, res, window, False, _rank(res, n, prec))
             return tried[rung]
 
         best = None
         for rung in range(len(LADDER)):
-            p, res, window, aborted, score = at(rung)
+            p, res, window, aborted, rank = at(rung)
             if res is None and not aborted:     # nothing to place on this shape: skip the rung
                 continue
-            if best is None or score > best[0]:
-                best = (score, rung)
+            if best is None or rank > best[0]:
+                best = (rank, rung)
             # A DECLINE ON A LOW RUNG SAYS NOTHING ABOUT THE RUNGS ABOVE IT. The climb once
             # stopped after a rung whose search declined; on the 1.6 x 0.4 rectangle the
             # corner-term rung declines ("the slope estimate never settled") and the plane-wave
@@ -451,17 +455,46 @@ def _warm_verdict(*, found, prev, n, b, h, top, declined, unmet, uncertain, audi
     return None
 
 
-def _aborted_fraction(e, n, prec):
-    """How much of the request an early-aborted rung had met before it stopped: the located
-    values that met `prec` (each counted once; multiplicities are not read before the abort),
-    over `n + HEADROOM`. A ranking for the best-rung fallback, not a measurement."""
-    met = 0
-    for item in e.located:
-        r = item[0] if isinstance(item, tuple) else item
-        lam, dres = getattr(r, "lam", None), getattr(r, "delta_res", None)
-        if lam is not None and dres is not None and np.isfinite(dres) and dres <= prec * abs(lam):
-            met += 1
-    return met / max(n + HEADROOM, 1)
+#: The rank of a rung that placed nothing or found nothing: below every real outcome.
+_UNRANKED = (-1.0, -np.inf)
+
+
+def _rank(outcome, n, prec):
+    """`(met, tie)`, larger is better: how a rung is ranked for the best-rung fallback when no
+    rung is accepted. A RANKING, not a measurement: it picks which flagged answer comes back,
+    and that answer still carries its own Moler-Payne bounds and flags.
+
+    `outcome` is a search result, or the `PrecisionShortfall` of an early abort.
+    - `met`: the fraction of `n + HEADROOM` met. For a whole result, `_met_fraction`. For an
+      early abort, the values located BEFORE the one that stopped it, each counted once: every
+      one of them passed `_abort_if_unmet`, and `located` holds the values as floats, which the
+      counter used before 2026-10-26 could not read, so every aborted rung scored 0.
+    - `tie`: `log10` of a margin among the levels that MISSED (2 is needed): the stopping
+      level's for an abort, the median over the unmet prefix levels for a whole result; `+inf`
+      when nothing missed. Margins are relative to `prec*lam`, so levels at different `lam` on
+      different rungs compare. On the triangle 0, 1, 0.1+0.25i every rung tied at 0 met and
+      this picks rung 2 (margin 0.16, values right to ~1e-10) over rung 0 (0.046, off by 2e-5).
+      A margin comes from the refiner's `delta_res`, which can overstate a POOR basis
+      (`mps.search.Level.bound`), so it only breaks ties and never outranks a level met."""
+    from ._core import PrecisionShortfall
+
+    if isinstance(outcome, PrecisionShortfall):
+        stop = outcome.level
+        stop_lam = float(stop.lam) if stop is not None else None
+        met = sum(1 for x in outcome.located
+                  if stop_lam is None or float(getattr(x, "lam", x)) != stop_lam)
+        m = float(outcome.margin)
+        tie = np.log10(m) if np.isfinite(m) and m > 0 else -np.inf
+        return (met / max(n + HEADROOM, 1), float(tie))
+    lv = _prefix(outcome, n)
+    if not lv:
+        return _UNRANKED
+    met = _met_fraction(outcome, n, prec)
+    unmet = [L.margin for L in lv if not L.met(prec)]
+    if not unmet:
+        return (met, np.inf)
+    finite = [m for m in unmet if np.isfinite(m) and m > 0]
+    return (met, float(np.log10(np.median(finite))) if finite else -np.inf)
 
 
 def _usable(plan):

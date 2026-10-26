@@ -131,3 +131,56 @@ def test_plan_and_solve_hands_back_the_rung_it_accepted():
     again = ep.solve(3, prec=1e-8, plan=plan)
     np.testing.assert_array_equal(rec.unfolded, again.unfolded)
     assert rec.flags == again.flags and rec.plan is plan and rec.diagnostics is not None
+
+
+# --- the best-rung fallback: which flagged answer comes back (2026-10-26) ----------------------
+#
+# `notes/triangle_apex_planner.md`: on the triangle 0, 1, 0.1+0.25i every rung missed 1e-10, all
+# tied at "0 met", and the first rung -- the poorest basis, values off by 2e-5 -- was returned
+# while rungs 1-2 held values right to ~1e-10. Two defects: an early-aborted rung always scored
+# 0 (`located` arrives as floats, which the counter could not read), and a tie kept the first.
+
+def _aborted(margin, located):
+    from chladni.mps.search import Level
+    stop = Level(lam=float(located[-1]), mult=1, delta_res=1.0, prec=PREC)
+    return PrecisionShortfall("stopped early", level=stop, margin=margin, located=located)
+
+
+def test_an_aborted_rung_counts_the_values_it_met_before_stopping():
+    from chladni.eigenproblem import HEADROOM, _rank
+    met, _ = _rank(_aborted(0.5, [10.0, 20.0, 30.0]), 15, PREC)
+    assert met == pytest.approx(2 / (15 + HEADROOM))     # the last is the one that stopped it
+
+
+def test_a_tie_on_levels_met_goes_to_the_larger_margin():
+    from chladni.eigenproblem import _rank
+    poor, rich = _rank(_aborted(0.046, [289.0]), 15, PREC), _rank(_aborted(0.13, [289.0]), 15, PREC)
+    assert poor[0] == rich[0] and rich > poor
+
+
+def test_more_levels_met_still_outranks_a_larger_margin():
+    from chladni.eigenproblem import _rank
+    assert _rank(_aborted(0.01, [1.0, 2.0, 3.0]), 15, PREC) > _rank(_aborted(1.9, [1.0]), 15, PREC)
+
+
+def test_the_fallback_returns_the_best_ranked_rung_not_the_first(monkeypatch):
+    """No rung accepted, every rung aborted at 0 met: the rung with the largest stopping
+    margin is the one solved in full and returned."""
+    from chladni.plan import LADDER
+    margins = {0: 0.046, 1: 0.13, 2: 0.16}
+    full = []
+
+    def fake(self, plan, n, prec, on_shortfall, solver=None):
+        from types import SimpleNamespace
+        if on_shortfall == "raise" and plan.rung in margins:
+            raise _aborted(margins[plan.rung], [289.0])
+        if on_shortfall == "flag":
+            full.append(plan.rung)
+        declined = SimpleNamespace(declined=True, n_uncertain=0, count_audit=None)
+        return SimpleNamespace(levels=(), diagnostics=declined), (0.0, 1.0)
+
+    monkeypatch.setattr(Eigenproblem, "_solve_with", fake)
+    dom = Polygon(np.array([0, 1, 0.1 + 0.25j]))
+    plan, _, _, accepted = Eigenproblem(dom)._plan(15, PREC, False)
+    assert not accepted and plan.rung == 2 and full == [2]
+    assert len(LADDER) > 2

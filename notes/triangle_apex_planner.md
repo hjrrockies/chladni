@@ -179,3 +179,70 @@ The flat triangles (height 0.10-0.15) are a different stall: at apex (0.5, 0.12)
 13.5 / 153) rung 1 meets 7 of 15 with margins 0.8-5.6, and neither 3x corners nor a patch on
 either slanted side moves it (margins 1.2 / 0.8-0.9 / 1.2-1.8 at lam_1, lam_8, lam_13). Not
 diagnosed; the density lever (fix 2) was not tried on it.
+
+## 7. Fix 1, built (2026-10-26)
+
+`eigenproblem._rank` replaces `_met_fraction` / `_aborted_fraction` in `_plan`'s fallback:
+`(met fraction, log10 margin of the levels that missed)`, compared as a tuple. Two defects
+fixed:
+- **Aborted rungs always scored 0.** `PrecisionShortfall.located` holds floats
+  (`mps/search.py:721`), and `_aborted_fraction` read `.lam` / `.delta_res` off each item, so it
+  never counted anything. Now it counts the values located before the stopping one; each of
+  them passed `_abort_if_unmet`. **This changes which rung comes back on ANY shape where no rung
+  is accepted, not only on ties.** The douse benchmark's flagged cases were not re-run.
+- **A tie kept the first rung.** The margin now breaks it. Margins come from `delta_res`, which
+  can overstate a poor basis, so they only break ties. The returned answer still carries its own
+  Moler-Payne bounds and flags.
+
+Tests: `tests/test_eigenproblem.py`, the last four. The suite's default tier passes (1785), and
+so does the slow tier of `test_eigenproblem.py` (8).
+
+## 8. Fix 3 design: freeze the rank LOCALLY, on a lattice in lam (proposed, not built)
+
+What is already known (`notes/landscape_findings.md` sections 27.1, 34, 35):
+- A rank frozen over a WIDE window is fatal. The numerical rank grows with lam, the frozen rank
+  is the window's minimum, and the top of the window starves: about 2-3 retained directions per
+  decade of floor, and up to 2e11x floor inflation over a 60x window.
+- A rank frozen over a NARROW window (~6%) removed every flip, recovered 22 of 23 declines with no
+  wrong answer, and moved the floor by 2%.
+- Relaxing the decline at the seam (handing an unsettled seed to the cover) bought 9 wrong
+  answers. The fix belongs in the objective, not in `bracket.py`'s tolerance.
+
+So the target is an objective that is **continuous within cells whose width tracks the rate at
+which the rank actually changes**, and that re-reads the rank in every cell.
+
+1. **Cells on a fixed geometric lattice.** `lam_j = lam_0 (1 + delta)^j`. The rank used at `lam` is
+   that of the cell containing it, a pure function of `lam`: no hysteresis, no dependence on
+   evaluation order, cacheable, reproducible. That matters, because section 17's lesson is that a
+   shape optimizer cannot descend on an objective that moves for reasons it cannot see.
+2. **Cell width from the local rank drift.** The rank grows roughly like `k`, so over a relative
+   width `delta` in lam it drifts by about `r delta / 2`. Choose `delta` so that drift is about
+   1 (`delta ~ 2 / r`: 1.7% at r = 120). Measure `dr/dlam` from the threshold rank at the two
+   ends of the search window rather than assume it. Large bases and high lam get finer cells
+   automatically; cells never cover a decade.
+3. **Cell rank = the minimum of the threshold rank at a few nodes in the cell** (3, as
+   `_RANK_SAMPLES` does for `lam_ref` today). That is the safe direction: never above what the
+   threshold rule allows anywhere in the cell. The cost at the cell's top is at most about one
+   drift step (~1/3 decade of floor at 2-3 ranks per decade). That must be checked against
+   `prec`. If it bites, fall back to the threshold rank for that cell rather than shipping a
+   starved one.
+4. **The search is told where the seams are.** The tension is continuous inside a cell and may
+   jump at a node. The objective exposes the node positions. `_secants` skip only node-straddling
+   pairs. Each node is evaluated with BOTH neighbouring cells' ranks, so each cell's curve is
+   continuous on its closed interval. A Piyavskii region is split at nodes and never spans one.
+   Unlike the rejected hand-over, nothing is guessed: the skipped pairs are exactly the ones whose
+   rank differs, and every other secant still has to settle.
+5. **Refine and certify in one cell.** A bracket is refined on the rank of the cell that holds
+   its centre. A bracket that straddles a node is refined on both and kept only if they agree
+   within the bracket. Moler-Payne is computed from the candidate eigenfunction and does not
+   depend on the rank, so the certificate is unchanged.
+6. **Opt-in first.** Turn it on only for plans whose columns are near-dependent by construction
+   (lightning, a layer of 12/wl or more), keep the threshold rank elsewhere, and widen only after
+   the benchmark.
+
+Measure before building (cheap, `notes/apex_*` style): on this triangle's lightning basis
+(180 columns, rank 119-122 across +-1% at lam_8), compute the cell rank at `delta = 2/r` and
+check that (a) the seed's max secant settles within each cell, (b) the minimum tension at
+lam_1, lam_8 and lam_15 moves by under ~1 decade against the threshold rank, (c) the rectangle
+grids of section 34 keep their 22 recoveries and 0 wrong. Then the douse benchmark and the
+triangle pilot.
