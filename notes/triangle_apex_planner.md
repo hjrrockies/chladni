@@ -352,3 +352,37 @@ TOL 1e-2. Data `notes/stable_rank_lattice.json`.
   margin (2); (b) more nodes per cell; (c) match singular values by their vectors, not by sorted index,
   so a swap of order is not read as movement; (d) cut at the first index where a RUN of k consecutive
   values exceeds TOL, not the first single one.
+
+## 11. Where the flutter hurts, and a rank from evaluations the search already makes (2026-10-27)
+
+`notes/rank_flutter_stages.py`: `search_interval` on the cells holding lam_1, lam_8 and lam_15, comparing
+the threshold rank with a rank frozen at the cell's single-spectrum knee (below):
+
+| cell | threshold rank | knee rank, frozen |
+|---|---|---|
+| lam_1 (no tail) | 32 search + 7 refine evals; margin 24.9, MP/lam 1.6e-11 | identical (knee = threshold = 98) |
+| lam_8 | DECLINED in the seed after 961 evals | 32 + 7 evals; margin 18.6, MP/lam 5.4e-11 |
+| lam_15 | DECLINED in the seed after 961 evals | 32 + 7 evals; margin 45, MP/lam 6.4e-11 |
+
+- **The damage is in bracketing's seed** (`bracket._seed`): the max secant grows with every doubling,
+  and the search declines after 961 evaluations, 25x a successful cell's whole cost. Nothing reaches
+  refinement, multiplicity or certification. If the seed were relaxed, the cover's Lipschitz exclusions
+  would take the hit next (the measured 9 wrong answers of `landscape_findings.md` section 34).
+- **Refinement, multiplicity, certification:** no harm seen where the seed passes, but only simple
+  levels were tested (no multiplicity question was asked), and not on a basis with a tail. Moler-Payne
+  is computed from the candidate eigenfunction, not from the rank. Unmeasured: doubles, and the floor
+  inside a well when the rank flutters there.
+
+`notes/stable_rank_free.py` (data `notes/stable_rank_free.json`):
+- **The pair test does not need eta = 1e-12.** The stable rank at lam_8 is 95-98 for any pair spacing
+  from 1e-12 to 3e-4 relative; it breaks at 1e-3 (87) as the head starts to move. Any two search samples
+  within 3e-4 of each other are a free stability pair. Refinement makes many; the seed's spacing is
+  ~1e-3 .. 1e-2, too coarse.
+- **A knee from ONE spectrum matches the pair test and is steadier.** Rule: the first index, below
+  1e-8 x sigma_1, where sigma's mean decay over the next 4 indices falls under 1.25x per index, capped
+  at the threshold rank. Over 41 points per cell: lam_1 98 at all (the pair test: 91-98), lam_8 96 at
+  all (94-98), lam_15 101-102 (100-103). 6 or 8 indices give the same to within 1; a 1.4x cut is too
+  aggressive (68-86). The spectrum comes from the SVD that `reg="svd"` already computes at every
+  evaluation.
+- **Cost of an evaluation:** 79 ms, of which basis assembly is 53-58 ms and the stack's QR + SVD 4-5 ms.
+  A second RANK at an already-assembled lam costs the GSVD step, not an assembly.
