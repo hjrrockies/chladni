@@ -31,7 +31,32 @@ import numpy as np
 #: The coarse penalty's default weight relative to the stack's spectral norm.
 TAU_REL = float(np.sqrt(np.finfo(float).eps))
 
-__all__ = ["Policy", "TAU_REL"]
+#: A singular value of the stack that moves by more than this RELATIVE amount between two nearby
+#: `lam` is rounding, not basis content. The noise tail moves ~10-40% under a 1e-12 change; the
+#: directions above it move < 1e-6 (`notes/triangle_apex_planner.md` sections 9, 11). The stable
+#: rank came out the same from 1e-2 to 5e-2; 1e-3 cut real directions.
+STABLE_TOL = 1e-2
+
+#: How far apart (relative) the two spectra may be. The head of the spectrum is still unmoved at
+#: 3e-4 and starts moving at 1e-3 (`notes/stable_rank_free.py`, lam_8 of the apex lightning rung),
+#: so a root's CELL is `lam (1 +/- CELL_RHO)`: the rank frozen there is read from two of the
+#: search's own samples inside it.
+CELL_RHO = 3e-4
+
+__all__ = ["Policy", "TAU_REL", "STABLE_TOL", "CELL_RHO", "stable_rank"]
+
+
+def stable_rank(s_a, s_b, cap=None, tol=STABLE_TOL):
+    """The leading singular values that agree between two nearby spectra `s_a`, `s_b` (each the
+    stack's, descending): the count before the first index that moves by more than `tol`
+    relative, at most `cap`. Vectors in, an integer out; no matrix is needed."""
+    a, b = np.asarray(s_a, dtype=float), np.asarray(s_b, dtype=float)
+    n = min(a.size, b.size)
+    a, b = a[:n], b[:n]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        moved = ~(np.abs(a - b) <= tol * np.abs(a))
+    r = int(np.argmax(moved)) if moved.any() else n
+    return r if cap is None else min(r, int(cap))
 
 
 @dataclass(frozen=True)

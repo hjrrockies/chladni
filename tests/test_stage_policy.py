@@ -236,3 +236,90 @@ def test_the_cs_route_matches_the_gsvd_of_the_penalty(p):
         mine = penalty_tensions(f, tau)
         assert np.allclose(mine[:20], ref[:20], rtol=1e-9, atol=0)
         assert np.array_equal(p.tensions(lam, Policy.penalty()), mine)
+
+
+# --- step 3: certification reads the coefficients at the level's own rank ------------------------
+
+@pytest.fixture(scope="module")
+def solver():
+    dom = L_shape()
+    return plan_for(dom, 6, 1e-10).solver(dom)
+
+
+def test_certification_reads_the_coefficients_at_the_levels_rank(solver, monkeypatch):
+    from dataclasses import replace
+    res = solver.search_interval(9.0, 10.5)
+    (L,) = res.levels
+    seen = []
+    real = type(solver._pencil).coef
+
+    def spy(self, lam, mult=1, rank=None):
+        seen.append(rank)
+        return real(self, lam, mult, rank=rank)
+    monkeypatch.setattr(type(solver._pencil), "coef", spy)
+    r = solver._pencil.rank_at(L.lam) - 2
+    out = solver.certify_levels(replace(res, levels=(replace(L, rank=r),)), lam_max=10.5,
+                                prec=solver.prec)
+    assert seen == [r]
+    assert np.isfinite(out.levels[0].mp_bound)
+    seen.clear()
+    solver.certify_levels(res, lam_max=10.5, prec=solver.prec)
+    assert seen == [None]                                # the pencil's own rank, as before
+
+
+def test_a_search_refuses_another_pencils_objective(solver):
+    dom = L_shape()
+    other = plan_for(dom, 6, 1e-10).solver(dom)
+    with pytest.raises(ValueError):
+        solver.search_interval(9.0, 10.5, objective=other.objective(9.0, 10.5))
+    with pytest.raises(ValueError):
+        solver.search_interval(9.0, 10.5, objective=Objective(lambda x: np.array([1.0]),
+                                                             9.0, 10.5, variable="lam"))
+    solver.search_interval(9.0, 10.5, objective=solver.objective(9.0, 10.5))   # its own: fine
+
+
+# --- step 4: refinement and multiplicity at a stable rank frozen per root cell ------------------
+
+def test_the_stable_rank_stops_at_the_first_moved_value():
+    from chladni.mps.policy import stable_rank
+    a = np.array([1.0, 1e-3, 1e-6, 1e-12, 8e-13, 5e-13])
+    b = a.copy()
+    assert stable_rank(a, b) == 6 and stable_rank(a, b, cap=4) == 4
+    b[3] *= 1.2                                          # the noise tail moved 20%
+    assert stable_rank(a, b) == 3
+    b[1] *= 1.001                                        # signal moving 0.1% is not noise
+    assert stable_rank(a, b) == 3
+
+
+def test_a_policy_view_reads_its_policy_in_its_cell_only(p):
+    from chladni.mps.objective import PolicyView
+    obj = Objective.from_pencil(p, 30.0, 60.0, variable="lam", max_workers=1)
+    pol = Policy.frozen(p.rank_at(LAM) - 4)
+    for x in (LAM, 50.0):
+        obj.tensions(x, pol)
+    obj.tensions(LAM + 1e-3)                             # the pencil's own: never in the view
+    view = PolicyView(obj, pol, cell=(LAM - 1.0, LAM + 1.0))
+    xs, _ = view.samples
+    assert list(xs) == [LAM]
+    assert view.tension(LAM) == obj.tension(LAM, pol)
+
+
+@pytest.mark.slow
+def test_the_stable_rank_search_keeps_the_l_shapes_spectrum():
+    """The L-shape's first 20 levels with roots re-refined at their stable rank: the same values
+    to within their bounds, the same counts (the doubles at 49.35 and 98.70 included -- reading a
+    neighbour cell's samples at the same rank once cut one to 1), and a bounded extra cost."""
+    from chladni.reference import L_shape_eigs
+    dom = L_shape()
+    ref = np.asarray(L_shape_eigs(25))
+    a = plan_for(dom, 20, 1e-10, 0).solver(dom).search_interval(9.0, 120.0)
+    b = plan_for(dom, 20, 1e-10, 0).solver(dom).search_interval(9.0, 120.0, stable_rank=True)
+    assert [L.mult for L in b.levels] == [L.mult for L in a.levels]
+    for L in b.levels:
+        assert abs(ref[np.argmin(abs(ref - L.lam))] - L.lam) <= L.bound
+        assert L.met(1e-10)
+    d = b.diagnostics
+    assert d.n_reranked > 0 and d.n_rerank_refused == 0
+    assert all((L.rank is None) or (0 < L.rank < 203) for L in b.levels)
+    assert d.rerank_evals <= 6 * d.n_reranked
+    assert d.multiplicity_evals == a.diagnostics.multiplicity_evals == 0

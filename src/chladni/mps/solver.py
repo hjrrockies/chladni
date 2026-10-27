@@ -254,7 +254,8 @@ class MPSEigensolver(Eigensolver, Frozen):
                 expected_count=lambda lo, hi: asymp.expected_count(lo, hi, self.domain))
         return cache[key]
 
-    def search_interval(self, a, b, *, prec=None, objective=None, on_shortfall="flag"):
+    def search_interval(self, a, b, *, prec=None, objective=None, on_shortfall="flag",
+                        stable_rank=False):
         """Every level in `[a, b]` as a `SolveResult`: the MPS-rich answer, diagnostics and all.
 
         This is the seam to reach for. `solve_interval` narrows what comes back to the
@@ -272,14 +273,24 @@ class MPSEigensolver(Eigensolver, Frozen):
         `short` or `excess`, an uncertified count, or a decline is known only at the end and
         raises after the solve, with the whole result and the audit. `"flag"` (the default)
         reports the same things on the result and returns it.
+
+        `stable_rank=True` re-refines each root whose cell has a noise tail at the stable rank,
+        frozen in that cell (`chladni.mps.search.solve`; stage-policy step 4, off by default).
         """
         from .search import solve
 
         if on_shortfall not in ("flag", "raise"):
             raise ValueError(f"on_shortfall must be 'flag' or 'raise', got {on_shortfall!r}")
         prec = self.prec if prec is None else check_prec(prec)
+        if objective is not None and getattr(objective, "pencil", None) is not self._pencil:
+            # Certification reads THIS solver's pencil (`certify_levels`), so a search driven
+            # through another pencil's objective -- or a bare callable -- would certify levels it
+            # did not find there (2026-10-27).
+            raise ValueError("objective= must be this solver's own (self.objective(a, b)): "
+                             "certification reads this solver's pencil")
         obj = self.objective(a, b, prec=prec) if objective is None else objective
-        res = solve(obj, prec=prec, abort_unmet=(on_shortfall == "raise"))
+        res = solve(obj, prec=prec, abort_unmet=(on_shortfall == "raise"),
+                    stable_rank=stable_rank)
         if self.certify and res.levels:
             res = self.certify_levels(res, lam_max=float(b), prec=prec)
         res = self.audit_count(res, a, b)
@@ -423,7 +434,9 @@ class MPSEigensolver(Eigensolver, Frozen):
             origins = certify.x0_probes(self.domain, iq.x0)
             levels = []
             for L in res.levels:
-                fc = p.family_coef(L.lam, p.coef(L.lam, int(L.mult)))
+                # At the rank the level was refined at, when a stage froze one (`Level.rank`).
+                fc = p.family_coef(L.lam, p.coef(L.lam, int(L.mult),
+                                                 rank=getattr(L, "rank", None)))
                 cd = cauchy.cauchy_data(p.basis, fc, L.lam, iq.quad)
                 k = lam_to_k(L.lam)
 
@@ -480,7 +493,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         prec = self.prec if prec is None else check_prec(prec)
         lam, m = float(level.lam), int(level.mult)
         p = self._pencil
-        fc = p.family_coef(lam, p.coef(lam, m))
+        fc = p.family_coef(lam, p.coef(lam, m, rank=getattr(level, "rank", None)))
         iq = self._integral_quad(lam, prec)
         cd = cauchy.cauchy_data(p.basis, fc, lam, iq.quad)
         G = identities.gram(cd, iq.x0)

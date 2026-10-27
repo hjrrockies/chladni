@@ -49,7 +49,7 @@ import numpy as np
 from .._core import PREC
 from .policy import Policy
 
-__all__ = ["Objective", "Declined", "Evaluation"]
+__all__ = ["Objective", "Declined", "Evaluation", "PolicyView"]
 
 
 class Evaluation(NamedTuple):
@@ -133,6 +133,10 @@ class Objective:
             raise TypeError("policy_tensions must be callable or None")
         self._batch = batch
         self._pf = policy_tensions
+        #: The `MPSPencil` this objective evaluates, when built by `from_pencil`; None for a bare
+        #: callable. `MPSEigensolver.search_interval` refuses an objective whose pencil is not its
+        #: own, because certification reads that solver's pencil.
+        self.pencil = None
         lo, hi = float(lo), float(hi)
         if not np.isfinite(lo) or not np.isfinite(hi) or not lo < hi:
             raise ValueError(f"need a finite interval with lo < hi, got ({lo}, {hi})")
@@ -201,6 +205,13 @@ class Objective:
         is read from two of these, never from a matrix."""
         return self._spec.get(float(x))
 
+    def spectra_near(self, x, radius):
+        """`[(x_i, spectrum_i), ...]` recorded within `radius` of `x` (in this objective's
+        variable), nearest first."""
+        x = float(x)
+        near = [(abs(k - x), k) for k in self._spec if abs(k - x) <= radius]
+        return [(k, self._spec[k]) for _, k in sorted(near)]
+
     def tensions_many(self, xs):
         """The vectors at each of `xs`, as a list. Misses are evaluated together -- through
         `batch` when the objective has one, else one by one -- and stored in input order, so
@@ -247,18 +258,18 @@ class Objective:
         self._mode_cache[key] = u
         return u
 
-    def tension(self, x):
+    def tension(self, x, policy=None):
         """`sigma_1` at `x`. The objective a locator minimizes -- as its SQUARE."""
-        return float(self.tensions(x)[0])
+        return float(self.tensions(x, policy)[0])
 
-    def sigma(self, x, j):
+    def sigma(self, x, j, policy=None):
         """`sigma_{j+1}` at `x`, zero-indexed, `inf` past the retained rank.
 
         `inf` rather than an IndexError because the rank is re-derived at every parameter and
         so the vector length moves: a gate asking for `sigma_2` where only one direction
         survived should read "no neighbour anywhere near", which is what `inf` says.
         """
-        v = self.tensions(x)
+        v = self.tensions(x, policy)
         return float(v[j]) if j < v.size else float("inf")
 
     # --- cost and history ------------------------------------------------------------------
@@ -430,7 +441,9 @@ class Objective:
         kw.setdefault("modes", modes)
         kw.setdefault("batch", batch)
         kw.setdefault("policy_tensions", policy_tensions)
-        return cls(tensions, lo, hi, variable=variable, **kw)
+        obj = cls(tensions, lo, hi, variable=variable, **kw)
+        obj.pencil = pencil
+        return obj
 
     def in_lam(self, x):
         """`x` as a `lam`, whichever variable this objective is parameterized by."""
@@ -455,3 +468,71 @@ class Objective:
     def __repr__(self):
         return (f"Objective({self.variable}=[{self.lo:.6g}, {self.hi:.6g}], "
                 f"prec={self.prec:.1e}, {self.n_evals} evals)")
+
+
+class PolicyView:
+    """An `Objective` read under one `Policy`: the same window, variable, cache and counters,
+    every tension asked at that policy. What a stage that froze a rank around one root hands
+    `refine` and the multiplicity count, so neither needs to know policies exist and neither can
+    mix a value read under another (`samples` is this policy's only)."""
+
+    def __init__(self, objective, policy, cell=None):
+        self._o = objective
+        self.policy = Policy.normalize(policy)
+        #: `(lo, hi)` in `lam`, or None. `samples` is restricted to it: a rank frozen around one
+        #: root is a statement about that root's cell, and another root's cell read at the same
+        #: rank is a different pencil's neighbourhood -- its samples sit on ANOTHER eigenvalue,
+        #: where the tension is near zero, and read as this root's flanks they cut a real branch
+        #: (the L-shape's 49.348 double read 1, 2026-10-27).
+        self.cell = None if cell is None else (float(cell[0]), float(cell[1]))
+        self.lo, self.hi, self.prec = objective.lo, objective.hi, objective.prec
+        self.variable = objective.variable
+        self.pencil = getattr(objective, "pencil", None)
+
+    def tensions(self, x):
+        return self._o.tensions(x, self.policy)
+
+    def tensions_many(self, xs):
+        return [self.tensions(x) for x in xs]
+
+    def tension(self, x):
+        return float(self.tensions(x)[0])
+
+    def sigma(self, x, j):
+        v = self.tensions(x)
+        return float(v[j]) if j < v.size else float("inf")
+
+    @property
+    def samples(self):
+        xs, vs = self._o.samples_for(self.policy)
+        if self.cell is None or xs.size == 0:
+            return xs, vs
+        lam = np.array([self._o.in_lam(x) for x in xs])
+        keep = (lam >= self.cell[0]) & (lam <= self.cell[1])
+        return xs[keep], vs[keep]
+
+    @property
+    def n_evals(self):
+        return self._o.n_evals
+
+    @property
+    def n_calls(self):
+        return self._o.n_calls
+
+    def spectrum(self, x):
+        return self._o.spectrum(x)
+
+    def expected_count(self, lo=None, hi=None):
+        return self._o.expected_count(lo, hi)
+
+    def in_lam(self, x):
+        return self._o.in_lam(x)
+
+    def from_lam(self, lam):
+        return self._o.from_lam(lam)
+
+    def in_lam_bracket(self, lo, hi):
+        return self._o.in_lam_bracket(lo, hi)
+
+    def __repr__(self):
+        return f"PolicyView({self._o!r}, {self.policy})"

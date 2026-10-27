@@ -404,6 +404,23 @@ def wide_bracket_for(samples_lam, lam, sigma_1, c, *, factor=WIDE_FACTOR, prec=N
     #   multiplicity 2 -- has `neighbour` small but far above the flat bottom. Capping on
     #   "further than `eps/c`" therefore pulled the flanks INSIDE the pair, (C2) saw one branch,
     #   and the level under-read: 3 declared against 4 true on the `b=0.5` crossover case.
+    reach = wide_reach(lam, sigma_1, c, factor=factor, prec=prec, neighbour=neighbour)
+    left = xs[xs < lam]
+    right = xs[xs > lam]
+    if left.size == 0 or right.size == 0:
+        return None
+    far_l = left[lam - left >= reach]
+    far_r = right[right - lam >= reach]
+    lo = float(far_l.max()) if far_l.size else float(left.min())
+    hi = float(far_r.min()) if far_r.size else float(right.max())
+    return lo, hi
+
+
+def wide_reach(lam, sigma_1, c, *, factor=WIDE_FACTOR, prec=None, neighbour=None):
+    """How far out `wide_bracket_for` looks for its flanks: the three constraints its docstring
+    states (moved past `eps/c`, past the root's own uncertainty, short of a distinct neighbour).
+    Split out so a stage that has no flank samples yet can PLACE them at this distance
+    (`search._rerank`, 2026-10-27)."""
     moved = factor * (float(sigma_1) / c) if c > 0 else 0.0
     reach = moved
     if prec is not None:
@@ -414,15 +431,7 @@ def wide_bracket_for(samples_lam, lam, sigma_1, c, *, factor=WIDE_FACTOR, prec=N
     if (neighbour is not None and np.isfinite(neighbour) and neighbour > licence
             and neighbour > 2.0 * moved):
         reach = max(min(reach, 0.5 * float(neighbour)), moved)
-    left = xs[xs < lam]
-    right = xs[xs > lam]
-    if left.size == 0 or right.size == 0:
-        return None
-    far_l = left[lam - left >= reach]
-    far_r = right[right - lam >= reach]
-    lo = float(far_l.max()) if far_l.size else float(left.min())
-    hi = float(far_r.min()) if far_r.size else float(right.max())
-    return lo, hi
+    return reach
 
 
 def _local_slope(v_lo, v_hi, lo, hi):

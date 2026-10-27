@@ -77,9 +77,12 @@ from typing import Optional
 import numpy as np
 
 from .bracket import bracket_interval
+from .multiplicity import wide_reach
 from .multiplicity import (BIAS_HI_CACHE, BIAS_LO_CACHE, COUNT_BELOW_CACHE, MAX_BRANCHES,
                            PROMINENCE, REJECT_ABOVE_CACHE, SIDE_RATIO, multiplicity,
                            wide_bracket_for)
+from .objective import PolicyView
+from .policy import CELL_RHO, Policy, stable_rank
 from .refine import DELTA_SAFETY, refine
 
 __all__ = ["Level", "SolveResult", "SolveDiagnostics", "solve"]
@@ -362,6 +365,12 @@ class SolveDiagnostics:
     probe_evals: int = 0
     #: The side search's refinements, when a count declines and the partner is LOCATED instead.
     side_evals: int = 0
+    #: `solve(stable_rank=True)` only: evaluations spent re-refining roots at their stable rank
+    #: (the stability pair where the search had none, and the refine in each root's cell), and
+    #: how many roots were re-refined / kept at the threshold because the re-refine refused.
+    rerank_evals: int = 0
+    n_reranked: int = 0
+    n_rerank_refused: int = 0
     evaluations: int = 0
     declined: bool = False
     decline_reason: str = ""
@@ -1076,7 +1085,80 @@ def _level_for(r, bracket, wb, m, n_roots, uncertain, claim_reason, count_decide
                      if amb else ""))
 
 
-def solve(obj, *, prec=None, abort_unmet=False):
+def _stable_rank_at(obj, lam):
+    """The stable rank at a located root, or None when it is the threshold rank there (no noise
+    tail: nothing to freeze) or cannot be read (an objective with no spectra).
+
+    Read from the two recorded spectra nearest the root within its cell, `lam (1 +/- CELL_RHO)`:
+    the refiner has nearly always left several there. Where it has not, ONE evaluation at
+    `lam (1 + 1e-8)` supplies the pair; it is charged to `rerank_evals`."""
+    if not hasattr(obj, "spectra_near"):
+        return None
+    x = obj.from_lam(lam)
+    radius = abs(obj.from_lam(lam * (1.0 + CELL_RHO)) - x)
+    near = obj.spectra_near(x, radius)
+    if len(near) < 2:
+        obj.tensions(obj.from_lam(lam * (1.0 + 1e-8)))
+        near = obj.spectra_near(x, radius)
+    if len(near) < 2:
+        return None
+    (xa, sa), (xb, sb) = near[0], near[1]
+    cap = min(np.atleast_1d(obj.tensions(xa)).size, np.atleast_1d(obj.tensions(xb)).size)
+    r = stable_rank(sa, sb, cap)
+    return r if 0 < r < cap else None
+
+
+def _place_flanks(view, r, cell, prec):
+    """Make sure the frozen view has a sample on each side of the root at the (C2) reach.
+
+    Stage 3 reads the multiplicity at the root's frozen rank, from samples in its cell only. The
+    re-refine leaves samples right at the root, inside the flat bottom, where (C2) would read the
+    floor against itself; `wide_bracket_for` then falls back to them and under-reads. So where a
+    side has no sample at `wide_reach` (and inside the cell), ONE evaluation is placed there: at
+    most two per re-refined root, charged to `rerank_evals`."""
+    lams, vs = _samples(view)
+    c = _slope_from_cache(lams, vs, r.lam, floor=r.sigma)
+    if not c > 0:
+        return
+    s2 = view.sigma(view.from_lam(r.lam), 1)
+    reach = wide_reach(r.lam, r.sigma, c, prec=prec,
+                       neighbour=(s2 / c) if np.isfinite(s2) else None)
+    for side in (-1.0, 1.0):
+        have = lams[(side * (lams - r.lam)) >= reach] if lams.size else lams
+        if have.size:
+            continue
+        z = r.lam + side * 1.25 * reach
+        z = min(max(z, cell[0]), cell[1])
+        if side * (z - r.lam) > 0:
+            view.tensions(view.from_lam(z))
+
+
+def _rerank(obj, located, prec):
+    """Stage 2b, `solve(stable_rank=True)`: re-refine each located root whose cell has a noise
+    tail at the STABLE rank, frozen in that cell. `(located, views, refused)`: the located list
+    with re-refined roots in place, `views[id(root)] = (PolicyView, rank)` for each re-refined
+    root, and how many re-refines refused (those roots keep their threshold result)."""
+    views, out, refused = {}, [], 0
+    for (r, bracket), n_roots in located:
+        rank = _stable_rank_at(obj, r.lam)
+        if rank is None:
+            out.append(((r, bracket), n_roots))
+            continue
+        cell = (r.lam * (1.0 - CELL_RHO), r.lam * (1.0 + CELL_RHO))
+        view = PolicyView(obj, Policy.frozen(rank), cell=cell)
+        a, b = max(bracket[0], cell[0]), min(bracket[1], cell[1])
+        r2 = refine(view, a, b, prec=prec, lam_hint=r.lam, interior=(a, b))
+        if r2.accepted:
+            _place_flanks(view, r2, cell, prec)
+            views[id(r2)] = (view, rank)
+            out.append(((r2, bracket), n_roots))
+        else:
+            refused += 1
+            out.append(((r, bracket), n_roots))
+    return out, views, refused
+
+
+def solve(obj, *, prec=None, abort_unmet=False, stable_rank=False):
     """Locate every eigenvalue in the objective's window, with its multiplicity.
 
     All three stages share one `Objective`, so the cost is the union of what they sampled and
@@ -1102,6 +1184,13 @@ def solve(obj, *, prec=None, abort_unmet=False):
 
     `abort_unmet` raises `PrecisionShortfall` at the first refined level that misses `prec`
     (`_abort_if_unmet`), which the planner's ladder climb uses.
+
+    `stable_rank=True` (stage-policy step 4, OFF by default, 2026-10-27): after the refine stage,
+    each root whose cell has a noise tail -- the threshold rank above the stable rank read from
+    two recorded spectra -- is re-refined in its cell `lam (1 +/- CELL_RHO)` with the rank FROZEN
+    at the stable rank, and its multiplicity is read at that rank only; its levels carry
+    `Level.rank`. Roots without a tail are untouched. With it on, `abort_unmet` is applied after
+    the re-refine, since the threshold's verdict is the one being replaced.
     """
     prec = obj.prec if prec is None else float(prec)
 
@@ -1119,25 +1208,44 @@ def solve(obj, *, prec=None, abort_unmet=False):
     # Stage 2. `bracket_interval` returns brackets in the objective's OWN variable, so this
     # converts once, here, to the `lam` the refiner works in.
     mark = obj.n_evals
-    located, refused = _refine_stage(obj, res, prec, abort_unmet)
+    located, refused = _refine_stage(obj, res, prec, abort_unmet and not stable_rank)
     rejected = len(refused)
     refine_evals = obj.n_evals - mark
     located, merged = _group_roots(obj, located, prec)
+
+    views, rerank_evals, n_reranked, n_rerank_refused = {}, 0, 0, 0
+    if stable_rank:
+        mark = obj.n_evals
+        located, views, n_rerank_refused = _rerank(obj, located, prec)
+        rerank_evals, n_reranked = obj.n_evals - mark, len(views)
+        if abort_unmet:
+            done = []
+            for (r, bracket), _ in located:
+                done.append((r, bracket))
+                _abort_if_unmet(r, bracket, done, prec)
 
     mark = obj.n_evals
     lams, svals = _samples(obj)
     levels, probe_evals, side_evals = [], 0, 0
     queue = [_Root(r, bracket, n_roots) for (r, bracket), n_roots in located]
     while queue:
-        out = _count_root(obj, queue.pop(0), lams, svals, located, prec)
+        item = queue.pop(0)
+        view, rank = views.get(id(item.r), (None, None))
+        if view is None:
+            out = _count_root(obj, item, lams, svals, located, prec)
+        else:
+            out = _count_root(view, item, *_samples(view), located, prec)
         probe_evals += out.probe_evals
         side_evals += out.side_evals
         if out.recentre is not None:
             located = out.located
             lams, svals = _samples(obj)
+            if view is not None:
+                views[id(out.recentre.r)] = (view, rank)
             queue.insert(0, out.recentre)
             continue
-        levels.extend(out.levels)
+        levels.extend(out.levels if rank is None
+                      else (replace(x, rank=rank) for x in out.levels))
     levels.sort(key=lambda x: x.lam)
 
     levels, uncertain = _flag_uncertain_counts(levels, folds_are_duplicates=True)
@@ -1149,6 +1257,7 @@ def solve(obj, *, prec=None, abort_unmet=False):
         search=sd, n_brackets=len(res.brackets), n_rejected=rejected, n_merged=merged,
         search_evals=search_evals, refine_evals=refine_evals,
         multiplicity_evals=mult_evals, probe_evals=probe_evals, side_evals=side_evals,
+        rerank_evals=rerank_evals, n_reranked=n_reranked, n_rerank_refused=n_rerank_refused,
         evaluations=obj.n_evals, rejected_deep=deep,
         n_uncertain=len(uncertain) + len(deep),
         uncertain=(tuple((x.lam, x.mult, x.count_alt, x.uncertain_reason) for x in uncertain)
