@@ -4,8 +4,9 @@ path and with `stable_rank=True`. The same runner and scoring as the baseline se
 `notes/stage_policy_baseline.py douse_e1` (branch claude/fervent-wiles-d26d63), kept self-contained
 here so neither writes into the other's folder.
 
-usage: python notes/stage_policy_step4_douse.py PREC [WORKERS]
-Writes notes/stage_policy_step4_douse_<prec>.json and prints the tally per mode.
+usage: python notes/stage_policy_step4_douse.py PREC [WORKERS] [MODES]
+MODES: comma-separated from shipped, stable (step 4), coarse (step 5); default shipped,stable.
+Writes notes/stage_policy_step4_douse_<prec>_<modes>.json and prints the tally per mode.
 """
 import json, os, sys, time
 from concurrent.futures import ProcessPoolExecutor
@@ -23,7 +24,7 @@ def run(args):
     import make_references as MR
     import scoreboard  # noqa: F401 -- registers basis "D"
     from chladni.mps import MPSEigensolver
-    case, window, jit, prec, stable = args
+    case, window, jit, prec, mode = args
     lo, hi = window[0] * (1 + jit[0]), window[1] * (1 + jit[1])
     dom = MR.polygon(case["vertices"])
     b = MR.basis_for(dom, "D", np.sqrt(hi))
@@ -31,12 +32,13 @@ def run(args):
     t0 = time.perf_counter()
     try:
         s = MPSEigensolver(dom, basis=b, n_bdry=3 * n, n_int=n, prec=prec, rng=0)
-        res = s.search_interval(lo, hi, stable_rank=stable)
+        res = s.search_interval(lo, hi, stable_rank=(mode == "stable"),
+                                coarse_bracket=(mode == "coarse"))
     except Exception as e:  # noqa: BLE001 -- a crash is a scored outcome
-        return dict(id=case["id"], jit=list(jit), stable=stable, error=repr(e)[:300],
+        return dict(id=case["id"], jit=list(jit), stable=mode, error=repr(e)[:300],
                     wall=time.perf_counter() - t0)
     d = res.diagnostics
-    return dict(id=case["id"], jit=list(jit), stable=stable, wall=time.perf_counter() - t0,
+    return dict(id=case["id"], jit=list(jit), stable=mode, wall=time.perf_counter() - t0,
                 declined=bool(d.declined), unmet=len(d.unmet), n_uncertain=int(d.n_uncertain),
                 evals=int(d.evaluations), rerank_evals=int(d.rerank_evals),
                 n_reranked=int(d.n_reranked), n_rerank_refused=int(d.n_rerank_refused),
@@ -49,7 +51,7 @@ def report(runs, prec, refs):
     import regularization_1e10 as R
     import scoreboard as SB
     R.PREC = prec
-    for stable in (False, True):
+    for stable in dict.fromkeys(r["stable"] for r in runs):
         rr = [r for r in runs if r["stable"] == stable]
         tally = dict(ok=0, flagged=0, silent=0, declined=0, crash=0, unscored=0)
         rel, tight, sig = [], [], {}
@@ -72,7 +74,7 @@ def report(runs, prec, refs):
         roots = [r.get("n_reranked", 0) for r in rr if "evals" in r]
         refused = [r.get("n_rerank_refused", 0) for r in rr if "evals" in r]
         stab = sum(len(set(v)) == 1 for v in sig.values())
-        print(f"{'stable' if stable else 'threshold':9s} prec {prec:g}: {tally}  stable-across-jitter "
+        print(f"{str(stable):9s} prec {prec:g}: {tally}  stable-across-jitter "
               f"{stab}/{len(sig)}; bound/err median {np.median(tight):.1f}; rel bound median "
               f"{np.median(rel):.2e} p90 {np.percentile(rel, 90):.2e}; evals total {sum(ev)} "
               f"(rerank {sum(rer)} over {sum(roots)} roots, {sum(refused)} refused)")
@@ -89,11 +91,13 @@ if __name__ == "__main__":
     cases = {c["id"]: c for c in MR.load_cases()}
     refs = {r["id"]: r for r in json.load(open(os.path.join(ROOT, "benchmarks", "douse",
                                                             "references.json")))["cases"]}
-    jobs = [(cases[i], refs[i]["window"], j, prec, st) for st in (False, True)
+    modes = (sys.argv[3] if len(sys.argv) > 3 else "shipped,stable").split(",")
+    jobs = [(cases[i], refs[i]["window"], j, prec, m) for m in modes
             for i in refs for j in SB.JITTERS]
     t0 = time.time()
     with ProcessPoolExecutor(workers) as ex:
         runs = list(ex.map(run, jobs))
     json.dump(dict(date="2026-10-27", prec=prec, wall_total=time.time() - t0, runs=runs),
-              open(os.path.join(HERE, f"stage_policy_step4_douse_{prec:g}.json"), "w"), indent=1)
+              open(os.path.join(HERE, f"stage_policy_step4_douse_{prec:g}_{'-'.join(modes)}.json"),
+                   "w"), indent=1)
     report(runs, prec, refs)

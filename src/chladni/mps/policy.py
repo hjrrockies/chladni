@@ -43,7 +43,35 @@ STABLE_TOL = 1e-2
 #: search's own samples inside it.
 CELL_RHO = 3e-4
 
-__all__ = ["Policy", "TAU_REL", "STABLE_TOL", "CELL_RHO", "stable_rank"]
+#: Pairs closer than this (relative) measure noise and nothing else: the head of the spectrum moves
+#: < 1e-6 relative at any spacing up to ~3e-4, so at 1e-6 its movement is far below `STABLE_TOL`.
+PAIR_ETA = 1e-6
+
+__all__ = ["Policy", "TAU_REL", "STABLE_TOL", "CELL_RHO", "PAIR_ETA", "stable_rank",
+           "stable_rank_of"]
+
+
+def stable_rank_of(spectra, cap=None, tol=STABLE_TOL):
+    """The stable rank from SEVERAL nearby spectra: the count before the first index whose MEDIAN
+    relative movement over consecutive pairs exceeds `tol`, at most `cap`. `spectra` is a sequence
+    of descending vectors at nearby `lam` (ordered by `lam`), at least two.
+
+    One pair is one sample of the rounding noise, and directions at the tail's edge flicker: on the
+    regular octagon (douse T1.4-oct) indices 92-95, at 1.5-1.8e-11 x sigma_1, moved 1e-4 .. 2e-3
+    between most pairs and > 1e-2 between one, which cut them; they carry real content -- cut, the
+    floor at the double at 79.02 rose 20x and the double split into two unmet levels (2026-10-27).
+    The tail proper moves 10-40% between EVERY pair, so a median keeps that cut and drops the
+    flicker."""
+    vs = [np.asarray(x, dtype=float) for x in spectra]
+    if len(vs) < 2:
+        raise ValueError("the stable rank needs at least two spectra")
+    n = min(v.size for v in vs)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rel = np.array([np.abs(a[:n] - b[:n]) / np.abs(a[:n]) for a, b in zip(vs[:-1], vs[1:])])
+    rel = np.where(np.isfinite(rel), rel, np.inf)
+    moved = ~(np.median(rel, axis=0) <= tol)
+    r = int(np.argmax(moved)) if moved.any() else n
+    return r if cap is None else min(r, int(cap))
 
 
 def stable_rank(s_a, s_b, cap=None, tol=STABLE_TOL):

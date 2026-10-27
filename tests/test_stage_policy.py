@@ -321,7 +321,7 @@ def test_the_stable_rank_search_keeps_the_l_shapes_spectrum():
     d = b.diagnostics
     assert d.n_reranked > 0 and d.n_rerank_refused == 0
     assert all((L.rank is None) or (0 < L.rank < 203) for L in b.levels)
-    assert d.rerank_evals <= 6 * d.n_reranked
+    assert d.rerank_evals <= 8 * d.n_reranked
     assert d.multiplicity_evals == a.diagnostics.multiplicity_evals == 0
 
 
@@ -356,3 +356,23 @@ def test_coarse_bracketing_solves_the_triangle_the_threshold_declines():
         assert abs(L.lam - r) <= max(L.bound, 2e-10 * r) and L.met(1e-10)
     # lam_1 has no noise tail and keeps the threshold path; the levels above it have one.
     assert d.n_reranked >= 15 and lv[0].rank is None
+
+
+def test_the_median_over_pairs_ignores_a_single_flicker():
+    """One pair is one sample of the rounding noise: at the tail's edge a real direction can move
+    past the tolerance between one pair and not the others (douse T1.4-oct, indices 92-95). The
+    median over every close pair keeps it; a tail that moves between every pair is still cut."""
+    from chladni.mps.policy import stable_rank_of
+    base = np.array([1.0, 1e-3, 1e-6, 2e-11, 1e-12, 8e-13])
+    rng = np.random.default_rng(0)
+    spectra = []
+    for i in range(7):
+        v = base.copy()
+        v[4:] *= 1.0 + 0.2 * rng.standard_normal(2)      # the tail: noise between every pair
+        if i == 3:
+            v[3] *= 1.05                                 # one flicker at the edge
+        spectra.append(v)
+    assert stable_rank_of(spectra) == 4
+    assert stable_rank_of(spectra[2:5]) == 3             # three spectra, two of the pairs see it
+    with pytest.raises(ValueError):
+        stable_rank_of(spectra[:1])

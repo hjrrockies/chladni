@@ -65,4 +65,47 @@ Gate so far:
   plane-wave rectangle pencils have no noise tail (`notes/knee_generalize_results.txt`) -- so the two
   paths are identical: 131 right, 1 SILENT at 125pi^2 (present on the shipped path too; the baseline
   session records the same cell). The grids cannot exercise step 4.
-- **douse benchmark** (basis D, 41 cases x 5 jitters): see below.
+- **douse benchmark, first version (one pair per root)** (`notes/stage_policy_step4_douse.py`,
+  basis D, 41 cases x 5 jitters, 1e-10, data `..._1e-10_v1-pair-rule.json`):
+
+  | | ok | flagged | silent | evaluations |
+  |---|---|---|---|---|
+  | shipped (threshold) | 161 | 1 | 13 | 57,043 |
+  | stable rank, one pair | 164 | 2 | 9 | 63,698 (+12%; 9.0 per re-refined root) |
+
+  The shipped row matches the baseline session's exactly. Fixed: T1.5-r2 (2 silent), T1.2 (2 silent
+  -> flagged), T2.9-N5k3convex (flag -> ok). **New silent: T1.4-oct, last jitter** -- the regular
+  octagon's double at 79.02 split into two levels of multiplicity 1, one unmet.
+
+**Why, and the fix: one pair is one sample of the noise.** The stable rank there came out 92 from the
+root and a refine sample 4e-11 away; the same root reads 96 from a pair at any spacing 1e-12 .. 1e-4
+in a standalone check. Indices 92-95 (1.5-1.8e-11 x sigma_1) move 1e-4 .. 2e-3 between most pairs and
+> 1e-2 between one: they flicker at the tail's edge but carry real content (cut, the floor at the
+double rose 20x). The rank is now read from EVERY recorded spectrum within `PAIR_ETA = 1e-6` of the
+root (41 there), cutting at the first index whose MEDIAN movement over consecutive pairs exceeds
+`STABLE_TOL` (`policy.stable_rank_of`). The tail proper moves 10-40% between every pair, so the median
+keeps that cut. With it, the octagon reads the double as 2 at rank 96, met; the apex lightning and
+L-shape results of step 5 are unchanged.
+
+Also observed: under multi-threaded BLAS the SHIPPED path is not run-to-run deterministic (L-shape
+rung 0, worst bound 8.9e-12 in one run and 2.4e-11 in another, 465 vs 470 evaluations): the threshold
+rank's flutter at work. The single-threaded identity checks are bit-exact; CI pins one thread.
+
+## Step 5: bracketing on the coarse penalty (4f8ba47, opt-in)
+
+`solve(coarse_bracket=True)`: stage 1 through `PolicyView(obj, Policy.penalty())`, asked for
+`max(prec, 10 tau)`; stage 2 refines each bracket at the stable rank read at its coarse minimum,
+frozen over the bracket (brackets holding one level are wide on purpose; the stable rank drifts by a
+few over a factor of three in lam); threshold refine where there is no tail or the frozen refine
+refuses; stage 3 at each root's rank.
+
+| case (n = 15 prefix, 1e-10) | shipped | coarse bracketing |
+|---|---|---|
+| apex (0.1, 0.25), lightning rung | DECLINED, 2113 evals | 23 levels, all met, worst bound 3.9e-11, min margin 5.1, max err 4.6e-11, 448 evals |
+| L-shape rung 0 | 22 counted, all met, 465-470 evals | 22 counted, all met, worst bound 7.7e-12, 424 evals |
+
+Coarse bracketing alone (`notes/stage_policy_step5_probe.py`): the apex lightning basis settles in
+224 evaluations, 23 brackets, every reference value inside one; the L-shape in 242, both doubles
+inside single brackets.
+
+douse benchmark for steps 4 (median rule) and 5: running.

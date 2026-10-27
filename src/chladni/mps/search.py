@@ -82,7 +82,7 @@ from .multiplicity import (BIAS_HI_CACHE, BIAS_LO_CACHE, COUNT_BELOW_CACHE, MAX_
                            PROMINENCE, REJECT_ABOVE_CACHE, SIDE_RATIO, multiplicity,
                            wide_bracket_for)
 from .objective import PolicyView
-from .policy import CELL_RHO, TAU_REL, Policy, stable_rank
+from .policy import CELL_RHO, PAIR_ETA, TAU_REL, Policy, stable_rank_of
 from .refine import DELTA_SAFETY, refine
 
 __all__ = ["Level", "SolveResult", "SolveDiagnostics", "solve"]
@@ -1087,26 +1087,10 @@ def _level_for(r, bracket, wb, m, n_roots, uncertain, claim_reason, count_decide
 
 
 def _stable_rank_at(obj, lam):
-    """The stable rank at a located root, or None when it is the threshold rank there (no noise
-    tail: nothing to freeze) or cannot be read (an objective with no spectra).
-
-    Read from the two recorded spectra nearest the root within its cell, `lam (1 +/- CELL_RHO)`:
-    the refiner has nearly always left several there. Where it has not, ONE evaluation at
-    `lam (1 + 1e-8)` supplies the pair; it is charged to `rerank_evals`."""
+    """The stable rank at a located root, or None (see `_stable_rank_near`)."""
     if not hasattr(obj, "spectra_near"):
         return None
-    x = obj.from_lam(lam)
-    radius = abs(obj.from_lam(lam * (1.0 + CELL_RHO)) - x)
-    near = obj.spectra_near(x, radius)
-    if len(near) < 2:
-        obj.tensions(obj.from_lam(lam * (1.0 + 1e-8)))
-        near = obj.spectra_near(x, radius)
-    if len(near) < 2:
-        return None
-    (xa, sa), (xb, sb) = near[0], near[1]
-    cap = min(np.atleast_1d(obj.tensions(xa)).size, np.atleast_1d(obj.tensions(xb)).size)
-    r = stable_rank(sa, sb, cap)
-    return r if 0 < r < cap else None
+    return _stable_rank_near(obj, lam)[0]
 
 
 def _place_flanks(view, r, cell, prec):
@@ -1150,23 +1134,29 @@ def _threshold_rank_of(obj, spectrum):
     return int(np.sum(spectrum >= rtol * spectrum[0]))
 
 
-def _stable_rank_near(obj, lam):
-    """The stable rank near `lam` from any two recorded spectra within its cell (the spectrum is the
-    stack's, so it does not depend on the policy an evaluation was made under), at most the
-    threshold rank there; one evaluation at `lam (1 + 1e-8)` if fewer than two are recorded.
-    `(rank, cap)`, or `(None, cap)` where there is no tail to freeze."""
+def _close_spectra(obj, lam):
+    """The recorded spectra within `PAIR_ETA` (relative) of `lam`, ordered by `lam`. Where fewer
+    than two are recorded, ONE evaluation at `lam (1 + 1e-8)` adds one, charged to the caller's
+    stage (the spectrum is the stack's: the policy it is read under does not change it)."""
     x = obj.from_lam(lam)
-    radius = abs(obj.from_lam(lam * (1.0 + CELL_RHO)) - x)
+    radius = abs(obj.from_lam(lam * (1.0 + PAIR_ETA)) - x)
     near = obj.spectra_near(x, radius)
     if len(near) < 2:
         PolicyView(obj, Policy.penalty()).tensions(obj.from_lam(lam * (1.0 + 1e-8)))
         near = obj.spectra_near(x, radius)
+    return sorted(near, key=lambda p: p[0])
+
+
+def _stable_rank_near(obj, lam):
+    """`(rank, cap)`: the stable rank near `lam` -- the MEDIAN movement per index over every close
+    pair (`policy.stable_rank_of`) -- at most `cap`, the threshold rank there; rank None where it is
+    the threshold rank (no tail: nothing to freeze) or cannot be read."""
+    near = _close_spectra(obj, lam)
     if len(near) < 2:
         return None, None
-    (xa, sa), (xb, sb) = near[0], near[1]
-    caps = [c for c in (_threshold_rank_of(obj, sa), _threshold_rank_of(obj, sb)) if c]
+    caps = [c for c in (_threshold_rank_of(obj, sp) for _, sp in near) if c]
     cap = min(caps) if caps else None
-    r = stable_rank(sa, sb, cap)
+    r = stable_rank_of([sp for _, sp in near], cap)
     return (r if (cap is None or r < cap) and r > 0 else None), cap
 
 
