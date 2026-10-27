@@ -42,12 +42,23 @@ from __future__ import annotations
 
 import concurrent.futures as cf
 import os
+from typing import NamedTuple, Optional
 
 import numpy as np
 
 from .._core import PREC
+from .policy import Policy
 
-__all__ = ["Objective", "Declined"]
+__all__ = ["Objective", "Declined", "Evaluation"]
+
+
+class Evaluation(NamedTuple):
+    """What one evaluation can hand the objective besides the tension vector: the stack's
+    singular values at the same point (`MPSPencil.spectrum`), a VECTOR. A tension callable may
+    return one of these instead of a bare vector; a bare vector still works, with no spectrum."""
+
+    tensions: np.ndarray
+    spectrum: Optional[np.ndarray] = None
 
 
 class Declined:
@@ -110,14 +121,18 @@ class Objective:
     """
 
     def __init__(self, tensions, lo, hi, *, prec=PREC, variable="k",
-                 expected_count=None, max_cache=None, modes=None, batch=None):
+                 expected_count=None, max_cache=None, modes=None, batch=None,
+                 policy_tensions=None):
         if not callable(tensions):
             raise TypeError("tensions must be callable")
         if modes is not None and not callable(modes):
             raise TypeError("modes must be callable or None")
         if batch is not None and not callable(batch):
             raise TypeError("batch must be callable or None")
+        if policy_tensions is not None and not callable(policy_tensions):
+            raise TypeError("policy_tensions must be callable or None")
         self._batch = batch
+        self._pf = policy_tensions
         lo, hi = float(lo), float(hi)
         if not np.isfinite(lo) or not np.isfinite(hi) or not lo < hi:
             raise ValueError(f"need a finite interval with lo < hi, got ({lo}, {hi})")
@@ -133,30 +148,58 @@ class Objective:
         self._max_cache = None if max_cache is None else int(max_cache)
         self._cache = {}
         self._mode_cache = {}
+        self._spec = {}
         self._n_calls = 0
         self._n_mode_calls = 0
 
     # --- evaluation ------------------------------------------------------------------------
 
-    def tensions(self, x):
+    def tensions(self, x, policy=None):
         """The ascending vector at `x`. One evaluation returns the WHOLE vector.
 
         Reading `sigma_2` is free and carries the information that decides clustering, so the
         cache stores the vector rather than `sigma_1`: a gate that later wants `sigma_2` at a
         point the cover phase already visited must not pay for it again.
+
+        `policy` (`chladni.mps.policy.Policy`) names the rank to read at. None (or the pencil's
+        own) is keyed by `float(x)` exactly as before; any other is keyed `(x, policy.key)`, so
+        two policies' values at one `x` are never mixed, and each is charged as an evaluation.
         """
+        policy = Policy.normalize(policy)
         key = float(x)
         self._n_calls += 1
-        hit = self._cache.get(key)
+        ckey = key if policy is None else (key, policy.key)
+        hit = self._cache.get(ckey)
         if hit is not None:
             return hit
-        v = np.atleast_1d(np.asarray(self._f(key), dtype=float))
+        if policy is None:
+            out = self._f(key)
+        elif self._pf is None:
+            raise ValueError("this objective was built from a bare tension callable and cannot "
+                             "evaluate another policy; build it with Objective.from_pencil")
+        else:
+            out = self._pf(key, policy)
+        v = self._unpack(key, out)
         # A miss is the unit of cost. Evict only under an explicit cap: a window is ~10**3
         # evaluations and dropping one silently converts a hit into a charge.
         if self._max_cache is not None and len(self._cache) >= self._max_cache:
             self._cache.pop(next(iter(self._cache)))
-        self._cache[key] = v
+        self._cache[ckey] = v
         return v
+
+    def _unpack(self, key, out):
+        """The tension vector from what a callable returned, keeping a spectrum if it came."""
+        if isinstance(out, Evaluation):
+            if out.spectrum is not None and key not in self._spec:
+                self._spec[key] = out.spectrum
+            out = out.tensions
+        return np.atleast_1d(np.asarray(out, dtype=float))
+
+    def spectrum(self, x):
+        """The stack's singular values recorded at `x`, or None where none was: `x` not yet
+        evaluated, or an objective built from a bare tension callable. A VECTOR; the stable rank
+        is read from two of these, never from a matrix."""
+        return self._spec.get(float(x))
 
     def tensions_many(self, xs):
         """The vectors at each of `xs`, as a list. Misses are evaluated together -- through
@@ -170,7 +213,7 @@ class Objective:
         if misses:
             vals = self._batch(misses) if self._batch is not None else [self._f(k) for k in misses]
             for k, v in zip(misses, vals):
-                v = np.atleast_1d(np.asarray(v, dtype=float))
+                v = self._unpack(k, v)
                 if self._max_cache is not None and len(self._cache) >= self._max_cache:
                     self._cache.pop(next(iter(self._cache)))
                 self._cache[k] = v
@@ -287,10 +330,22 @@ class Objective:
         would hand `search._samples`, `wide_bracket_for` and the slope readers a point with no
         value, which is worse than not having it.
         """
-        if not self._cache:
+        return self.samples_for(None)
+
+    def samples_for(self, policy):
+        """`(xs, sigma_1)` over everything evaluated under `policy`, ascending in `x`.
+        `samples` is the pencil's own policy's."""
+        policy = Policy.normalize(policy)
+        if policy is None:
+            keys = [k for k in self._cache if not isinstance(k, tuple)]
+            xs = np.array(sorted(keys))
+            return (xs, np.array([self._cache[x][0] for x in xs])) if keys else (np.empty(0),
+                                                                                 np.empty(0))
+        pk = policy.key
+        keys = sorted(k[0] for k in self._cache if isinstance(k, tuple) and k[1] == pk)
+        if not keys:
             return np.empty(0), np.empty(0)
-        xs = np.array(sorted(self._cache))
-        return xs, np.array([self._cache[x][0] for x in xs])
+        return np.array(keys), np.array([self._cache[(x, pk)][0] for x in keys])
 
     def reset(self):
         """Drop the caches and the counters. A fresh cost measurement on the same callable.
@@ -301,6 +356,7 @@ class Objective:
         """
         self._cache = {}
         self._mode_cache = {}
+        self._spec = {}
         self._n_calls = 0
         self._n_mode_calls = 0
 
@@ -333,9 +389,17 @@ class Objective:
         (`DEFAULT_WORKERS` when None; 1 keeps every evaluation on the calling thread). The work
         is LAPACK, which releases the GIL; the pencil's cache tolerates concurrent writers.
         """
+        def evaluate(lam, policy=None):
+            # The spectrum is read right after the tension, on the same thread: under `"svd"` it
+            # was stored by the same factorization, so this is a cache hit, not a second SVD.
+            t = pencil.tensions(lam, policy)
+            spectrum = getattr(pencil, "spectrum", None)
+            return Evaluation(t, spectrum(lam) if spectrum is not None and
+                              getattr(pencil, "reg", None) == "svd" else None)
+
         if variable == "k":
             def tensions(k):
-                return pencil.tensions(float(k) ** 2)
+                return evaluate(float(k) ** 2)
 
             def modes(k):
                 return pencil.interior_image(float(k) ** 2)
@@ -344,7 +408,7 @@ class Objective:
                 return float(x) ** 2
         else:
             def tensions(lam):
-                return pencil.tensions(float(lam))
+                return evaluate(float(lam))
 
             def modes(lam):
                 return pencil.interior_image(float(lam))
@@ -356,12 +420,16 @@ class Objective:
         def batch(xs):
             lams = [to_lam(x) for x in xs]
             if workers == 1 or len(lams) == 1:
-                return [pencil.tensions(l) for l in lams]
+                return [evaluate(l) for l in lams]
             with cf.ThreadPoolExecutor(max_workers=min(workers, len(lams))) as ex:
-                return list(ex.map(pencil.tensions, lams))
+                return list(ex.map(evaluate, lams))
+
+        def policy_tensions(x, policy):
+            return evaluate(to_lam(x), policy)
         kw.setdefault("prec", getattr(pencil, "prec", PREC))
         kw.setdefault("modes", modes)
         kw.setdefault("batch", batch)
+        kw.setdefault("policy_tensions", policy_tensions)
         return cls(tensions, lo, hi, variable=variable, **kw)
 
     def in_lam(self, x):

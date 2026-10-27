@@ -72,6 +72,7 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass, field, replace
+from typing import Optional
 
 import numpy as np
 
@@ -206,6 +207,9 @@ class Level:
     #: The request this level was solved for. Stamped by `solve`; NaN on a Level built
     #: elsewhere, which then claims no `margin`, no `resolution` and no shortfall.
     prec: float = float("nan")
+    #: The rank the level was refined at, when a stage froze one (`chladni.mps.policy`); None
+    #: for the pencil's own policy. Certification reads the coefficients at this rank.
+    rank: Optional[int] = None
 
     @property
     def margin(self):

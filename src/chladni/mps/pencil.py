@@ -44,6 +44,7 @@ from ..helmholtz import check_k
 from . import _gsvd
 from ._regularize import (_MODES, _PENALTY, _REACH_FLOOR, _REACH_ROUNDING, C_PEN,
                           choose_rank, regularize)
+from .policy import Policy
 
 __all__ = ["MPSPencil", "assemble", "equilibrate", "RankDiagnostics"]
 
@@ -395,7 +396,49 @@ class MPSPencil(Frozen):
         B, I = self.pencil(lam)
         out = regularize(B, I, reg=self.reg, rank=self.rank, rtol=self.rtol)
         self._store(("rank", float(lam)), out.rank)
+        self._keep_spectrum(lam, out)
         return out
+
+    def _regularized_at(self, lam, rank):
+        """The `RegularizedPencil` at `lam` truncated to `rank` directions, or the pencil's own
+        when `rank` is None. A frozen rank is a truncation, so a penalty pencil refuses it."""
+        if rank is None:
+            return self.regularized(lam)
+        if self.reg in _PENALTY:
+            raise ValueError(f"reg={self.reg!r} is a penalty and chooses no rank, so it cannot be "
+                             f"read at a frozen rank")
+        B, I = self.pencil(lam)
+        out = regularize(B, I, reg=self.reg, rank=int(rank), rtol=self.rtol)
+        self._keep_spectrum(lam, out)
+        return out
+
+    def _keep_spectrum(self, lam, out):
+        """Keep the stack's singular values when the factorization just computed them: `"svd"`
+        takes the SVD of R, so they are free; the other modes compute no singular values."""
+        if self.reg == "svd" and out.s is not None:
+            s = np.asarray(out.s, dtype=float)
+            s.setflags(write=False)
+            self._store(("spec", float(lam)), s)
+
+    def spectrum(self, lam):
+        """The singular values of the equilibrated stack `[B; I]` at `lam`, descending. A VECTOR.
+
+        The stable rank (`notes/triangle_apex_planner.md` sections 9-12) is read from two of these
+        at nearby `lam`, so it needs no matrix kept. Under `reg="svd"` the evaluation that made a
+        tension already computed it, and it is cached beside the tension; under another mode it
+        costs an assembly and an SVD of the stack."""
+        key = ("spec", float(lam))
+        hit = self._cache.get(key)
+        if hit is None:
+            if self.reg == "svd":
+                self._regularized_at(lam, self.rank)
+                hit = self._cache.get(key)
+            if hit is None:                         # another mode, or evicted under threads
+                B, I = self.pencil(lam)
+                hit = la.svdvals(np.vstack([B, I]))
+                hit.setflags(write=False)
+                self._store(key, hit)
+        return hit
 
     def rank_diagnostics(self, lam):
         """The frozen rank and the singular values at `lam`, so the choice can be audited.
@@ -438,23 +481,28 @@ class MPSPencil(Frozen):
             stacklevel=3,
         )
 
-    def tensions(self, lam):
+    def tensions(self, lam, policy=None):
         """Every generalized singular value of the reduced pencil, ascending. Cached: a vector.
 
+        `policy` (`chladni.mps.policy.Policy`) names the rank to read at: None or
+        `Policy.pencil()` is the pencil's own, keyed exactly as before policies existed; a frozen
+        rank is keyed apart, so two policies at one `lam` never overwrite each other.
         Returned read-only, because the cached array is shared by every caller."""
-        key = ("tens", float(lam))
+        policy = Policy.normalize(policy)
+        key = ("tens", float(lam)) if policy is None else ("tens", float(lam), policy.key)
         hit = self._cache.get(key)
         if hit is None:
-            hit = _gsvd.tensions_of(self.regularized(lam))
+            hit = _gsvd.tensions_of(self._regularized_at(lam, None if policy is None
+                                                         else policy.rank))
             hit.setflags(write=False)
             self._store(key, hit)
         return hit
 
-    def tension(self, lam):
+    def tension(self, lam, policy=None):
         """The smallest generalized singular value: the quantity the search minimizes."""
-        return float(self.tensions(lam)[0])
+        return float(self.tensions(lam, policy)[0])
 
-    def coef(self, lam, mult=1):
+    def coef(self, lam, mult=1, rank=None):
         """The `mult` minimizing coefficient vectors, `(n_cols, mult)`, in the SCALED space.
 
         The function they name is `sum_j c_j * exp(-log_scale(lam)[j]) * psi_j`. Recovering the
@@ -473,11 +521,15 @@ class MPSPencil(Frozen):
         The penalty modes drop nothing and always return `n_cols` rows.
         Padding here too would be a one-line change to `regularize`; it is not made because
         nothing needs it and a silent shape change is worse than a documented one.
+
+        `rank` truncates at that many directions instead of the pencil's own: certification at
+        the rank a level was refined at (`Level.rank`). None is the pencil's own.
         """
-        key = ("coef", float(lam), int(mult))
+        key = (("coef", float(lam), int(mult)) if rank is None
+               else ("coef", float(lam), int(mult), int(rank)))
         hit = self._cache.get(key)
         if hit is None:
-            c = _gsvd.coef_of(self.regularized(lam), mult)
+            c = _gsvd.coef_of(self._regularized_at(lam, rank), mult)
             hit = c if c.ndim == 2 else c[:, None]
             hit.setflags(write=False)
             self._store(key, hit)
