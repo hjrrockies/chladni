@@ -184,3 +184,14 @@ def test_the_fallback_returns_the_best_ranked_rung_not_the_first(monkeypatch):
     plan, _, _, accepted = Eigenproblem(dom)._plan(15, PREC, False)
     assert not accepted and plan.rung == 2 and full == [2]
     assert len(LADDER) > 2
+
+
+@pytest.mark.slow
+def test_coarse_bracketing_through_the_planner_meets_the_L_shape_table():
+    """Stage-policy step 5 through the black-box path (`Eigenproblem(coarse_bracket=True)`): the
+    same contract as the shipped path -- every value within its bound of the table, multiplicities
+    right, the planner accepting a rung -- on the L-shape at 1e-10."""
+    rec = Eigenproblem(L_shape(), coarse_bracket=True).solve(10, prec=PREC)
+    assert not any(f.startswith("planner:") for f in rec.flags), rec.flags
+    _check_against(rec, L_shape_eigs(25), 10, PREC)
+    assert all(L.met for L in rec.levels)

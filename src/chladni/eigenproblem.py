@@ -135,8 +135,13 @@ class SolveRecord:
 class Eigenproblem:
     """The Dirichlet Laplacian on `domain`, solved by planning a basis. See the module docstring."""
 
-    def __init__(self, domain):
+    def __init__(self, domain, *, coarse_bracket=False):
         self.domain = domain
+        #: Stage-policy step 5, OFF by default until it ships (2026-10-27): every search this
+        #: eigenproblem runs -- the planner's climb, `solve`, the warm path's window search --
+        #: brackets on the coarse penalty and refines each bracket at its stable rank
+        #: (`chladni.mps.search.solve(coarse_bracket=True)`). `track_levels` is unchanged.
+        self.coarse_bracket = bool(coarse_bracket)
 
     # --- planning ----------------------------------------------------------------------------
 
@@ -330,7 +335,8 @@ class Eigenproblem:
         if solver is None:
             solver = plan.solver(self.domain, prec=prec)
         for _ in range(_MAX_WIDEN):
-            res = solver.search_interval(lo, hi, on_shortfall=on_shortfall)
+            res = solver.search_interval(lo, hi, on_shortfall=on_shortfall,
+                                         coarse_bracket=self.coarse_bracket)
             if res.declined or sum(L.mult for L in res.levels) >= n + HEADROOM:
                 break
             hi = lo + 2.0 * (hi - lo)
@@ -353,7 +359,7 @@ class Eigenproblem:
         if windows is not None:
             return self._solve_tracked(near, plan, n, prec, solver, prev, windows)
         a, b, h = _warm_window(self.domain, prev)
-        res = solver.search_interval(a, b, on_shortfall="flag")
+        res = solver.search_interval(a, b, on_shortfall="flag", coarse_bracket=self.coarse_bracket)
         res.solver = solver
         d = res.diagnostics
         found = np.sort(np.asarray(res.unfolded, dtype=float))
