@@ -314,6 +314,12 @@ references to <= 1e-10.
 - TOL is not delicate between 1e-2 and 5e-2. The tail moves ~20% and the head ~0, so the test
   sits in a wide gap. 1e-3 is too strict: it cuts real directions whose singular values move
   a little at this eta.
+- **Prefer TOL 1e-2.** On a 401-point slice of the lam_8 cell (1284.0-1284.5): rank 96 (TOL 1e-2) is
+  smooth (largest step between neighbouring samples 2.5e-5, ~5x the median), while rank 99 (TOL 5e-2) still
+  has isolated jumps of 7e-4 (median 2e-5), and the threshold rank jumps by up to 2.3e-3 (median 5e-4).
+  TOL 5e-2 sits at the edge of the tail.
+- The stable rank AT a node varies: at lam_1 itself it is 91 (indices 92-98 sit at 1e-12..1e-13 and
+  move 1e-2..0.19), against 96-98 at the lam_1 cell's nodes. The min over a cell's nodes absorbs this.
 - Cost: two extra SVDs of the stacked pencil per node, three nodes per cell, against hundreds of
   tension evaluations per cell.
 
