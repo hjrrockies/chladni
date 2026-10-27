@@ -1160,6 +1160,23 @@ def _stable_rank_near(obj, lam):
     return (r if (cap is None or r < cap) and r > 0 else None), cap
 
 
+def _settle_rank(obj, r, view, rank, bracket, prec):
+    """`(root, view, rank)` after re-reading the stable rank at a root refined at a provisional
+    rank: unchanged if it reads the same; the root re-refined in its cell at the new rank if it
+    moves (the provisional result is kept if that refuses); the threshold refine in the cell, with
+    view None, if the median says there is no tail after all."""
+    again, _ = _stable_rank_near(obj, r.lam)
+    if again == rank:
+        return r, view, rank
+    cell = (max(bracket[0], r.lam * (1.0 - CELL_RHO)), min(bracket[1], r.lam * (1.0 + CELL_RHO)))
+    if again is None:
+        r2 = refine(obj, cell[0], cell[1], prec=prec, lam_hint=r.lam, interior=cell)
+        return (r2, None, None) if r2.accepted else (r, view, rank)
+    view2 = PolicyView(obj, Policy.frozen(again), cell=bracket)
+    r2 = refine(view2, cell[0], cell[1], prec=prec, lam_hint=r.lam, interior=cell)
+    return (r2, view2, again) if r2.accepted else (r, view, rank)
+
+
 def _refine_coarse(obj, res, prec):
     """Stage 2 after COARSE bracketing (`solve(coarse_bracket=True)`): each bracket is refined at
     the stable rank read at its coarse minimum, frozen over the bracket (a bracket holding one
@@ -1168,16 +1185,34 @@ def _refine_coarse(obj, res, prec):
     is no tail, or the frozen refine refuses, the shipped threshold refine runs on the bracket.
     `(located, views, refused)`, `views[id(root)] = (PolicyView, rank)`."""
     located, refused, views = [], [], {}
+    from .bracket import well_extent
+    coarse_lams, coarse_vs = _samples(PolicyView(obj, Policy.penalty()))
+    edge_lo, edge_hi = obj.in_lam_bracket(obj.lo, obj.hi)
     for b in res.brackets:
         lo, hi = obj.in_lam_bracket(b.lo, b.hi)
         hint = obj.in_lam(b.k_hint) if np.isfinite(b.k_hint) else 0.5 * (lo + hi)
+        # WIDEN to the coarse well's floor region around its minimum (`bracket.well_extent`): the
+        # fine policy's minimum sits inside it but can sit outside a bracket the cover split down
+        # to the coarse floor -- the douse T1.5-r2 double at 111.03 was split into two slivers
+        # ~1e-7 wide and both refines refused "not a minimum" (2026-10-27).
+        if coarse_lams.size:
+            i = int(np.argmin(np.abs(coarse_lams - hint)))
+            a, b2 = well_extent(coarse_lams, coarse_vs, i)
+            lo, hi = max(min(lo, a), edge_lo), min(max(hi, b2), edge_hi)
         rank, _ = _stable_rank_near(obj, hint)
         if rank is not None:
             view = PolicyView(obj, Policy.frozen(rank), cell=(lo, hi))
             r = refine(view, lo, hi, prec=prec, lam_hint=hint, interior=(lo, hi))
             if r.accepted:
-                _place_flanks(view, r, (lo, hi), prec)
-                views[id(r)] = (view, rank)
+                # The rank above was PROVISIONAL: read at the coarse minimum, often from one close
+                # pair, and one pair is one sample of the noise (`policy.stable_rank_of`). The
+                # refine has just left many spectra within `PAIR_ETA` of the root, so the rank is
+                # read again from all of them; if it moves, the root is refined once more at it,
+                # in its cell.
+                r, view, rank = _settle_rank(obj, r, view, rank, (lo, hi), prec)
+                if view is not None:
+                    _place_flanks(view, r, (lo, hi), prec)
+                    views[id(r)] = (view, rank)
                 located.append((r, (lo, hi)))
                 continue
         r = refine(obj, lo, hi, prec=prec, lam_hint=hint, interior=(lo, hi))
@@ -1258,7 +1293,8 @@ def solve(obj, *, prec=None, abort_unmet=False, stable_rank=False, coarse_bracke
     mark = obj.n_evals
     if coarse_bracket:
         coarse = PolicyView(obj, Policy.penalty())
-        res = bracket_interval(coarse, prec=max(prec, COARSE_PREC_FACTOR * TAU_REL))
+        res = bracket_interval(coarse, prec=max(prec, COARSE_PREC_FACTOR * TAU_REL),
+                               rescue_floor=True)
     else:
         res = bracket_interval(obj, prec=prec)
     search_evals = obj.n_evals - mark

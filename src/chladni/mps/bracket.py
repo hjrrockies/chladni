@@ -206,6 +206,23 @@ DIP_RATIO = 0.5
 #: declined at 1320 evaluations with 30 regions still live, i.e. the budget was the failure.
 BUDGET_PER_EIG = 600
 
+#: `bracket_interval(rescue_floor=True)` only. A sampled local minimum below this fraction of the
+#: plateau that the cover EXCLUDED is a well, not a plateau wiggle: the exclusion test (Piyavskii,
+#: `_envelope_min >= 0`) assumes `sigma_1` can reach zero, and on a pencil with a FLOOR (the coarse
+#: penalty's, ~1e-7) it excludes a well's bottom once the samples there are closer than about
+#: `2 floor / L`. A single is certified and handed to the locator before that; a DOUBLE, whose
+#: `sigma_2` sits on the floor too, is never certified single, so the cover samples into it until it
+#: excludes it -- every double of the douse octagon and 8-gon was lost that way (2026-10-27).
+#: Genuine wells on the coarse penalty sit ~1e-6 below the plateau; a plateau wiggle never reaches
+#: 1e-2 of it. Rescuing can only ADD a bracket, which the refiner discards in a few evaluations.
+RESCUE_DEPTH = 1e-2
+#: A rescued bracket runs out to the first sample on each side where `sigma_1` exceeds this multiple
+#: of the well's minimum -- or to a HUMP (a sampled local maximum), whichever comes first: two
+#: sampled minima are two brackets, as the cover would have made them. Walking past a hump merged
+#: the douse T2.6-N5k4-L7 pair 1.2e-5 apart (minima 4.0e-6 and 4.8e-6, hump 1.9e-5) into one
+#: bracket, and the count read 1, silently (2026-10-27).
+RESCUE_RISE = 10.0
+
 
 @dataclass(frozen=True)
 class Bracket:
@@ -563,7 +580,51 @@ def _evaluate_all(obj, xs):
             obj.tension(x)
 
 
-def bracket_interval(obj, *, prec=None, budget=None):
+def well_extent(ks, vs, i):
+    """`(lo, hi)`: the samples either side of sample `i` where `sigma_1` first exceeds
+    `RESCUE_RISE` x its value there, or a hump (sampled local maximum) comes first. The coarse
+    well's floor region around a sampled minimum: a finer policy's minimum lies inside it."""
+    v = float(vs[i])
+    lo_i, hi_i = i, i
+    while lo_i > 0 and vs[lo_i] <= RESCUE_RISE * v:
+        lo_i -= 1
+        if 0 < lo_i and vs[lo_i] >= vs[lo_i - 1] and vs[lo_i] >= vs[lo_i + 1]:
+            break                                      # a hump: the next minimum's side
+    while hi_i < ks.size - 1 and vs[hi_i] <= RESCUE_RISE * v:
+        hi_i += 1
+        if hi_i < ks.size - 1 and vs[hi_i] >= vs[hi_i - 1] and vs[hi_i] >= vs[hi_i + 1]:
+            break
+    return float(ks[lo_i]), float(ks[hi_i])
+
+
+def _rescue_excluded_wells(ks, vs, regions, plateau):
+    """Regions for the deep sampled minima the cover excluded (`RESCUE_DEPTH`), each run out to
+    where `sigma_1` rises `RESCUE_RISE`-fold, merged where they overlap. Added to `regions`."""
+    out = list(regions)
+    if ks.size < 3:
+        return out
+    inside = lambda x: any(a <= x <= b for a, b in out)  # noqa: E731
+    order = np.argsort(vs)
+    for i in order:
+        v = float(vs[i])
+        if not v <= RESCUE_DEPTH * plateau:
+            break
+        if 0 < i < ks.size - 1 and not (vs[i - 1] >= v and vs[i + 1] >= v):
+            continue                                   # not a sampled local minimum
+        if inside(float(ks[i])):
+            continue
+        out.append(well_extent(ks, vs, i))
+    out.sort()
+    merged = []
+    for a, b in out:
+        if merged and a < merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return merged
+
+
+def bracket_interval(obj, *, prec=None, budget=None, rescue_floor=False):
     """Brackets for every eigenvalue in the objective's window. Returned in `k`.
 
     **One loop, not two.** The obvious structure -- cover to find candidates, then refine each
@@ -656,6 +717,15 @@ def bracket_interval(obj, *, prec=None, budget=None):
         # judged on its own. Returning it unsplit keeps coverage but fails PURITY wherever
         # `prec` forbids merging -- measured, two pairs came back merged and the case failed
         # with coverage 1.0.
+
+    rescued = 0
+    if rescue_floor:
+        # The cover's exclusion assumes no floor; on a floored pencil it can exclude a double's
+        # well whole. Put back every deep sampled minimum it excluded (`RESCUE_DEPTH`).
+        before = len(regions)
+        regions = _rescue_excluded_wells(ks, vs, regions, plateau)
+        rescued = max(len(regions) - before, 0)
+        floor_limited |= rescued > 0
 
     mark = obj.n_evals
     ks, vs, kept, dropped = _confirm(obj, ks, vs, regions, L, budget, plateau)
