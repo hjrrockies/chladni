@@ -108,4 +108,24 @@ Coarse bracketing alone (`notes/stage_policy_step5_probe.py`): the apex lightnin
 224 evaluations, 23 brackets, every reference value inside one; the L-shape in 242, both doubles
 inside single brackets.
 
-douse benchmark for steps 4 (median rule) and 5: running.
+### The douse gate, 1e-10 (basis D, 41 cases x 5 jitters; `notes/stage_policy_step4_douse.py`)
+
+| path | ok | flagged | silent | stable across jitter | evaluations |
+|---|---|---|---|---|---|
+| shipped (threshold) | 161 | 1 | 13 | 37/41 | 57,043 |
+| step 4: stable rank, median rule | 165 | 1 | 9 | 39/41 | 63,486 (+11%) |
+| step 5, first version | 125 | 9 | 41 | | 55,607 |
+| **step 5: rescue + hump stop + widened brackets** | **170** | **0** | **5** | **41/41** | 60,545 (+6%) |
+
+Step 4 adds no silent loss the shipped path does not have (T1.5-r2 fixed; T1.2 2 -> 1). Step 5's
+first version DROPPED doubles in bracketing (the cover's exclusion has no floor; on the coarse
+penalty's ~1e-7 floor it excludes a double's well, which is never certified single) and lost close
+pairs; three fixes, each of which can only add a bracket (commit 3e1dd46): `rescue_floor`
+(`RESCUE_DEPTH`), `well_extent`'s hump stop, and widening each bracket to the coarse well's floor
+region. The widening walks out to a 10x rise, i.e. +- ~5 res, beyond the +- 2 WIDE_FACTOR f/c the
+step-5a measurement (branch claude/vibrant-tharp-c0e58b, `notes/coarse_policy_check.md`) found
+necessary for a split pair that reads as one coarse well.
+
+**The only silent case left is T2.2, silent on every path** (the hard roster's 15-degree,
+re-entrant shape; `notes/hard_cases.md`). T1.2, T1.5-r2, T2.9-ngon12 and T1.4-oct, silent on the
+shipped path, are ok. Every case reads the same at every jitter.
