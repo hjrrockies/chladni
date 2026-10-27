@@ -250,3 +250,76 @@ check that (a) the seed's max secant settles within each cell, (b) the minimum t
 lam_1, lam_8 and lam_15 moves by under ~1 decade against the threshold rank, (c) the rectangle
 grids of section 34 keep their 22 recoveries and 0 wrong. Then the douse benchmark and the
 triangle pilot.
+
+## 9. The check, run: the rank COUNT is not the problem; the cut sits in rounding noise
+
+Basis: the shipped rung 3 on apex (0.1, 0.25) (FB 1x + 10 lightning poles per corner, 180
+columns). Cells on a geometric lattice in lam with delta = 2/r (1.6-2.0%), the cells within
++-2.5% of lam_1, lam_8 and lam_15. Scripts `notes/rank_freeze_check.py`, `rank_freeze_jump.py`,
+`rank_freeze_rtol.py`, `rank_freeze_gap.py`, `rank_stable_cells.py`; data
+`notes/rank_freeze_check_*.json`.
+
+**1. Freezing the threshold rank per cell does nothing** (`rank_freeze_check.py`). In the lam_8
+and lam_15 cells the threshold rank flips 100-149 times on a 201-point grid (118-131). Frozen at
+the cell minimum, the seed's max secant grows exactly as before (lam_8 cell: 0.0027 -> 0.0203
+against 0.0027 -> 0.0203), and the same cells decline. lam_1's cells are unaffected either way
+(rank 98, no flips, margin 41).
+
+**2. The jumps are rounding** (`rank_freeze_jump.py`). Bisecting the steepest pair with the rank
+frozen at 120: over 8e-10 in lam (6e-13 relative) the raw columns move by ~1e-10, yet the
+tension jumps 0.0232 -> 0.0248. At the cut, `s_r/s_1` and `s_{r+1}/s_1` are 1.7e-13 and
+1.5e-13, and they trade places from one sample to the next.
+
+**3. The spectrum has a noise tail** (`rank_freeze_gap.py`). At lam_8 and lam_15 the singular
+values fall 2-4x per index down to ~2e-12, then flatten to ~1.1x per index from 1e-12 to 1e-13.
+Moving lam by 1e-12 RELATIVE leaves the head unchanged and moves the tail ~20% (6.2e-13 ->
+7.4e-13). The threshold cut (`rtol = sqrt(prec eps)` = 1.5e-13) lands inside that tail, so WHICH
+noise directions survive is decided by rounding. That is the "rank flip" of
+`landscape_findings.md` section 34 seen from the other side: freezing the count leaves the
+choice of directions to rounding. lam_1's spectrum has no tail (fast decay to 1e-15), which is
+why lam_1 always searched cleanly. A symptom of how fragile this is: lam_15's cell DECLINED at
+the default `rtol` (1.49e-13) and searched cleanly at an explicit 1.5e-13.
+
+**4. A global looser cutoff fixes the smoothness and costs the low end** (`rank_freeze_rtol.py`):
+
+| rtol | lam_8 cell rank | max/median secant | lam_1 margin | lam_8 | lam_15 |
+|---|---|---|---|---|---|
+| 1.5e-13 (default) | 119-122 | 10.8 | 41 | DECLINED | 31 |
+| 1e-12 | 102-105 | 9.7 | 5.0 | DECLINED | 42 |
+| 3e-12 | 96 | 1.1 | 4.6 | 15.8 | 52 |
+| 5e-12 | 95-96 | 1.5 | 3.9 | 11 | 42 |
+| 1e-11 | 94 | 1.0 | 1.1 (unmet) | 6.0 | 26 |
+| 3e-11 | 90 | 1.0 | 0.35 (unmet) | 2.8 | 2.7 |
+
+The right cut is below the knee where there is a tail and at the threshold where there is
+none. That differs with lam, so no single `rtol` serves it.
+
+**5. A STABLE rank, frozen per cell, does** (`rank_stable_cells.py`). The stable rank at lam
+is the number of leading singular values that move by less than TOL (relative) between lam and
+lam (1 + 1e-12), capped at the threshold rank. The cell rank is its minimum at the cell's ends
+and middle, frozen with `rank=`.
+
+| TOL | lam_1 cells: rank, margin | lam_8 cells | lam_15 cells | max/median secant | seeds | declines |
+|---|---|---|---|---|---|---|
+| 1e-3 | 91, 4.95 | 90, 2.78 | 94-95, 2.51 | 1.0 | all settle | 0 of 11 |
+| **1e-2** | **96-98, 41** | **94-96, 21** | **100-101, 46** | 1.0-1.3 | all settle | 0 of 11 |
+| **5e-2** | **98, 41** | **97-99, 36** | **103, 35** | 1.1-2.7 | all settle | 0 of 11 |
+
+(threshold rank there: 98 / 119-123 / 125-129.) Relative bounds at TOL 5e-2: 4.9e-12, 5.5e-12,
+5.8e-12, against a shipped rung 3 that declined at lam_8 and lam_15. Values agree with the
+references to <= 1e-10.
+- It ADAPTS: at lam_1, where there is no tail, it keeps the threshold rank (98). Where there
+  is a tail it cuts above it, 20-25 directions below the threshold, and it grows with lam
+  (98 -> 97-99 -> 103 at TOL 5e-2).
+- TOL is not delicate between 1e-2 and 5e-2. The tail moves ~20% and the head ~0, so the test
+  sits in a wide gap. 1e-3 is too strict: it cuts real directions whose singular values move
+  a little at this eta.
+- Cost: two extra SVDs of the stacked pencil per node, three nodes per cell, against hundreds of
+  tension evaluations per cell.
+
+**What this changes in the section 8 design:** the cell rank is the minimum STABLE rank, not
+the minimum threshold rank; everything else stands (lattice cells, delta ~ 2/r, the search told
+where the cell boundaries are, opt-in first). Not yet measured: the cell boundaries themselves
+(ranks differ between neighbouring cells by 1-4 here, so the seams step 4 handles still exist);
+the rectangle grids of `landscape_findings.md` section 34 (22 recoveries, 0 wrong, to keep); the
+douse benchmark; the pilot triangles. One shape and one basis so far.
