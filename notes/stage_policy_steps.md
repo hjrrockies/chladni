@@ -129,3 +129,41 @@ necessary for a split pair that reads as one coarse well.
 **The only silent case left is T2.2, silent on every path** (the hard roster's 15-degree,
 re-entrant shape; `notes/hard_cases.md`). T1.2, T1.5-r2, T2.9-ngon12 and T1.4-oct, silent on the
 shipped path, are ok. Every case reads the same at every jitter.
+
+## Through the planner (a0632ae, c71fa9c): `Eigenproblem(dom, coarse_bracket=True)`
+
+The ladder climb, `solve` and the warm path's window search pass `coarse_bracket` to every search.
+Measuring it on the apex line exposed three more things, all fixed in c71fa9c:
+
+- **The stable rank costs depth where the threshold does not flutter.** On apex (0.15, 0.25) rung 3
+  (shipped accepts it) the stable rank's floors and margins were 3-5x worse on every level and one
+  went unmet. The flutter's damage is in BRACKETING; near a root the threshold's extra directions are
+  mostly useful. So stage 2 is now **threshold first, stable rank on failure** (refuse or miss `prec`),
+  and stage 3 the same: a threshold root whose count is uncertain is recounted at the stable rank
+  (apex (0.1, 0.25) lightning, 451.09: a noise direction read as an undecided branch).
+- **Empty coarse brackets plus a fluttering fine tension give noise minima.** A refine or side search
+  in a bracket that holds no eigenvalue accepted sigma 0.077 at 465.32 as a level. Every root and
+  every reported level must now sit in a coarse well (`RESCUE_DEPTH` x the coarse plateau; every true
+  eigenvalue does, 175 of 175 in step 5a); dropped levels are counted (`n_noise_dropped`).
+- **Certification inherits the flutter.** The threshold rank's coefficient vector is noisy, and so is
+  its Moler-Payne bound (apex (0.3, 0.25) rung 3: 4.5e-11 and 3.3e-9 at roots 1e-11 apart).
+  `certify_levels` now takes the smaller bound of the level's rank and the stable rank near it (plan
+  step 6; each is a valid bound).
+
+`plan_and_solve(15, 1e-10)` along the apex line (`notes/apex_line.py ... coarse`, data
+`notes/apex_line_coarse.json`; shipped from `notes/apex_line.json`):
+
+| apex | shipped: rung, met | coarse: rung, met, worst rel. bound |
+|---|---|---|
+| (0.05, 0.25) | 1, 0/15 | 3, **15/15**, 9.6e-12 |
+| (0.1, 0.25) | 0, 0/15 (fix 1: 2, 1/15) | 3, **15/15**, 3.6e-11 |
+| (0.2, 0.25) | 0, 0/15 | 3, **15/15**, 8.0e-11 |
+| (0.1, 0.2) | 0, 0/15 | 3, **12/15**, 1.3e-9 |
+| (0.3, 0.25) | 3, 13/15 | 3, **14/15**, 2.0e-9 |
+| (0.15, 0.25) | 3, 15/15 | 3, 15/15 |
+| (0.1, 0.3) | 1, 15/15 | 1, 15/15 |
+| (0.3, 0.3) | 0, 15/15 | 0, 15/15 |
+
+Rung-3 prefix solves alone (`search_interval`, met of 22-23): apex (0.1,0.25) declined -> 23/23;
+(0.2,0.25) 20 -> 23; (0.3,0.25) 18 -> 22; (0.15,0.25) 22 -> 22. Wall times were 380-680 s per
+planner call on a machine at load 20-50; not comparable with the shipped runs.
