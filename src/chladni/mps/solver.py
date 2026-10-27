@@ -255,7 +255,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         return cache[key]
 
     def search_interval(self, a, b, *, prec=None, objective=None, on_shortfall="flag",
-                        stable_rank=False):
+                        stable_rank=False, coarse_bracket=False):
         """Every level in `[a, b]` as a `SolveResult`: the MPS-rich answer, diagnostics and all.
 
         This is the seam to reach for. `solve_interval` narrows what comes back to the
@@ -275,7 +275,9 @@ class MPSEigensolver(Eigensolver, Frozen):
         reports the same things on the result and returns it.
 
         `stable_rank=True` re-refines each root whose cell has a noise tail at the stable rank,
-        frozen in that cell (`chladni.mps.search.solve`; stage-policy step 4, off by default).
+        frozen in that cell; `coarse_bracket=True` brackets on the coarse penalty and refines each
+        bracket at its stable rank (`chladni.mps.search.solve`; stage-policy steps 4 and 5, off by
+        default).
         """
         from .search import solve
 
@@ -290,7 +292,7 @@ class MPSEigensolver(Eigensolver, Frozen):
                              "certification reads this solver's pencil")
         obj = self.objective(a, b, prec=prec) if objective is None else objective
         res = solve(obj, prec=prec, abort_unmet=(on_shortfall == "raise"),
-                    stable_rank=stable_rank)
+                    stable_rank=stable_rank, coarse_bracket=coarse_bracket)
         if self.certify and res.levels:
             res = self.certify_levels(res, lam_max=float(b), prec=prec)
         res = self.audit_count(res, a, b)

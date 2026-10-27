@@ -1,0 +1,893 @@
+[
+ {
+  "N": 125,
+  "prec": 1e-06,
+  "band": 0.3,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 123,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.4472053050994873,
+   "worst_rel": 9.887079148244883e-08
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 123,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.241429090499878,
+   "worst_rel": 9.887079148244883e-08
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-06,
+  "band": 0.5,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 132,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.888859272003174,
+   "worst_rel": 1.791630163663006e-08
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 132,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.7720530033111572,
+   "worst_rel": 1.791630163663006e-08
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-06,
+  "band": 0.8,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 113,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.1495838165283203,
+   "worst_rel": 2.8190143769175372e-08
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 113,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.8516149520874023,
+   "worst_rel": 2.8190143769175372e-08
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-06,
+  "band": 1.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 128,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.817697048187256,
+   "worst_rel": 8.208915243837552e-08
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 128,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.0583722591400146,
+   "worst_rel": 8.208915243837552e-08
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-06,
+  "band": 1.3,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 120,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.798940896987915,
+   "worst_rel": 8.489389506993985e-08
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 120,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.7582037448883057,
+   "worst_rel": 8.489389506993985e-08
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-06,
+  "band": 1.6,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 115,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.5516622066497803,
+   "worst_rel": 7.903501488490684e-08
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 115,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.7591419219970703,
+   "worst_rel": 7.903501488490684e-08
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-06,
+  "band": 2.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 124,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.0405242443084717,
+   "worst_rel": 5.3279303288547614e-08
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 124,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.8477132320404053,
+   "worst_rel": 5.3279303288547614e-08
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-06,
+  "band": 2.6,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 123,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.9389939308166504,
+   "worst_rel": 5.943653015981285e-08
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 123,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.7956080436706543,
+   "worst_rel": 5.943653015981285e-08
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-06,
+  "band": 3.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 121,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.7531280517578125,
+   "worst_rel": 8.426426804397398e-08
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 121,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.900038957595825,
+   "worst_rel": 8.426426804397398e-08
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-06,
+  "band": 4.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 126,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.0368492603302,
+   "worst_rel": 9.810865933878027e-08
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 126,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.7645390033721924,
+   "worst_rel": 9.810865933878027e-08
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-06,
+  "band": 6.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 124,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.6689319610595703,
+   "worst_rel": 9.651186604404884e-08
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 124,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.5918450355529785,
+   "worst_rel": 9.651186604404884e-08
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-08,
+  "band": 0.3,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 155,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.7956221103668213,
+   "worst_rel": 6.038660255451102e-10
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 155,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.4470510482788086,
+   "worst_rel": 6.038660255451102e-10
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-08,
+  "band": 0.5,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "SILENT",
+   "total": 6,
+   "evals": 160,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.4792068004608154,
+   "worst_rel": 5.902007608614711e-10
+  },
+  "stable": {
+   "verdict": "SILENT",
+   "total": 6,
+   "evals": 160,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.5535309314727783,
+   "worst_rel": 5.902007608614711e-10
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-08,
+  "band": 0.8,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 153,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.4293107986450195,
+   "worst_rel": 9.876501446155785e-10
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 153,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.4032630920410156,
+   "worst_rel": 9.876501446155785e-10
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-08,
+  "band": 1.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 141,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.0771639347076416,
+   "worst_rel": 4.019449810889483e-10
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 141,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.0756630897521973,
+   "worst_rel": 4.019449810889483e-10
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-08,
+  "band": 1.3,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 144,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.091365098953247,
+   "worst_rel": 7.74262698665098e-10
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 144,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.0877530574798584,
+   "worst_rel": 7.74262698665098e-10
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-08,
+  "band": 1.6,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 146,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.99959397315979,
+   "worst_rel": 7.919593687465676e-10
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 146,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.862553119659424,
+   "worst_rel": 7.919593687465676e-10
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-08,
+  "band": 2.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 143,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.829684019088745,
+   "worst_rel": 9.788193553652156e-10
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 143,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.7488598823547363,
+   "worst_rel": 9.788193553652156e-10
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-08,
+  "band": 2.6,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 145,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.7772300243377686,
+   "worst_rel": 5.051254654450709e-10
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 145,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.513018846511841,
+   "worst_rel": 5.051254654450709e-10
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-08,
+  "band": 3.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 148,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.632542848587036,
+   "worst_rel": 9.245181209908641e-10
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 148,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.576447010040283,
+   "worst_rel": 9.245181209908641e-10
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-08,
+  "band": 4.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 149,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.6482319831848145,
+   "worst_rel": 7.540226107356493e-10
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 149,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.572575807571411,
+   "worst_rel": 7.540226107356493e-10
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-08,
+  "band": 6.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 147,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.5185930728912354,
+   "worst_rel": 4.032749122918925e-10
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 147,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.571881055831909,
+   "worst_rel": 4.032749122918925e-10
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-10,
+  "band": 0.3,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 177,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.218083143234253,
+   "worst_rel": 5.430356656642416e-12
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 177,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.376291036605835,
+   "worst_rel": 5.430356656642416e-12
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-10,
+  "band": 0.5,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 174,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.174260139465332,
+   "worst_rel": 2.625766564472602e-11
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 174,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.103334903717041,
+   "worst_rel": 2.625766564472602e-11
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-10,
+  "band": 0.8,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 167,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.0717270374298096,
+   "worst_rel": 1.333721020488786e-11
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 167,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.236315965652466,
+   "worst_rel": 1.333721020488786e-11
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-10,
+  "band": 1.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 169,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.279315948486328,
+   "worst_rel": 6.1220041098991805e-12
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 169,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 3.110046863555908,
+   "worst_rel": 6.1220041098991805e-12
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-10,
+  "band": 1.3,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 177,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.9743988513946533,
+   "worst_rel": 7.40576337953809e-12
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 177,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.9702160358428955,
+   "worst_rel": 7.40576337953809e-12
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-10,
+  "band": 1.6,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 166,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.8974180221557617,
+   "worst_rel": 9.404285576095096e-12
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 166,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.749551296234131,
+   "worst_rel": 9.404285576095096e-12
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-10,
+  "band": 2.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 165,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.854340076446533,
+   "worst_rel": 9.661126541737215e-12
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 165,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.7188539505004883,
+   "worst_rel": 9.661126541737215e-12
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-10,
+  "band": 2.6,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 167,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.7723121643066406,
+   "worst_rel": 5.856015191612444e-12
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 167,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.8495380878448486,
+   "worst_rel": 5.856015191612444e-12
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-10,
+  "band": 3.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 165,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.5607290267944336,
+   "worst_rel": 5.431284407780068e-12
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 165,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.5162177085876465,
+   "worst_rel": 5.431284407780068e-12
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-10,
+  "band": 4.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 167,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.524409294128418,
+   "worst_rel": 9.279689281339137e-12
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 167,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.559777021408081,
+   "worst_rel": 9.279689281339137e-12
+  }
+ },
+ {
+  "N": 125,
+  "prec": 1e-10,
+  "band": 6.0,
+  "skip": false,
+  "truth": 7,
+  "threshold": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 169,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.7416257858276367,
+   "worst_rel": 8.657116705266719e-12
+  },
+  "stable": {
+   "verdict": "right",
+   "total": 7,
+   "evals": 169,
+   "rerank": 0,
+   "reranked": 0,
+   "refused": 0,
+   "wall": 2.8653647899627686,
+   "worst_rel": 8.657116705266719e-12
+  }
+ }
+]

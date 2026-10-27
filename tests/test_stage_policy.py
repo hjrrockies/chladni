@@ -323,3 +323,36 @@ def test_the_stable_rank_search_keeps_the_l_shapes_spectrum():
     assert all((L.rank is None) or (0 < L.rank < 203) for L in b.levels)
     assert d.rerank_evals <= 6 * d.n_reranked
     assert d.multiplicity_evals == a.diagnostics.multiplicity_evals == 0
+
+
+# --- step 5: bracketing on the coarse penalty ---------------------------------------------------
+
+@pytest.mark.slow
+def test_coarse_bracketing_solves_the_triangle_the_threshold_declines():
+    """The apex-(0.1, 0.25) triangle on its lightning basis (the shipped rung 3), prefix window
+    for n = 15 at 1e-10. The threshold rank's flutter makes the seed decline (2113 evaluations,
+    nothing found); bracketing on the coarse penalty and refining at the stable rank finds the
+    levels, all met, against the references (`notes/triangle_apex_planner.md`)."""
+    from chladni import asymp
+    from chladni.bounds import faber_krahn
+    from chladni.geometry import Polygon
+    from chladni.plan import HEADROOM, Plan
+    ref = np.array([288.9643854097, 451.0919790235, 628.4568669251, 821.3823602455,
+                    911.5895344006, 1043.9357242892, 1216.3832526905, 1293.9127902104,
+                    1504.8635788596, 1579.2988086407, 1788.5259323635, 1842.6310031747,
+                    1922.8118975078, 2106.9668363896, 2220.6128167775])
+    dom = Polygon(np.array([0, 1, 0.1 + 0.25j]), bc="dir")
+    p0 = plan_for(dom, 15, 1e-10, 0)
+    s = Plan(prec=1e-10, k_max=p0.k_max, corner_orders=p0.corner_orders, lightning_n=10,
+             rung=3).solver(dom)
+    lo = 0.5 * float(faber_krahn(dom))
+    hi = float(asymp.weyl_est_poly(15 + HEADROOM, dom)) * 1.15
+    res = s.search_interval(lo, hi, coarse_bracket=True)
+    d = res.diagnostics
+    assert not d.declined and not d.unmet and d.n_uncertain == 0
+    lv = sorted(res.levels, key=lambda L: L.lam)
+    assert sum(L.mult for L in lv) >= 15 + HEADROOM
+    for L, r in zip(lv[:15], ref):
+        assert abs(L.lam - r) <= max(L.bound, 2e-10 * r) and L.met(1e-10)
+    # lam_1 has no noise tail and keeps the threshold path; the levels above it have one.
+    assert d.n_reranked >= 15 and lv[0].rank is None
