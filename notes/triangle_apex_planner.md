@@ -386,3 +386,27 @@ the threshold rank with a rank frozen at the cell's single-spectrum knee (below)
   evaluation.
 - **Cost of an evaluation:** 79 ms, of which basis assembly is 53-58 ms and the stack's QR + SVD 4-5 ms.
   A second RANK at an already-assembled lam costs the GSVD step, not an assembly.
+
+## 12. The single-spectrum knee does NOT generalize; the noise tail does (2026-10-27)
+
+`notes/knee_generalize.py` (rows in `notes/knee_generalize_results.txt`): the planner's own pencils on
+five domains and several rungs, at the Weyl estimates of levels 1, 8 and 15. Ranks: threshold
+(shipped), pair test (moves < 1e-2 under lam -> lam (1 + 1e-8)), knee (section 11's rule).
+- **The knee fails on every rung with an offset source layer.** Apex rungs 1-2, the flat triangle's
+  rung 1, and the pentagon's rung 1: the knee cuts 30-80 directions below the pair test (apex rung 1
+  at lam_1: 154 against 189; flat rung 1 at lam_1: 168 against 244). A source layer's singular values
+  decay slower than 1.25x per index while still being signal, so "fast decay = signal" is false there.
+  It also misses some tails (apex rung 0 at lam_8: knee 73 = threshold, pair test 63). The lightning
+  rung, where it was tuned, is the case it fits.
+- **The tail itself is general.** Above lam_1 the threshold rank exceeds the pair-test rank on most
+  pencils: by 4-14 on corner-only rungs, 7-21 on layer rungs, 24 at lam_8 on the lightning rung, and 34
+  on the L-shape's rung 0 at lam_15 (143 against 109). The tail starts at 1e-13 .. 2e-11 x sigma_1.
+  No tail: the L-shape's rungs 1 and 3, and the plane-wave rectangle.
+- **A tail is not enough to break the search.** The L-shape and the pentagon solve at 1e-10 with the
+  threshold cutting into their tails. The lightning basis is where flips in the tail move the tension
+  by ~10%, presumably because its near-dependent columns put noise directions into the minimizing
+  combination. Not established which property decides it.
+- **So the rank must come from a measurement of noise, not from the spectrum's shape.** The pair test
+  has one constant with a physical meaning (TOL: noise moves O(10%), signal moves << 1% at small
+  spacing) and a generous spacing window (1e-12 .. 3e-4 at the lightning rung's lam_8; not yet
+  checked on other pencils).
