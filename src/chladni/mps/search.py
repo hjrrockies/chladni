@@ -365,6 +365,10 @@ class SolveDiagnostics:
     probe_evals: int = 0
     #: The side search's refinements, when a count declines and the partner is LOCATED instead.
     side_evals: int = 0
+    #: `solve(coarse_bracket=True)` only: levels dropped because the coarse tension at them is not a
+    #: well (`RESCUE_DEPTH` x its plateau) -- minima of the fine tension's noise, located by a fine
+    #: refine or side search in a bracket that held no eigenvalue.
+    n_noise_dropped: int = 0
     #: `solve(stable_rank=True)` only: evaluations spent re-refining roots at their stable rank
     #: (the stability pair where the search had none, and the refine in each root's cell), and
     #: how many roots were re-refined / kept at the threshold because the re-refine refused.
@@ -1177,6 +1181,14 @@ def _settle_rank(obj, r, view, rank, bracket, prec):
     return (r2, view2, again) if r2.accepted else (r, view, rank)
 
 
+#: Stage 2 after coarse bracketing: refine at the THRESHOLD rank first and fall back to the stable
+#: rank only where that refine refuses or misses `prec` ("threshold_first"), or go to the stable
+#: rank directly wherever there is a tail ("stable"). Measured 2026-10-27: on a basis where the
+#: threshold does not flutter (apex (0.15, 0.25) rung 3) the stable rank cost 3-5x in floor and
+#: margin on every level and left one unmet; the flutter's damage is in bracketing.
+COARSE_FINE = "threshold_first"
+
+
 def _refine_coarse(obj, res, prec):
     """Stage 2 after COARSE bracketing (`solve(coarse_bracket=True)`): each bracket is refined at
     the stable rank read at its coarse minimum, frozen over the bracket (a bracket holding one
@@ -1185,9 +1197,19 @@ def _refine_coarse(obj, res, prec):
     is no tail, or the frozen refine refuses, the shipped threshold refine runs on the bracket.
     `(located, views, refused)`, `views[id(root)] = (PolicyView, rank)`."""
     located, refused, views = [], [], {}
-    from .bracket import well_extent
-    coarse_lams, coarse_vs = _samples(PolicyView(obj, Policy.penalty()))
+    from .bracket import RESCUE_DEPTH, well_extent
+    coarse = PolicyView(obj, Policy.penalty())
+    coarse_lams, coarse_vs = _samples(coarse)
+    plateau = float(np.median(coarse_vs)) if coarse_vs.size else float("inf")
     edge_lo, edge_hi = obj.in_lam_bracket(obj.lo, obj.hi)
+
+    def in_a_coarse_well(r):
+        # A true eigenvalue sits in a deep coarse well (~1e-6 of the plateau, step 5a). A root a
+        # FINE refine accepted where the coarse tension is shallow is a minimum of the fine
+        # tension's noise in an empty bracket: on apex (0.15, 0.25) rung 3 the threshold refine
+        # accepted sigma 0.077 at 465.32, 4% from any eigenvalue (2026-10-27).
+        return coarse.tension(coarse.from_lam(r.lam)) <= RESCUE_DEPTH * plateau
+
     for b in res.brackets:
         lo, hi = obj.in_lam_bracket(b.lo, b.hi)
         hint = obj.in_lam(b.k_hint) if np.isfinite(b.k_hint) else 0.5 * (lo + hi)
@@ -1199,10 +1221,23 @@ def _refine_coarse(obj, res, prec):
             i = int(np.argmin(np.abs(coarse_lams - hint)))
             a, b2 = well_extent(coarse_lams, coarse_vs, i)
             lo, hi = max(min(lo, a), edge_lo), min(max(hi, b2), edge_hi)
-        rank, _ = _stable_rank_near(obj, hint)
+        r_thr = None
+        if COARSE_FINE == "threshold_first":
+            own = PolicyView(obj, None, cell=(lo, hi))
+            r_thr = refine(own, lo, hi, prec=prec, lam_hint=hint, interior=(lo, hi))
+            if r_thr.accepted and not in_a_coarse_well(r_thr):
+                r_thr = replace(r_thr, accepted=False, reason="no_coarse_well")
+            if r_thr.accepted and r_thr.delta_res <= prec * abs(r_thr.lam):
+                _place_flanks(own, r_thr, (lo, hi), prec)
+                views[id(r_thr)] = (own, None)
+                located.append((r_thr, (lo, hi)))
+                continue
+        rank, _ = _stable_rank_near(obj, hint if r_thr is None or not r_thr.accepted else r_thr.lam)
         if rank is not None:
             view = PolicyView(obj, Policy.frozen(rank), cell=(lo, hi))
             r = refine(view, lo, hi, prec=prec, lam_hint=hint, interior=(lo, hi))
+            if r.accepted and not in_a_coarse_well(r):
+                r = replace(r, accepted=False, reason="no_coarse_well")
             if r.accepted:
                 # The rank above was PROVISIONAL: read at the coarse minimum, often from one close
                 # pair, and one pair is one sample of the noise (`policy.stable_rank_of`). The
@@ -1210,17 +1245,46 @@ def _refine_coarse(obj, res, prec):
                 # read again from all of them; if it moves, the root is refined once more at it,
                 # in its cell.
                 r, view, rank = _settle_rank(obj, r, view, rank, (lo, hi), prec)
+                if r_thr is not None and r_thr.accepted and not r.delta_res < r_thr.delta_res:
+                    r, view, rank = r_thr, PolicyView(obj, None, cell=(lo, hi)), None
                 if view is not None:
                     _place_flanks(view, r, (lo, hi), prec)
                     views[id(r)] = (view, rank)
                 located.append((r, (lo, hi)))
                 continue
-        r = refine(obj, lo, hi, prec=prec, lam_hint=hint, interior=(lo, hi))
+        if r_thr is not None:
+            r = r_thr
+        else:
+            r = refine(obj, lo, hi, prec=prec, lam_hint=hint, interior=(lo, hi))
+            if r.accepted and not in_a_coarse_well(r):
+                r = replace(r, accepted=False, reason="no_coarse_well")
         if r.accepted:
+            own = PolicyView(obj, None, cell=(lo, hi))
+            _place_flanks(own, r, (lo, hi), prec)
+            views[id(r)] = (own, None)
             located.append((r, (lo, hi)))
         else:
             refused.append(r)
     return located, views, refused
+
+
+def _recount_stable(obj, item, located, prec):
+    """`(counted, view, rank)` for a root re-refined and recounted at the stable rank in its cell,
+    or None when there is no tail there, the refine refuses, or the count is still uncertain."""
+    rank = _stable_rank_at(obj, item.r.lam)
+    if rank is None:
+        return None
+    lam = item.r.lam
+    cell = (max(item.bracket[0], lam * (1.0 - CELL_RHO)), min(item.bracket[1], lam * (1.0 + CELL_RHO)))
+    view = PolicyView(obj, Policy.frozen(rank), cell=cell)
+    r2 = refine(view, cell[0], cell[1], prec=prec, lam_hint=lam, interior=cell)
+    if not r2.accepted:
+        return None
+    _place_flanks(view, r2, cell, prec)
+    out = _count_root(view, replace(item, r=r2), *_samples(view), located, prec)
+    if out.recentre is not None or any(x.count_uncertain for x in out.levels):
+        return None
+    return replace(out, levels=tuple(replace(x, rank=rank) for x in out.levels)), view, rank
 
 
 def _rerank(obj, located, prec):
@@ -1318,7 +1382,8 @@ def solve(obj, *, prec=None, abort_unmet=False, stable_rank=False, coarse_bracke
     refine_evals = obj.n_evals - mark
     located, merged = _group_roots(obj, located, prec, views)
 
-    rerank_evals, n_reranked, n_rerank_refused = 0, len(views), 0
+    rerank_evals, n_rerank_refused = 0, 0
+    n_reranked = sum(1 for _, rk in views.values() if rk is not None)
     if coarse_bracket and abort_unmet:
         done = []
         for (r, bracket), _ in located:
@@ -1345,6 +1410,17 @@ def solve(obj, *, prec=None, abort_unmet=False, stable_rank=False, coarse_bracke
             out = _count_root(obj, item, lams, svals, located, prec)
         else:
             out = _count_root(view, item, *_samples(view), located, prec)
+        if (coarse_bracket and rank is None and out.recentre is None
+                and any(x.count_uncertain for x in out.levels)):
+            # THRESHOLD FIRST, STABLE ON DOUBT, for the count as for the refine: a noise direction
+            # can sit near the floor in the threshold's tension vector and read as an undecided
+            # branch (apex (0.1, 0.25) lightning rung, 451.09: count right, flagged uncertain). The
+            # root is refined again at the stable rank in its cell and counted there; that count is
+            # kept if it is certain.
+            redo = _recount_stable(obj, item, located, prec)
+            if redo is not None:
+                out, view, rank = redo
+                views[id(item.r)] = (view, rank)
         probe_evals += out.probe_evals
         side_evals += out.side_evals
         if out.recentre is not None:
@@ -1357,6 +1433,20 @@ def solve(obj, *, prec=None, abort_unmet=False, stable_rank=False, coarse_bracke
         levels.extend(out.levels if rank is None
                       else (replace(x, rank=rank) for x in out.levels))
     levels.sort(key=lambda x: x.lam)
+    n_noise = 0
+    if coarse_bracket:
+        # Every level must sit in a coarse well (step 5a: 175 of 175 true eigenvalues on twelve
+        # pencils, ~1e-6 of the plateau). A level that does not is a minimum of the fine tension's
+        # noise, and the side search finds those too: apex (0.15, 0.25) rung 3 reported sigma 0.077
+        # at 465.32, 4% from any eigenvalue, as a level (2026-10-27).
+        from .bracket import RESCUE_DEPTH
+        coarse = PolicyView(obj, Policy.penalty())
+        cv = _samples(coarse)[1]
+        plateau = float(np.median(cv)) if cv.size else float("inf")
+        kept = [x for x in levels
+                if coarse.tension(coarse.from_lam(x.lam)) <= RESCUE_DEPTH * plateau]
+        n_noise = len(levels) - len(kept)
+        levels = kept
 
     levels, uncertain = _flag_uncertain_counts(levels, folds_are_duplicates=True)
     mult_evals = (obj.n_evals - mark) - probe_evals - side_evals
@@ -1368,6 +1458,7 @@ def solve(obj, *, prec=None, abort_unmet=False, stable_rank=False, coarse_bracke
         search_evals=search_evals, refine_evals=refine_evals,
         multiplicity_evals=mult_evals, probe_evals=probe_evals, side_evals=side_evals,
         rerank_evals=rerank_evals, n_reranked=n_reranked, n_rerank_refused=n_rerank_refused,
+        n_noise_dropped=n_noise,
         evaluations=obj.n_evals, rejected_deep=deep,
         n_uncertain=len(uncertain) + len(deep),
         uncertain=(tuple((x.lam, x.mult, x.count_alt, x.uncertain_reason) for x in uncertain)

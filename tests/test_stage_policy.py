@@ -354,8 +354,8 @@ def test_coarse_bracketing_solves_the_triangle_the_threshold_declines():
     assert sum(L.mult for L in lv) >= 15 + HEADROOM
     for L, r in zip(lv[:15], ref):
         assert abs(L.lam - r) <= max(L.bound, 2e-10 * r) and L.met(1e-10)
-    # lam_1 has no noise tail and keeps the threshold path; the levels above it have one.
-    assert d.n_reranked >= 15 and lv[0].rank is None
+    # Refinement is threshold-first: the stable rank is the fallback, not the rule.
+    assert lv[0].rank is None
 
 
 def test_the_median_over_pairs_ignores_a_single_flicker():

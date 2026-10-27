@@ -294,7 +294,8 @@ class MPSEigensolver(Eigensolver, Frozen):
         res = solve(obj, prec=prec, abort_unmet=(on_shortfall == "raise"),
                     stable_rank=stable_rank, coarse_bracket=coarse_bracket)
         if self.certify and res.levels:
-            res = self.certify_levels(res, lam_max=float(b), prec=prec)
+            res = self.certify_levels(res, lam_max=float(b), prec=prec,
+                                      objective=obj if coarse_bracket else None)
         res = self.audit_count(res, a, b)
         if on_shortfall == "raise":
             _raise_on_shortfall(res, a, b, prec)
@@ -410,7 +411,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         audit = count_audit(res.unfolded, self.domain, lo=float(a), top=float(b))
         return replace(res, diagnostics=replace(res.diagnostics, count_audit=audit))
 
-    def certify_levels(self, res, *, lam_max, prec):
+    def certify_levels(self, res, *, lam_max, prec, objective=None):
         """`res` with a Moler-Payne bound on every level (`chladni.integrals.certify`), and its
         precision summary recomputed from each level's reported bar (`Level.bound`: the tighter
         of the two, except that a `delta_res` short of `prec` is not admitted).
@@ -421,6 +422,12 @@ class MPSEigensolver(Eigensolver, Frozen):
         whether a cluster's subspace admits a sharper bound is an open question
         (`docs/design/boundary_integrals.md`). Off a Dirichlet boundary the bound does not
         apply, and each level says so in `bound_reason` and keeps `delta_res`.
+
+        With `objective` (the search's, stage-policy step 6, 2026-10-27), each level is certified
+        at its own rank AND at the stable rank its recorded spectra give (`search._stable_rank_near`),
+        and keeps the SMALLER bound: every trial function gives a valid Moler-Payne bound, and the
+        threshold rank's flutter makes the coefficient vector -- and the bound -- noisy (apex
+        (0.3, 0.25) rung 3: 4.5e-11 in one run, 3.3e-9 in another, roots 1e-11 apart).
         """
         from dataclasses import replace
 
@@ -436,17 +443,27 @@ class MPSEigensolver(Eigensolver, Frozen):
             origins = certify.x0_probes(self.domain, iq.x0)
             levels = []
             for L in res.levels:
-                # At the rank the level was refined at, when a stage froze one (`Level.rank`).
-                fc = p.family_coef(L.lam, p.coef(L.lam, int(L.mult),
-                                                 rank=getattr(L, "rank", None)))
-                cd = cauchy.cauchy_data(p.basis, fc, L.lam, iq.quad)
-                k = lam_to_k(L.lam)
+                # At the rank the level was refined at, when a stage froze one (`Level.rank`),
+                # and -- given the search's objective -- at the stable rank there too.
+                ranks = [getattr(L, "rank", None)]
+                if objective is not None and hasattr(objective, "spectra_near"):
+                    from .search import _stable_rank_near
+                    alt = _stable_rank_near(objective, float(L.lam))[0]
+                    if alt is not None and alt not in ranks and alt >= int(L.mult):
+                        ranks.append(alt)
+                mp = None
+                for rk in ranks:
+                    fc = p.family_coef(L.lam, p.coef(L.lam, int(L.mult), rank=rk))
+                    cd = cauchy.cauchy_data(p.basis, fc, L.lam, iq.quad)
+                    k = lam_to_k(L.lam)
 
-                def evaluate(z, fc=fc, k=k):
-                    V = p.basis.values(k, z)
-                    return V @ fc, np.abs(V) @ np.abs(fc)
+                    def evaluate(z, fc=fc, k=k):
+                        V = p.basis.values(k, z)
+                        return V @ fc, np.abs(V) @ np.abs(fc)
 
-                mp = certify.moler_payne(cd, evaluate, self.domain, origins)
+                    this = certify.moler_payne(cd, evaluate, self.domain, origins)
+                    if mp is None or np.max(this.abs) < np.max(mp.abs):
+                        mp = this
                 levels.append(replace(L, mp_bound=float(np.max(mp.abs)),
                                       mp_eps=float(np.max(mp.eps)),
                                       cancellation=float(np.max(mp.cancellation)),
