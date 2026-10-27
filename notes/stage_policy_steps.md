@@ -167,3 +167,21 @@ Measuring it on the apex line exposed three more things, all fixed in c71fa9c:
 Rung-3 prefix solves alone (`search_interval`, met of 22-23): apex (0.1,0.25) declined -> 23/23;
 (0.2,0.25) 20 -> 23; (0.3,0.25) 18 -> 22; (0.15,0.25) 22 -> 22. Wall times were 380-680 s per
 planner call on a machine at load 20-50; not comparable with the shipped runs.
+
+## The douse gate on the final coarse path (c71fa9c), three precisions
+
+`notes/stage_policy_step4_douse.py PREC 6 shipped,coarse`; data `..._<prec>_shipped-coarse.json`.
+Basis D, 41 cases x 5 jitters (30 unscored: no reference).
+
+| prec | shipped: ok / flagged / silent / declined | coarse | evals shipped -> coarse | same across jitter |
+|---|---|---|---|---|
+| 1e-10 | 161 / 1 / 13 / 0 | **169 / 1 / 5 / 0** | 57,043 -> 65,060 (+14%) | 37 -> 40 of 41 |
+| 1e-8 | 169 / 4 / 1 / 1 | 170 / 0 / **5** / 0 | 52,028 -> 56,100 (+8%) | 39 -> 41 |
+| 1e-6 | 170 / 5 / 0 / 0 | 168 / 5 / **2** / 0 | 42,535 -> 47,420 (+11%) | 41 -> 40 |
+
+**Two regressions to fix before the default can switch:**
+- **T2.2 at 1e-8:** shipped reads it flagged at four jitters and silent at one; coarse reads it silent
+  at all five. T2.2 is silent on every path at 1e-10 (the hard roster's 15-degree re-entrant shape),
+  but at 1e-8 the shipped path at least says so. The coarse path loses the FLAG.
+- **T1.5-r2 at 1e-6:** silent at two jitters (shipped: ok at all five). At 1e-10 the coarse path fixes
+  this case's shipped silents; at 1e-6 it introduces two.
