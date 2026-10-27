@@ -43,7 +43,8 @@ from ..eigensolver import lam_to_k
 from ..helmholtz import check_k
 from . import _gsvd
 from ._regularize import (_MODES, _PENALTY, _REACH_FLOOR, _REACH_ROUNDING, C_PEN,
-                          choose_rank, regularize)
+                          choose_rank, penalty_tensions, reduce_penalty, regularize,
+                          svd_factors)
 from .policy import Policy
 
 __all__ = ["MPSPencil", "assemble", "equilibrate", "RankDiagnostics"]
@@ -399,6 +400,34 @@ class MPSPencil(Frozen):
         self._keep_spectrum(lam, out)
         return out
 
+    def _regularized_for(self, lam, policy):
+        """The `RegularizedPencil` at `lam` under `policy` (normalized; None = the pencil's own)."""
+        if policy is None:
+            return self.regularized(lam)
+        if policy.kind == "rank":
+            return self._regularized_at(lam, policy.rank)
+        if self.reg != "svd":
+            raise ValueError(f"the coarse penalty is reduced from the 'svd' mode's factorization; "
+                             f"this pencil is reg={self.reg!r}")
+        B, I = self.pencil(lam)
+        f = svd_factors(B, I)
+        out = reduce_penalty(f, policy.tau_rel * float(f.s[0]))
+        self._keep_spectrum(lam, out)
+        return out
+
+    def _penalty_tensions(self, lam, policy):
+        """The coarse penalty's tensions at `lam`, by the CS route (`penalty_tensions`), keeping
+        the spectrum the same factorization computed."""
+        if self.reg != "svd":
+            raise ValueError(f"the coarse penalty is reduced from the 'svd' mode's factorization; "
+                             f"this pencil is reg={self.reg!r}")
+        B, I = self.pencil(lam)
+        f = svd_factors(B, I)
+        s = np.asarray(f.s, dtype=float)
+        s.setflags(write=False)
+        self._store(("spec", float(lam)), s)
+        return penalty_tensions(f, policy.tau_rel * float(f.s[0]))
+
     def _regularized_at(self, lam, rank):
         """The `RegularizedPencil` at `lam` truncated to `rank` directions, or the pencil's own
         when `rank` is None. A frozen rank is a truncation, so a penalty pencil refuses it."""
@@ -492,8 +521,10 @@ class MPSPencil(Frozen):
         key = ("tens", float(lam)) if policy is None else ("tens", float(lam), policy.key)
         hit = self._cache.get(key)
         if hit is None:
-            hit = _gsvd.tensions_of(self._regularized_at(lam, None if policy is None
-                                                         else policy.rank))
+            if policy is not None and policy.kind == "penalty":
+                hit = self._penalty_tensions(lam, policy)
+            else:
+                hit = _gsvd.tensions_of(self._regularized_for(lam, policy))
             hit.setflags(write=False)
             self._store(key, hit)
         return hit

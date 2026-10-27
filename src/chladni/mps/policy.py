@@ -13,16 +13,25 @@ So a stage names the policy it reads under, and the pencil and the objective key
 it. Without the key, two policies' values at one `lam` would be mixed silently -- every cache was
 keyed by `lam` alone.
 
-Two policies today: the pencil's OWN (whatever it was built with; `None` everywhere, so every
-existing call is unchanged) and a FROZEN rank (`reg="svd"`'s truncation at a given count). The
-coarse penalty for bracketing is the next step's.
+Three policies: the pencil's OWN (whatever it was built with; `None` everywhere, so every
+existing call is unchanged); a FROZEN rank (`reg="svd"`'s truncation at a given count); and the
+coarse PENALTY bracketing reads, `([A_B; tau I], A_I)` with `tau = tau_rel x` the stack's spectral
+norm, which chooses no rank and so cannot flip one. `tau_rel` defaults to `sqrt(eps)`, the geometric
+mean of 1 and the arithmetic: ~3 decades above the worst noise tail measured (2e-11, five domains,
+`notes/knee_generalize_results.txt`) and ~7 below a tension plateau (~0.1-0.3). It does not depend
+on `prec`: bracketing does not need the deep digits.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional
 
-__all__ = ["Policy"]
+import numpy as np
+
+#: The coarse penalty's default weight relative to the stack's spectral norm.
+TAU_REL = float(np.sqrt(np.finfo(float).eps))
+
+__all__ = ["Policy", "TAU_REL"]
 
 
 @dataclass(frozen=True)
@@ -35,15 +44,22 @@ class Policy:
 
     kind: str = "pencil"
     rank: Optional[int] = None
+    tau_rel: Optional[float] = None
 
     def __post_init__(self):
-        if self.kind not in ("pencil", "rank"):
-            raise ValueError(f"unknown policy kind {self.kind!r}; expected 'pencil' or 'rank'")
+        if self.kind not in ("pencil", "rank", "penalty"):
+            raise ValueError(f"unknown policy kind {self.kind!r}; expected 'pencil', 'rank' or "
+                             f"'penalty'")
         if self.kind == "rank":
             if self.rank is None or int(self.rank) != self.rank or int(self.rank) < 1:
                 raise ValueError(f"a frozen rank must be a positive integer, got {self.rank!r}")
         elif self.rank is not None:
-            raise ValueError("the pencil's own policy takes no rank")
+            raise ValueError(f"the {self.kind!r} policy takes no rank")
+        if self.kind == "penalty":
+            if self.tau_rel is None or not np.isfinite(self.tau_rel) or not self.tau_rel > 0:
+                raise ValueError(f"a penalty needs tau_rel > 0, got {self.tau_rel!r}")
+        elif self.tau_rel is not None:
+            raise ValueError(f"the {self.kind!r} policy takes no tau_rel")
 
     @classmethod
     def pencil(cls):
@@ -55,10 +71,17 @@ class Policy:
         """Truncate at exactly `rank` directions, at every `lam` it is read at."""
         return cls("rank", int(rank))
 
+    @classmethod
+    def penalty(cls, tau_rel=None):
+        """The coarse penalty at `tau = tau_rel x` the stack's spectral norm (`TAU_REL`)."""
+        return cls("penalty", None, TAU_REL if tau_rel is None else float(tau_rel))
+
     @property
     def key(self):
         """None for the pencil's own policy, else a tuple: the cache key."""
-        return None if self.kind == "pencil" else (self.kind, self.rank)
+        if self.kind == "pencil":
+            return None
+        return (self.kind, self.rank) if self.kind == "rank" else (self.kind, self.tau_rel)
 
     @staticmethod
     def normalize(policy):

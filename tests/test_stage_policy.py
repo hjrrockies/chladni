@@ -146,3 +146,93 @@ def test_a_bare_callable_objective_is_unchanged():
 def test_a_level_records_its_rank():
     assert Level(lam=1.0, mult=1).rank is None
     assert Level(lam=1.0, mult=1, rank=40).rank == 40
+
+
+# --- step 2: one factorization serves the truncation, the spectrum and the coarse penalty -------
+#
+# Bracketing will read a PENALTY (no rank decision, so continuous in lam) at tau = sqrt(eps) x the
+# stack's spectral norm, from the same QR and SVD the threshold path already makes: a small QR of
+# [R; tau I] instead of a second QR of the whole tall stack.
+
+def test_a_penalty_policy_is_a_hashable_key():
+    a = Policy.penalty()
+    assert a == Policy.penalty() and a.key == ("penalty", a.tau_rel)
+    assert a.tau_rel == pytest.approx(np.sqrt(np.finfo(float).eps))
+    with pytest.raises(ValueError):
+        Policy.penalty(0.0)
+
+
+def test_the_svd_factors_reproduce_regularize_bit_for_bit(p):
+    from chladni.mps._regularize import reduce_svd, regularize, svd_factors
+    B, I = p.pencil(LAM)
+    a = regularize(B, I, reg="svd", rtol=p.rtol)
+    b = reduce_svd(svd_factors(B, I), None, p.rtol)
+    assert a.rank == b.rank
+    assert np.array_equal(a.B, b.B) and np.array_equal(a.I, b.I) and np.array_equal(a.s, b.s)
+
+
+def test_the_penalty_from_the_factors_matches_tikhonov_qr(p):
+    from chladni.mps import _gsvd
+    from chladni.mps._regularize import reduce_penalty, regularize, svd_factors
+    B, I = p.pencil(LAM)
+    f = svd_factors(B, I)
+    tau = np.sqrt(np.finfo(float).eps) * f.s[0]
+    mine = _gsvd.tensions_of(reduce_penalty(f, tau))
+    ref = _gsvd.tensions_of(regularize(B, I, reg="tikhonov_qr",
+                                       rtol=tau / np.linalg.norm(np.vstack([B, I]))))
+    assert mine.size == ref.size == p.n_cols
+    head = slice(0, 20)
+    assert np.allclose(mine[head], ref[head], rtol=1e-9, atol=1e-14)
+
+
+def test_the_penalty_coef_names_the_tension(p):
+    from chladni.mps import _gsvd
+    from chladni.mps._regularize import reduce_penalty, svd_factors
+    B, I = p.pencil(LAM)
+    f = svd_factors(B, I)
+    tau = np.sqrt(np.finfo(float).eps) * f.s[0]
+    reg = reduce_penalty(f, tau)
+    c = _gsvd.coef_of(reg, 1)[:, 0] if _gsvd.coef_of(reg, 1).ndim == 2 else _gsvd.coef_of(reg, 1)
+    num = np.sqrt(np.linalg.norm(B @ c) ** 2 + (tau * np.linalg.norm(c)) ** 2)
+    assert num / np.linalg.norm(I @ c) == pytest.approx(_gsvd.tensions_of(reg)[0], rel=1e-8)
+
+
+def test_a_penalty_read_keeps_the_spectrum_and_costs_one_assembly(p, monkeypatch):
+    from chladni.mps import pencil as _pencil
+    q = MPSPencil(p.bdry, p.interior, reg=p.reg, rtol=p.rtol, prec=p.prec)
+    calls = {"n": 0}
+    real = _pencil.assemble
+
+    def counted(*a, **k):
+        calls["n"] += 1
+        return real(*a, **k)
+    monkeypatch.setattr(_pencil, "assemble", counted)
+    t = q.tensions(LAM, Policy.penalty())
+    s = q.spectrum(LAM)
+    assert calls["n"] == 1
+    fin = t[np.isfinite(t)]
+    assert t.size == q.n_cols and np.all(np.diff(fin) >= 0) and np.all(np.isinf(t[fin.size:]))
+    assert np.allclose(s, p.spectrum(LAM), rtol=1e-12)
+
+
+def test_the_penalty_floor_sits_near_tau(p):
+    # At a true eigenvalue the coarse tension bottoms out near tau (relative), far above the
+    # threshold's floor and far below the plateau: what bracketing needs and no more.
+    from chladni.reference import L_shape_eigs
+    lam1 = float(L_shape_eigs(1)[0])
+    t = p.tension(lam1, Policy.penalty())
+    assert 1e-10 < t < 1e-6
+    assert p.tension(lam1) < t
+
+
+def test_the_cs_route_matches_the_gsvd_of_the_penalty(p):
+    from chladni.mps import _gsvd
+    from chladni.mps._regularize import penalty_tensions, reduce_penalty, svd_factors
+    for lam in (LAM, 9.6397238440219):                   # a plateau point and the first eigenvalue
+        B, I = p.pencil(lam)
+        f = svd_factors(B, I)
+        tau = np.sqrt(np.finfo(float).eps) * f.s[0]
+        ref = _gsvd.tensions_of(reduce_penalty(f, tau))
+        mine = penalty_tensions(f, tau)
+        assert np.allclose(mine[:20], ref[:20], rtol=1e-9, atol=0)
+        assert np.array_equal(p.tensions(lam, Policy.penalty()), mine)

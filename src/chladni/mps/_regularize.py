@@ -92,7 +92,8 @@ import numpy as np
 import scipy.linalg as la
 from scipy.linalg import lapack
 
-__all__ = ["RegularizedPencil", "regularize", "choose_rank"]
+__all__ = ["RegularizedPencil", "regularize", "choose_rank", "StackFactors", "svd_factors",
+           "reduce_svd", "reduce_penalty", "penalty_tensions"]
 
 #: How close `s[r]/s[r-1]` may come to 1 before the frozen rank is reported as straddling a
 #: near-degenerate pair. At a true tie the retained subspace is not well defined and the
@@ -268,6 +269,109 @@ def _warn_if_degenerate(s, rank):
         )
 
 
+class StackFactors(NamedTuple):
+    """The `"svd"` mode's factorization of the stack `[A_B; A_I]`, before any rank is chosen:
+    `stack = Q R` and `R = Z diag(s) Yt`. `m` is `A_B`'s row count.
+
+    TRANSIENT. It holds matrices, and matrices are never cached (`pencil._CACHE_MAX`): it lives
+    for one evaluation, and every policy that evaluation serves -- a truncation at any rank
+    (`reduce_svd`), the coarse penalty (`reduce_penalty`), the spectrum `s` -- is reduced from it
+    before it is dropped. One assembly and one QR serve them all (2026-10-27)."""
+
+    Q: np.ndarray
+    R: np.ndarray
+    Z: np.ndarray
+    s: np.ndarray
+    Yt: np.ndarray
+    m: int
+
+
+def _factor(stack, m):
+    Q, R = _qr_economic(stack)
+    Z, s, Yt = _svd_gesdd_then_gesvd(R)
+    return StackFactors(Q, R, Z, s, Yt, int(m))
+
+
+def svd_factors(A_B, A_I):
+    """`StackFactors` of the pencil `(A_B, A_I)`: the QR of the stack and the SVD of its `R`."""
+    A_B, A_I = np.asarray(A_B, dtype=float), np.asarray(A_I, dtype=float)
+    return _factor(np.vstack([A_B, A_I]), A_B.shape[0])
+
+
+def reduce_svd(f, rank=None, rtol=np.finfo(float).eps):
+    """The `"svd"` truncation from `StackFactors`: keep the leading `rank` left singular
+    directions, or derive the rank at the relative cutoff `rtol` when `rank` is None.
+    `regularize(..., reg="svd")` is exactly this, so the two agree bit for bit."""
+    Q, Z, s, Yt, m = f.Q, f.Z, f.s, f.Yt, f.m
+    r = _rank_from(s, rank, rtol)
+    _warn_if_degenerate(s, r)
+    Z1, s1 = Z[:, :r], s[:r]
+    Y1 = Yt[:r].T                                 # (n, r)
+    reduced = Q @ Z1
+
+    def back(y, _Y1=Y1, _s1=s1):
+        # A c = Q Z diag(s) Yt c, and c = Y1 diag(1/s1) y sends Yt c to [y; 0], so
+        # A c = (Q Z1) y exactly -- the statement that makes this an inverse.
+        y = np.asarray(y, dtype=float)
+        return _Y1 @ (y / _s1[:, None] if y.ndim == 2 else y / _s1)
+
+    return RegularizedPencil(reduced[:m], reduced[m:], back, r, s)
+
+
+def reduce_penalty(f, tau):
+    """The PENALTY `([A_B; tau I], A_I)` from `StackFactors`, with no rank decision.
+
+    `"tikhonov_qr"` takes a QR of the tall stack `[A_B; tau I; A_I]`. From `stack = Q R` the same
+    orthonormal basis costs only a small QR: `[R; tau I] = Q2 R2`, so `[Q R; tau I] =
+    [Q 0; 0 I] Q2 R2`, and in coordinates `y = R2 c` the blocks are `A_B c = Q_B Q2_top y`,
+    `tau c = Q2_bot y`, `A_I c = Q_I Q2_top y`, with orthonormal columns jointly. Identical to
+    `"tikhonov_qr"` in exact arithmetic (rows permuted, which the GSVD does not see).
+
+    `tau` is ABSOLUTE. The stage policy (`chladni.mps.policy.Policy.penalty`) sets it relative to
+    the stack's spectral norm `s[0]`, not to its Frobenius norm as `"tikhonov_qr"`'s `rtol` does:
+    an equilibrated stack's Frobenius norm is `sqrt(n_cols)`, which would make the penalty grow
+    with the basis."""
+    tau = float(tau)
+    if not tau > 0.0:
+        raise ValueError(f"a penalty needs tau > 0, got {tau!r}")
+    Q, R, m = f.Q, f.R, f.m
+    n = R.shape[1]
+    Q2, R2 = _qr_economic(np.vstack([R, tau * np.eye(n)]))
+    top, bot = Q2[:R.shape[0]], Q2[R.shape[0]:]
+    QT = Q @ top
+
+    def back(y, _R=R2):
+        y = np.asarray(y, dtype=float)
+        flat = y.ndim == 1
+        c = la.solve_triangular(_R, y[:, None] if flat else y)
+        return c[:, 0] if flat else c
+
+    return RegularizedPencil(np.vstack([QT[:m], bot]), QT[m:], back, n, f.s, tau=tau)
+
+
+def penalty_tensions(f, tau):
+    """The coarse penalty's tension vector, ascending, without the GSVD.
+
+    `reduce_penalty`'s blocks have orthonormal columns JOINTLY, so the pencil is a CS
+    decomposition: the singular values `c` of the numerator block and `s` of the interior block
+    pair up with `c**2 + s**2 = 1`, and each tension is `c / s = c / sqrt(1 - c**2)`. So only the
+    numerator block's singular values are needed: one SVD instead of `gsvdvals` on two blocks of
+    the full width -- the general GSVD made the penalty +47% to +145% per evaluation
+    (`notes/stage_policy_step2_results.txt`). Reading `c` rather than `s` keeps the SMALL
+    tensions accurate: a tension near 1e-7 is a `c` near 1e-7, computed to ~eps absolutely, where
+    `sqrt(1 - s**2)` would cancel."""
+    tau = float(tau)
+    if not tau > 0.0:
+        raise ValueError(f"a penalty needs tau > 0, got {tau!r}")
+    Q, R, m = f.Q, f.R, f.m
+    n = R.shape[1]
+    Q2 = _qr_economic(np.vstack([R, tau * np.eye(n)]))[0]
+    numer = np.vstack([Q[:m] @ Q2[:R.shape[0]], Q2[R.shape[0]:]])
+    c = np.clip(la.svdvals(numer)[::-1], 0.0, 1.0)            # ascending
+    s = np.sqrt((1.0 - c) * (1.0 + c))
+    return np.divide(c, s, out=np.full(c.shape, np.inf), where=(s > 0))
+
+
 def regularize(A_B, A_I, reg="svd", rank=None, rtol=np.finfo(float).eps):
     """Regularize the pencil `(A_B, A_I)` for the GSVD, returning the map back.
 
@@ -315,21 +419,7 @@ def regularize(A_B, A_I, reg="svd", rank=None, rtol=np.finfo(float).eps):
     stack = np.vstack([A_B, A_I])
 
     if reg == "svd":
-        Q, R = _qr_economic(stack)
-        Z, s, Yt = _svd_gesdd_then_gesvd(R)
-        r = _rank_from(s, rank, rtol)
-        _warn_if_degenerate(s, r)
-        Z1, s1 = Z[:, :r], s[:r]
-        Y1 = Yt[:r].T                                 # (n, r)
-        reduced = Q @ Z1
-
-        def back(y, _Y1=Y1, _s1=s1):
-            # A c = Q Z diag(s) Yt c, and c = Y1 diag(1/s1) y sends Yt c to [y; 0], so
-            # A c = (Q Z1) y exactly -- the statement that makes this an inverse.
-            y = np.asarray(y, dtype=float)
-            return _Y1 @ (y / _s1[:, None] if y.ndim == 2 else y / _s1)
-
-        return RegularizedPencil(reduced[:m], reduced[m:], back, r, s)
+        return reduce_svd(_factor(stack, m), rank, rtol)
 
     if reg == "qrp":
         Q, R, P = la.qr(stack, mode="economic", pivoting=True)
