@@ -329,3 +329,26 @@ where the cell boundaries are, opt-in first). Not yet measured: the cell boundar
 (ranks differ between neighbouring cells by 1-4 here, so the seams step 4 handles still exist);
 the rectangle grids of `landscape_findings.md` section 34 (22 recoveries, 0 wrong, to keep); the
 douse benchmark; the pilot triangles. One shape and one basis so far.
+
+## 10. The stable rank over the whole search window (`notes/stable_rank_lattice.py`, 2026-10-27)
+
+The prefix window for n = 15 (72.7 .. 3192), on the lattice with delta = 2 / r_top = 1/60 (r_top = 120,
+the threshold rank at the window top): 230 cells, three nodes each (both ends and the geometric middle),
+TOL 1e-2. Data `notes/stable_rank_lattice.json`.
+- **Below lam ~ 350 there is no tail.** The stable rank equals the threshold rank (94 -> 98) in every cell.
+- **Above it the two part.** The threshold rank climbs to 130 near lam ~ 2100 and falls back to 120 at the
+  top. The stable rank DROPS at the tail's onset (98 -> 91 near lam 350), sits at 90-96 up to lam ~ 1700,
+  then rises to 106. It is not monotone in lam, so "rank grows with lam" holds for the threshold rank,
+  not for the count of directions that are actually resolved.
+- **The per-sample stable rank is itself noisy near the tail's edge.** Scanning three cells at 41 points:
+  the lam_1 cell reads 98 at 40 points and 91 at one; the lam_8 cell scatters 94-99 (nodes 96, 96, 97,
+  frozen 96); the lam_15 cell scatters 100-103, but its middle node read 98 (frozen 98). At the lam_15
+  middle node the result is deterministic (four repeats agree), and moving lam by one ulp changes it:
+  index 98 moves 1.1% there, against the 1e-2 TOL. The edge of the tail is not a clean gap, so the
+  minimum over three nodes is not the minimum over the cell. On lam_8 the frozen 96 sits 2 above the
+  scan's lowest reading (94), and it was still smooth on the 401-point slice of section 9.
+- **What this asks of the design:** the cell rank needs a margin or a less noisy statistic, not more
+  trust in three samples. Candidates, none measured: (a) the minimum over the nodes minus a fixed
+  margin (2); (b) more nodes per cell; (c) match singular values by their vectors, not by sorted index,
+  so a swap of order is not read as movement; (d) cut at the first index where a RUN of k consecutive
+  values exceeds TOL, not the first single one.
