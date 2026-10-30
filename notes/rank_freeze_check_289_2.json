@@ -1,0 +1,129 @@
+{
+ "lam_ref": 288.9643854029,
+ "r_ref": 98,
+ "delta": 0.02040816326530612,
+ "cells": [
+  {
+   "a": 280.4948435107587,
+   "b": 286.2192280722027,
+   "r_cell": 98,
+   "r_min": 98,
+   "r_max": 98,
+   "n_flips": 0,
+   "deficit_max": 0,
+   "below_cell": 0,
+   "threshold": {
+    "seed_hist": [
+     0.005494070849473266,
+     0.005534064693566021
+    ],
+    "settled": true,
+    "search": {
+     "declined": false,
+     "reason": "",
+     "time": 1.5516798496246338,
+     "levels": []
+    }
+   },
+   "frozen": {
+    "seed_hist": [
+     0.005494070849473266,
+     0.005534064693566021
+    ],
+    "settled": true,
+    "search": {
+     "declined": false,
+     "reason": "",
+     "time": 1.5771780014038086,
+     "levels": []
+    }
+   }
+  },
+  {
+   "a": 286.2192280722027,
+   "b": 292.0604368083702,
+   "r_cell": 98,
+   "r_min": 98,
+   "r_max": 98,
+   "n_flips": 0,
+   "deficit_max": 0,
+   "below_cell": 0,
+   "threshold": {
+    "seed_hist": [
+     0.0054757315129605735,
+     0.005502389094121059
+    ],
+    "settled": true,
+    "search": {
+     "declined": false,
+     "reason": "",
+     "time": 2.438408136367798,
+     "levels": [
+      [
+       288.96438541015175,
+       1,
+       4.895986956446692e-12,
+       40.84978203151748
+      ]
+     ]
+    }
+   },
+   "frozen": {
+    "seed_hist": [
+     0.0054757315129605735,
+     0.005502389094121059
+    ],
+    "settled": true,
+    "search": {
+     "declined": false,
+     "reason": "",
+     "time": 2.3999900817871094,
+     "levels": [
+      [
+       288.96438541015175,
+       1,
+       4.895986956446692e-12,
+       40.84978203151748
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "a": 292.0604368083702,
+   "b": 298.020853886092,
+   "r_cell": 98,
+   "r_min": 98,
+   "r_max": 98,
+   "n_flips": 0,
+   "deficit_max": 0,
+   "below_cell": 0,
+   "threshold": {
+    "seed_hist": [
+     0.005477337387185461,
+     0.005573983657120972
+    ],
+    "settled": true,
+    "search": {
+     "declined": false,
+     "reason": "",
+     "time": 1.1522648334503174,
+     "levels": []
+    }
+   },
+   "frozen": {
+    "seed_hist": [
+     0.005477337387185461,
+     0.005573983657120972
+    ],
+    "settled": true,
+    "search": {
+     "declined": false,
+     "reason": "",
+     "time": 1.123891830444336,
+     "levels": []
+    }
+   }
+  }
+ ]
+}

@@ -43,7 +43,12 @@ def test_the_shipped_behaviour_is_the_only_one():
     `collapse` cross-check) are evidence, kept runnable in
     `notes/evidence_tests/search_ablations.py` as `solve_with_options`."""
     p = inspect.signature(solve).parameters
-    assert set(p) == {"obj", "prec", "abort_unmet"}, set(p)
+    # `stable_rank` and `coarse_bracket` are not alternative rules but a STAGED ROLLOUT: the stage-policy plan's step 4
+    # (refinement and the count at a stable rank frozen per root cell) behind a flag, measured
+    # against the shipped path, and made the only behaviour -- or removed -- at its step 8
+    # (`notes/triangle_apex_planner.md` sections 9-12, 2026-10-27). It defaults to the shipped path.
+    assert set(p) == {"obj", "prec", "abort_unmet", "stable_rank", "coarse_bracket"}, set(p)
+    assert p["stable_rank"].default is False and p["coarse_bracket"].default is False
 
 
 def test_reach_needs_the_bracket_and_the_slope():

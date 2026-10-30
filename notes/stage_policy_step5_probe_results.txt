@@ -1,0 +1,6 @@
+apex lightning: window [72.7, 3191.8] declined=False 
+   23 brackets, holding [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]; reference values in window 15, missed []; evals 224 (224); 22s; floor_limited False
+   bracket widths rel: median 3.9e-03 max 3.4e-02
+L-shape rung 0: window [3.0, 121.7] declined=False 
+   20 brackets, holding [1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1]; reference values in window 22, missed []; evals 242 (242); 14s; floor_limited False
+   bracket widths rel: median 4.3e-03 max 3.5e-02

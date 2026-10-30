@@ -1,0 +1,183 @@
+{
+ "lam_ref": 2220.6128169992,
+ "r_ref": 126,
+ "delta": 0.015873015873015872,
+ "cells": [
+  {
+   "a": 2141.902739291965,
+   "b": 2175.9011954712023,
+   "r_cell": 129,
+   "r_min": 125,
+   "r_max": 130,
+   "n_flips": 135,
+   "deficit_max": 1,
+   "below_cell": 126,
+   "threshold": {
+    "seed_hist": [
+     0.0026505193528101236,
+     0.0029208514133880897,
+     0.007007680856053235,
+     0.03740822119126342,
+     0.0755598385161276,
+     0.15073000232477868
+    ],
+    "settled": false,
+    "search": {
+     "declined": true,
+     "reason": "the slope estimate never settled: ['0.5018', '0.7754', '1.443', '2.365', '4.942', '13.22'] over 6 doublings, still risin",
+     "time": 34.29091787338257,
+     "levels": []
+    }
+   },
+   "frozen": {
+    "seed_hist": [
+     0.0026491566031557083,
+     0.0027331238365892875
+    ],
+    "settled": true,
+    "search": {
+     "declined": true,
+     "reason": "the slope estimate never settled: ['0.5081', '0.7883', '1.468', '2.382', '18.15', '37.59'] over 6 doublings, still risin",
+     "time": 34.20476698875427,
+     "levels": []
+    }
+   }
+  },
+  {
+   "a": 2175.9011954712023,
+   "b": 2210.439309685032,
+   "r_cell": 126,
+   "r_min": 125,
+   "r_max": 131,
+   "n_flips": 149,
+   "deficit_max": 5,
+   "below_cell": 7,
+   "threshold": {
+    "seed_hist": [
+     0.0023059042689268327,
+     0.0033098896286289452,
+     0.006475976642272221,
+     0.011388392388855646,
+     0.020710863308904447,
+     0.03900672121335786
+    ],
+    "settled": false,
+    "search": {
+     "declined": true,
+     "reason": "the slope estimate never settled: ['0.2632', '0.3961', '0.5949', '1.077', '3.067', '7.696'] over 6 doublings, still risi",
+     "time": 31.101027011871338,
+     "levels": []
+    }
+   },
+   "frozen": {
+    "seed_hist": [
+     0.0021200043904954858,
+     0.002871490845585186,
+     0.0061934009096439955,
+     0.010515742729093417,
+     0.018248010323199393,
+     0.03308159600357129
+    ],
+    "settled": false,
+    "search": {
+     "declined": true,
+     "reason": "the slope estimate never settled: ['0.263', '0.344', '0.6628', '1.078', '3.17', '8.086'] over 6 doublings, still rising ",
+     "time": 30.69754409790039,
+     "levels": []
+    }
+   }
+  },
+  {
+   "a": 2210.439309685032,
+   "b": 2245.5256479340005,
+   "r_cell": 125,
+   "r_min": 124,
+   "r_max": 129,
+   "n_flips": 142,
+   "deficit_max": 4,
+   "below_cell": 3,
+   "threshold": {
+    "seed_hist": [
+     0.001981554216510848,
+     0.002337074141869549,
+     0.0023923028332285493
+    ],
+    "settled": true,
+    "search": {
+     "declined": true,
+     "reason": "the slope estimate never settled: ['0.1962', '0.2169', '0.3157', '0.5943', '1.049', '2.295'] over 6 doublings, still ris",
+     "time": 34.51028108596802,
+     "levels": []
+    }
+   },
+   "frozen": {
+    "seed_hist": [
+     0.0019805518125697885,
+     0.0023092231445964845,
+     0.0026104454966388558,
+     0.00454325120819215,
+     0.006631834868518239,
+     0.015116626881257198
+    ],
+    "settled": false,
+    "search": {
+     "declined": false,
+     "reason": "",
+     "time": 2.325563907623291,
+     "levels": [
+      [
+       2220.6128167934776,
+       1,
+       2.944650942066639e-12,
+       67.91976500265066
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "a": 2245.5256479340005,
+   "b": 2281.1689121869204,
+   "r_cell": 125,
+   "r_min": 124,
+   "r_max": 129,
+   "n_flips": 131,
+   "deficit_max": 4,
+   "below_cell": 7,
+   "threshold": {
+    "seed_hist": [
+     0.0025815407369603953,
+     0.0038837929906111335,
+     0.014416379094288022,
+     0.019729666577451423,
+     0.07552767634898092,
+     0.16464963171561228
+    ],
+    "settled": false,
+    "search": {
+     "declined": true,
+     "reason": "the slope estimate never settled: ['1.39', '2.985', '5.481', '10.52', '22.48', '43.67'] over 6 doublings, still rising b",
+     "time": 31.9963321685791,
+     "levels": []
+    }
+   },
+   "frozen": {
+    "seed_hist": [
+     0.002578970897942972,
+     0.003879909338442076,
+     0.012216027164673375,
+     0.015973671359016863,
+     0.03705309127814803,
+     0.07131754922999829
+    ],
+    "settled": false,
+    "search": {
+     "declined": true,
+     "reason": "the slope estimate never settled: ['0.2984', '0.6083', '0.7265', '1.283', '3.826', '12.52'] over 6 doublings, still risi",
+     "time": 26.82593321800232,
+     "levels": []
+    }
+   }
+  }
+ ]
+}

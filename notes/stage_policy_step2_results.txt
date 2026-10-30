@@ -1,0 +1,8 @@
+L-shape rung 0   cols 203: max rel diff vs tikhonov_qr (10 smallest) 1.8e-11; ms/eval threshold 105.7, coarse 84.8 (+-20%)
+apex lightning   cols 180: max rel diff vs tikhonov_qr (10 smallest) 3.5e-11; ms/eval threshold 177.8, coarse 146.2 (+-18%)
+apex rung 1      cols 299: max rel diff vs tikhonov_qr (10 smallest) 3.3e-11; ms/eval threshold 328.6, coarse 180.1 (+-45%)
+apex lightning lam_8 cell, threshold: max/median |secant| 10.8, min sigma_1 6.20e-05, median 1.34e-02
+apex lightning lam_8 cell, coarse   : max/median |secant| 1.0, min sigma_1 6.52e-05, median 1.41e-02
+coarse at lam 288.96: floor 2.07e-07 at offset +0.0e+00 rel, floor/plateau 2.6e-05, threshold floor 3.98e-11
+coarse at lam 1293.91: floor 1.14e-07 at offset +0.0e+00 rel, floor/plateau 6.7e-06, threshold floor 2.81e-11
+coarse at lam 2220.61: floor 1.19e-07 at offset +0.0e+00 rel, floor/plateau 5.4e-06, threshold floor 3.98e-10

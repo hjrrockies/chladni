@@ -1,0 +1,3 @@
+L-shape rung 0   cols 203: assembly 54.5 ms, threshold 115.7, coarse 85.2 ms/eval (-26%)
+apex lightning   cols 180: assembly 156.3 ms, threshold 196.9, coarse 162.3 ms/eval (-18%)
+apex rung 1      cols 299: assembly 141.7 ms, threshold 358.9, coarse 179.0 ms/eval (-50%)
