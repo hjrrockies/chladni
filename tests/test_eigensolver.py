@@ -79,8 +79,8 @@ def test_unmet_is_derived_from_the_attained_bound_against_prec():
     """Clause (3), honesty: the bar is reported, and whether it met the request is a
     comparison anyone can redo rather than a flag the solver sets."""
     lam = np.array([10.0, 20.0])
-    tight = Spectrum(lam, np.array([1, 1]), np.array([1e-9, 1e-9]), prec=1e-8)
-    loose = Spectrum(lam, np.array([1, 1]), np.array([1e-9, 1e-3]), prec=1e-8)
+    tight = Spectrum.from_arrays(lam, np.array([1, 1]), np.array([1e-9, 1e-9]), prec=1e-8)
+    loose = Spectrum.from_arrays(lam, np.array([1, 1]), np.array([1e-9, 1e-3]), prec=1e-8)
     assert not tight.unmet.any() and tight.achieved
     assert list(loose.unmet) == [False, True] and not loose.achieved
 
@@ -223,3 +223,55 @@ def test_the_base_class_knows_nothing_about_tension_or_bases():
     abstraction has been drawn around MPS and the next method will not fit it."""
     for name in ("tension", "tensions", "basis", "coef", "pencil", "collocation"):
         assert not hasattr(Eigensolver, name), f"Eigensolver.{name} is MPS-specific"
+
+
+# --- levels first: the arrays are views, and a level is never half-present ------------------
+
+def _three():
+    from chladni.eigensolver import Level
+    return Spectrum((Level(2.0, 1, 1e-9), Level(5.0, 2, 1e-9), Level(8.0, 1, 1e-9)), prec=1e-8)
+
+
+def test_from_arrays_round_trips_the_array_contract():
+    s = Spectrum.from_arrays([2.0, 5.0, 8.0], [1, 2, 1], [1e-9, 1e-9, 1e-9], prec=1e-8)
+    # not `s == _three()`: a Level's unmeasured margin is nan, and nan != nan
+    assert [(L.lam, L.mult, L.bound) for L in s.levels] == [(2.0, 1, 1e-9), (5.0, 2, 1e-9),
+                                                             (8.0, 1, 1e-9)]
+    np.testing.assert_array_equal(s.lam, [2.0, 5.0, 8.0])
+    np.testing.assert_array_equal(s.mult, [1, 2, 1])
+    np.testing.assert_array_equal(s.unfolded, [2.0, 5.0, 5.0, 8.0])
+    assert s.count == 4 and s.achieved
+
+
+def test_a_spectrum_refuses_anything_but_levels():
+    with pytest.raises(TypeError, match="Spectrum.from_arrays"):
+        Spectrum((2.0, 5.0))
+
+
+def test_level_index_names_the_level_holding_an_unfolded_entry():
+    s = _three()
+    assert [s.level_index(k) for k in range(4)] == [0, 1, 1, 2]
+    with pytest.raises(IndexError):
+        s.level_index(4)
+    assert s.level_of(5.0) == 1 and s.level_of(5.0 + 1e-9) == 1
+    with pytest.raises(ValueError, match="not a level"):
+        s.level_of(6.0)
+
+
+def test_a_neighbourhood_is_whole_levels_and_a_double_is_never_split():
+    s = _three()
+    assert s.neighbourhood(1, 0.0) == (1, 2)             # the double alone, both copies
+    assert s.neighbourhood(1, 3.0) == (0, 3)             # everything within 3 of a neighbour
+    assert s.neighbourhood(2, 2.9) == (2, 3)
+    lo, hi = s.neighbourhood(s.level_index(2), 0.0)      # the second copy of the double
+    assert (lo, hi) == (1, 2)
+
+
+def test_cluster_counts_the_solvers_multiplicities():
+    s = _three()
+    assert s.cluster([5.0]) == ([1], 2)
+    assert s.cluster([5.0, 8.0]) == ([1, 2], 3)
+    assert s.cluster(near=5.0, mult=2) == ([1], 2)
+    assert s.cluster(near=6.0, mult=3) == ([1, 2], 3)
+    idx, total = s.cluster([5.0, 8.0])
+    assert total != 2                                     # the caller's mismatch to refuse

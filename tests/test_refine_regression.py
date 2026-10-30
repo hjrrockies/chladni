@@ -328,7 +328,7 @@ def test_no_reported_level_sits_OUTSIDE_the_bracket_of_its_own_eigenvalue(N, m, 
 
     (case,) = rs.split_degeneracy_cases(1e-10, bands=(band,), levels={N: m})
     truth = rs.complete_truth(case)
-    res = solve(bs.objective_for(case, 1e-10), prec=1e-10, merge="attained", collapse=False)
+    res = solve(bs.objective_for(case, 1e-10), prec=1e-10)
     bad = []
     for L in res.levels:
         y = truth[int(np.argmin(np.abs(truth - L.lam)))]

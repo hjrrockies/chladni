@@ -1115,3 +1115,46 @@ apart from "you found the level and undercounted it" -- different bugs, previous
 `sigma_1` in the dips to 4e-03 relative, and does NOT model `sigma_3` and above at all. The
 (C1) gap test reads exactly that branch, so any multiplicity conclusion drawn on it is
 provisional until confirmed on a real pencil.
+
+## As built, 2026-10-14: `solve` in named steps, and the alternatives moved out
+
+`solve` had grown to ~600 lines with its stage-3 loop holding four retry mechanisms inline, and
+nothing in it could be tested on its own. Two things were done, in that order, and the order is
+the point.
+
+**A golden trace first.** `tests/test_search_golden.py` records, on `rect_suite.all_families`
+at 1e-8 and 1e-10 (36 solves, 131 levels, 6472 evaluations), every level's value,
+multiplicity, tension, attained bar, root count, certification flags and bracket, and every
+diagnostic count, into `tests/data/search_golden.json`. Every later version must reproduce it;
+the fast tier replays five cases, the slow tier all 36. Floats at 1e-10 relative, counts and
+reasons exactly.
+
+**Then the split.** `solve` is a driver over:
+
+* `_refine_stage` -- stage 2 and the re-examination of refused bracket ends;
+* `_same_point` / `_group_roots` -- Phase D's distance prefilter (attained merge);
+* per stage-3 queue item (`_Root`), `_count_root`: the reach rule on the cache slope, then
+  `_side_search` (the three bounded retries -- narrowing at most twice per side, resampling
+  once per stretch, exclusion after a find -- and the hump test; returns a `_Side`), a
+  re-centre on a deeper wall find (returned as a `_Counted` for the driver to act on, once),
+  and `_attribute` (claims, then the (C2) backstop);
+* the tail: `_flag_uncertain_counts`, `_deep_rejections`, `_precision_summary`.
+
+The golden replays exactly on the split.
+
+**The alternatives are evidence, not options.** `collapse`, `merge="licence"`, `rule="gap"` /
+`"floor"`, `reach_slope="outside"` and `phase_d="angle"` -- ~400 lines reachable only from the
+ablation tests -- left `solve` and live in `notes/evidence_tests/search_ablations.py` as
+`solve_with_options` (the solve as it was before the split) with the helpers only they used
+(`_gram`, `_gram_group`, `_collapse_ambiguous`, `_spanning_bracket`, `_slope_outside`),
+importing everything else from the live module, so the comparison table in `solve`'s docstring
+can be regenerated against the current stages. `SolveDiagnostics` keeps the `n_ambiguous` and
+`n_gram_*` fields, at zero, for readers of old results. `_REF_MODES` (unused) and
+`PENALTY_PREC_MIN` (permanently infinite since 2026-10-10) are deleted; `reg="auto"` is the
+threshold, in one line.
+
+**The refiner's end probe is its own function.** `refine._end_verdict` judges a best point at a
+widened end by the curve beyond it (the phantom probes, then the walk into the bracket), and
+the two constants that fought each other -- the 4-ulp bracket widening in
+`Objective.in_lam_bracket` and the 4-ulp same-point margin in `refine` -- are one constant,
+`objective.BRACKET_ULPS`, with the reason recorded beside it.

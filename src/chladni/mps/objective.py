@@ -40,6 +40,9 @@ converts at the `mps` boundary, which is where the conventions doc puts the seam
 """
 from __future__ import annotations
 
+import concurrent.futures as cf
+import os
+
 import numpy as np
 
 from .._core import PREC
@@ -80,21 +83,41 @@ class Declined:
         return f"Declined({self.reason!r}, {len(self.partial)} partial)"
 
 
+#: Threads for a batch of tension evaluations (`Objective.from_pencil`). Bounded below the
+#: machine's core count because each evaluation is itself a LAPACK call on a BLAS pool, and
+#: douse runs several solves in separate processes besides.
+DEFAULT_WORKERS = max(1, min(8, (os.cpu_count() or 2) // 2))
+
+#: How far (in ulps of `lam`) a bracket converted to `lam` is widened at each end, so that a
+#: minimum whose exact square rounds just outside the `k` bracket is not lost; and, in
+#: `refine`, the margin within which two points are the SAME point. One constant, because the
+#: two interact: a 4-ulp margin against a 4-ulp widening is exactly what let a search's deepest
+#: sample -- on a neighbour's wall -- through as a root, which is why `refine` judges a point at
+#: a widened end by the curve beyond it (`refine._end_verdict`) rather than by the margin.
+BRACKET_ULPS = 4.0
+
 class Objective:
     """A counted, memoized tension function on `[lo, hi]`.
 
     Not `Frozen`: the cache and the counters mutate by design, which is the whole point of
     the object. Deliberately NOT thread-safe -- the search that drives it is sequential, and a
     lock here would make the miss count depend on scheduling. Parallelism in this package is
-    across whole solves (`douse`) and inside LAPACK, not inside one search.
+    across whole solves (`douse`) and inside LAPACK, not inside one search -- with ONE batch
+    seam: `tensions_many` hands a list of cache MISSES to `batch` (a thread pool over the pencil
+    in `from_pencil`) and inserts the results on the calling thread, in input order, so the
+    cache and the miss count come out exactly as a serial loop would leave them. The seed grid
+    goes through it (`bracket._seed`); the cover pass is sequential by nature (2026-10-14).
     """
 
     def __init__(self, tensions, lo, hi, *, prec=PREC, variable="k",
-                 expected_count=None, max_cache=None, modes=None):
+                 expected_count=None, max_cache=None, modes=None, batch=None):
         if not callable(tensions):
             raise TypeError("tensions must be callable")
         if modes is not None and not callable(modes):
             raise TypeError("modes must be callable or None")
+        if batch is not None and not callable(batch):
+            raise TypeError("batch must be callable or None")
+        self._batch = batch
         lo, hi = float(lo), float(hi)
         if not np.isfinite(lo) or not np.isfinite(hi) or not lo < hi:
             raise ValueError(f"need a finite interval with lo < hi, got ({lo}, {hi})")
@@ -134,6 +157,25 @@ class Objective:
             self._cache.pop(next(iter(self._cache)))
         self._cache[key] = v
         return v
+
+    def tensions_many(self, xs):
+        """The vectors at each of `xs`, as a list. Misses are evaluated together -- through
+        `batch` when the objective has one, else one by one -- and stored in input order, so
+        `n_evals`, `samples` and every later hit are identical to calling `tensions` in a loop.
+        """
+        keys = [float(x) for x in xs]
+        self._n_calls += len(keys)
+        have = {k: self._cache[k] for k in keys if k in self._cache}
+        misses = list(dict.fromkeys(k for k in keys if k not in have))
+        if misses:
+            vals = self._batch(misses) if self._batch is not None else [self._f(k) for k in misses]
+            for k, v in zip(misses, vals):
+                v = np.atleast_1d(np.asarray(v, dtype=float))
+                if self._max_cache is not None and len(self._cache) >= self._max_cache:
+                    self._cache.pop(next(iter(self._cache)))
+                self._cache[k] = v
+                have[k] = v                     # returned even if evicted later in this batch
+        return [have[k] for k in keys]
 
     @property
     def has_modes(self):
@@ -280,12 +322,16 @@ class Objective:
     # --- adapters --------------------------------------------------------------------------
 
     @classmethod
-    def from_pencil(cls, pencil, lo, hi, *, variable="k", **kw):
+    def from_pencil(cls, pencil, lo, hi, *, variable="k", max_workers=None, **kw):
         """Wrap an `MPSPencil`. The ONE place in this layer that knows about `lam`.
 
         The conversion falls here, at the `mps` boundary, which is where `docs/conventions.md`
         puts it: the pencil is always called with `lam`, and a caller working in `k` never
         hands `lam` to something expecting `k` or the reverse.
+
+        `max_workers` sizes the thread pool `tensions_many` evaluates a batch of misses on
+        (`DEFAULT_WORKERS` when None; 1 keeps every evaluation on the calling thread). The work
+        is LAPACK, which releases the GIL; the pencil's cache tolerates concurrent writers.
         """
         if variable == "k":
             def tensions(k):
@@ -293,14 +339,29 @@ class Objective:
 
             def modes(k):
                 return pencil.interior_image(float(k) ** 2)
+
+            def to_lam(x):
+                return float(x) ** 2
         else:
             def tensions(lam):
                 return pencil.tensions(float(lam))
 
             def modes(lam):
                 return pencil.interior_image(float(lam))
+
+            def to_lam(x):
+                return float(x)
+        workers = DEFAULT_WORKERS if max_workers is None else max(1, int(max_workers))
+
+        def batch(xs):
+            lams = [to_lam(x) for x in xs]
+            if workers == 1 or len(lams) == 1:
+                return [pencil.tensions(l) for l in lams]
+            with cf.ThreadPoolExecutor(max_workers=min(workers, len(lams))) as ex:
+                return list(ex.map(pencil.tensions, lams))
         kw.setdefault("prec", getattr(pencil, "prec", PREC))
         kw.setdefault("modes", modes)
+        kw.setdefault("batch", batch)
         return cls(tensions, lo, hi, variable=variable, **kw)
 
     def in_lam(self, x):
@@ -317,7 +378,7 @@ class Objective:
         converts a bracket passes, rather than at each call site.
         """
         a, b = self.in_lam(lo), self.in_lam(hi)
-        return a - 4.0 * np.spacing(abs(a)), b + 4.0 * np.spacing(abs(b))
+        return a - BRACKET_ULPS * np.spacing(abs(a)), b + BRACKET_ULPS * np.spacing(abs(b))
 
     def from_lam(self, lam):
         """A `lam` as an `x` in this objective's variable."""

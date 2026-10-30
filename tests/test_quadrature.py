@@ -279,3 +279,14 @@ def test_quadrature_is_frozen(square):
     assert dataclasses.is_dataclass(q)
     with pytest.raises(dataclasses.FrozenInstanceError):
         q.wts = np.zeros(1)
+
+
+def test_a_segment_with_no_nodes_is_refused_not_dropped():
+    """`n_per_seg` with a zero used to skip that segment silently: the L-shape's outer boundary
+    came back with perimeter 6 on a perimeter-8 boundary and no error (2026-10-14)."""
+    from chladni.geometry import L_shape
+    b = L_shape().outer
+    with pytest.raises(ValueError, match="at least one node"):
+        b.quad(n_per_seg=[10, 10, 0, 10, 10, 10])
+    q = b.quad(n_per_seg=[10, 10, 1, 10, 10, 10])
+    assert q.wts.sum() == pytest.approx(8.0)

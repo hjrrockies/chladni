@@ -99,9 +99,14 @@ class Quadrature:
     @classmethod
     def concat(cls, parts):
         """Join per-boundary rules, renumbering panel ids so they stay unique."""
-        parts = [p for p in parts if len(p)]
+        parts = list(parts)
         if not parts:
             raise ValueError("nothing to concatenate")
+        if any(len(p) == 0 for p in parts):
+            # An empty part is a boundary with no nodes -- a hole that would vanish from every
+            # integral. Refused rather than dropped (2026-10-14).
+            raise ValueError("every part of a concatenated rule needs at least one node; part(s) "
+                             f"{[i for i, p in enumerate(parts) if len(p) == 0]} are empty")
         families = {p.weight_family for p in parts}
         if len(families) > 1:
             raise ValueError(f"cannot concatenate mixed weight families: {sorted(families)}")

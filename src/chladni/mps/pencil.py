@@ -43,7 +43,7 @@ from ..eigensolver import lam_to_k
 from ..helmholtz import check_k
 from . import _gsvd
 from ._regularize import (_MODES, _PENALTY, _REACH_FLOOR, _REACH_ROUNDING, C_PEN,
-                          PENALTY_PREC_MIN, choose_rank, regularize)
+                          choose_rank, regularize)
 
 __all__ = ["MPSPencil", "assemble", "equilibrate", "RankDiagnostics"]
 
@@ -221,9 +221,10 @@ class MPSPencil(Frozen):
             raise ValueError(f"unknown regularization {reg!r}; expected one of "
                              f"{_MODES + ('auto',)}")
         if reg == "auto":
-            # The threshold at every `prec` since 2026-10-10 (`PENALTY_PREC_MIN` is infinite).
-            explicit = rtol is not None or rank is not None or lam_ref is not None
-            reg = ("tikhonov_qr" if not explicit and prec >= PENALTY_PREC_MIN else "svd")
+            # The threshold at every `prec`, decided 2026-10-10 (`notes/regularization_1e10.md`):
+            # on the douse benchmark truncation beat the penalty on every axis. The penalty is
+            # `reg="tikhonov_qr"`, explicitly.
+            reg = "svd"
         n_cols = len(bdry.family)
         if rtol is None:
             # A penalty's floor is its `tau`, so `tau` scales with `prec`; a truncation's floor is
@@ -550,9 +551,19 @@ class MPSPencil(Frozen):
     # --- the cache -------------------------------------------------------------------------
 
     def _store(self, key, value):
+        # Tolerant of concurrent writers: `MPSEigensolver.tensions(array)` maps over a thread
+        # pool, and a 186-evaluation solve writes ~560 entries against `_CACHE_MAX`, so eviction
+        # runs under threads. Two threads may pick the same oldest key (`pop` with a default), or
+        # the dict may change between `iter` and `next` (`RuntimeError`, retried once). The
+        # cache is a memo, so a lost or duplicate eviction costs nothing (2026-10-14).
         cache = self._cache
         if len(cache) >= _CACHE_MAX:
-            cache.pop(next(iter(cache)))
+            for _ in range(2):
+                try:
+                    cache.pop(next(iter(cache), None), None)
+                    break
+                except RuntimeError:            # dictionary changed size during iteration
+                    continue
         cache[key] = value
 
     def __repr__(self):

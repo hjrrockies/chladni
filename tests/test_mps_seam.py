@@ -340,3 +340,34 @@ def test_family_coef_scatters_the_SHORT_frozen_rank_vector(pencil):
     V = p.basis.values(K, p.int_pts)
     terms = (np.abs(V) @ np.abs(fc)).max()
     assert np.allclose(V @ fc, I[:, :r] @ x, rtol=0, atol=EXACT * terms)
+
+
+@pytest.mark.filterwarnings(
+    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
+def test_the_pencil_cache_survives_threaded_eviction(solver):
+    """`tensions(array)` maps over a thread pool while every evaluation stores three cache
+    entries, so past `_CACHE_MAX` the eviction runs under threads. It used to be
+    `pop(next(iter(cache)))`, which two writers can race into a `KeyError` or a `RuntimeError`
+    (2026-10-14). The values must still agree with the serial ones."""
+    from chladni.mps import pencil as _pencil
+    lams = np.linspace(8.0, 30.0, 4 * _pencil._CACHE_MAX // 3)
+    parallel = solver.tensions(lams)[:, 0]
+    serial = np.array([solver.tension(l) for l in lams])
+    assert np.allclose(parallel, serial, rtol=0, atol=EXACT)
+
+
+@pytest.mark.filterwarnings(
+    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
+def test_a_threaded_batch_on_the_pencil_matches_the_serial_objective(pencil):
+    """`Objective.from_pencil` evaluates a batch of misses on a thread pool; the values and the
+    charged count must be the serial objective's, point for point."""
+    from chladni.mps.objective import Objective
+    lams = np.linspace(8.0, 30.0, 40)
+    serial = Objective.from_pencil(pencil, 8.0, 30.0, variable="lam", max_workers=1)
+    threaded = Objective.from_pencil(pencil, 8.0, 30.0, variable="lam")
+    got = threaded.tensions_many(lams)
+    want = [serial.tensions(l) for l in lams]
+    assert serial.n_evals == threaded.n_evals == len(lams)
+    for g, w in zip(got, want):
+        assert np.allclose(g, w, rtol=0, atol=EXACT)
+    assert list(serial._cache) == list(threaded._cache)

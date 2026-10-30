@@ -37,7 +37,7 @@ def _check_against(spec, truth, n, prec):
 @pytest.mark.slow
 def test_the_L_shape_to_1e10_against_its_table():
     spec = Eigenproblem(L_shape()).solve(10, prec=PREC)
-    assert isinstance(spec, Spectrum) and spec.plan is not None
+    assert isinstance(spec.spectrum, Spectrum) and spec.plan is not None
     _check_against(spec, L_shape_eigs(25), 10, PREC)
     assert spec.achieved and not spec.flags, spec.flags
     assert spec.count_audit is not None and spec.count_audit.verdict == "ok"
@@ -101,7 +101,8 @@ def test_the_planner_refuses_what_it_does_not_cover():
 
 def test_the_old_spectrum_still_builds():
     s = Spectrum.from_unfolded([1.0, 2.0, 2.0])
-    assert s.count == 3 and s.levels == () and s.flags == () and s.count_audit is None
+    assert s.count == 3 and len(s.levels) == 2 and s.flags == () and s.count_audit is None
+    assert all(np.isnan(L.margin) for L in s.levels)             # nothing measured per level
 
 
 @pytest.mark.slow
@@ -110,3 +111,23 @@ def test_a_long_thin_rectangle_reaches_1e10():
     spec = Eigenproblem(rect(1.6, 0.4)).solve(3, prec=PREC)
     assert not spec.flags, spec.flags
     _check_against(spec, np.asarray(rect_eigs(12, 1.6, 0.4), float), 3, PREC)
+
+
+@pytest.mark.slow
+def test_a_spectrum_carries_the_searchs_evaluation_counts():
+    """What a solve cost, by stage, for a caller (douse) logging it per iterate."""
+    spec = Eigenproblem(rect(1.0, 1.0)).solve(2, prec=1e-8)
+    d = spec.diagnostics
+    assert d is not None and d.evaluations > 0
+    assert d.search_evals + d.refine_evals + d.multiplicity_evals <= d.evaluations
+
+
+@pytest.mark.slow
+def test_plan_and_solve_hands_back_the_rung_it_accepted():
+    """The planner solved the accepted rung to select it; `plan_and_solve` returns that answer,
+    and it is the one `solve(plan=plan)` recomputes (same basis, same domain, deterministic)."""
+    ep = Eigenproblem(L_shape())
+    plan, rec = ep.plan_and_solve(3, prec=1e-8)
+    again = ep.solve(3, prec=1e-8, plan=plan)
+    np.testing.assert_array_equal(rec.unfolded, again.unfolded)
+    assert rec.flags == again.flags and rec.plan is plan and rec.diagnostics is not None

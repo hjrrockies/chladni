@@ -535,8 +535,7 @@ def _seed(obj, lo, hi, prec_u):
     if expected is not None and np.isfinite(expected) and expected > 0:
         n = max(N_SEED // 4, int(np.ceil(SEED_PER_GAP * expected)))
     ks = list(np.linspace(lo, hi, n))
-    for k in ks:
-        obj.tension(k)
+    _evaluate_all(obj, ks)
     hist, previous = [], 0.0
     for _ in range(MAX_DOUBLINGS):
         ks_arr, vs_arr = obj.samples
@@ -546,11 +545,22 @@ def _seed(obj, lo, hi, prec_u):
             return ks_arr, vs_arr, tuple(hist), True
         previous = raw
         mids = [0.5 * (ks[i] + ks[i + 1]) for i in range(len(ks) - 1)]
-        for x in mids:
-            obj.tension(x)
+        _evaluate_all(obj, mids)
         ks = sorted(set(ks) | set(mids))
     ks_arr, vs_arr = obj.samples
     return ks_arr, vs_arr, tuple(hist), False
+
+
+def _evaluate_all(obj, xs):
+    """Evaluate the grid `xs`, as one batch where the objective offers it (`tensions_many`:
+    the thread pool in `Objective.from_pencil`), else one by one. Either way the cache and the
+    miss count end up as the serial loop leaves them."""
+    many = getattr(obj, "tensions_many", None)
+    if many is not None:
+        many(xs)
+    else:
+        for x in xs:
+            obj.tension(x)
 
 
 def bracket_interval(obj, *, prec=None, budget=None):
@@ -702,6 +712,9 @@ class _KView:
 
     def tension(self, k):
         return self._obj.tension(self._to_native(k))
+
+    def tensions_many(self, ks):
+        return self._obj.tensions_many([self._to_native(k) for k in ks])
 
     def sigma(self, k, j):
         return self._obj.sigma(self._to_native(k), j)
