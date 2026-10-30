@@ -437,11 +437,17 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
-* **[next]** **Sharp triangles certify nothing, and the planner returns its worst rung.** Apexes
+* **[next: default]** **Sharp triangles certify nothing, and the planner returns its worst rung.** Apexes
   near (0.1, 0.25) on base [0, 1] (a 12-18 deg corner, all corners singular): 4 of 7 nearby apexes
   meet 0 of 15 at 1e-10, 3 return rung 0 wrong by 1e-6 .. 2e-5 while rungs 1-2 held ~1e-10 values
   (tie-break in `_plan`); rich FB + source bases certify at margins 19-100 but the search declines
-  them on threshold-rank jitter (`_seed`). Fixes proposed, not built: `notes/triangle_apex_planner.md`.
+  them on threshold-rank jitter (`_seed`). Diagnosis: `notes/triangle_apex_planner.md`.
+  BUILT, OPT-IN (2026-10-27): `Eigenproblem(dom, coarse_bracket=True)` -- coarse-penalty
+  bracketing, threshold-first with stable-rank fallback, every level inside a coarse well
+  (`notes/stage_policy_steps.md`). Apex line at 1e-10: (0.05|0.1|0.2, 0.25) go 0/15 -> 15/15;
+  (0.1, 0.2) is 12/15 (worst rel. bound 1.3e-9), (0.3, 0.25) 14/15. douse gate at 1e-10:
+  161/1/13 -> 169/1/5 ok/flagged/silent, +14% evaluations. **Before it can be the default:**
+  T2.2 loses its flag at 1e-8, and T1.5-r2 goes silent at 1e-6 (two jitters).
 * **[done 2026-10-13]** **Short edges get a local source patch.** douse's ratio runs drive an
   edge toward zero (the N = 6, k = 2 seed-1 stall: an edge 0.042 of a 1.44 diameter). The offset
   layer at 0.05 D sat farther out than the edge is long, and the plan met 1e-10 at margin 2.0
