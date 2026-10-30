@@ -246,6 +246,7 @@ def reg_ngon_with_short_edge():
 
 
 @pytest.mark.slow
+@pytest.mark.filterwarnings("ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_a_rung_that_declines_does_not_stop_the_climb():
     """A 1.6 x 0.4 rectangle, in two placements. In one the corner-term rung's search declines
     ("the slope estimate never settled") and the plane-wave rung above it reaches 1e-10; a climb
