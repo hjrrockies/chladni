@@ -1,0 +1,23 @@
+
+== L-shape, prec 1e-12: rung 0, corner orders (60, 26, 30, 26, 30, 26), n_cols 198
+  base      lvl 3 cols  198 |c| 1.2e+00  lam-bound 3.8e-14  gram 6.7e-16  kappa max 3.2e+06 wtd 1.4e+00  rounding@eps 5.7e-16  IDENTITY 1.5e-08
+  base      lvl 8 cols  198 |c| 1.4e+00  lam-bound 2.0e-14  gram 3.2e-15  kappa max 2.6e+02 wtd 1.3e+00  rounding@eps 5.6e-16  IDENTITY 2.3e-08
+  FB x1.5   lvl 3 cols  297 |c| 1.2e+00  lam-bound 7.1e-15  gram 4.4e-16  kappa max 2.1e+06 wtd 1.2e+00  rounding@eps 4.9e-16  IDENTITY 1.5e-08
+  FB x1.5   lvl 8 cols  297 |c| 1.4e+00  lam-bound 2.0e-14  gram 1.6e-15  kappa max 2.1e+02 wtd 1.2e+00  rounding@eps 5.3e-16  IDENTITY 2.3e-08
+  FB x2.0   lvl 3 cols  396 |c| 1.2e+00  lam-bound 2.4e-14  gram 2.2e-16  kappa max 3.6e+06 wtd 1.2e+00  rounding@eps 5.0e-16  IDENTITY 1.5e-08
+  FB x2.0   lvl 8 cols  396 |c| 1.4e+00  lam-bound 1.9e-14  gram 2.2e-15  kappa max 3.5e+02 wtd 1.3e+00  rounding@eps 5.4e-16  IDENTITY 2.3e-08
+  rung 1    lvl 3 cols  193 |c| 1.2e+00  lam-bound 2.8e-15  gram 8.9e-16  kappa max 2.0e+06 wtd 1.2e+00  rounding@eps 4.8e-16  IDENTITY 1.5e-08
+  rung 1    lvl 8 cols  193 |c| 1.4e+00  lam-bound 6.7e-14  gram 4.6e-15  kappa max 1.1e+02 wtd 1.2e+00  rounding@eps 5.0e-16  IDENTITY 2.3e-08
+  rung 2    lvl 3 cols  252 |c| 1.2e+00  lam-bound 6.2e-14  gram 3.9e-15  kappa max 2.5e+06 wtd 1.2e+00  rounding@eps 4.8e-16  IDENTITY 1.5e-08
+  rung 2    lvl 8 cols  252 |c| 1.4e+00  lam-bound 1.5e-14  gram 2.4e-15  kappa max 1.5e+02 wtd 1.2e+00  rounding@eps 5.0e-16  IDENTITY 2.3e-08
+Traceback (most recent call last):
+  File "/Users/hringer/projects/python/chladni/.claude/worktrees/vibrant-tharp-c0e58b/notes/hadamard_error_sources.py", line 154, in <module>
+    rows = run()
+  File "/Users/hringer/projects/python/chladni/.claude/worktrees/vibrant-tharp-c0e58b/notes/hadamard_error_sources.py", line 127, in run
+    j = int(np.argmin(np.abs(np.asarray(sp.lam) - base.spectrum.lam[i])))
+            ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/hringer/projects/python/bootcamp/.venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py", line 1452, in argmin
+    return _wrapfunc(a, 'argmin', axis=axis, out=out, **kwds)
+  File "/Users/hringer/projects/python/bootcamp/.venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py", line 54, in _wrapfunc
+    return bound(*args, **kwds)
+ValueError: attempt to get argmin of an empty sequence
