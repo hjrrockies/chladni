@@ -83,6 +83,35 @@ class Eigenfunctions:
     reason: str = ""
 
 
+#: How far above `prec` a level's `gram_residual` may sit before `hadamard` refuses it. The
+#: derivative scales with `1/||u||^2`, so a normalization off by `g` puts `g` into every entry;
+#: past this the matrix is not a derivative worth returning. Floored at 1e-8 so a loose `prec`
+#: still refuses a residual of order one (`notes/hadamard_accuracy.md`: a flat triangle at prec
+#: 1e-12 came back with `gram_residual` 0.16 and a dilation identity off by 0.43).
+HADAMARD_GRAM_REFUSE = 1e3
+HADAMARD_GRAM_FLOOR = 1e-8
+
+
+@dataclass(frozen=True)
+class HadamardReport:
+    """What a Hadamard matrix is good for, beside the matrix (`hadamard(..., report=True)`).
+
+    `sizing_prec` and `shortfalls` are the integral rule's own (`IntegralQuad`): the worst MODEL
+    bound over its panels and every panel short of target. `gram_residual` is each level's
+    orthonormality defect (`Eigenfunctions.gram_residual`). `attained` is the larger of the two
+    kinds: the relative precision the matrix can be claimed to, as a model bound."""
+
+    prec: float
+    sizing_prec: float
+    shortfalls: tuple
+    gram_residual: tuple
+    attained: float
+
+    @property
+    def met(self):
+        return self.attained <= self.prec
+
+
 class MPSEigensolver(Eigensolver, Frozen):
     """The Method of Particular Solutions on a `Domain`.
 
@@ -526,7 +555,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         return Eigenfunctions(lam=lam, coef=out, rule=iq, orthonormal=ok, gram_residual=resid,
                               reason=why)
 
-    def hadamard(self, level, V, *, prec=None):
+    def hadamard(self, level, V, *, prec=None, report=False):
         """The Hadamard shape derivative of a Dirichlet level, or of several: `(n_fields, m, m)`.
 
         `level` may be a SEQUENCE of levels: a nearly degenerate cluster the solver resolved into
@@ -543,6 +572,13 @@ class MPSEigensolver(Eigensolver, Frozen):
         velocity is (`docs/design/douse_requirements.md`, "Hadamard integrals"). Integrated on the
         `'integer'` rule (`integrals.integral_quad`), whose corner panels are fitted to the
         velocity's integer powers of `r` on top of the corner family. Dirichlet only.
+
+        THE RULE AND THE NORMALIZATION ARE REPORTED, NOT ASSUMED (2026-11-03,
+        `notes/hadamard_accuracy.md`). A `PrecisionWarning` is issued when the rule's model bound
+        or a level's `gram_residual` exceeds `prec`, and `report=True` returns
+        `(H, HadamardReport)` with both. A level whose `gram_residual` exceeds
+        `max(HADAMARD_GRAM_REFUSE * prec, HADAMARD_GRAM_FLOOR)` is refused with `ValueError`,
+        the same refusal as a level that could not be orthonormalized at all.
         """
         from ..integrals import cauchy, identities, integral_quad
 
@@ -558,6 +594,12 @@ class MPSEigensolver(Eigensolver, Frozen):
                 raise ValueError(f"the level at lam = {float(L.lam):.10g} could not be "
                                  f"orthonormalized ({ef.reason}); its Hadamard matrix would mix "
                                  f"a wrong count")
+            refuse = max(HADAMARD_GRAM_REFUSE * prec, HADAMARD_GRAM_FLOOR)
+            if not ef.gram_residual <= refuse:
+                raise ValueError(f"the level at lam = {float(L.lam):.10g} is normalized only to "
+                                 f"gram_residual = {ef.gram_residual:.1e} (refused above "
+                                 f"{refuse:.0e} at prec = {prec:.0e}); its Hadamard matrix "
+                                 f"would carry that error in every entry")
             efs.append(ef)
         lam = max(float(L.lam) for L in levels)       # the rule is sized for the largest
         key = ("hadamard", lam, float(prec))
@@ -582,7 +624,19 @@ class MPSEigensolver(Eigensolver, Frozen):
             if vals is None:
                 vals = np.zeros((v.shape[0], len(curve)))
             vals[:, mask] = v
-        return np.stack([-identities.weighted_integral(cd, "NN", vf) for vf in vals])
+        H = np.stack([-identities.weighted_integral(cd, "NN", vf) for vf in vals])
+        iq = cache[key]
+        resid = tuple(float(ef.gram_residual) for ef in efs)
+        rep = HadamardReport(prec=float(prec), sizing_prec=float(iq.sizing_prec),
+                             shortfalls=tuple(iq.shortfalls), gram_residual=resid,
+                             attained=max([float(iq.sizing_prec)] + list(resid)))
+        if not rep.met:
+            where = ", ".join(w for w, *_ in rep.shortfalls) or "the normalization"
+            warnings.warn(
+                f"the Hadamard matrix at lam = {lam:.10g} is good to {rep.attained:.1e} "
+                f"relative (model bound), short of prec = {prec:.0e}: {where}. "
+                f"report=True returns the details.", PrecisionWarning, stacklevel=2)
+        return (H, rep) if report else H
 
     def solve_interval(self, a, b, *, on_shortfall="flag"):
         """The `Spectrum` of `[a, b]` -- `Eigensolver`'s contract, over `search_interval`.

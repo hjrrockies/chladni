@@ -149,3 +149,64 @@ def test_a_split_pair_near_a_double_gives_the_doubles_derivatives():
                        and abs(p1.real - 1.0) < 1e-12)
     ev = np.sort(np.linalg.eigvalsh(spec.hadamard([1, 2], V)[0]))
     np.testing.assert_allclose(ev, [-8 * np.pi ** 2, -2 * np.pi ** 2], rtol=5e-3)
+
+
+# --- what the matrix is good for: the report and the refusal (2026-11-03) ----------------------
+#
+# `notes/hadamard_accuracy.md`: the rule's shortfall was dropped and a 16% normalization error
+# passed silently. Both are now reported, and the second is refused.
+
+def _square_record(prec=PREC):
+    dom = rect(1.0, 1.0)
+    return dom, Eigenproblem(dom).solve(1, prec=prec)
+
+
+def _one_field(dom):
+    return _edge_velocity(dom, lambda p0, p1: abs(p0.real - 1.0) < 1e-12
+                          and abs(p1.real - 1.0) < 1e-12)
+
+
+@pytest.mark.slow
+def test_a_bad_normalization_is_refused(monkeypatch):
+    """A level whose Gram residual is far above prec cannot give a derivative: refused, with the
+    same exception as a level that could not be orthonormalized."""
+    from dataclasses import replace
+    from chladni.mps.solver import MPSEigensolver
+
+    dom, spec = _square_record()
+    real = MPSEigensolver.eigenfunctions
+
+    def bad(self, level, *, prec=None):
+        return replace(real(self, level, prec=prec), gram_residual=0.16)
+    monkeypatch.setattr(MPSEigensolver, "eigenfunctions", bad)
+    with pytest.raises(ValueError, match="gram_residual"):
+        spec.hadamard(0, _one_field(dom))
+
+
+@pytest.mark.slow
+def test_a_clean_square_reports_its_precision_met():
+    """No ruled corner, an exact normalization: the report says the matrix meets prec, and the
+    default return is still the bare matrix."""
+    dom, spec = _square_record()
+    H = spec.hadamard(0, _one_field(dom))
+    H2, rep = spec.hadamard(0, _one_field(dom), report=True)
+    np.testing.assert_array_equal(H, H2)
+    assert rep.met and rep.attained <= PREC and rep.shortfalls == ()
+    assert H[0, 0, 0] == pytest.approx(-2 * np.pi ** 2, rel=1e-8)
+
+
+@pytest.mark.slow
+def test_a_rule_shortfall_is_reported_and_warned():
+    """A ruled corner whose rule falls short of prec: the report names the corner and the call
+    warns. (On 2026-11-03 the Hadamard rule fell short at every corner of the L-shape at every
+    prec; once the rule meets prec, this test should be moved to whatever corner still
+    falls short, not deleted.)"""
+    from chladni._core import PrecisionWarning
+
+    base = [0, 1j, -1 + 1j, -1 - 1j, 1 - 1j, 1]
+    dom = Polygon(base, bc="dir")
+    spec = Eigenproblem(dom).solve(1, prec=PREC)
+    V = _edge_velocity(dom, lambda p0, p1: True)
+    with pytest.warns(PrecisionWarning, match="Hadamard matrix"):
+        _, rep = spec.hadamard(0, V, report=True)
+    assert not rep.met and any("corner" in w for w, *_ in rep.shortfalls)

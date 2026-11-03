@@ -35,10 +35,11 @@ from .refine import RefineResult
 # `solve` is safe to export where `refine` and `multiplicity` are not: the module is `search`,
 # so the function shadows no submodule.
 from .search import Level, SolveDiagnostics, SolveResult, solve
-from .solver import DEFAULT_RNG, MPSEigensolver
+from .solver import DEFAULT_RNG, Eigenfunctions, HadamardReport, MPSEigensolver
 
 __all__ = [
-    "Eigensolver", "MPSEigensolver", "MPSPencil", "DEFAULT_RNG",
+    "Eigensolver", "MPSEigensolver", "MPSPencil", "DEFAULT_RNG", "Eigenfunctions",
+    "HadamardReport",
     "assemble", "equilibrate", "choose_rank", "regularize", "RegularizedPencil",
     "tensions", "tensions_of", "coef", "coef_of", "RankDiagnostics",
     "RefineResult", "Multiplicity", "wide_bracket_for",
