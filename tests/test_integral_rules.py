@@ -354,3 +354,79 @@ def test_the_rule_caches_are_bounded():
         assert f.cache_info().maxsize is not None, f.__name__
         if f.__module__ == rules.__name__:          # `gauss_legendre` is keyed by order alone
             assert f.cache_info().maxsize >= 1024, f.__name__
+
+
+# --- the graded rule (2026-11-03, `notes/hadamard_accuracy.md`, addenda) -------------------
+#
+# `tau = s^p`, `p = max(1, 1/(2 nu - 1))`, geometric Gauss-Legendre panels in `s`. No fit, so
+# no stall: it reaches the floor on the whole CURVED lattice `{gamma + j nu + m}`, which contains
+# both the Gram and the Hadamard integrands. Rationality of `nu` buys and costs nothing.
+
+GRADED_NUS = [4 / 7, 2 / 3, 0.7, 71 / 101, 1.04, 1.39, 2.59, 11.8]
+
+
+def _lattice_error(nu, d, w, rho=2.0):
+    """Worst-case-weighted relative error on `sum rho^-(j nu + m) d^(gamma + j nu + m)`: the
+    corner panel at half the expansion's radius, every lattice point present."""
+    g = 2 * nu - 2
+    E = np.array([g + j * nu + m for j in range(80) for m in range(80)
+                  if rho ** -(j * nu + m) > 1e-20])
+    C = rho ** -(E - g)
+    exact = np.sum(C / (E + 1))
+    return abs(np.sum(C * (w[None, :] * d[None, :] ** E[:, None]).sum(axis=1)) - exact) / exact
+
+
+@pytest.mark.parametrize("nu", GRADED_NUS)
+def test_the_graded_rule_reaches_the_floor_on_the_whole_lattice(nu):
+    """The rule the sizing picks at `k = 1`, checked on the prototype's independent lattice --
+    harsher than the sizing model, since it decays only geometrically in `m` as well. Measured
+    worst 2.3e-14 (nu = 11.8), the summation floor of a lattice with ~1e3 terms."""
+    (lv, o, n_top), _ = R.graded_order_for_prec(nu, 1e-14, 1.0)
+    d, w = R.graded_corner_rule(nu, lv, o, R.GRADED_SIGMA, n_top)
+    assert _lattice_error(nu, d, w) < 5e-14
+    assert np.all(w > 0) and np.all(np.diff(d) > 0) and d[0] > 0 and d[-1] < 1
+
+
+@pytest.mark.parametrize("rational, neighbour", [(2 / 3, 2 / 3 + 1e-3 * np.sqrt(2)),
+                                                 (0.7, 71 / 101), (4 / 7, 53 / 93)])
+def test_a_rational_nu_is_nothing_special(rational, neighbour):
+    """The study's worry about rationalizing substitutions: `p` is continuous in `nu`, so a
+    small-denominator `nu` and a large-denominator neighbour get the same accuracy."""
+    for lv, o, n_top in ((4, 10, 2), (4, 10, 8)):
+        a = _lattice_error(rational, *R.graded_corner_rule(rational, lv, o, R.GRADED_SIGMA, n_top))
+        b = _lattice_error(neighbour, *R.graded_corner_rule(neighbour, lv, o, R.GRADED_SIGMA,
+                                                            n_top))
+        assert max(a, b) / max(min(a, b), 1e-16) < 10
+
+
+def test_the_graded_power_flattens_the_leading_term():
+    for nu in (0.55, 2 / 3, 0.9):
+        p = R.graded_power(nu)
+        # tau^gamma dtau = s^(p gamma) p s^(p - 1) ds = p ds
+        assert p * (2 * nu - 2) + p - 1 == pytest.approx(0.0, abs=1e-14)
+    assert R.graded_power(1.3) == 1.0
+    with pytest.raises(ValueError):
+        R.graded_power(0.5)
+
+
+@pytest.mark.parametrize("nu", GRADED_NUS + [0.53])
+@pytest.mark.parametrize("k", [1.0, 10.0, 40.0])
+def test_the_graded_sizing_meets_1e14_everywhere_short_of_the_slit(nu, k):
+    """Where the interpolatory search stalls at 5e-8..9e-6 on this lattice. Node counts as
+    measured 2026-11-03: 32 (convex, k = 1) to 600 (nu = 0.53, k = 40)."""
+    (lv, o, n_top), ach = R.graded_order_for_prec(nu, 1e-14, k)
+    assert ach <= 1e-14
+    assert (lv + n_top) * o <= 600
+
+
+def test_the_outermost_split_is_what_buys_high_wavenumbers():
+    one = R.graded_model_error(4 / 7, 14, 20, R.GRADED_SIGMA, 10.0, 1)
+    split = R.graded_model_error(4 / 7, 6, 12, R.GRADED_SIGMA, 10.0, 8)
+    assert one > 1e-10 and split < 1e-14
+
+
+def test_a_graded_shortfall_is_RETURNED_not_hidden():
+    """At `nu = 0.5005`, `p = 1000` and the nodes underflow: the search reports a miss (here
+    infinite) rather than a rule."""
+    (lv, o, n_top), ach = R.graded_order_for_prec(0.5005, 1e-14, 40.0)
+    assert not ach <= 1e-14

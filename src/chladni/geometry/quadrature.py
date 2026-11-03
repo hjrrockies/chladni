@@ -211,7 +211,9 @@ def nodes_from_plan(seg, panels, panel0=0):
                 raise ValueError(f"a panel anchored at the {pan.anchor} must touch it; "
                                  f"got [{t0}, {t1}]")
             d, w = pan.nodes(*((t0, t1) if at_start else (1.0 - t1, 1.0 - t0)))
-            d = np.asarray(d, dtype=float)
+            d, w = np.asarray(d, dtype=float), np.asarray(w, dtype=float)
+            if not at_start:                         # keep tau ascending within the panel
+                d, w = d[::-1], w[::-1]
             tau = d if at_start else 1.0 - d
             c = seg.p0 if at_start else seg.p1
             off = np.asarray(seg.offset(d, pan.anchor), dtype=complex)

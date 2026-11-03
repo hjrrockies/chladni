@@ -69,18 +69,43 @@ class CauchyData:
         return cls(quad, float(lam), vals.real.astype(float), u_n, u_t)
 
 
+def _values_and_grad(family, quad, k):
+    """Columns and gradients at `quad`'s nodes; ANCHORED nodes in their corner's own frame.
+
+    A node `1e-20` from a corner at `3+2i` is stored as a position rounded to `eps * |3+2i|`, so
+    its distance from the corner -- the one thing a corner's `r^(nu - 1)` columns depend on --
+    is lost. Its `offset` is exact (`geometry.Panel.anchor`), and translation is column-exact
+    (`docs/conventions.md`), so `family.translated(-corner).at(offset)` gives the same columns
+    with the distance intact, for the same coefficient vector.
+    """
+    anchored = quad.anchored
+    if not anchored.any():
+        return family.at(quad).values_and_grad(k)
+    n = len(quad)
+    V = np.empty((n, family.n_cols))
+    G = np.empty((n, family.n_cols), dtype=complex)
+    rest = ~anchored
+    if rest.any():
+        V[rest], G[rest] = family.at(quad.pts[rest]).values_and_grad(k)
+    for a in np.unique(quad.anchor_pt[anchored]):
+        idx = np.flatnonzero(anchored & (quad.anchor_pt == a))
+        V[idx], G[idx] = family.translated(-a).at(quad.offset[idx]).values_and_grad(k)
+    return V, G
+
+
 def cauchy_data(family, coef, lam, quad):
     """Cauchy data of `family @ coef` at `quad`'s nodes.
 
     `family` is a `helmholtz` family or `Basis`; `coef` is `(n_cols,)` or `(n_cols, m)` in the
     FAMILY's coordinates -- for an MPS solution, `MPSPencil.family_coef(lam, coef(lam))`. One
-    transcendental pass gives both the values and the gradient.
+    transcendental pass gives both the values and the gradient. Nodes on anchored corner panels
+    are evaluated in their corner's frame (`_values_and_grad`).
     """
     c = np.asarray(coef, dtype=float)
     if c.ndim == 1:
         c = c[:, None]
     k = float(np.sqrt(lam))
-    V, G = family.at(quad).values_and_grad(k)
+    V, G = _values_and_grad(family, quad, k)
     n, t = quad.normals[:, None], quad.tangents[:, None]
     dn = G.real * n.real + G.imag * n.imag
     dt = G.real * t.real + G.imag * t.imag
