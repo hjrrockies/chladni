@@ -196,13 +196,21 @@ def test_a_clean_square_reports_its_precision_met():
 
 
 @pytest.mark.slow
-def test_a_rule_shortfall_is_reported_and_warned():
+def test_a_rule_shortfall_is_reported_and_warned(monkeypatch):
     """A ruled corner whose rule falls short of prec: the report names the corner and the call
-    warns. (On 2026-11-03 the Hadamard rule fell short at every corner of the L-shape at every
-    prec; once the rule meets prec, this test should be moved to whatever corner still
-    falls short, not deleted.)"""
+    warns. Until 2026-11-03 the L-shape supplied one for free -- the fitted rule stalled at every
+    corner. The graded rule meets prec there, and the corners it still misses (within `NU_MARGIN`
+    of the slit) are expensive to solve on, so the shortfall is injected at the sizing."""
     from chladni._core import PrecisionWarning
+    from chladni.integrals import rules
 
+    real = rules.graded_order_for_prec
+
+    def short(nu, prec=1e-14, k=1.0, sigma=rules.GRADED_SIGMA):
+        rule, _ = real(nu, prec, k, sigma)
+        return rule, 1e-6
+
+    monkeypatch.setattr(rules, "graded_order_for_prec", short)
     base = [0, 1j, -1 + 1j, -1 - 1j, 1 - 1j, 1]
     dom = Polygon(base, bc="dir")
     spec = Eigenproblem(dom).solve(1, prec=PREC)

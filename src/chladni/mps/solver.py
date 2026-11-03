@@ -570,8 +570,10 @@ class MPSEigensolver(Eigensolver, Frozen):
         the boundary curve's index (segments in `domain.boundaries` order, flattened) and `t` in
         [0, 1] its parameter, so `V` may be discontinuous at a corner, as a moving vertex's normal
         velocity is (`docs/design/douse_requirements.md`, "Hadamard integrals"). Integrated on the
-        `'integer'` rule (`integrals.integral_quad`), whose corner panels are fitted to the
-        velocity's integer powers of `r` on top of the corner family. Dirichlet only.
+        `'integer'` family with GRADED corner panels (`integrals.integral_quad(...,
+        corners="graded")`), evaluated in each corner's own frame. The fitted interpolatory rule
+        this replaced stalled at 5e-8 .. 9e-6 on the velocity's integer powers of `r`
+        (`notes/hadamard_accuracy.md`). Dirichlet only.
 
         THE RULE AND THE NORMALIZATION ARE REPORTED, NOT ASSUMED (2026-11-03,
         `notes/hadamard_accuracy.md`). A `PrecisionWarning` is issued when the rule's model bound
@@ -608,7 +610,8 @@ class MPSEigensolver(Eigensolver, Frozen):
             _set(self, _integral_quads={})
             cache = self._integral_quads
         if key not in cache:
-            cache[key] = integral_quad(self.domain, lam, prec=prec, family="integer")
+            cache[key] = integral_quad(self.domain, lam, prec=prec, family="integer",
+                                       corners="graded")
         q = cache[key].quad
         cds = [cauchy.cauchy_data(self._pencil.basis, ef.coef, float(L.lam), q)
                for L, ef in zip(levels, efs)]
