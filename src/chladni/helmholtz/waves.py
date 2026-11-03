@@ -55,11 +55,12 @@ from ._core import HelmholtzFamily, Sampling, SingularStructure, _take, check_k
 
 
 class PlaneWaveSampling(Sampling):
-    """A `PlaneWave` bound to points. `dot(z, d)` is the whole k-independent precompute."""
+    """A `PlaneWave` bound to points. `dot(z - origin, d)` is the whole k-independent
+    precompute."""
 
     def __init__(self, fam, pts, normals, bc):
         d = fam.directions[None, :]
-        z = pts[:, None]
+        z = pts[:, None] - fam.origin
         s = z.real * d.real + z.imag * d.imag         # (n_pts, n_directions)
         _set(self, _family=fam, pts=pts, normals=normals, bc=bc, _s=s)
 
@@ -98,9 +99,13 @@ class PlaneWave(HelmholtzFamily):
     dimensionless `n_useful(k*R)` bound into a statement about THIS family, and `n_useful_at`
     is where it is read. Without it no bound can be reported, and a guess would be worse than
     an honest `None`.
+
+    `origin` is the point where every column has phase zero. It exists so that `translated`
+    moves each column's function rather than only the span (see `HelmholtzFamily`): a
+    coefficient vector fitted in one frame stays valid in the translated frame.
     """
 
-    def __init__(self, directions, radius=None, prec=PREC):
+    def __init__(self, directions, radius=None, prec=PREC, origin=0j):
         super().__init__(prec=prec)
         d = np.atleast_1d(np.asarray(directions, dtype=complex))
         if d.ndim != 1 or len(d) == 0:
@@ -108,15 +113,16 @@ class PlaneWave(HelmholtzFamily):
         if np.any(d == 0):
             raise ValueError("a direction must be a nonzero complex number")
         _set(self, directions=d / np.abs(d),
-             radius=None if radius is None else float(radius))
+             radius=None if radius is None else float(radius), origin=complex(origin))
 
     @classmethod
-    def uniform(cls, n, radius=None, prec=PREC):
+    def uniform(cls, n, radius=None, prec=PREC, origin=0j):
         """`n` equally spaced directions over `[0, pi)`, i.e. `2*n` columns."""
         n = int(n)
         if n < 1:
             raise ValueError(f"n must be at least 1, got {n}")
-        return cls(np.exp(1j * np.pi * np.arange(n) / n), radius=radius, prec=prec)
+        return cls(np.exp(1j * np.pi * np.arange(n) / n), radius=radius, prec=prec,
+                   origin=origin)
 
     @staticmethod
     def n_useful(kR, prec=PREC):
@@ -161,21 +167,23 @@ class PlaneWave(HelmholtzFamily):
     # --- transforms ---------------------------------------------------------------------
 
     def translated(self, dz):
-        """A translation is a phase, not a new direction set -- and a phase shift mixes the
-        cosine and sine of the same direction, which is a rotation WITHIN the span. So the
-        family is unchanged, and saying so is more honest than returning a copy."""
-        return self
+        """The same waves with their phase origin moved by `dz`, so every column moves."""
+        return PlaneWave(self.directions, self.radius, prec=self.prec, origin=self.origin + dz)
 
     def rotated(self, theta, about=0j):
-        return PlaneWave(self.directions * np.exp(1j * theta), self.radius, prec=self.prec)
+        s = np.exp(1j * theta)
+        return PlaneWave(self.directions * s, self.radius, prec=self.prec,
+                         origin=about + (self.origin - about) * s)
 
     def scaled(self, s, about=0j):
-        return PlaneWave(self.directions,
+        """Directions keep their angle (up to the sign of a real `s`, which `s/|s|` rotates
+        in); lengths, and with them the origin and radius, scale."""
+        return PlaneWave(self.directions * (s / abs(s)),
                          None if self.radius is None else self.radius * abs(s),
-                         prec=self.prec)
+                         prec=self.prec, origin=about + (self.origin - about) * s)
 
     def with_prec(self, prec):
-        return PlaneWave(self.directions, self.radius, prec=prec)
+        return PlaneWave(self.directions, self.radius, prec=prec, origin=self.origin)
 
     def __repr__(self):
         return f"PlaneWave(n_directions={len(self.directions)}, n_cols={self.n_cols})"

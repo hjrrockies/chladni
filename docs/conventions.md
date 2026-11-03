@@ -51,6 +51,13 @@ The transform protocol is `translated` / `rotated` / `scaled` / `reversed` / `wi
 `with_prec`, defined once on a base class over a private `_rebuilt` hook, with `+` and `*` as
 sugar.
 
+**Particular-solution transforms are column-exact.** `HelmholtzFamily.translated(dz)` moves each
+column's function, so a coefficient vector fitted in one frame is valid in the other:
+`f.translated(-c).values(k, z - c) == f.values(k, z)` column by column, to rounding. Preserving
+only the span is not enough. Boundary integrals evaluate the eigenfunction near a corner `c` in
+a frame centred at `c`, where the offset `z - c` is exact and not rounded at `eps*|c|`. This is
+why `PlaneWave` carries a phase `origin`.
+
 ---
 
 # Precision

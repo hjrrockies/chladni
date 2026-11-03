@@ -81,6 +81,12 @@ class HelmholtzFamily(Frozen, ABC):
     depends on `(family, column, k)` and never on the evaluation points. That is what lets a
     downstream unit-norm rescale compose without double-counting -- the log scales add -- and
     it is what lets a column at a sharp corner exist at all rather than underflowing to zeros.
+
+    Transforms are COLUMN-EXACT: `f.translated(dz)` (likewise `rotated`, and `scaled` up to
+    the `k -> k/s` it documents) moves every column's function, not just the span, so
+    `f.translated(-c).values(k, z - c)` equals `f.values(k, z)` column by column and a
+    coefficient vector carries over unchanged. Boundary integrals rely on this to evaluate
+    near a corner `c` in a frame centred at `c`, where `z - c` is formed exactly.
     """
 
     def __init__(self, prec=PREC):
