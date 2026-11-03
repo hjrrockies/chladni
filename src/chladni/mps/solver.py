@@ -91,15 +91,18 @@ class Eigenfunctions:
 HADAMARD_GRAM_REFUSE = 1e3
 HADAMARD_GRAM_FLOOR = 1e-8
 
-#: Corner rules (`integrals.integral_quad(..., corners=)`) per consumer, 2026-11-03. The graded
-#: rule in corner-local frames reaches 1e-15 .. 2e-14 on sector-apex norms to 1.9 pi, at the
-#: origin or shifted, where the fitted rule gives 6e-12 .. 1e-8 (`notes/hadamard_accuracy.md`,
-#: "The Gram pipeline"). The Hadamard rule is always graded. Certification (`certify_levels`:
-#: Moler-Payne and the norm lower bound) feeds the planner's acceptance and the count audit, so
-#: it switches only on the benchmarks' say-so: `notes/bound_coverage.py`, `count_audit.py`,
-#: `stage_policy_step4_douse.py`, old rule against new.
-EIGENFUNCTION_CORNERS = "graded"
-CERTIFY_CORNERS = "interpolatory"
+#: The corner rule (`integrals.integral_quad(..., corners=)`) every boundary integral here uses,
+#: 2026-11-03: graded, in corner-local frames (`notes/hadamard_accuracy.md`, "The Gram
+#: pipeline"). On sector-apex norms it reaches 1e-15 .. 2e-14 to 1.9 pi, at the origin or
+#: shifted, where the fitted rule gave 6e-12 .. 1e-8. On the flat triangle it fitted one edge 30%
+#: wrong while claiming 1e-8, which was the 0.16 `gram_residual`. Certification switched only
+#: after old-vs-new benchmarks: `notes/bound_coverage.py` (717 levels: same lam, coverage, met;
+#: bounds within 0.89-1.1x) and the douse gate at 1e-10 (same tallies, flags, rungs; bounds
+#: within 1.8e-5 relative).
+INTEGRAL_CORNERS = "graded"
+
+#: Rellich origins `eigenfunctions` checks its Gram at, besides the one it was formed at.
+GRAM_PROBES = 3
 
 
 @dataclass(frozen=True)
@@ -478,7 +481,7 @@ class MPSEigensolver(Eigensolver, Frozen):
             why = "Moler-Payne needs a Dirichlet condition on the whole boundary"
             levels = tuple(replace(L, bound_reason=why) for L in res.levels)
         else:
-            iq = self._integral_quad(lam_max, prec, CERTIFY_CORNERS)
+            iq = self._integral_quad(lam_max, prec)
             origins = certify.x0_probes(self.domain, iq.x0)
             levels = []
             for L in res.levels:
@@ -517,7 +520,7 @@ class MPSEigensolver(Eigensolver, Frozen):
                        diagnostics=replace(res.diagnostics, unmet=unmet,
                                            attained_prec=attained))
 
-    def _integral_quad(self, lam_max, prec, corners="interpolatory"):
+    def _integral_quad(self, lam_max, prec, corners=INTEGRAL_CORNERS):
         """The integral rule for `lam` up to `lam_max` at `prec`, built once per triple. A rule
         is a function of geometry, `lam_max`, `prec` and the corner rule alone, so it serves
         every level of a solve."""
@@ -544,8 +547,10 @@ class MPSEigensolver(Eigensolver, Frozen):
 
         A DEFICIENT Gram -- columns nearly dependent, so the multiplicity is likely wrong -- is
         not orthonormalized: the columns come back normalized one by one, `orthonormal` is False
-        and `reason` says why. `gram_residual` is `max |G - I|` recomputed at a SECOND Rellich
-        origin, the check a caller can make without an interior oracle.
+        and `reason` says why. `gram_residual` is `max |G - I|` recomputed at `GRAM_PROBES`
+        further Rellich origins, worst taken: a DETECTOR a caller can read without an interior
+        oracle, not an error bar. One origin was not enough: at the Rellich origin a corner's own
+        error vanishes (`notes/hadamard_accuracy.md`, "The Gram pipeline").
         """
         from ..integrals import cauchy, certify, identities
 
@@ -553,16 +558,16 @@ class MPSEigensolver(Eigensolver, Frozen):
         lam, m = float(level.lam), int(level.mult)
         p = self._pencil
         fc = p.family_coef(lam, p.coef(lam, m, rank=getattr(level, "rank", None)))
-        iq = self._integral_quad(lam, prec, EIGENFUNCTION_CORNERS)
+        iq = self._integral_quad(lam, prec)
         cd = cauchy.cauchy_data(p.basis, fc, lam, iq.quad)
         G = identities.gram(cd, iq.x0)
         try:
             out, ok, why = fc @ identities.lowdin(G), True, ""
         except ValueError as err:
             out, ok, why = fc / np.sqrt(np.abs(np.diag(G))), False, str(err)
-        check = certify.x0_probes(self.domain, iq.x0, n=1)[1]
-        G2 = identities.gram(cauchy.cauchy_data(p.basis, out, lam, iq.quad), check)
-        resid = float(np.abs(G2 - np.eye(m)).max())
+        cd2 = cauchy.cauchy_data(p.basis, out, lam, iq.quad)
+        resid = max(float(np.abs(identities.gram(cd2, x0) - np.eye(m)).max())
+                    for x0 in certify.x0_probes(self.domain, iq.x0, n=GRAM_PROBES)[1:])
         return Eigenfunctions(lam=lam, coef=out, rule=iq, orthonormal=ok, gram_residual=resid,
                               reason=why)
 
@@ -622,7 +627,7 @@ class MPSEigensolver(Eigensolver, Frozen):
             cache = self._integral_quads
         if key not in cache:
             cache[key] = integral_quad(self.domain, lam, prec=prec, family="integer",
-                                       corners="graded")
+                                       corners=INTEGRAL_CORNERS)
         q = cache[key].quad
         cds = [cauchy.cauchy_data(self._pencil.basis, ef.coef, float(L.lam), q)
                for L, ef in zip(levels, efs)]

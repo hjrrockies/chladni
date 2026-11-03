@@ -251,8 +251,10 @@ def test_graded_corner_panels_are_anchored_at_their_corner():
     np.testing.assert_allclose(q.anchor_pt[q.anchored] + q.offset[q.anchored],
                                q.pts[q.anchored], atol=4e-16 * abs(SHIFT))
     assert iq.sizing_prec <= P.integral_prec(1e-12) and iq.shortfalls == ()
-    # The default is unchanged and unanchored.
-    assert not P.integral_quad(dom, 40.0, prec=1e-12).quad.anchored.any()
+    # The graded rule is the default; the fitted one, kept for measurement, is unanchored.
+    assert P.integral_quad(dom, 40.0, prec=1e-12).quad.anchored.any()
+    assert not P.integral_quad(dom, 40.0, prec=1e-12,
+                               corners="interpolatory").quad.anchored.any()
 
 
 @pytest.mark.parametrize("shift", [0j, SHIFT], ids=["origin", "shifted"])

@@ -206,16 +206,18 @@ def _legendre(order):
 
 
 def integral_quad(domain, lam_max, prec=1e-8, *, x0=None, clearance_frac=CLEARANCE_FRAC,
-                  smooth_safety=SMOOTH_SAFETY, family="even", corners="interpolatory"):
+                  smooth_safety=SMOOTH_SAFETY, family="even", corners="graded"):
     """An `IntegralQuad` for `domain`, sized so the Rellich and Gram integrals of functions with
     spectral parameter up to `lam_max` are accurate to `integral_prec(prec)` -- as a MODEL bound.
 
-    `corners` picks the corner-panel rule. `'interpolatory'` is the fitted rule of
-    `rules.corner_interp_rule` (or the substitution rule where that is exact). `'graded'` is
+    `corners` picks the corner-panel rule. `'graded'` (the default since 2026-11-03) is
     `rules.graded_corner_rule`, laid out on ANCHORED panels so that `cauchy.cauchy_data`
-    evaluates its nodes in the corner's own frame: it serves both families with one node set and
+    evaluates its nodes in the corner's own frame: one node set serves both families, and it
     reaches the floor where the fitted rule stalls (`notes/hadamard_accuracy.md`). A graded panel
-    on a segment without an exact `offset` is named in `shortfalls`.
+    on a segment without an exact `offset` is named in `shortfalls`. `'interpolatory'` is the
+    fitted rule of `rules.corner_interp_rule` (or the substitution rule where that is exact),
+    kept to be measured against: its model bound can be honest and still miss -- it integrated
+    one edge of a flat triangle 30% wrong at a claimed 1e-8.
 
     `clearance_frac=None` removes the clearance cap; it exists to be measured, not used.
     """
