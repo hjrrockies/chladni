@@ -218,3 +218,49 @@ def test_a_rule_shortfall_is_reported_and_warned(monkeypatch):
     with pytest.warns(PrecisionWarning, match="Hadamard matrix"):
         _, rep = spec.hadamard(0, V, report=True)
     assert not rep.met and any("corner" in w for w, *_ in rep.shortfalls)
+
+
+# --- closed-form identities on corner domains, anywhere in the plane (2026-11-03) ---------------
+#
+# For a Dirichlet eigenpair, a rigid motion leaves `lam` fixed and a dilation scales it:
+#     V = e . n  (translation)  ->  0,      V = (i x) . n  (rotation)  ->  0,
+#     V = x . n  (dilation)     ->  -2 lam  (every eigenvalue of the level's block).
+# Dilation also tests the normalization, since it is `-2 lam ||u||^2`. Measured on the graded rule
+# at prec 1e-12, worst over 6 levels relative to lam: L-shape at the origin 3.7e-14, shifted
+# 3+2i 8.7e-14, the 315-degree notch shifted 9.2e-14, irregular hexagon 8.7e-13 (its eigenvalues'
+# own bound). The fitted rule this replaced read 2.8e-9 on the L-shape's translation identity.
+
+def _linear_fields(dom):
+    segs = [s for b in dom.boundaries for s in b.segments]
+    maps = (lambda z: np.ones_like(z), lambda z: 1j * np.ones_like(z),
+            lambda z: 1j * z, lambda z: z)
+
+    def V(curve, t):
+        s = segs[curve]
+        t = np.asarray(t)
+        p, n = s.p(t), s.N(t)
+        return np.array([(f(p) * n.conjugate()).real for f in maps])
+    return V
+
+
+IDENTITY_CASES = [
+    ("L-shape +(3+2i)", np.array([0, 1j, -1 + 1j, -1 - 1j, 1 - 1j, 1]) + 3 + 2j, 1e-12),
+    ("315 notch +(3+2i)", np.array([2, 2 + 2j, -2 + 2j, -2 - 2j, 2 - 2j, 0]) + 3 + 2j, 1e-12),
+    ("irregular hexagon", np.array([0, 1.0 - 0.1j, 1.6 + 0.5j, 1.3 + 1.3j, 0.4 + 1.5j,
+                                    -0.3 + 0.7j]), 1e-11),
+]
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name, verts, bar", IDENTITY_CASES, ids=[c[0] for c in IDENTITY_CASES])
+def test_rigid_motions_and_dilation_hold_on_corner_domains(name, verts, bar):
+    dom = Polygon(verts, bc="dir")
+    spec = Eigenproblem(dom).solve(6, prec=1e-12)
+    V = _linear_fields(dom)
+    for i in range(len(spec.lam)):
+        H_, rep = spec.hadamard(i, V, report=True)
+        lam = spec.lam[i]
+        assert rep.shortfalls == (), (name, rep.shortfalls)
+        for f in range(3):
+            assert np.abs(H_[f]).max() < bar * lam, (name, i, f)
+        np.testing.assert_allclose(np.linalg.eigvalsh(H_[3]), -2 * lam, rtol=bar)
