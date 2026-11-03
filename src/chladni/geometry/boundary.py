@@ -629,6 +629,7 @@ class Boundary(Frozen):
             wts=cat("wts"), tau=cat("tau"), seg_idx=cat("seg_idx"),
             bdry_idx=np.full(m, bdry_idx, dtype=int), bc=cat("bc"),
             panel_id=cat("panel_id"), panels=tuple(spans), weight_family=weight_family,
+            anchor_pt=cat("anchor_pt"), offset=cat("offset"),
         )
 
     def sample(self, n=None, *, n_per_seg=None, grading=None):

@@ -180,6 +180,27 @@ class Segment(Frozen, ABC):
         """Outward unit normal, under the CCW-outer / CW-hole orientation convention."""
         return -1j * self.T(tau)
 
+    #: Whether `offset` is formed without cancellation. The generic fallback subtracts two
+    #: rounded positions, so it is only good to `eps * |p_end|` absolute.
+    exact_offset = False
+
+    def offset(self, d, end="start"):
+        """`p(tau) - p_end` for a node a normalized arclength `d` from the `end` endpoint
+        (`tau = d` from `"start"`, `1 - d` from `"end"`).
+
+        The point of this method is the small-`d` case: the difference is formed relative to
+        the endpoint, so it keeps full RELATIVE accuracy however close the node is to the
+        corner, where `p(1 - d) - p1` would cancel to `eps * |p1|` absolute. Corner-local
+        evaluation (`chladni.integrals.cauchy`) depends on it. Subclasses with a closed form
+        override this and set `exact_offset`.
+        """
+        d = np.asarray(d, dtype=float)
+        if end == "start":
+            return self.p(d) - self.p0
+        if end == "end":
+            return self.p(1.0 - d) - self.p1
+        raise ValueError(f"end must be 'start' or 'end', got {end!r}")
+
     @property
     def p0(self):
         return complex(self.p(0.0))
@@ -278,6 +299,8 @@ class Segment(Frozen, ABC):
             panel_id=d["panel_id"],
             panels=d["panels"],
             weight_family=weight_family,
+            anchor_pt=d.get("anchor_pt"),
+            offset=d.get("offset"),
         )
 
     # --- predicates ---------------------------------------------------------------------
@@ -406,6 +429,16 @@ class LineSegment(Segment):
         t = np.asarray(tau, dtype=float)
         return np.full(t.shape, self._b - self._a, dtype=complex)
 
+    exact_offset = True
+
+    def offset(self, d, end="start"):
+        d = np.asarray(d, dtype=float)
+        if end == "start":
+            return d * (self._b - self._a)
+        if end == "end":
+            return d * (self._a - self._b)
+        raise ValueError(f"end must be 'start' or 'end', got {end!r}")
+
     @property
     def p0(self):
         return self._a
@@ -479,6 +512,20 @@ class ArcSegment(Segment):
 
     def dp(self, tau):
         return 1j * self.sweep * self.radius * np.exp(1j * self._theta(tau))
+
+    exact_offset = True
+
+    def offset(self, d, end="start"):
+        """`R e^{i theta_end} (e^{+-i phi d} - 1)`, written as `2i sin(phi d / 2) e^{i phi d/2}`
+        so no `1 - cos` cancellation remains."""
+        d = np.asarray(d, dtype=float)
+        if end == "start":
+            th, h = self.theta0, 0.5 * self.sweep * d
+        elif end == "end":
+            th, h = self.theta1, -0.5 * self.sweep * d
+        else:
+            raise ValueError(f"end must be 'start' or 'end', got {end!r}")
+        return self.radius * np.exp(1j * th) * 2j * np.sin(h) * np.exp(1j * h)
 
     @cached_property
     def polyline_pts(self):
