@@ -437,21 +437,23 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
-* **[next]** **The Hadamard rule, not the basis, limits the shape derivative on corner
-  domains, and `hadamard` hides it.** `integral_quad(..., family="integer")` forces the
-  interpolatory fit over the curved exponent set and stalls at a model error of 5e-8 .. 9e-6
-  (L-shape, hexagon, octagon, triangles) at every prec. `MPSEigensolver.hadamard` drops
-  `.shortfalls`. Measured at prec 1e-10 against exact reference rules on the same
-  eigenfunction: hexagon 4.6e-10 vs 1e-11; L-shape re-entrant partial 1.2e-7 vs 1e-14; flat
-  triangle 8e-8 vs 3e-10. Rounding (mpmath, 1e-14) and basis size (5 bases, identical digits)
-  are ruled out. Fix (designed and checked on models and real eigenfunctions, addenda of the
-  note): corner panels with `tau = s^p`, `p = max(1, 1/(2 nu - 1))`, geometric Gauss-Legendre
-  grading in `s`, nodes evaluated in a per-corner LOCAL FRAME (`basis.translated(-z_c)`;
-  `PlaneWave.translated` must then preserve columns); surface the attained precision.
-  `notes/hadamard_accuracy.md`.
-* **[next]** **`hadamard` does not check `gram_residual`.** Flat triangle, prec 1e-12, level 8:
-  `gram_residual` 0.16 with `orthonormal` True, and the gradient's dilation identity is off
-  by 0.43. Refuse or flag when it is far above `prec`. `notes/hadamard_accuracy.md`.
+* **[next]** **douse follow-up to the graded boundary-integral rule** (chladni branch
+  `boundary-integrals-accuracy`, `notes/hadamard_accuracy.md`):
+  - consume `hadamard(..., report=True)`;
+  - map the `gram_residual` refusal (`ValueError`) to `ShapeRefusal`;
+  - re-record the cluster-optimizer golden trace on the Mac, since gradients on corner domains
+    moved by up to 1e-7 relative.
+* **[later]** **Curved corners on the graded rule.** `ParametricSegment` has no exact
+  `offset`, so a graded panel there rounds at `eps * |corner|` and is named in `shortfalls`.
+  Lines and arcs are exact.
+* **[later]** **Corners within `NU_MARGIN` of the slit** (`nu < 0.52`, apex past ~346 deg) are
+  still demoted to the smooth rule (sector 1.95 pi: 0.15). The graded sizing reaches 1e-14 at
+  `nu = 0.53`; below it `p = 1/(2 nu - 1)` underflows the nodes.
+* **[later]** **The planner puts offset sources inside some notches.** A 315-degree notch built as
+  `[0, 1+it, 1+i, -1+i, -1-i, 1-i, 1-it]` (`t = tan(pi/8)`) raised "sources inside the domain"
+  on a higher rung; `[2, 2+2i, -2+2i, -2-2i, 2-2i, 0]` solves.
+* **[later]** `polyomino(...).translated(dz)` returns a plain `Domain`, which the planner
+  refuses; `Polygon(vertices + dz)` works.
 * **[next: default]** **Sharp triangles certify nothing, and the planner returns its worst rung.** Apexes
   near (0.1, 0.25) on base [0, 1] (a 12-18 deg corner, all corners singular): 4 of 7 nearby apexes
   meet 0 of 15 at 1e-10, 3 return rung 0 wrong by 1e-6 .. 2e-5 while rungs 1-2 held ~1e-10 values

@@ -10,6 +10,10 @@ to the eigenvalue itself?
 `MPSEigensolver.hadamard` never reads it. On an exact reference rule, the SAME eigenfunction
 gives gradients at about the eigenvalue's own accuracy, and the identities hold to roundoff.
 
+**Status (end of 2026-11-03): fixed** on branch `boundary-integrals-accuracy`. The graded corner rule
+in corner-local frames now serves the Hadamard, Gram and certification integrals; see "The Gram
+pipeline" and "Fix built" below.
+
 ## Errors measured at douse's operating point (prec = 1e-10, 10 levels)
 
 These are the gradient's relative errors (max over the 2N partials / max |partial|) against an
@@ -109,7 +113,7 @@ steps), so no thesis result depends on this. Shapes that make it matter:
 - flat or sharp triangles at high levels (1e-8 .. 1e-7);
 - any claim that the gradient carries the eigenvalue's digits.
 
-## Fix directions (not built)
+## Fix directions (as first written; superseded -- see "Fix built" at the end)
 
 - Hadamard rule: geometric (hp) grading toward each ruled corner, which needs no exponent fit
   and has positive weights. The reference rule here is that, untuned (~900 nodes per segment;
@@ -183,3 +187,90 @@ frames on a plan with plane waves (rung 4) need it to carry an origin, i.e. a ph
 
 Translating the WHOLE domain instead puts only one corner at the origin and perturbs the solve
 (plan, collocation) at the ulp level. Per-corner frames change only the integrals.
+
+## The Gram pipeline (`gram_accuracy.py`, `gram_accuracy_B.json`, `gram_accuracy_CA.txt`)
+
+`eigenfunctions()` normalizes with the Rellich Gram on the `'even'` rule, and every Hadamard
+entry scales as `1/||u||^2`, so the same corner weakness could hide there. Each check below has
+ground truth that uses no chladni boundary rule.
+
+**B. Sector apex norms in closed form**, with the apex at the origin and shifted by 3+2i. Each
+value is the worst over three Rellich origins.
+
+| apex angle | interpolatory, origin | interpolatory, shifted | graded + local frames (both) |
+|---|---|---|---|
+| 1.25 pi | 1e-14 | 1e-14 | 1e-14 |
+| 1.5 pi | 2e-14 | 2e-14 | 2e-14 |
+| 1.6 pi | 8.7e-12 | 6.4e-12 | 1.9e-14 |
+| 1.75 pi | 1.9e-11 | **2.5e-10** | 1.3e-15 |
+| 1.9 pi | 3.9e-9 | **1.0e-8** | 4e-15 |
+| 1.95 pi | demoted (nu within `NU_MARGIN`): 0.15 | same | same |
+
+- With the Rellich origin AT the apex, the old rule reads about 1e-15 even where it is wrong
+  elsewhere. The default origin is the smallest-`mu` corner, so the one-origin
+  `gram_residual` misses the error.
+- The model bound (3e-8 .. 7e-7) was honest.
+- This is the user's intuition confirmed: the local-frame fix applies to the Gram pipeline as
+  well.
+
+**A. Interior Gram of returned eigenfunctions** against tensor or fan interior cubature, with
+the cubature's own error at 2e-16 .. 1e-15. Results:
+- Rectangle (at the origin and shifted), square double, and L-shape at the origin: true
+  `|G - I|` is at most 6e-13 at prec 1e-10, and at most 2e-13 at 1e-12.
+- `gram_residual` and the four-origin max sit 10-1000x BELOW the true error there. They are
+  detectors, as documented, not error bars.
+- The shifted L-shape needs `Polygon`; `polyomino(...).translated` is a `Domain`, which the
+  planner refuses.
+- The triangle had no solver: "no rung met".
+- Flat triangle at prec 1e-10: true error 7e-11 .. 5e-10, with `gram_residual` within 2-5x of
+  it.
+
+**C. The flat triangle's 0.16 was the fitted rule** (level 8, `lam` 2736.56, prec 1e-12;
+`flat2.py`/`flat3.py` in the session scratchpad, reproduced inline here):
+- The eigenfunction is sound:
+  - its interior norm agrees between two independent cubatures to 7e-12 (5.104e-4);
+  - |u| on 20 000 boundary points is at most 1e-8;
+  - it satisfies Helmholtz;
+  - analytic `d_n u` matches finite differences to 7e-6, the FD limit, so the basis gradients
+    are not the cause either.
+- Yet the Rellich norm swung from 3.58e-4 to 4.75e-4 with the origin, which is impossible for an
+  eigenfunction unless `sum_s n_s int_s (d_n u)^2 != 0`.
+- The integral of `(d_n u)^2` along the long base (both acute corners, `nu` 9.8 and 11.8) is
+  **13.06 on the fitted rule and 18.62 on a dense graded reference**: 30% wrong at a claimed
+  1e-8.
+- The graded rule gives 18.62 to 9e-11, and `sum_s n_s I_s` vanishes to 1e-10. Level 0 on the
+  same rule was fine.
+- So a model bound that is "honest" on its model integrand can still miss badly on high-`nu`,
+  high-`k` corners. The earlier reading of this case, "the expansion is unreliable at the added
+  nodes", was wrong.
+
+## Fix built (branch `boundary-integrals-accuracy`, 2026-11-03)
+
+- Column-exact `translated`, with `PlaneWave` given a phase `origin`.
+- `Segment.offset` and corner-anchored `Panel`s.
+- `rules.graded_corner_rule` and its sizing, which reaches 1e-14 for `nu` in 0.53 .. 11.8 and
+  `k*L` up to 40, at 24 .. 600 nodes per corner panel.
+- `cauchy_data` evaluates anchored nodes as `family.translated(-corner).at(offset)`.
+- `integral_quad(corners="graded")` is now the default, used by `hadamard`, `eigenfunctions` and
+  certification alike.
+- `gram_residual` is now the worst over 3 extra origins.
+
+Identities on the graded rule, worst over 6 levels relative to `lam`. Translation and rotation
+should give 0; dilation should give `-2 lam`.
+
+| shape | prec 1e-10 | prec 1e-12 |
+|---|---|---|
+| L-shape at the origin | 3.4e-13 | 3.7e-14 |
+| L-shape shifted 3+2i | 8.5e-12 | 8.7e-14 |
+| 315 deg notch shifted 3+2i | 2.5e-11 | 9.2e-14 |
+| irregular hexagon | 1.4e-10 | 8.7e-13 |
+
+The fitted rule read 2.8e-9 on the L-shape translation identity at every prec.
+
+Certification was switched only after old-vs-new deterministic benchmarks (two worktrees at the
+same commit):
+- **`bound_coverage.py`**, 717 levels: identical `lam`, `mp_covers` 717/717 and `met` 448/448
+  both ways; `mp_bound` ratio 0.89 .. 1.1.
+- **`stage_policy_step4_douse.py 1e-10`**: identical tallies, flags and rungs in every mode; only
+  `bound` values differ, by at most 1.8e-5 relative.
+- **`count_audit.py`** re-reads stored solves and never certifies, so it cannot change.
