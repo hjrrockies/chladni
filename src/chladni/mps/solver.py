@@ -91,6 +91,16 @@ class Eigenfunctions:
 HADAMARD_GRAM_REFUSE = 1e3
 HADAMARD_GRAM_FLOOR = 1e-8
 
+#: Corner rules (`integrals.integral_quad(..., corners=)`) per consumer, 2026-11-03. The graded
+#: rule in corner-local frames reaches 1e-15 .. 2e-14 on sector-apex norms to 1.9 pi, at the
+#: origin or shifted, where the fitted rule gives 6e-12 .. 1e-8 (`notes/hadamard_accuracy.md`,
+#: "The Gram pipeline"). The Hadamard rule is always graded. Certification (`certify_levels`:
+#: Moler-Payne and the norm lower bound) feeds the planner's acceptance and the count audit, so
+#: it switches only on the benchmarks' say-so: `notes/bound_coverage.py`, `count_audit.py`,
+#: `stage_policy_step4_douse.py`, old rule against new.
+EIGENFUNCTION_CORNERS = "graded"
+CERTIFY_CORNERS = "interpolatory"
+
 
 @dataclass(frozen=True)
 class HadamardReport:
@@ -468,7 +478,7 @@ class MPSEigensolver(Eigensolver, Frozen):
             why = "Moler-Payne needs a Dirichlet condition on the whole boundary"
             levels = tuple(replace(L, bound_reason=why) for L in res.levels)
         else:
-            iq = self._integral_quad(lam_max, prec)
+            iq = self._integral_quad(lam_max, prec, CERTIFY_CORNERS)
             origins = certify.x0_probes(self.domain, iq.x0)
             levels = []
             for L in res.levels:
@@ -507,18 +517,19 @@ class MPSEigensolver(Eigensolver, Frozen):
                        diagnostics=replace(res.diagnostics, unmet=unmet,
                                            attained_prec=attained))
 
-    def _integral_quad(self, lam_max, prec):
-        """The integral rule for `lam` up to `lam_max` at `prec`, built once per pair. A rule is
-        a function of geometry, `lam_max` and `prec` alone, so it serves every level of a solve."""
+    def _integral_quad(self, lam_max, prec, corners="interpolatory"):
+        """The integral rule for `lam` up to `lam_max` at `prec`, built once per triple. A rule
+        is a function of geometry, `lam_max`, `prec` and the corner rule alone, so it serves
+        every level of a solve."""
         from ..integrals import integral_quad
 
-        key = (float(lam_max), float(prec))
+        key = (float(lam_max), float(prec), corners)
         cache = getattr(self, "_integral_quads", None)
         if cache is None:
             _set(self, _integral_quads={})
             cache = self._integral_quads
         if key not in cache:
-            cache[key] = integral_quad(self.domain, lam_max, prec=prec)
+            cache[key] = integral_quad(self.domain, lam_max, prec=prec, corners=corners)
         return cache[key]
 
     def eigenfunctions(self, level, *, prec=None):
@@ -542,7 +553,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         lam, m = float(level.lam), int(level.mult)
         p = self._pencil
         fc = p.family_coef(lam, p.coef(lam, m, rank=getattr(level, "rank", None)))
-        iq = self._integral_quad(lam, prec)
+        iq = self._integral_quad(lam, prec, EIGENFUNCTION_CORNERS)
         cd = cauchy.cauchy_data(p.basis, fc, lam, iq.quad)
         G = identities.gram(cd, iq.x0)
         try:
