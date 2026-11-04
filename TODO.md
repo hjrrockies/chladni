@@ -132,6 +132,16 @@ The path, in order:
   L = the corner's clearance, order 1), lightning declined on almost every case, graded
   collocation included: very ill-conditioned columns. The shipped ladder uses Fourier-Bessel plus
   boundary-offset sources instead.
+* **[next]** **Deferred from the 2026-11-03 accuracy audit** (`notes/accuracy_audit_2026-11-03.md`,
+  "Status"):
+  - **2.4, the refiner's floor stop.** Stop at `max(prec*lam, delta_res)` (`search.md` 2.6); the
+    floor estimate is only formed after the loop today.
+  - **2.5, the polyline tolerance cap** (`max(prec, 1e-10) * length`). Audit the geometry
+    consumers first.
+  - **4.8, the coarse-bracketing references.** Regenerate them at 1e-13 from two independent bases.
+  - **`achievable_prec`'s contrast term.** Measure it against an eigenvalue first.
+  - **The absolute geometric thresholds in branch-cut detection.**
+  - **The `lightning` source `extent`.**
 * **[next]** **Rebuild T2.8-N5s2's reference on current code.** Its trusted value 179.302250990678
   (status `fem_resolved`: one run, recipe B, plus a finite-element count) does not reproduce.
   Recipe B on current code gives 179.3022510764, uncertified. Every current basis -- corner-only A

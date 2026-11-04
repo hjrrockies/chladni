@@ -95,3 +95,33 @@ tests. `test_moler_payne.py:223` can pass while comparing nothing, because it ne
 - refine's `delta_res` convention, and lam-vs-k handling in bracketing.
 - The policy constants, plane waves, the Y kernel, and `check_prec`.
 - `reference/tables.py`. The closed forms there claim 15.6 digits against a measured 15.5.
+
+## Status after the fixes (branch `accuracy-honesty`, 2026-11-03)
+
+| item | status | commit |
+|---|---|---|
+| 1.1, 1.2, 1.3, 1.4, 1.6, 1.7, 1.8, 1.10, 1.11, 1.12 | fixed, each with a regression test in `tests/test_reporting_honesty.py` | b5ac1c1 |
+| 1.5 | fixed: `Level.rule_prec` is flagged above `CERTIFY_RULE_FLAG`; `HadamardReport.norm_rule_prec` | e08d857 |
+| 1.9 | measured, then fixed: `attained` adds `mp_eps`, documented as an estimate (`hadamard_accuracy.md`) | 5a02def |
+| 2.1 | cold window at 0.98 FK, **pending the A/B below** | 9e9d2a6 |
+| 2.2 | certification rule sized for 1e-6, **pending the A/B below** | 9e9d2a6 |
+| 2.3 | `track_levels` certifies only refined levels, **pending the A/B below** | 9e9d2a6 |
+| 2.4 | **deferred**: the floor estimate exists only after the refine loop; it rests on the reviewer's reading alone | -- |
+| 2.5 | **deferred**: rests on the reviewer's measurement alone; it needs a geometry-consumer audit first | -- |
+| 2.6 | fixed, and the fix went further: the series hands off cancelling cells, and scipy's bound is now honest | 9de388a |
+| 3.1 to 3.4 | fixed: column-scaled bound and warning, solver `with_prec`, `_UNSAFE_RATIO` tied to rtol, filters removed | 060312f |
+| 4.1 to 4.7, 4.10 (oracle half) | fixed | 9235d0d |
+| 4.8 | **deferred**: regenerating the stage-policy references at 1e-13 from two bases is a run of its own | -- |
+| 4.9 | no change: the sizer returns `achieved <= prec` by construction; the flake was the node cap, already relaxed | -- |
+| 4.10 (xfail half) | **open**: needs a slow run to see whether the STARVED_SILENT cells now pass | -- |
+| 1.10 lightning `extent` | **deferred**: `lightning` does not know the domain | -- |
+
+The Bessel-kernel measurements behind 2.6 and 3.x:
+
+| measurement | before | after |
+|---|---|---|
+| L-shape scan, k in [2, 20], 73 k: warnings at 1e-8 / 1e-12 | 16 / 65 (entry-wise) | 0 / 0 |
+| L-shape worst column-scaled error (mpmath truth) | 7.3e-11 | 3.1e-14 |
+| mpmath grid (mu <= 300, x <= 120), worst relative error away from zeros of J | 1.7e-10 | 6.6e-13 |
+| worst true error / `rel_err` over the same grid | 16.6 (bound violated) | 0.72 |
+| fast suite under `-W error::UserWarning`, warning filters | 12 files plus 4 blanket marks | none |
