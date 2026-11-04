@@ -93,6 +93,14 @@ HADAMARD_GRAM_REFUSE = 1e3
 #: much RELATIVE -- is flagged (`eigenproblem._record`). Inf when a singular corner's rule was
 #: demoted. Ordinary rules sit at `integral_prec(prec)`, far below.
 CERTIFY_RULE_FLAG = 1e-3
+
+#: The prec the CERTIFICATION rule is sized for (`integral_quad` sizes to a tenth of it, 1e-6),
+#: unless the solve's own prec is looser. The Moler-Payne bound takes only the NORM from the
+#: rule -- the boundary sup has its own dense sampling (`certify.boundary_sup`) -- and a norm
+#: error delta moves the bound by delta relative, so a few digits are all it needs. Sizing it at
+#: 0.1*prec bought 1e-11 nodes at prec 1e-10 for a 1e-3 question
+#: (`accuracy_audit_2026-11-03.md` 2.2). `eigenfunctions` and `hadamard` keep the tight rule.
+CERTIFY_NORM_PREC = 1e-5
 HADAMARD_GRAM_FLOOR = 1e-8
 
 #: The corner rule (`integrals.integral_quad(..., corners=)`) every boundary integral here uses,
@@ -416,6 +424,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         # be dropped here, and the warm path accepted uncertain counts and deep rejections (a
         # possible lost eigenvalue) unflagged (`notes/accuracy_audit_2026-11-03.md`, 1.2).
         doubts = dict(n_uncertain=0, uncertain=(), rejected_deep=(), n_ambiguous=0)
+        searched = []
         for lo, hi, members in windows:
             # A window holding several previous levels, or one wide enough to hold several
             # wells (wider than `WIDE_WINDOW` x the local mean Weyl spacing: an early, large
@@ -426,7 +435,7 @@ class MPSEigensolver(Eigensolver, Frozen):
                 res_w = self.search_interval(lo, hi, prec=prec)
                 if res_w.declined:
                     return None, f"search: the merged window [{lo:.6g}, {hi:.6g}] declined"
-                levels.extend(res_w.levels)
+                searched.extend(res_w.levels)      # certified by search_interval already
                 dw = res_w.diagnostics
                 n_evals += dw.evaluations
                 doubts["n_uncertain"] += int(dw.n_uncertain)
@@ -453,16 +462,23 @@ class MPSEigensolver(Eigensolver, Frozen):
             levels.append(Level(lam=float(r.lam), mult=m, sigma=float(r.sigma),
                                 delta_res=float(r.delta_res), bracket=(lo, hi), prec=prec,
                                 count_decided_by="tracked"))
-        levels = tuple(sorted(levels, key=lambda L: L.lam))
+        # Only the REFINED levels are certified here. A merged window's levels were certified by
+        # its own `search_interval`; certifying them again was one redundant Moler-Payne pass per
+        # cluster window on every warm step (`accuracy_audit_2026-11-03.md` 2.3).
+        if self.certify and levels:
+            levels = list(self.certify_levels(SolveResult(levels=tuple(levels)),
+                                              lam_max=float(windows[-1][1]), prec=prec).levels)
+        levels = tuple(sorted(levels + searched, key=lambda L: L.lam))
         audit = asymp.CountAudit("unaudited", reason="tracked windows are not a prefix")
         res = SolveResult(levels=levels,
                           diagnostics=SolveDiagnostics(refine_evals=refine_evals,
                                                        evaluations=n_evals,
                                                        prec_requested=prec, count_audit=audit,
                                                        **doubts))
-        if self.certify and res.levels:
-            res = self.certify_levels(res, lam_max=float(windows[-1][1]), prec=prec)
-            res = _replace(res, diagnostics=_replace(res.diagnostics, count_audit=audit))
+        if self.certify:
+            unmet, attained = _precision_summary(levels, prec)
+            res = _replace(res, diagnostics=_replace(res.diagnostics, unmet=unmet,
+                                                     attained_prec=attained))
         return res, None
 
     def _mean_spacing(self, lam):
@@ -515,7 +531,7 @@ class MPSEigensolver(Eigensolver, Frozen):
             why = "Moler-Payne needs a Dirichlet condition on the whole boundary"
             levels = tuple(replace(L, bound_reason=why) for L in res.levels)
         else:
-            iq = self._integral_quad(lam_max, prec)
+            iq = self._integral_quad(lam_max, max(float(prec), CERTIFY_NORM_PREC))
             origins = certify.x0_probes(self.domain, iq.x0)
             levels = []
             for L in res.levels:

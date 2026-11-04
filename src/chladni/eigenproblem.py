@@ -332,7 +332,10 @@ class Eigenproblem:
         from . import asymp
         from .bounds import faber_krahn
 
-        lo = 0.5 * float(faber_krahn(self.domain))
+        # Faber-Krahn PROVES [0, FK) empty, so starting at 0.5 FK only scanned k in [0.71, 0.99]
+        # k_FK for nothing; the count audit needs `lo < FK`, and the warm path already uses
+        # 0.98 FK (`_warm_window`). The slack is for FK's equality on the disk.
+        lo = 0.98 * float(faber_krahn(self.domain))
         hi = float(asymp.weyl_est_poly(n + HEADROOM, self.domain)) * (1.0 + _TOP_PAD)
         if solver is None:
             solver = plan.solver(self.domain, prec=prec)
