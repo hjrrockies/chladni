@@ -109,11 +109,15 @@ The path, in order:
   - too few interior points inside the wedges;
   - TAPERED lightning clusters (untapered ones made solves decline).
   Until then the planner ends these FLAGGED at its top rung.
-* **[next]** **Fourier-Bessel's accuracy warning at 1e-10 to 1e-12.** Since 2026-11-03 the warning is
-  column-scaled (see the [done] item below), and what still fires is REAL: the series branch
-  (`_LOG_MAXTERM`, `_bessel.py`) loses 7.3e-11 of the column scale at mu 19.3, x 23.6 on the
-  L-shape (mpmath), and about 1e-9 at order 16 in `test_floor_multiplicity`. Fix the branch
-  choice (`accuracy_audit_2026-11-03.md` 2.6), then drop the filter in `test_floor_multiplicity`.
+* **[done 2026-11-03: the series hands cancelling cells to scipy (`_SERIES_BUDGET`); scipy's bound
+  measured and made honest]** **Fourier-Bessel's accuracy warning at 1e-10 to 1e-12.** With the
+  warning column-scaled, what still fired was REAL: the series branch lost 7.3e-11 of the column
+  scale at mu 19.3, x 23.6 on the L-shape (mpmath), and about 1e-9 at order 16 in
+  `test_floor_multiplicity`. On a (mu <= 300, x <= 120) mpmath grid the worst relative error away
+  from zeros of J fell from 1.7e-10 to 6.6e-13, and the L-shape column-scaled worst from 1.3e-10 to
+  1.5e-13. scipy's own error is absolute, 260-720 eps of the envelope, growing like x^(1/3); its
+  old flat `4e-16(1+nu)` claim was 10-25x optimistic, and is replaced by the measured form.
+  Remaining: at prec <= 1e-13 the warning fires honestly (that floor is scipy's and the scale's).
 * **[done 2026-10-13, PR #13: probes outside the window are not evaluated]** **The search can ask the
   pencil for a NEGATIVE lam.** `notes/hybrid_bases.py`
   round 2, T2.6-N3k4-L8-ref0 with Fourier-Bessel plus corner lightning (default sigma 4,

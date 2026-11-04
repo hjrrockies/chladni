@@ -229,7 +229,10 @@ def test_accuracy_bounds_the_error_it_reports_on():
         for i, ri in enumerate(r):
             _, ref = mp_log_besselj(mu, k * ri)
             actual = abs(np.log(abs(got[i, j] / ang[j])) + sigma[j] - ref)
-            assert actual <= bound[j] * 20, f"col {j} mu={mu:.2f} r={ri}"
+            # No safety factor: the only allowance is the check's own rounding (log of the
+            # angular factor, the sum with sigma: a few eps of |log J|). Measured 0.89 of this.
+            assert actual <= bound[j] + 4 * np.finfo(float).eps * abs(ref), \
+                f"col {j} mu={mu:.2f} r={ri}"
 
 
 def test_accuracy_is_cheap_enough_to_ask_every_time():

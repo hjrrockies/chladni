@@ -149,15 +149,22 @@ def test_scalars_in_scalars_out():
 
 # --- the free precision diagnostic ---------------------------------------------------------
 
-def test_rel_err_bounds_the_measured_error():
-    """`rel_err` is max|term| / |S| from the series loop, times eps. It has to be an upper
-    bound on the real thing or it is worse than nothing."""
-    cases = [(400.0, 20.0), (400.0, 50.0), (200.0, 50.0), (100.0, 50.0), (40.0, 30.0)]
-    for nu, x in cases:
-        s = log_j(nu, x)
-        _, ref_log = mp_log_besselj(nu, x)
-        actual = abs(np.log(abs(s.S)) + s.sigma - ref_log)
-        assert actual <= max(float(s.rel_err), 1e-16) * 10
+#: Cells across all three branches and both regimes: deep underflow, the turning point, the
+#: oscillatory side near and away from a zero of J, and the series/scipy hand-off where the
+#: series used to lose digits (19.33, 23.6) before it learned to hand cells on.
+REL_ERR_CASES = [(400.0, 20.0), (400.0, 50.0), (200.0, 50.0), (100.0, 50.0), (40.0, 30.0),
+                 (19.33, 23.6), (0.9, 14.4), (0.5, 6.2), (15.5, 72.1), (8.0, 21.2), (47.0, 99.4)]
+
+
+@pytest.mark.parametrize("nu, x", REL_ERR_CASES)
+def test_rel_err_bounds_the_measured_error(nu, x):
+    """`rel_err` must be an upper bound on the real error or it is worse than nothing. No
+    safety factor here: the only allowance is the rounding of the check itself, which adds
+    `log|S|` and `sigma` in float64 (eps * |log J|)."""
+    s = log_j(nu, x)
+    _, ref_log = mp_log_besselj(nu, x)
+    actual = abs(np.log(abs(s.S)) + s.sigma - ref_log)
+    assert actual <= float(s.rel_err) + 2 * np.finfo(float).eps * abs(ref_log)
 
 
 def test_rel_err_grows_with_the_cancellation():

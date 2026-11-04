@@ -176,6 +176,9 @@ def test_the_hadamard_report_carries_the_normalization_rule():
     _, rep = spec.hadamard(0, V, report=True)
     assert np.isfinite(rep.norm_rule_prec) and rep.norm_rule_prec <= 1e-10
     assert rep.attained >= rep.norm_rule_prec
+    # 2.2: the eigenfunction's own Moler-Payne residual is carried and added in.
+    assert np.isfinite(rep.mp_eps) and rep.mp_eps == spec.spectrum.levels[0].mp_eps
+    assert rep.attained >= rep.mp_eps + max(rep.norm_rule_prec, rep.sizing_prec)
 
 
 # --- 3: the Fourier-Bessel warning is judged against the column, not the entry -----------------
@@ -186,14 +189,14 @@ def _lshape_family(prec):
     return dom, FourierBessel.at_corner(c, n=80, domain=dom).with_prec(prec)
 
 
-def test_a_zero_of_j_is_not_a_shortfall():
-    """Beside a zero of J the entry's relative error is unbounded and costs the solve nothing;
-    the column-scaled bound is what the GSVD sees. Measured at 1e-8 over k in [2, 20]: the
-    entry-wise bound exceeded prec at 16 of 73 k, the column-scaled one at none."""
-    dom, fam = _lshape_family(1e-8)
+@pytest.mark.parametrize("prec", [1e-8, 1e-12])
+def test_the_l_shape_scan_is_quiet(prec):
+    """Measured on this scan before the fixes: the entry-wise warning fired at 16 of 73 k at
+    1e-8 and 65 at 1e-12 -- beside zeros of J, at no cost to any result -- and the column-scaled
+    one at 0 and 47, the 47 being a real series-branch loss (audit 2.6, next test). Now: none."""
+    dom, fam = _lshape_family(prec)
     s = fam.at(dom.bdry_quad(240))
     ks = np.linspace(2, 20, 73)
-    assert any(s.accuracy_entrywise(k).max() > 1e-8 for k in ks)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         for k in ks:
@@ -202,8 +205,9 @@ def test_a_zero_of_j_is_not_a_shortfall():
 
 
 def test_the_column_scaled_bound_bounds_the_column_error():
-    """The worst L-shape column at 1e-12 (mu = 19.33, k = 17.75): the series branch really does
-    lose 7.3e-11 of the column's scale there (Phase 4), and the bound must say at least that."""
+    """The worst L-shape column at 1e-12 before the series-branch fix (mu = 19.33, k = 17.75):
+    the series lost 7.3e-11 of the column there against a bound of 1.3e-10. After the fix the
+    column is good to 3e-14. Either way the bound must cover the truth, on the three worst."""
     mp = pytest.importorskip("mpmath")
     mp.mp.dps = 40
     dom, fam = _lshape_family(1e-12)
