@@ -132,6 +132,15 @@ def _waves(dom, lam):
     return PlaneWave.uniform(int(PlaneWave.n_useful(np.sqrt(lam) * R)), radius=R)
 
 
+def _assert_sharp_minimum(p, lam):
+    """Tension at the true lam against prec, and against itself 1% off. Measured 2026-11-03:
+    8.6e-13 (rectangle), 6.9e-16 (disk), 1.6e-12 (triangle) at lam, ~2e-2 at 1.01 lam. The
+    old bar, `< 1e-6`, let four or more digits of regression through."""
+    t = p.tension(lam)
+    assert t < 1e-10
+    assert t < 1e-6 * p.tension(1.01 * lam)
+
+
 def test_the_rectangle():
     """Plane waves alone: a rectangle has no singular corner, `omega = pi/2` gives
     `nu = 2`, and the eigenfunctions are analytic across every vertex."""
@@ -140,7 +149,7 @@ def test_the_rectangle():
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
                              dom.interior_pts(120, rng=_rng()), lam_ref=lam)
-    assert p.tension(lam) < 1e-6
+    _assert_sharp_minimum(p, lam)
 
 
 def test_the_disk():
@@ -149,7 +158,7 @@ def test_the_disk():
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
                              dom.interior_pts(120, rng=_rng()), lam_ref=lam)
-    assert p.tension(lam) < 1e-6
+    _assert_sharp_minimum(p, lam)
 
 
 def test_the_equilateral_triangle():
@@ -158,7 +167,7 @@ def test_the_equilateral_triangle():
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
                              dom.interior_pts(120, rng=_rng()), lam_ref=lam)
-    assert p.tension(lam) < 1e-6
+    _assert_sharp_minimum(p, lam)
 
 
 # --- the corner-singularity benchmark ----------------------------------------------------

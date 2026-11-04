@@ -108,6 +108,11 @@ def test_the_rellich_residual_is_reported_beside_the_coefficients():
     lvl = next(L for L in s.search_interval(45.0, 55.0).levels if L.mult == 2)
     ef = s.eigenfunctions(lvl)
     assert ef.gram_residual < 1e-10
+    # ...and it is checked against the independent oracle: `hadamard()` refuses on this
+    # number. Measured 2026-11-03: gram_residual 6.7e-16, interior-Gauss defect 9.2e-15 (the
+    # oracle's own rounding floor). A residual that read 1e-16 over a 1e-8 defect would fail.
+    G = _interior_gram(s, ef, _square_oracle())
+    assert np.abs(G - np.eye(2)).max() <= max(100 * ef.gram_residual, 1e-12)
 
 
 def test_a_deficient_cluster_comes_back_normalized_and_FLAGGED(monkeypatch):

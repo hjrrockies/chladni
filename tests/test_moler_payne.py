@@ -245,13 +245,15 @@ def test_no_level_claims_prec_past_a_tight_reference():
     tight = [T for T in ref["levels"]
              if T["status"] != "provisional" and np.isfinite(T.get("bound", np.nan))
              and T["bound"] <= 0.1 * prec * T["lam"]]
-    bad = []
+    bad, n_checked = [], 0
     for L in res.levels:
         if not L.met(prec):
             continue
         T = min(tight, key=lambda T: abs(T["lam"] - L.lam), default=None)
         if T is None or abs(T["lam"] - L.lam) > 1e-4 * L.lam:
             continue
+        n_checked += 1
         if abs(T["lam"] - L.lam) > prec * L.lam + T["bound"]:
             bad.append((L.lam, T["lam"], L.bound, L.delta_res, L.mp_bound))
+    assert n_checked >= 1, "no met level had a tight reference: the test compared nothing"
     assert not bad, f"met levels off a tight reference by more than prec: {bad}"

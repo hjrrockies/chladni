@@ -89,9 +89,15 @@ def test_a_tighter_request_costs_more_and_says_what_it_could_not_reach():
     costs, lams = [], []
     for prec in (1e-6, 1e-8, 1e-10):
         s = solver_for(disk(1.0), b, label="disk", prec=prec)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")          # the shortfall is the SUBJECT here
+        with warnings.catch_warnings(record=True) as caught:
+            # the shortfall is the SUBJECT here: recorded, and nothing else is silenced
+            warnings.simplefilter("always", PrecisionWarning)
             spec = s.solve_interval(a, b)
+        short = [w for w in caught if issubclass(w.category, PrecisionWarning)
+                 and "short of the requested" in str(w.message)]
+        assert bool(short) == bool(np.any(spec.unmet)), (
+            f"prec={prec:g}: the shortfall warning fired {len(short)} time(s) with "
+            f"{int(np.sum(spec.unmet))} level(s) unmet -- the warning and the Spectrum disagree")
         assert spec.count == len(disk_spectrum(a, b, 1.0))
         err = np.abs(spec.lam - truth)
 
@@ -295,7 +301,7 @@ def test_a_starved_basis_does_not_DROP_levels_silently(pad):
         # Any warning is not enough: a PrecisionWarning about a level that WAS found says
         # nothing about the ones that were not. No warning names a missing level today, so the
         # acceptable outcomes are the full count or a decline.
-        warnings.simplefilter("ignore")
+        warnings.simplefilter("ignore", PrecisionWarning)
         try:
             spec = s.solve_interval(a, b)
         except RuntimeError:

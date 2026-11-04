@@ -136,16 +136,20 @@ def test_two_distinct_levels_form_one_block_with_their_cross_terms():
 
 @pytest.mark.slow
 def test_a_split_pair_near_a_double_gives_the_doubles_derivatives():
-    """1 x 1.001: the square's 5 pi^2 double split into two close levels. Taken TOGETHER they
-    give a block whose eigenvalues are within O(1e-3) of the square's -2 pi^2 and -8 pi^2 --
-    the model a cluster optimizer needs on the way into a degeneracy."""
+    """1 x 1.001: the square's 5 pi^2 double split into two close levels, (1,2) and (2,1).
+    Taken TOGETHER they give the block a cluster optimizer needs on the way into a degeneracy.
+    It is EXACT here, not O(1e-3) off the square's: moving the x = 1 edge, d(lam)/da =
+    -2 m^2 pi^2 / a^3 with a = 1, so -2 pi^2 and -8 pi^2, and the cross term vanishes because
+    sin(pi y/b) and sin(2 pi y/b) are orthogonal on the edge. Checked to the solve's prec."""
     dom = rect(1.0, 1.001)
     spec = Eigenproblem(dom).solve(3, prec=PREC)
     assert spec.count >= 3 and len(spec.lam) >= 3 and spec.mult[1] == 1
     V = _edge_velocity(dom, lambda p0, p1: abs(p0.real - 1.0) < 1e-12
                        and abs(p1.real - 1.0) < 1e-12)
-    ev = np.sort(np.linalg.eigvalsh(spec.hadamard([1, 2], V)[0]))
-    np.testing.assert_allclose(ev, [-8 * np.pi ** 2, -2 * np.pi ** 2], rtol=5e-3)
+    H = spec.hadamard([1, 2], V)[0]
+    np.testing.assert_allclose(np.sort(np.linalg.eigvalsh(H)), [-8 * np.pi ** 2, -2 * np.pi ** 2],
+                               rtol=10 * PREC)
+    assert abs(H[0, 1]) < 10 * PREC * np.pi ** 2
 
 
 # --- what the matrix is good for: the report and the refusal (2026-11-03) ----------------------

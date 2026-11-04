@@ -67,10 +67,14 @@ def test_the_result_is_sorted_and_unfoldable():
 def test_each_level_reports_the_accuracy_it_ACHIEVED():
     """`search.md` clause (2): within `prec`, OR report `delta_res` as the attained bound.
     There is no predicted-accuracy constant -- it is measured from the parabola fit."""
-    res = solve(_cone([2 * np.pi**2, 5 * np.pi**2]), prec=1e-8)
-    assert res.levels
-    for x in res.levels:
-        assert np.isnan(x.attained_prec) or x.attained_prec >= 0.0
+    roots = [2 * np.pi**2, 5 * np.pi**2]
+    res = solve(_cone(roots), prec=1e-8)
+    assert len(res.levels) == len(roots)
+    measured = [x for x in res.levels if np.isfinite(x.attained_prec)]
+    assert measured, "no level measured its accuracy"
+    for x in measured:                     # the claim is checked against the known root
+        r = min(roots, key=lambda r: abs(r - x.lam))
+        assert abs(x.lam - r) / r <= x.attained_prec, (x.lam, r, x.attained_prec)
     d = res.diagnostics
     assert d.prec_requested == 1e-8
     assert d.met_request == (not d.unmet)
@@ -165,6 +169,15 @@ def test_the_pipeline_on_the_hard_roster(name):
     assert s.ok, (f"{s.verdict}: coverage {s.coverage:.2f}, separation {s.separation:.2f}, "
                   f"{s.n_mult_right}/{s.n_matched} multiplicities")
     assert res.diagnostics.multiplicity_evals == 0
+    # `score_levels` matches within `match_tolerance`, ~1e-2 on these cases: a third-digit error
+    # would pass it. The accuracy claim is checked separately, level by level, against truth.
+    truth = np.asarray(case.truth, dtype=float)
+    for L in res.levels:
+        if L.lam > truth[-1] * (1 + 1e-6):
+            continue                                  # a prefix table cannot score above it
+        t = truth[np.argmin(np.abs(truth - L.lam))]
+        bar = max(prec * L.lam, L.bound) if np.isfinite(L.bound) else prec * L.lam
+        assert abs(L.lam - t) <= bar, (name, L.lam, t, L.bound)
 
 
 # was ulp_sensitive; 0 of 32 jitter seeds on the rung-sized suite pencil (2026-10-11)

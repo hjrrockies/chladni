@@ -59,6 +59,7 @@ from bracket_score import PREC_LADDER
 from chladni import asymp
 from chladni.mps.bracket import BUDGET_PER_EIG
 from chladni.mps.objective import Objective
+from chladni._core import PrecisionWarning
 from chladni.mps.search import SolveResult, solve
 from prec_score import score_cell
 
@@ -122,7 +123,7 @@ def _cell(f, i, prec):
         case.pencil, case.a, case.b, variable="lam", prec=prec,
         expected_count=lambda lo, up: asymp.expected_count(lo, up, case.domain))
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+        warnings.simplefilter("ignore", PrecisionWarning)   # the ladder scores the shortfall
         res = solve(obj, prec=prec)
     if not case.complete:
         # A prefix table: levels above its last entry cannot be scored either way.

@@ -106,7 +106,7 @@ def test_a_count_shortfall_never_raises():
     basis, so it warns (the precision shortfall it already reports) and returns."""
     from chladni.mps import PrecisionWarning
 
-    with pytest.warns(PrecisionWarning):
+    with pytest.warns(PrecisionWarning, match="short of the requested"):
         spec = _starved_lshape().solve_interval(5.0, 40.0)
     assert len(spec.lam) == 5
 

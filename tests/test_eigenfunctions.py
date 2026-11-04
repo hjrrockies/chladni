@@ -4,7 +4,7 @@ Three properties, and none of them is checked against another chladni function.
 
 An eigenfunction has to satisfy `laplacian(u) + lam*u = 0` -- verified by finite differences
 in the interior, which is independent of everything in the package. It has to vanish on a
-Dirichlet boundary. And its `norm2` has to match a numerical quadrature, because `norm2` is
+Dirichlet boundary. And its `norm2` has to match a deterministic numerical quadrature, because `norm2` is
 what makes these usable as ground truth for the Rellich work: an independently-normalized
 eigenfunction is something a quadrature can be checked AGAINST, rather than something a
 quadrature defines.
@@ -25,10 +25,40 @@ def laplacian(u, z, h=1e-5):
     return ((u(z + h) + u(z - h) + u(z + 1j * h) + u(z - 1j * h) - 4 * u(z)) / h**2)
 
 
-def quad_norm2(u, dom, n=400_000, seed=0):
-    """Monte-Carlo integral of |u|^2 over the domain. Crude but wholly independent."""
-    pts = dom.interior_pts(n, rng=np.random.default_rng(seed))
-    return float(np.mean(np.abs(u(pts)) ** 2) * dom.area)
+def _gauss(n):
+    """Gauss-Legendre on [0, 1], from numpy: independent of the package's own rules."""
+    x, w = np.polynomial.legendre.leggauss(n)
+    return 0.5 * (x + 1.0), 0.5 * w
+
+
+#: Polar extents (radius, (theta0, theta1), centre) of the curved factories, as placed by
+#: `geometry`: the disk about 0, the sector from the origin on angles [0, omega].
+POLAR = {"disk": (1.0, (0.0, 2 * np.pi), 0j), "sector": (1.0, (0.0, 2 * np.pi / 3), 0j)}
+
+
+def quad_norm2(u, dom, n=48, polar=None):
+    """Deterministic integral of |u|^2 over the domain, wholly independent of chladni's
+    quadrature. A polygon is fanned into triangles from its vertex mean (every polygon here is
+    star-shaped about it) and each triangle is Duffy-mapped onto a tensor Gauss rule; a disk or
+    sector is integrated in polar coordinates about its centre. The integrands are smooth, so
+    this converges to rounding: it replaced a Monte-Carlo estimate checked at 2%."""
+    x, w = _gauss(n)
+    a, b = np.meshgrid(x, x, indexing="ij")
+    wa = np.outer(w, w)
+    if polar is None:
+        v = np.asarray(dom.vertices, dtype=complex)
+        c = v.mean()
+        total = 0.0
+        for p, q in zip(v, np.roll(v, -1)):
+            # Duffy: (a, b) in the unit square -> c + a*(p - c) + a*b*(q - p), Jacobian a*|det|.
+            det = abs(((p - c).conjugate() * (q - c)).imag)
+            z = c + a * (p - c) + a * b * (q - p)
+            total += det * float(np.sum(wa * a * np.abs(u(z.ravel()).reshape(z.shape)) ** 2))
+        return total
+    R, (t0, t1), c = polar
+    r, t = R * a, t0 + (t1 - t0) * b
+    z = c + r * np.exp(1j * t)
+    return R * (t1 - t0) * float(np.sum(wa * r * np.abs(u(z.ravel()).reshape(z.shape)) ** 2))
 
 
 CASES = [
@@ -66,15 +96,14 @@ def test_it_vanishes_on_the_dirichlet_boundary(name, make, lam, dom_fn):
 
 @pytest.mark.parametrize("name,make,lam,dom_fn", CASES, ids=[c[0] for c in CASES])
 def test_the_exact_norm_matches_a_quadrature(name, make, lam, dom_fn):
-    """`norm2` is the reason these exist. Monte-Carlo is crude, so the tolerance is loose --
-    the point is that the exact value is right, not that the estimator is."""
+    """`norm2` is the reason these exist, checked to 1e-12 against a deterministic rule."""
     u, norm2 = make()
-    assert quad_norm2(u, dom_fn()) == pytest.approx(norm2, rel=0.02)
+    assert quad_norm2(u, dom_fn(), polar=POLAR.get(name)) == pytest.approx(norm2, rel=1e-12)
 
 
 def test_normalized_eigfun_has_unit_norm():
     un = ref.normalized_eigfun(ref.rect_eigfun(2, 3, 2.0, 1.0))
-    assert quad_norm2(un, rect(2.0, 1.0)) == pytest.approx(1.0, rel=0.02)
+    assert quad_norm2(un, rect(2.0, 1.0)) == pytest.approx(1.0, rel=1e-12)
 
 
 def test_a_polyomino_mode_is_exact_on_any_polyomino():
