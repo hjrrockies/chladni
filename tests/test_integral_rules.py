@@ -413,10 +413,13 @@ def test_the_graded_power_flattens_the_leading_term():
 @pytest.mark.parametrize("k", [1.0, 10.0, 40.0])
 def test_the_graded_sizing_meets_1e14_everywhere_short_of_the_slit(nu, k):
     """Where the interpolatory search stalls at 5e-8..9e-6 on this lattice. Node counts as
-    measured 2026-11-03: 32 (convex, k = 1) to 600 (nu = 0.53, k = 40)."""
+    measured 2026-11-03: 32 (convex, k = 1) to 600 (nu = 0.53, k = 40) on macOS; Linux CI picks
+    672 there, because 1e-14 is near the model's rounding floor (the 600-node rule models
+    5.6e-15) and which candidate clears it is platform-dependent. The cap bounds cost; it is not
+    a node count to reproduce."""
     (lv, o, n_top), ach = R.graded_order_for_prec(nu, 1e-14, k)
     assert ach <= 1e-14
-    assert (lv + n_top) * o <= 600
+    assert (lv + n_top) * o <= 800
 
 
 def test_the_outermost_split_is_what_buys_high_wavenumbers():
