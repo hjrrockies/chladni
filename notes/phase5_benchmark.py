@@ -33,7 +33,7 @@ ROOT = os.path.dirname(HERE)
 sys.path[:0] = [os.path.join(ROOT, "benchmarks", "douse"), HERE]
 warnings.simplefilter("ignore")
 
-PRECS = (1e-10, 1e-8)
+PRECS = tuple(float(p) for p in os.environ["PHASE5_PRECS"].split(",")) if os.environ.get("PHASE5_PRECS") else (1e-10, 1e-8)
 OUT = os.path.join(HERE, "phase5_benchmark.json")
 
 
@@ -47,13 +47,16 @@ def run_one(args):
         return dict(id=case["id"], prec=prec, skipped="no trusted reference levels")
     n = sum(T["mult"] for T in trusted)
     dom = MR.polygon(case["vertices"])
+    import bench_counters as BC
+    BC.install()
+    c0 = BC.snapshot()
     t0 = time.perf_counter()
     try:
         spec = Eigenproblem(dom).solve(n, prec=prec)
     except Exception as e:  # noqa: BLE001
         return dict(id=case["id"], prec=prec, n=n, error=repr(e)[:300],
                     wall=time.perf_counter() - t0)
-    return dict(id=case["id"], prec=prec, n=n, wall=time.perf_counter() - t0,
+    return dict(id=case["id"], prec=prec, n=n, wall=time.perf_counter() - t0, counts=BC.since(c0),
                 rung=spec.plan.rung if spec.plan is not None else None,
                 n_cols=spec.plan.n_cols if spec.plan is not None else None,
                 flags=list(spec.flags), declined=bool(spec.declined),
@@ -116,6 +119,9 @@ def report(runs=None, refs=None):
             if o == "SILENT" or o == "FLAGGED-WRONG":
                 silent.append((r["id"], o, outcome, drops, harm, r["flags"][:2]))
         walls = [r["wall"] for r in rr if "wall" in r]
+        asm = [r["counts"]["assemblies"] for r in rr if "counts" in r]
+        if asm:
+            print(f"  assemblies total {sum(asm)} (median {np.median(asm):.0f})")
         print(f"\n=== prec {p:g}: {len(rr)} cases ===")
         print("  " + "  ".join(f"{k} {v}" for k, v in sorted(tally.items())))
         print(f"  rung reached: {dict(sorted(rungs.items()))}")

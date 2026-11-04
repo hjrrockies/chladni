@@ -29,6 +29,9 @@ def run(args):
     dom = MR.polygon(case["vertices"])
     b = MR.basis_for(dom, "D", np.sqrt(hi))
     n = len(b)
+    import bench_counters as BC
+    BC.install()
+    c0 = BC.snapshot()
     t0 = time.perf_counter()
     try:
         s = MPSEigensolver(dom, basis=b, n_bdry=3 * n, n_int=n, prec=prec, rng=0)
@@ -40,7 +43,7 @@ def run(args):
     d = res.diagnostics
     return dict(id=case["id"], jit=list(jit), stable=mode, wall=time.perf_counter() - t0,
                 declined=bool(d.declined), unmet=len(d.unmet), n_uncertain=int(d.n_uncertain),
-                evals=int(d.evaluations), rerank_evals=int(d.rerank_evals),
+                evals=int(d.evaluations), counts=BC.since(c0), rerank_evals=int(d.rerank_evals),
                 n_reranked=int(d.n_reranked), n_rerank_refused=int(d.n_rerank_refused),
                 levels=[dict(lam=float(L.lam), mult=int(L.mult), bound=float(L.bound),
                              rank=L.rank, count_flag=bool(L.count_uncertain or L.grouping_ambiguous),

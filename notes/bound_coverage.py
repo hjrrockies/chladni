@@ -92,6 +92,9 @@ def run(case, prec):
     truth = _truth(label, lo, hi)
     basis = _basis(label, dom, kind, n, hi)
     nb = len(basis)
+    import bench_counters as BC
+    BC.install()
+    c0 = BC.snapshot()
     t0 = time.perf_counter()
     try:
         s = MPSEigensolver(dom, basis=basis, n_bdry=3 * nb, n_int=nb, prec=prec)
@@ -102,7 +105,7 @@ def run(case, prec):
     inwin = truth[(truth > lo) & (truth < hi)]
     rows = [dict(row="summary", domain=label, kind=kind, n=n, n_cols=nb, prec=prec, wall=wall,
                  n_truth=int(len(inwin)), n_found=int(sum(x.mult for x in res.levels)),
-                 attained=float(res.diagnostics.attained_prec))]
+                 attained=float(res.diagnostics.attained_prec), counts=BC.since(c0))]
     for L in res.levels:
         err = float(np.min(np.abs(truth - L.lam)))
         rows.append(dict(
