@@ -584,6 +584,13 @@ def _record(res, n, prec, plan, flags):
     n_uncertain = max(int(d.n_uncertain), sum(bool(L.count_uncertain) for L in kept))
     if n_uncertain:
         flags.append(f"uncertain: {n_uncertain} count(s) could not be certified")
+    # The integral rule the Moler-Payne norm was formed on: a bound off by its model error,
+    # relative. Only a rule that cannot carry a few digits is worth a flag (`search.Level`).
+    from .mps.solver import CERTIFY_RULE_FLAG
+    short_rule = [L for L in kept if getattr(L, "rule_prec", np.nan) > CERTIFY_RULE_FLAG]
+    if short_rule:
+        flags.append(f"integral rule: the Moler-Payne norm at {len(short_rule)} level(s) is "
+                     f"known only to {max(L.rule_prec for L in short_rule):.1e} relative")
     # The refiner refused a bracket that dipped as deep as an accepted level: a candidate LOST
     # eigenvalue (`search.SolveDiagnostics.rejected_deep`). It was recorded and never read.
     deep = [r for r in getattr(d, "rejected_deep", ()) if kept and r[0] <= kept[-1].lam]

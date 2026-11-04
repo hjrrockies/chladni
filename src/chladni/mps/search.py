@@ -207,6 +207,11 @@ class Level:
     #: and a Moler-Payne bound is in hand, so `bound` reports that bound alone. Set by
     #: `MPSEigensolver.certify_levels`, which knows `prec`; see `bound` for why.
     delta_res_admitted: bool = True
+    #: The model accuracy of the integral rule the Moler-Payne norm was formed on
+    #: (`IntegralQuad.sizing_prec`): infinite when a singular corner's rule was demoted. The
+    #: bound is off by about this much RELATIVE, so only a rule past `CERTIFY_RULE_FLAG` is
+    #: worth a flag. NaN where no bound was computed.
+    rule_prec: float = float("nan")
     #: The request this level was solved for. Stamped by `solve`; NaN on a Level built
     #: elsewhere, which then claims no `margin`, no `resolution` and no shortfall.
     prec: float = float("nan")

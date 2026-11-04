@@ -89,6 +89,10 @@ class Eigenfunctions:
 #: still refuses a residual of order one (`notes/hadamard_accuracy.md`: a flat triangle at prec
 #: 1e-12 came back with `gram_residual` 0.16 and a dilation identity off by 0.43).
 HADAMARD_GRAM_REFUSE = 1e3
+#: Past this model error of the certification rule, a Moler-Payne bound -- off by about that
+#: much RELATIVE -- is flagged (`eigenproblem._record`). Inf when a singular corner's rule was
+#: demoted. Ordinary rules sit at `integral_prec(prec)`, far below.
+CERTIFY_RULE_FLAG = 1e-3
 HADAMARD_GRAM_FLOOR = 1e-8
 
 #: The corner rule (`integrals.integral_quad(..., corners=)`) every boundary integral here uses,
@@ -111,14 +115,19 @@ class HadamardReport:
 
     `sizing_prec` and `shortfalls` are the integral rule's own (`IntegralQuad`): the worst MODEL
     bound over its panels and every panel short of target. `gram_residual` is each level's
-    orthonormality defect (`Eigenfunctions.gram_residual`). `attained` is the larger of the two
-    kinds: the relative precision the matrix can be claimed to, as a model bound."""
+    orthonormality defect (`Eigenfunctions.gram_residual`). `attained` is the largest of the
+    three kinds -- the Hadamard rule, the normalization rule, the orthonormality defect: the
+    relative precision the matrix can be claimed to, as a model bound."""
 
     prec: float
     sizing_prec: float
     shortfalls: tuple
     gram_residual: tuple
     attained: float
+    #: The worst model bound of the rules the levels were NORMALIZED on (`Eigenfunctions.rule`).
+    #: H scales as 1/||u||^2, so it enters `attained` too; before 2026-11-03 only the Hadamard
+    #: rule's own sizing did (`notes/accuracy_audit_2026-11-03.md`, 1.5).
+    norm_rule_prec: float = float("nan")
 
     @property
     def met(self):
@@ -520,6 +529,7 @@ class MPSEigensolver(Eigensolver, Frozen):
                                       mp_eps=float(np.max(mp.eps)),
                                       cancellation=float(np.max(mp.cancellation)),
                                       bound_reason=mp.reason,
+                                      rule_prec=float(iq.sizing_prec),
                                       delta_res_admitted=bool(
                                           L.delta_res <= prec * abs(L.lam)
                                           and not (np.max(mp.abs)
@@ -656,9 +666,11 @@ class MPSEigensolver(Eigensolver, Frozen):
         H = np.stack([-identities.weighted_integral(cd, "NN", vf) for vf in vals])
         iq = cache[key]
         resid = tuple(float(ef.gram_residual) for ef in efs)
+        norm_rule = max(float(ef.rule.sizing_prec) for ef in efs)
         rep = HadamardReport(prec=float(prec), sizing_prec=float(iq.sizing_prec),
                              shortfalls=tuple(iq.shortfalls), gram_residual=resid,
-                             attained=max([float(iq.sizing_prec)] + list(resid)))
+                             attained=max([float(iq.sizing_prec), norm_rule] + list(resid)),
+                             norm_rule_prec=norm_rule)
         if not rep.met:
             where = ", ".join(w for w, *_ in rep.shortfalls) or "the normalization"
             warnings.warn(

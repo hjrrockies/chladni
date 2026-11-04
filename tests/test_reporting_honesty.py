@@ -159,3 +159,22 @@ def test_an_unmeasured_level_does_not_report_the_request_as_attained():
     L = Level(lam=10.0, mult=1, prec=1e-10)            # no bar at all
     unmet, attained = search._precision_summary([L], 1e-10)
     assert not attained <= 1e-10
+
+
+# --- 2.1: the integral rule's own accuracy travels with what it certified -----------------------
+
+def test_a_demoted_certification_rule_is_flagged():
+    L = Level(lam=10.0, mult=1, delta_res=5e-12, prec=1e-10, mp_bound=4e-12, rule_prec=np.inf)
+    spec = _record(_result([L]), 1, 1e-10, None, [])
+    assert any(f.startswith("integral rule") for f in spec.flags), spec.flags
+
+
+@pytest.mark.slow
+def test_the_hadamard_report_carries_the_normalization_rule():
+    spec = Eigenproblem(L_shape()).solve(2, prec=1e-10)
+
+    def V(curve, t):
+        return np.ones((1, len(np.atleast_1d(t))))
+    _, rep = spec.hadamard(0, V, report=True)
+    assert np.isfinite(rep.norm_rule_prec) and rep.norm_rule_prec <= 1e-10
+    assert rep.attained >= rep.norm_rule_prec
