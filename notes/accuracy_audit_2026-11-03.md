@@ -165,7 +165,10 @@ The warm replay's 8 new refusals:
   misses (bar 5.3e-9; margin 0.77). A fresh solve on the same shape escalates and meets (margin
   7.85). Bisected over every commit of the branch; restoring the tight certification rule
   changes nothing. Every bar is honest: the cost is a plan with no headroom.
-- **Shape 1, step 10.** One step, margin 0.48; not traced, presumably the same mechanism.
+- **Shape 1, step 10: the same thin headroom, on rung 2.** Traced step by step: the first level
+  sits at margin 2.1 to 2.2 on all nine warm steps, then its bar jumps from 2.7e-9 to 1.2e-8
+  (margin 0.48) on the reused plan. A fresh plan on the step-10 shape meets at margin 2.14, so
+  the level's bound hovers at the threshold on every plan and one step's bar landed above it.
 - **Shape 5** misses on every step in both runs. Its margin reads 0.19 where it read 1.4,
   because margin is now measured from the reported bar (1.4).
 
