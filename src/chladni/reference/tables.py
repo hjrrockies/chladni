@@ -255,7 +255,7 @@ def chevron_eigs(k, h1=1.0, h2=2.0):
 @tabulated(
     7.8, _LAPPY + " (n_basis=120; h=16, 20 from an earlier, less careful solve); h=1 is a "
                   "closed form, not a table",
-    digits_by={0.5: 10.8, 1.0: 15.6, 2.0: 12.0, 4.0: 11.8, 8.0: 11.3, 16.0: 7.8, 20.0: 12.0},
+    digits_by={0.5: 10.8, 1.0: 15.5, 2.0: 12.0, 4.0: 11.8, 8.0: 11.3, 16.0: 7.8, 20.0: 12.0},
     notes={1.0: {None: "CLOSED FORM, not tabulated. Base 2 and height 1 puts the vertices at "
                        "(-1,0), (0,1), (1,0), which is the right isosceles triangle with "
                        "legs sqrt(2) -- so its spectrum is pi**2 (m**2+n**2)/2 for m > n >= "

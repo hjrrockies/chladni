@@ -171,6 +171,8 @@ def _j_series(nu, x, derivative=True):
         Sp = (None if not derivative else
               np.where(x > 0, Sx / np.where(x > 0, x, 1.0), _dj_at_zero(nu)))
         rel = _EPS * biggest / np.abs(S) + _scale_err(nu * np.log(x / 2), gammaln(nu + 1))
+    # x = 0 is exact (`_at_zero_value`); log(0) made the bound inf and crashed the warning.
+    rel = np.where(x > 0, rel, _EPS)
     return Scaled(_at_zero_value(nu, x, S), Sp, _sigma_j(nu, x), rel)
 
 
@@ -249,6 +251,7 @@ def _j_scipy(nu, x, derivative=True):
     with np.errstate(divide="ignore", invalid="ignore"):
         rel = np.maximum(_EPS, 4e-16 * (1.0 + nu)) + _scale_err(nu * np.log(x / 2),
                                                                 gammaln(nu + 1))
+        rel = np.where(x > 0, rel, _EPS)
     der = None if not derivative else _rescale(0.5 * (jv(nu - 1, x) - jv(nu + 1, x)), sigma)
     return Scaled(_rescale(jv(nu, x), sigma), der, sigma, rel)
 

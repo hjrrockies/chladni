@@ -19,7 +19,7 @@ __all__ = ["exact", "tabulated", "catalog", "recipe", "collapse", "snap",
 
 #: Decimal digits float64 carries. `exact` claims this rather than `inf`: a closed form is
 #: exact as mathematics and still evaluates in floating point.
-FLOAT64_DIGITS = 15.6
+FLOAT64_DIGITS = 15.5     # measured: Bessel-zero closed forms reach 2.8e-16..3.1e-16 (audit 2026-11-03)
 
 #: Every decorated reference function, in definition order.
 REGISTRY = []

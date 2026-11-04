@@ -225,7 +225,10 @@ class Sampling(Frozen):
         worst = float(np.max(rel_err))
         if worst <= self.family.prec:
             return
-        decade = int(np.ceil(np.log10(worst)))
+        if not np.isfinite(worst):          # never int() an inf or a nan
+            decade = "inf" if worst > 0 else "nan"
+        else:
+            decade = int(np.ceil(np.log10(worst)))
         warnings.warn(
             f"{type(self.family).__name__} can deliver about 1e{decade} relative accuracy "
             f"on these points, short of the requested prec={self.family.prec:.0e}. The "

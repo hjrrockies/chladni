@@ -449,7 +449,9 @@ def refine(obj, lo, hi, *, prec=None, max_evals=MAX_EVALS, lam_hint=None, interi
     # would now read as unmet (`search.Level.met`), which is right only if it is really unknown.
     pts = triple()
     width = float(pts[-1][0] - pts[0][0])
-    if reason == "stalled":
+    # A `budget` exit is the same case: the triple was not narrowed to the fit's bar, so the
+    # bar must cover the triple (`notes/accuracy_audit_2026-11-03.md`, 1.7).
+    if reason in ("stalled", "budget"):
         delta_res = max(delta_res, width) if np.isfinite(delta_res) else width
     elif not np.isfinite(delta_res):
         delta_res = width
@@ -559,6 +561,10 @@ def _end_verdict(obj, best, hist, lo, hi, interior, prec, max_evals, steps, star
         for frac in _PROBE_STEPS:
             step = max(frac * reach, 4.0 * np.spacing(abs(x_best)))
             probe = x_best + side * step
+            if not probe > 0.0:
+                # Below lam = 0 the pencil refuses; nothing there can be a phantom's minimum
+                # (`reach_multiplicity` guards the same probe; audit 2026-11-03).
+                break
             # Straight through the objective, NOT through `f`: `f` clamps into the bracket,
             # and the whole point of this probe is to look outside it. The first version
             # called `f` and the probe landed back on the widened end, four ulps away, where

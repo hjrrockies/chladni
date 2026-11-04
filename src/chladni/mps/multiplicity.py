@@ -589,6 +589,13 @@ def reach_multiplicity(tensions, x, lo, hi, c, *, count_below=COUNT_BELOW,
         note(j, d, side, "undecided")
         declined = True
         break
+    else:
+        # Every examined branch was counted and the list was CUT at `max_branches`: the reach
+        # ran out of branches, not out of eigenvalues, so `mu` is a LOWER bound and is not
+        # reported as a count (`notes/accuracy_audit_2026-11-03.md`, 1.8). A list shorter than
+        # that is the pencil's whole rank, and there is no further branch to be missing.
+        if t.size >= max_branches and mu >= t.size:
+            declined = True
     spent = (counter.n_evals - before) if counter is not None else 0
     return max(mu, 1), declined, spent, tuple(seen)
 

@@ -240,7 +240,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         """
         from . import calibrate as _cal
 
-        key = (float(a), float(b), float(dk), bool(calibrate))
+        key = (float(a), float(b), float(dk), bool(calibrate), n)
         cache = getattr(self, "_findability", None)
         if cache is None:
             _set(self, _findability={})
@@ -388,6 +388,10 @@ class MPSEigensolver(Eigensolver, Frozen):
             else:
                 windows.append((lo, hi, [int(i)]))
         levels, n_evals, refine_evals = [], 0, 0
+        # What a merged window's search could not certify travels with the result: it used to
+        # be dropped here, and the warm path accepted uncertain counts and deep rejections (a
+        # possible lost eigenvalue) unflagged (`notes/accuracy_audit_2026-11-03.md`, 1.2).
+        doubts = dict(n_uncertain=0, uncertain=(), rejected_deep=(), n_ambiguous=0)
         for lo, hi, members in windows:
             # A window holding several previous levels, or one wide enough to hold several
             # wells (wider than `WIDE_WINDOW` x the local mean Weyl spacing: an early, large
@@ -399,7 +403,12 @@ class MPSEigensolver(Eigensolver, Frozen):
                 if res_w.declined:
                     return None, f"search: the merged window [{lo:.6g}, {hi:.6g}] declined"
                 levels.extend(res_w.levels)
-                n_evals += res_w.diagnostics.evaluations
+                dw = res_w.diagnostics
+                n_evals += dw.evaluations
+                doubts["n_uncertain"] += int(dw.n_uncertain)
+                doubts["uncertain"] += tuple(dw.uncertain)
+                doubts["rejected_deep"] += tuple(dw.rejected_deep)
+                doubts["n_ambiguous"] += int(dw.n_ambiguous)
                 continue
             i = members[0]
             obj = self.objective(lo, hi, prec=prec)
@@ -425,7 +434,8 @@ class MPSEigensolver(Eigensolver, Frozen):
         res = SolveResult(levels=levels,
                           diagnostics=SolveDiagnostics(refine_evals=refine_evals,
                                                        evaluations=n_evals,
-                                                       prec_requested=prec, count_audit=audit))
+                                                       prec_requested=prec, count_audit=audit,
+                                                       **doubts))
         if self.certify and res.levels:
             res = self.certify_levels(res, lam_max=float(windows[-1][1]), prec=prec)
             res = _replace(res, diagnostics=_replace(res.diagnostics, count_audit=audit))
@@ -708,7 +718,8 @@ class MPSEigensolver(Eigensolver, Frozen):
         if len(d.unmet):
             warnings.warn(
                 f"{len(d.unmet)} level(s) in [{float(a):.6g}, {float(b):.6g}] reached only "
-                f"{d.attained_prec:.1e} relative, short of the requested "
+                + (f"{d.attained_prec:.1e} relative" if np.isfinite(d.attained_prec)
+                   else "no finite bar") + f", short of the requested "
                 f"{self.prec:.0e}. The values are correct to the bar reported on the "
                 f"Spectrum; the pencil is what binds here, not the request.",
                 PrecisionWarning, stacklevel=2,
@@ -732,8 +743,9 @@ def _raise_on_shortfall(res, a, b, prec):
     reasons = []
     if short:
         reasons.append(f"{len(short)} level(s) unmet, the first at lam = {short[0].lam:.10g} "
-                       f"(margin {short[0].margin:.3g}: the request spans that many local floor "
-                       f"scales; 2 is needed)")
+                       f"(margin {short[0].margin:.3g}: prec*lam over the reported bar, times "
+                       f"2; 2 is needed" + (f"; {short[0].bound_reason}" if short[0].bound_reason
+                                            else "") + ")")
     if audit is not None and audit.verdict in ("short", "excess"):
         reasons.append(f"the count audit says {audit.verdict} (mean Weyl deficit "
                        f"{audit.statistic:.3g}, at the window's top {audit.top_deficit:.3g}"
