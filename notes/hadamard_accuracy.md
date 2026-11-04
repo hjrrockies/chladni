@@ -308,3 +308,8 @@ is now `max(rule, norm, gram) + mp_eps`, documented as an ESTIMATE with these nu
 `HadamardReport.mp_eps` reports the term (`eigensolver.Level.mp_eps` carries it from the
 certification). On the hard douse shapes, the true error exceeds 1e-10 on 7 of 15 levels. Those
 Hadamard matrices are not good to the solve's prec, and the warning now says so.
+
+**Update, 2026-11-04 (ARC, 850 levels on the 51 douse shapes).** This sample was too small and
+too easy. On the douse shapes `attained + mp_eps` under-reports on 488 of 850 levels: worst 33.6x,
+median 2.0x at 1e-10. At 1e-10, 91 levels have an H error above prec while `attained` says met.
+See `accuracy_audit_2026-11-03.md`, "ARC accuracy studies".

@@ -181,3 +181,69 @@ ask for more headroom than margin 2 from a plan that will be reused warm.
 Shape 6 crashed in the first warm replay of the branch: the benchmark passed one window per
 level, and the branch groups shape 6's triple eigenvalue as 2 + 1 where the old code reported
 three single levels. The script now passes one per value, as `Eigenproblem.solve` documents.
+
+## ARC accuracy studies: eigenvalues, Hadamard, starved bases (2026-11-04)
+
+`notes/accuracy_studies.py analyze` on jobs 8420875 and 8421993 (all 244 tasks; output in
+`$DOUSE_RUNS/chladni/chladni_acc/accuracy_studies_out/`). OLD = 5a02def, NEW = 9de388a, so only
+the Bessel kernel differs.
+
+**Eigenvalues: no real miss.** 51 shapes at 1e-10 and 1e-12, 0 failed solves on either tree.
+
+| prec | tree | levels (with a reference) | `met` | reference outside the bar |
+|---|---|---|---|---|
+| 1e-10 | old / new | 425 (321) / 425 (321) | 405 / 405 | 2 / 2 |
+| 1e-12 | old / new | 423 (320) / 426 (321) | 306 / **363** | 3 / 3 |
+
+The 3 "met but wrong" levels are the same on both trees and at both precs, and none is a chladni
+error:
+- **T2.7-lowest, 122.5344119**: the analysis matches only non-provisional references, so it
+  paired this level with its neighbour 122.5342080. The reference's provisional second member of
+  the same group is 122.53441190971, which chladni reproduces to 1e-13.
+- **T1.2, 68.85367366469**: the reference lists a mult-2 group by its first member
+  (68.85367366379). Its run C resolves two values 9e-10 apart, and chladni reports them as two
+  levels; this one is the second, matching run C's to 1e-13.
+- **T2.8-N5s2, 179.30225112**: the reference takes run B's value (179.302250991, bound 1.2e-10)
+  over runs A and C (179.3022511198 and 179.3022512034). chladni agrees with A and C to 3e-12 at
+  both precs. The reference's bound is wrong; this level should be marked provisional.
+
+NEW's gain at 1e-12 is 57 more levels met. T2.6-N3k5-L6-ref0 is the clearest case: OLD's planner
+exhausted its ladder and found 6 of 10 eigenvalues, NEW finds all 10 with no flags. On
+T2.9-ngon8, NEW groups 69.2178 as one double level where OLD reported two singles. Away from
+those, the two trees agree to a median of 2e-14 (1e-12) and 3e-13 (1e-10).
+
+**Hadamard `attained` under-reports on the douse shapes** (850 NEW levels, with `attained` =
+max(rule, norm, gram) + mp_eps as in 5a02def):
+
+| prec | true error > `attained` | median true / `attained` | worst | true > prec but `attained` <= prec (no warning) |
+|---|---|---|---|---|
+| 1e-10 | 274 / 425 | 1.97 | 33.6 | 91, worst 10.5x prec |
+| 1e-12 | 214 / 425 | 1.02 | 8.6 | 38, worst 5.9x prec |
+
+`k * attained` covers 362, 492, 671 and 771 of the 850 levels for k = 1, 2, 3 and 5. The worst
+are T2.3-pre and T2.6 shapes at 1e-10, with the identity error 10 to 30 times gram + mp_eps. The
+40-level sample in `hadamard_accuracy.md` (6 under-reported, worst 2.6) was too small and too
+easy. A log-log fit of the true error on gram and mp_eps leaves a residual s.d. of 0.5 decades;
+the relative gap to the nearest level adds nothing. So `attained` is a typical-case estimate, not
+a bound, and at 1e-10 it misses its own warning on a fifth of levels. **Open:** calibrate it (a
+factor, or a predictor that sees u_n's error) or keep it labelled as an estimate.
+
+**Starved bases: `gram_residual` alone under-reports, but `gram + mp_eps` covers it.** The
+interior oracle (ear-clipped triangles, Duffy-Gauss at n = 40) is not converged on corner
+domains. On T2.8-N5s2 at the full basis it reads 1e-7 to 6e-7, falling to 1e-9 to 1e-11 at
+n = 100 (checked on the Mac). Its readings are flat across starve factors, the signature of the
+rule's own error. Where the oracle is trustworthy (T1.4-hex: 1e-12 at the full basis, the same at
+n = 100), starving the basis to 0.25 or less gives a true Gram defect of 6e-8 to 4e-5 while
+`gram_residual` reads 1e-15 to 3e-9 and `orthonormal` stays True. Every such level is unmet,
+with mp_eps (6e-6 to 2e-2) above the defect. So `HadamardReport.attained`, which adds mp_eps,
+is honest there; `Eigenfunctions.orthonormal`, which looks at gram alone, is not.
+
+## Hard-shapes Hadamard, FD column (2026-11-04)
+
+Job 8419409, all 50 tasks (`notes/hadamard_hard_shapes.py analyze`). The identity column is as
+before: at 1e-12 NEW beats OLD on 9 of 10 shapes, by up to 2000x (v2/N6_k5/task_0: 2.8e-9 to
+1.1e-12). The FD column cannot judge the vertex gradients. With `H_STEP = 4e-3`, a step comparable
+to these shapes' 0.05 edges, the Richardson gap is 5e-6 to 3e-3 of lam_max. The FD-against-
+Hadamard error is identical on OLD and NEW to two digits on every shape, up to 0.11. Only the
+two N8_k4 shapes agree to 3e-10 to 4e-10. A useful FD reference needs a step near 1e-4 (noise
+1e-12 / 1e-4 = 1e-8), which is another ARC run.
