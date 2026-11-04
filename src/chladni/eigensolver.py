@@ -108,6 +108,9 @@ class Level:
     #: trustworthy, the sub-structure coarser than `prec` (`search.Level.grouping_ambiguous`).
     #: It used to be OR-ed into `count_uncertain`, reporting trustworthy counts as uncertain.
     grouping_ambiguous: bool = False
+    #: The Moler-Payne relative boundary residual (`search.Level.mp_eps`): the eigenfunction's
+    #: own error, which a Hadamard matrix built on it inherits (`HadamardReport.mp_eps`).
+    mp_eps: float = float("nan")
 
     @classmethod
     def from_search(cls, L, prec):
@@ -116,7 +119,8 @@ class Level:
                    margin=float(L.margin), resolution=float(L.resolution),
                    met=bool(L.met(prec)), count_shortfall=bool(L.count_shortfall),
                    count_uncertain=bool(L.count_uncertain),
-                   grouping_ambiguous=bool(L.grouping_ambiguous))
+                   grouping_ambiguous=bool(L.grouping_ambiguous),
+                   mp_eps=float(getattr(L, "mp_eps", float("nan"))))
 
 
 #: The name `Level` had while it was only the black-box path's per-level record.

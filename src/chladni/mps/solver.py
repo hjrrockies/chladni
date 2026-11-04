@@ -115,9 +115,17 @@ class HadamardReport:
 
     `sizing_prec` and `shortfalls` are the integral rule's own (`IntegralQuad`): the worst MODEL
     bound over its panels and every panel short of target. `gram_residual` is each level's
-    orthonormality defect (`Eigenfunctions.gram_residual`). `attained` is the largest of the
-    three kinds -- the Hadamard rule, the normalization rule, the orthonormality defect: the
-    relative precision the matrix can be claimed to, as a model bound."""
+    orthonormality defect (`Eigenfunctions.gram_residual`). `mp_eps` is the worst Moler-Payne
+    relative residual of the levels' eigenfunctions (nan where uncertified).
+
+    `attained` is the largest of the three rule/normalization kinds -- the Hadamard rule, the
+    normalization rule, the orthonormality defect -- PLUS `mp_eps`, since `u_n` from an MPS
+    eigenfunction is wrong to first order in its boundary residual. It is an ESTIMATE, not a
+    bound. Measured 2026-11-03 against the exact identities (translation and rotation give
+    H = 0, dilation eig H = -2 lam) on 40 levels of the corner-domain identity cases and three
+    hard douse shapes (`notes/hadamard_vs_mp_eps.py`, `notes/hadamard_accuracy.md`): the three
+    kinds alone under-reported on 23 of 40 levels, by up to 8x; with `mp_eps` added, on 6 of 40,
+    by at most 2.6x."""
 
     prec: float
     sizing_prec: float
@@ -128,6 +136,7 @@ class HadamardReport:
     #: H scales as 1/||u||^2, so it enters `attained` too; before 2026-11-03 only the Hadamard
     #: rule's own sizing did (`notes/accuracy_audit_2026-11-03.md`, 1.5).
     norm_rule_prec: float = float("nan")
+    mp_eps: float = float("nan")
 
     @property
     def met(self):
@@ -673,15 +682,20 @@ class MPSEigensolver(Eigensolver, Frozen):
         iq = cache[key]
         resid = tuple(float(ef.gram_residual) for ef in efs)
         norm_rule = max(float(ef.rule.sizing_prec) for ef in efs)
+        eps = [float(getattr(L, "mp_eps", np.nan)) for L in levels]
+        mp_eps = max((e for e in eps if np.isfinite(e)), default=float("nan"))
         rep = HadamardReport(prec=float(prec), sizing_prec=float(iq.sizing_prec),
                              shortfalls=tuple(iq.shortfalls), gram_residual=resid,
-                             attained=max([float(iq.sizing_prec), norm_rule] + list(resid)),
-                             norm_rule_prec=norm_rule)
+                             attained=(max([float(iq.sizing_prec), norm_rule] + list(resid))
+                                       + (mp_eps if np.isfinite(mp_eps) else 0.0)),
+                             norm_rule_prec=norm_rule, mp_eps=mp_eps)
         if not rep.met:
-            where = ", ".join(w for w, *_ in rep.shortfalls) or "the normalization"
+            where = (", ".join(w for w, *_ in rep.shortfalls)
+                     or ("the eigenfunctions' Moler-Payne residual"
+                         if rep.mp_eps > rep.prec / 2 else "the normalization"))
             warnings.warn(
                 f"the Hadamard matrix at lam = {lam:.10g} is good to {rep.attained:.1e} "
-                f"relative (model bound), short of prec = {prec:.0e}: {where}. "
+                f"relative (estimate), short of prec = {prec:.0e}: {where}. "
                 f"report=True returns the details.", PrecisionWarning, stacklevel=2)
         return (H, rep) if report else H
 

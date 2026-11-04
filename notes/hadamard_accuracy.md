@@ -283,3 +283,28 @@ re-entrant corners up to 228 deg, edges down to 0.05. Old against new, identitie
 vertex gradients against a Richardson FD reference; a 50-task array, run on ARC because the FD
 references take hours locally. Local smoke result, `v1/N5_k4/task_0` at prec 1e-10: worst
 identity error 8.0e-10 relative (old) against 2.2e-10 (new). Results: pending.
+
+## Does H's error track the eigenfunction's Moler-Payne eps? (2026-11-03)
+
+`HadamardReport.attained` bounded the rule and the normalization only. `u_n` from an MPS
+eigenfunction is wrong to first order in its boundary residual, whose relative size is the
+Moler-Payne `eps`, so the accuracy audit (1.9) asked whether `attained` should include it.
+`notes/hadamard_vs_mp_eps.py` measures H's true error through the exact identities (translation
+and rotation: H = 0; dilation: eig H = -2 lam, all relative to lam). That is 40 levels: the three
+corner-domain `IDENTITY_CASES` at 1e-10 and 1e-12, plus three hard douse shapes at 1e-10. The
+315-degree notch at 1e-12 does not solve, because no source offset keeps the fundamental
+sources outside it. That is an existing basis limit, recorded as a row.
+
+| claim | levels under-reported | worst true error / claim |
+|---|---|---|
+| `attained` (rule, norm, gram) | 23 / 40 | 8.0 |
+| `max(attained, mp_eps)` | 14 / 40 | 4.9 |
+| `attained + mp_eps` | 6 / 40 | 2.6 |
+| `2 * max(attained, mp_eps)` | 3 / 40 | 2.4 |
+
+`mp_eps` tracks the error in part. On the hard shapes it is the dominant term, at 1e-11 to
+3.5e-10 against the rule's 1e-11. Even the sum is not a strict bound. **Decision.** `attained`
+is now `max(rule, norm, gram) + mp_eps`, documented as an ESTIMATE with these numbers, and
+`HadamardReport.mp_eps` reports the term (`eigensolver.Level.mp_eps` carries it from the
+certification). On the hard douse shapes, the true error exceeds 1e-10 on 7 of 15 levels. Those
+Hadamard matrices are not good to the solve's prec, and the warning now says so.
