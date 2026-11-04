@@ -142,6 +142,13 @@ The path, in order:
   - **`achievable_prec`'s contrast term.** Measure it against an eigenvalue first.
   - **The absolute geometric thresholds in branch-cut detection.**
   - **The `lightning` source `extent`.**
+  - **Calibrate `HadamardReport.attained`.** On the douse shapes it under-reports by a median 2x,
+    up to 34x, and stays silent on 91 of 425 levels at 1e-10 (ARC, 2026-11-04). Either a
+    measured factor, or a predictor that sees `u_n`'s error. The data:
+    `$DOUSE_RUNS/chladni/chladni_acc/accuracy_studies_out/eigs_new_*.json`.
+  - **`Eigenfunctions.orthonormal` ignores `mp_eps`.** On a starved basis it reads True with a
+    true Gram defect up to 4e-5.
+  - **The hard-shapes FD column at `H_STEP` near 1e-4.** At 4e-3 it measures the FD's own error.
 * **[next]** **Rebuild T2.8-N5s2's reference on current code.** Its trusted value 179.302250990678
   (status `fem_resolved`: one run, recipe B, plus a finite-element count) does not reproduce.
   Recipe B on current code gives 179.3022510764, uncertified. Every current basis -- corner-only A

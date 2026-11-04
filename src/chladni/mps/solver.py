@@ -133,7 +133,11 @@ class HadamardReport:
     H = 0, dilation eig H = -2 lam) on 40 levels of the corner-domain identity cases and three
     hard douse shapes (`notes/hadamard_vs_mp_eps.py`, `notes/hadamard_accuracy.md`): the three
     kinds alone under-reported on 23 of 40 levels, by up to 8x; with `mp_eps` added, on 6 of 40,
-    by at most 2.6x."""
+    by at most 2.6x. That sample was too easy. On the 51 douse reference shapes (850 levels, ARC
+    2026-11-04, `notes/accuracy_audit_2026-11-03.md`) `attained` under-reports on 488: median
+    2x, worst 34x at prec 1e-10, worst 8.6x at 1e-12. So `met` (and the warning) can pass an H
+    that is up to ~10x short of prec: on 91 of 425 levels at 1e-10 and 38 of 425 at 1e-12. Read
+    `attained` as a typical-case estimate; calibrating it is open in `TODO.md`."""
 
     prec: float
     sizing_prec: float
