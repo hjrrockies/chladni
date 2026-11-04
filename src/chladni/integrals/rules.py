@@ -61,7 +61,9 @@ from ..geometry._adaptive import gauss_legendre
 
 __all__ = ["NU_MIN", "NODE_FLOOR", "gauss_jacobi", "corner_rule", "corner_exponents",
            "corner_interp_rule", "corner_rule_kind", "corner_model_error", "order_cap",
-           "corner_order_for_prec", "smooth_power_error", "smooth_order_for_prec"]
+           "corner_order_for_prec", "smooth_power_error", "smooth_order_for_prec",
+           "GRADED_SIGMA", "graded_power", "graded_corner_rule", "graded_model_error",
+           "graded_order_for_prec"]
 
 #: The slit limit. `gamma = 2 nu - 2 > -1` needs `nu > 1/2`; at `nu = 1/2` the integral diverges.
 NU_MIN = 0.5
@@ -271,3 +273,133 @@ def smooth_order_for_prec(k, prec=1e-14, order_min=4, order_max=512, step=2):
         if err <= prec:
             return order, err
     return order_max, err
+
+
+# --- the GRADED rule (2026-11-03, `notes/hadamard_accuracy.md`, addenda) -------------------------
+#
+# The interpolatory fit above stalls at 5e-8 .. 9e-6 on the curved lattice, at every order: its
+# least-squares system is ill-conditioned before it is exact. The graded rule fits nothing.
+# `tau = s^p` with `p = max(1, 1/(2 nu - 1))` makes the leading term `tau^gamma` CONSTANT in `s`
+# (Jacobian included); the rest of the lattice, `tau^(gamma + j nu + m)`, becomes `s^(p(j nu + m))`
+# -- non-smooth at 0 but ever more weakly so -- and geometric Gauss-Legendre panels in `s` toward
+# 0 resolve it at an algebraic-geometric rate. Weights are positive, rational `nu` is nothing
+# special, and one node set serves the Gram (`'even'`) and Hadamard (`'integer'`) integrands
+# alike, since the lattice it is sized on contains both.
+#
+# The nodes come within 1e-30 of the corner on a re-entrant corner. That is only usable in a
+# corner-local frame: `integrals.plan` lays these panels out ANCHORED (`geometry.Panel.anchor`),
+# and `cauchy.cauchy_data` evaluates them as `family.translated(-corner).at(offset)`.
+
+#: Geometric ratio of the panels in `s`. `notes/hadamard_rule_denominators.py`: 0.15 reaches
+#: 1e-15 on the lattice at 8 levels x 14 nodes for every `nu` in 4/7 .. 11.8.
+GRADED_SIGMA = 0.15
+
+#: The (levels, order) pairs `graded_order_for_prec` scans, cheapest first. Levels add depth
+#: toward the corner, order resolves each panel; both are needed for high precision.
+_GRADED_LADDER = ((2, 8), (3, 8), (4, 10), (5, 10), (6, 12), (7, 12), (8, 14), (10, 14),
+                  (10, 16), (12, 18), (14, 20))
+
+
+def graded_power(nu):
+    """`p = max(1, 1/(2 nu - 1))`: the substitution `tau = s^p` that flattens `tau^(2 nu - 2)`."""
+    nu = float(nu)
+    if not nu > NU_MIN:
+        raise ValueError(f"nu must exceed {NU_MIN} (got {nu}): the integral diverges at the slit")
+    return max(1.0, 1.0 / (2.0 * nu - 1.0))
+
+
+@lru_cache(maxsize=_RULE_CACHE)
+def graded_corner_rule(nu, n_levels, order, sigma=GRADED_SIGMA, n_top=1):
+    """The GRADED rule: `(d, w)` ascending on `[0, 1]`, the corner at `d = 0`, raw integrand.
+
+    `n_levels` geometric Gauss-Legendre panels of `order` nodes in `s` on `[sigma^(l+1),
+    sigma^l]`, plus one innermost panel `[0, sigma^n_levels]` of the same order; then
+    `d = s^p` and `w = p s^(p-1) w_s`. The outermost level is cut into `n_top` equal panels:
+    it is where the integrand OSCILLATES (`k r` is largest there), while the inner levels only
+    resolve the singularity. All weights positive; `sum(w) == 1` to rounding on a convex corner
+    (`p = 1`) and approximately otherwise -- a diagnostic, as for every corner rule.
+    """
+    p = graded_power(nu)
+    sigma = float(sigma)
+    x, w = gauss_legendre(int(order))
+    edges = sigma ** np.arange(int(n_levels) + 1)            # 1, sigma, ..., sigma^L
+    top = np.linspace(sigma, 1.0, int(n_top) + 1)
+    edges = np.concatenate([top[::-1], edges[2:]]) if n_levels >= 1 else edges
+    lo = np.concatenate([edges[1:], [0.0]])
+    hi = edges
+    S = (lo[:, None] + (hi - lo)[:, None] * x[None, :]).ravel()
+    W = ((hi - lo)[:, None] * w[None, :]).ravel()
+    o = np.argsort(S)
+    S, W = S[o], W[o]
+    return _frozen(S ** p, W * p * S ** (p - 1.0))
+
+
+#: The corner panel as a fraction of the corner expansion's radius of convergence, for the
+#: model's geometric decay in `j`. The eigenfunction's corner series converges out to the next
+#: singularity, so its coefficients need not decay factorially; the corner panel is capped at
+#: `plan.CLEARANCE_FRAC` of the clearance, and 1/2 is the prototype study's convention
+#: (`notes/hadamard_rule_denominators.py`), measured against real eigenfunctions there.
+_GRADED_RHO = 2.0
+
+
+def _graded_lattice(nu, k, n_j=40, n_m=40):
+    """Exponents `gamma + j nu + m` and model coefficients. The corner series' `j`-th term is
+    bounded by the LARGER of a Bessel decay `(k/2)^(j nu) / Gamma(j nu + 1)` and a geometric one
+    `RHO^(-j nu)`; an analytic factor (edge weight, Bessel's even powers) decays as
+    `(k/2)^m / m!`, with `k` floored at 2. Weighting the lattice this way, instead of maxing over
+    monomials, is what lets a high exponent that carries nothing stop driving the order."""
+    from math import lgamma
+    gamma = 2.0 * nu - 2.0
+    kk = max(float(k), 2.0) / 2.0
+    E, C = [], []
+    for j in range(n_j):
+        for m in range(n_m):
+            a = j * nu + m
+            logc = (max(j * nu * np.log(kk) - lgamma(j * nu + 1.0), -j * nu * np.log(_GRADED_RHO))
+                    + m * np.log(kk) - lgamma(m + 1.0))
+            if logc < np.log(1e-18):
+                continue
+            E.append(gamma + a)
+            C.append(np.exp(logc))
+    return np.array(E), np.array(C)
+
+
+@lru_cache(maxsize=_RULE_CACHE)
+def graded_model_error(nu, n_levels, order, sigma=GRADED_SIGMA, k=1.0, n_top=1):
+    """Relative error of the graded rule on the model integrand `sum C(j, m) d^(gamma + j nu + m)`
+    (curved lattice, every integer `m`), in closed form. `k = sqrt(lam_max) * panel length`."""
+    nu = float(nu)
+    d, w = graded_corner_rule(nu, int(n_levels), int(order), float(sigma), int(n_top))
+    E, C = _graded_lattice(nu, k)
+    exact = float(np.sum(C / (E + 1.0)))
+    with np.errstate(under="ignore"):
+        approx = float(np.sum(C * (w[None, :] * d[None, :] ** E[:, None]).sum(axis=1)))
+    return abs(approx / exact - 1.0)
+
+
+#: Outermost-level splits `graded_order_for_prec` tries. One is enough below `k ~ 2` on every
+#: corner; a 315-degree corner (`p = 7`) at `k = 8` needs several.
+_GRADED_TOPS = (1, 2, 4, 8, 16, 32)
+
+
+@lru_cache(maxsize=_RULE_CACHE)
+def graded_order_for_prec(nu, prec=1e-14, k=1.0, sigma=GRADED_SIGMA):
+    """`((n_levels, order, n_top), achieved)`: the rule with the fewest nodes, over
+    `_GRADED_LADDER` x `_GRADED_TOPS`, whose `graded_model_error` meets `prec`; else the argmin
+    and what it achieves -- so the caller can report the shortfall."""
+    best = (np.inf, None, (_GRADED_LADDER[0] + (1,)))
+    met = None
+    for n_top in _GRADED_TOPS:
+        for lv, o in _GRADED_LADDER:
+            nodes = (lv + n_top) * o
+            if met is not None and nodes >= met[1]:
+                break
+            err = graded_model_error(float(nu), lv, o, float(sigma), float(k), n_top)
+            if err <= prec:
+                met = ((lv, o, n_top), nodes, err)
+                break
+            if err < best[0]:
+                best = (err, nodes, (lv, o, n_top))
+    if met is not None:
+        return met[0], met[2]
+    return best[2], best[0]

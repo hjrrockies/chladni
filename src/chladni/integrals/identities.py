@@ -47,8 +47,16 @@ def weighted_integral(cd, kernel, weight):
 
 
 def _radial(cd, x0):
-    r = cd.quad.pts - complex(x0)
-    n, t = cd.quad.normals, cd.quad.tangents
+    """`(x - x0) . n` and `(x - x0) . t`. On anchored nodes `x - x0` is formed as
+    `(anchor - x0) + offset`: exact when `x0` is that corner -- the default origin is one -- where
+    `pts - x0` would round to `eps * |x0|` and leave a nonzero `r . N` on the corner's own edges."""
+    q = cd.quad
+    r = q.pts - complex(x0)
+    a = q.anchored
+    if a.any():
+        r = r.copy()
+        r[a] = (q.anchor_pt[a] - complex(x0)) + q.offset[a]
+    n, t = q.normals, q.tangents
     return r.real * n.real + r.imag * n.imag, r.real * t.real + r.imag * t.imag
 
 

@@ -290,3 +290,88 @@ def test_a_segment_with_no_nodes_is_refused_not_dropped():
         b.quad(n_per_seg=[10, 10, 0, 10, 10, 10])
     q = b.quad(n_per_seg=[10, 10, 1, 10, 10, 10])
     assert q.wts.sum() == pytest.approx(8.0)
+
+
+# --- corner-anchored panels (2026-11-03) ---------------------------------------------------
+#
+# `notes/hadamard_accuracy.md`, addendum 2. A node 1e-25 from a corner at 3+2i cannot be
+# represented as an absolute position distinct from the corner; its OFFSET can. Anchored
+# panels lay nodes out in the distance from their corner and record the exact offset.
+
+V = 3 + 2j
+TINY = np.array([1e-30, 1e-25, 1e-20, 1e-12, 1e-6, 0.3])
+
+
+@pytest.mark.parametrize("seg", [
+    LineSegment(V, V + 1.5 - 0.7j),
+    LineSegment(V - 1 + 2j, V),
+    ArcSegment(V - 1.2j, 1.2, np.pi / 2, np.pi / 2 + 1.1),
+    ArcSegment(V + 0.8, 0.8, np.pi + 0.9, np.pi),         # decreasing sweep, ends at V
+], ids=["line from V", "line to V", "arc from V", "arc to V"])
+def test_offsets_keep_full_relative_accuracy_next_to_a_corner(seg):
+    end = "start" if abs(seg.p0 - V) < abs(seg.p1 - V) else "end"
+    assert seg.exact_offset
+    off = seg.offset(TINY, end)
+    # A line's offset has length d * L exactly; an arc's is the chord 2 R sin(|phi| d / 2),
+    # which is L d to relative 1e-14 once d < 1e-6.
+    np.testing.assert_allclose(np.abs(off) / (TINY * seg.length), 1.0, rtol=0.02)
+    small = TINY < 1e-6
+    np.testing.assert_allclose(np.abs(off[small]) / (TINY[small] * seg.length), 1.0,
+                               rtol=1e-14)
+    # Direction: along the tangent leaving the corner.
+    t = seg.T0 if end == "start" else -seg.T1
+    np.testing.assert_allclose(off[small] / np.abs(off[small]), t, atol=1e-14)
+    # And consistent with the positions where those are representable.
+    tau = TINY[-1] if end == "start" else 1 - TINY[-1]
+    assert abs(off[-1] - (seg.p(tau) - V)) < 1e-14
+
+
+def test_the_generic_offset_is_flagged_inexact():
+    from chladni.geometry import ParametricSegment
+    seg = ParametricSegment(lambda t: V + t + 0.1j * t**2, lambda t: 1 + 0.2j * t, 0.0, 1.0)
+    assert not seg.exact_offset
+    np.testing.assert_allclose(seg.offset(0.5), seg.p(0.5) - seg.p0, atol=1e-15)
+
+
+def _gl_nodes(order):
+    from chladni.geometry._adaptive import gauss_legendre
+
+    def build(a, b):
+        x, w = gauss_legendre(order)
+        return a + (b - a) * x, (b - a) * w
+    return build
+
+
+def test_anchored_panels_place_nodes_from_the_corner(square):
+    from chladni.geometry.quadrature import Panel
+    bd = square.translated(V).boundaries[0]
+    nseg = len(bd.segments)
+    g = 1e-14
+    panels = []
+    for si in range(nseg):
+        panels += [Panel(0, si, 0.0, g, _gl_nodes(6), anchor="start"),
+                   Panel(0, si, g, 1 - g, _gl_nodes(10)),
+                   Panel(0, si, 1 - g, 1.0, _gl_nodes(6), anchor="end")]
+    q = bd.quad(panels=panels)
+    plain = bd.quad(panels=[dataclasses.replace(p, anchor=None) for p in panels])
+    a = q.anchored
+    assert a.sum() == 2 * 6 * nseg and not np.any(np.isnan(q.offset[a]))
+    assert np.all(np.isnan(q.anchor_pt[~a]))
+    # Unanchored nodes are bit-identical; anchored ones agree with them to rounding.
+    assert np.array_equal(q.pts[~a], plain.pts[~a])
+    np.testing.assert_allclose(q.pts, plain.pts, atol=1e-15 * abs(V) * 4)
+    np.testing.assert_array_equal(q.wts, plain.wts)
+    np.testing.assert_allclose(q.anchor_pt[a] + q.offset[a], q.pts[a], atol=1e-15 * abs(V) * 4)
+    # The offsets are what the positions cannot be: exact to relative rounding.
+    assert np.all(np.abs(q.offset[a]) <= g * 1.0 + 1e-30)
+    assert np.all(np.abs(q.offset[a]) > 0)
+
+
+def test_an_anchored_panel_must_touch_its_end(square):
+    from chladni.geometry.quadrature import Panel
+    bd = square.boundaries[0]
+    nseg = len(bd.segments)
+    panels = [Panel(0, si, lo, hi, _gl_nodes(4), anchor=("end" if si == 0 and lo == 0 else None))
+              for si in range(nseg) for lo, hi in ((0.0, 0.5), (0.5, 1.0))]
+    with pytest.raises(ValueError, match="must touch"):
+        bd.quad(panels=panels)

@@ -186,6 +186,18 @@ def _corner_nodes(rule_tau_w, anchor_at_start):
     return build
 
 
+def _graded_nodes(rule_d_w):
+    """A `Panel.nodes` callable for an ANCHORED graded panel: called with the panel's span in the
+    distance from its corner, `[0, frac]`, it returns nodes in that distance."""
+    u, w = rule_d_w
+
+    def build(d0, d1):
+        h = d1 - d0
+        return d0 + h * u, h * w
+
+    return build
+
+
 def _legendre(order):
     def build(tau0, tau1):
         x, w = rules.gauss_legendre(int(order))
@@ -194,12 +206,24 @@ def _legendre(order):
 
 
 def integral_quad(domain, lam_max, prec=1e-8, *, x0=None, clearance_frac=CLEARANCE_FRAC,
-                  smooth_safety=SMOOTH_SAFETY, family="even"):
+                  smooth_safety=SMOOTH_SAFETY, family="even", corners="graded"):
     """An `IntegralQuad` for `domain`, sized so the Rellich and Gram integrals of functions with
     spectral parameter up to `lam_max` are accurate to `integral_prec(prec)` -- as a MODEL bound.
 
+    `corners` picks the corner-panel rule. `'graded'` (the default since 2026-11-03) is
+    `rules.graded_corner_rule`, laid out on ANCHORED panels so that `cauchy.cauchy_data`
+    evaluates its nodes in the corner's own frame: one node set serves both families, and it
+    reaches the floor where the fitted rule stalls (`notes/hadamard_accuracy.md`). A graded panel
+    on a segment without an exact `offset` is named in `shortfalls`. `'interpolatory'` is the
+    fitted rule of `rules.corner_interp_rule` (or the substitution rule where that is exact),
+    kept to be measured against: its model bound can be honest and still miss -- it integrated
+    one edge of a flat triangle 30% wrong at a claimed 1e-8.
+
     `clearance_frac=None` removes the clearance cap; it exists to be measured, not used.
     """
+    if corners not in ("interpolatory", "graded"):
+        raise ValueError(f"corners must be 'interpolatory' or 'graded', got {corners!r}")
+    graded = corners == "graded"
     # 'integer' is the HADAMARD rule (M5): the integrand `(d_n u)^2 V` carries the velocity's
     # integer powers of `r` on top of the corner family -- `V` is linear along a straight edge of
     # a moving polygon -- so every ruled corner takes the interpolatory rule fitted to the CURVED
@@ -226,7 +250,7 @@ def integral_quad(domain, lam_max, prec=1e-8, *, x0=None, clearance_frac=CLEARAN
             starts[(s.corner.bdry_idx, s.corner.seg_out)] = s
             ends[(s.corner.bdry_idx, s.corner.seg_in)] = s
 
-    panels, achieved = [], {}
+    panels, achieved, inexact = [], {}, set()
     for (bi, si), seg in segs.items():
         s0, s1 = starts.get((bi, si)), ends.get((bi, si))
         share = 0.5 if (s0 is not None and s1 is not None) else 1.0
@@ -239,20 +263,29 @@ def integral_quad(domain, lam_max, prec=1e-8, *, x0=None, clearance_frac=CLEARAN
                 frac = min(frac, clearance_frac * spec.corner.clearance / seg.length)
             frac = float(np.clip(frac, 1e-6, share))
             k_corner = np.sqrt(max(float(lam_max), 0.0)) * seg.length * frac
-            kind = "interpolatory" if hadamard else spec.kind
-            curved = True if hadamard else not spec.straight
-            order, ach = rules.corner_order_for_prec(kind, spec.mu, spec.gamma, spec.sub,
-                                                     curved, target, scale=frac, k=k_corner)
-            rule = (rules.corner_rule(order, spec.mu, spec.gamma, spec.sub)
-                    if kind == "substitution" else
-                    rules.corner_interp_rule(order, spec.mu, spec.gamma, None, curved))
             idx = specs.index(spec)
+            if graded:
+                (lv, o, n_top), ach = rules.graded_order_for_prec(spec.mu, target, k_corner)
+                nodes = _graded_nodes(rules.graded_corner_rule(spec.mu, lv, o,
+                                                               rules.GRADED_SIGMA, n_top))
+                if not seg.exact_offset:
+                    inexact.add((idx, (bi, si)))
+            else:
+                kind = "interpolatory" if hadamard else spec.kind
+                curved = True if hadamard else not spec.straight
+                order, ach = rules.corner_order_for_prec(kind, spec.mu, spec.gamma, spec.sub,
+                                                         curved, target, scale=frac, k=k_corner)
+                rule = (rules.corner_rule(order, spec.mu, spec.gamma, spec.sub)
+                        if kind == "substitution" else
+                        rules.corner_interp_rule(order, spec.mu, spec.gamma, None, curved))
+                nodes = _corner_nodes(rule, at_start)
             achieved[idx] = max(achieved.get(idx, 0.0), ach)
+            anchor = ("start" if at_start else "end") if graded else None
             if at_start:
-                panels.append(Panel(bi, si, 0.0, frac, _corner_nodes(rule, True)))
+                panels.append(Panel(bi, si, 0.0, frac, nodes, anchor=anchor))
                 lo = frac
             else:
-                panels.append(Panel(bi, si, 1.0 - frac, 1.0, _corner_nodes(rule, False)))
+                panels.append(Panel(bi, si, 1.0 - frac, 1.0, nodes, anchor=anchor))
                 hi = 1.0 - frac
         if hi - lo > 1e-12:
             o, a = rules.smooth_order_for_prec(k * seg.length * (hi - lo) * smooth_safety, target)
@@ -267,7 +300,9 @@ def integral_quad(domain, lam_max, prec=1e-8, *, x0=None, clearance_frac=CLEARAN
         + [(f"corner {i}", None, f"demoted to the smooth rule: {s.reason}")
            for i, s in enumerate(specs) if s.kind == "fallback"]
         + [(f"segment {key}", a, "smooth model bound above target")
-           for key, a in smooth_ach.items() if a > target])
+           for key, a in smooth_ach.items() if a > target]
+        + [(f"corner {i}", None, f"segment {key} has no exact offset: its corner-local frame "
+            f"rounds at eps * |corner|") for i, key in sorted(inexact)])
     sizing = max([target] + list(achieved.values()) + list(smooth_ach.values()))
     if any(s.kind == "fallback" for s in specs):
         sizing = float("inf")

@@ -83,6 +83,48 @@ class Eigenfunctions:
     reason: str = ""
 
 
+#: How far above `prec` a level's `gram_residual` may sit before `hadamard` refuses it. The
+#: derivative scales with `1/||u||^2`, so a normalization off by `g` puts `g` into every entry;
+#: past this the matrix is not a derivative worth returning. Floored at 1e-8 so a loose `prec`
+#: still refuses a residual of order one (`notes/hadamard_accuracy.md`: a flat triangle at prec
+#: 1e-12 came back with `gram_residual` 0.16 and a dilation identity off by 0.43).
+HADAMARD_GRAM_REFUSE = 1e3
+HADAMARD_GRAM_FLOOR = 1e-8
+
+#: The corner rule (`integrals.integral_quad(..., corners=)`) every boundary integral here uses,
+#: 2026-11-03: graded, in corner-local frames (`notes/hadamard_accuracy.md`, "The Gram
+#: pipeline"). On sector-apex norms it reaches 1e-15 .. 2e-14 to 1.9 pi, at the origin or
+#: shifted, where the fitted rule gave 6e-12 .. 1e-8. On the flat triangle it fitted one edge 30%
+#: wrong while claiming 1e-8, which was the 0.16 `gram_residual`. Certification switched only
+#: after old-vs-new benchmarks: `notes/bound_coverage.py` (717 levels: same lam, coverage, met;
+#: bounds within 0.89-1.1x) and the douse gate at 1e-10 (same tallies, flags, rungs; bounds
+#: within 1.8e-5 relative).
+INTEGRAL_CORNERS = "graded"
+
+#: Rellich origins `eigenfunctions` checks its Gram at, besides the one it was formed at.
+GRAM_PROBES = 3
+
+
+@dataclass(frozen=True)
+class HadamardReport:
+    """What a Hadamard matrix is good for, beside the matrix (`hadamard(..., report=True)`).
+
+    `sizing_prec` and `shortfalls` are the integral rule's own (`IntegralQuad`): the worst MODEL
+    bound over its panels and every panel short of target. `gram_residual` is each level's
+    orthonormality defect (`Eigenfunctions.gram_residual`). `attained` is the larger of the two
+    kinds: the relative precision the matrix can be claimed to, as a model bound."""
+
+    prec: float
+    sizing_prec: float
+    shortfalls: tuple
+    gram_residual: tuple
+    attained: float
+
+    @property
+    def met(self):
+        return self.attained <= self.prec
+
+
 class MPSEigensolver(Eigensolver, Frozen):
     """The Method of Particular Solutions on a `Domain`.
 
@@ -478,18 +520,19 @@ class MPSEigensolver(Eigensolver, Frozen):
                        diagnostics=replace(res.diagnostics, unmet=unmet,
                                            attained_prec=attained))
 
-    def _integral_quad(self, lam_max, prec):
-        """The integral rule for `lam` up to `lam_max` at `prec`, built once per pair. A rule is
-        a function of geometry, `lam_max` and `prec` alone, so it serves every level of a solve."""
+    def _integral_quad(self, lam_max, prec, corners=INTEGRAL_CORNERS):
+        """The integral rule for `lam` up to `lam_max` at `prec`, built once per triple. A rule
+        is a function of geometry, `lam_max`, `prec` and the corner rule alone, so it serves
+        every level of a solve."""
         from ..integrals import integral_quad
 
-        key = (float(lam_max), float(prec))
+        key = (float(lam_max), float(prec), corners)
         cache = getattr(self, "_integral_quads", None)
         if cache is None:
             _set(self, _integral_quads={})
             cache = self._integral_quads
         if key not in cache:
-            cache[key] = integral_quad(self.domain, lam_max, prec=prec)
+            cache[key] = integral_quad(self.domain, lam_max, prec=prec, corners=corners)
         return cache[key]
 
     def eigenfunctions(self, level, *, prec=None):
@@ -504,8 +547,10 @@ class MPSEigensolver(Eigensolver, Frozen):
 
         A DEFICIENT Gram -- columns nearly dependent, so the multiplicity is likely wrong -- is
         not orthonormalized: the columns come back normalized one by one, `orthonormal` is False
-        and `reason` says why. `gram_residual` is `max |G - I|` recomputed at a SECOND Rellich
-        origin, the check a caller can make without an interior oracle.
+        and `reason` says why. `gram_residual` is `max |G - I|` recomputed at `GRAM_PROBES`
+        further Rellich origins, worst taken: a DETECTOR a caller can read without an interior
+        oracle, not an error bar. One origin was not enough: at the Rellich origin a corner's own
+        error vanishes (`notes/hadamard_accuracy.md`, "The Gram pipeline").
         """
         from ..integrals import cauchy, certify, identities
 
@@ -520,13 +565,13 @@ class MPSEigensolver(Eigensolver, Frozen):
             out, ok, why = fc @ identities.lowdin(G), True, ""
         except ValueError as err:
             out, ok, why = fc / np.sqrt(np.abs(np.diag(G))), False, str(err)
-        check = certify.x0_probes(self.domain, iq.x0, n=1)[1]
-        G2 = identities.gram(cauchy.cauchy_data(p.basis, out, lam, iq.quad), check)
-        resid = float(np.abs(G2 - np.eye(m)).max())
+        cd2 = cauchy.cauchy_data(p.basis, out, lam, iq.quad)
+        resid = max(float(np.abs(identities.gram(cd2, x0) - np.eye(m)).max())
+                    for x0 in certify.x0_probes(self.domain, iq.x0, n=GRAM_PROBES)[1:])
         return Eigenfunctions(lam=lam, coef=out, rule=iq, orthonormal=ok, gram_residual=resid,
                               reason=why)
 
-    def hadamard(self, level, V, *, prec=None):
+    def hadamard(self, level, V, *, prec=None, report=False):
         """The Hadamard shape derivative of a Dirichlet level, or of several: `(n_fields, m, m)`.
 
         `level` may be a SEQUENCE of levels: a nearly degenerate cluster the solver resolved into
@@ -541,8 +586,17 @@ class MPSEigensolver(Eigensolver, Frozen):
         the boundary curve's index (segments in `domain.boundaries` order, flattened) and `t` in
         [0, 1] its parameter, so `V` may be discontinuous at a corner, as a moving vertex's normal
         velocity is (`docs/design/douse_requirements.md`, "Hadamard integrals"). Integrated on the
-        `'integer'` rule (`integrals.integral_quad`), whose corner panels are fitted to the
-        velocity's integer powers of `r` on top of the corner family. Dirichlet only.
+        `'integer'` family with GRADED corner panels (`integrals.integral_quad(...,
+        corners="graded")`), evaluated in each corner's own frame. The fitted interpolatory rule
+        this replaced stalled at 5e-8 .. 9e-6 on the velocity's integer powers of `r`
+        (`notes/hadamard_accuracy.md`). Dirichlet only.
+
+        THE RULE AND THE NORMALIZATION ARE REPORTED, NOT ASSUMED (2026-11-03,
+        `notes/hadamard_accuracy.md`). A `PrecisionWarning` is issued when the rule's model bound
+        or a level's `gram_residual` exceeds `prec`, and `report=True` returns
+        `(H, HadamardReport)` with both. A level whose `gram_residual` exceeds
+        `max(HADAMARD_GRAM_REFUSE * prec, HADAMARD_GRAM_FLOOR)` is refused with `ValueError`,
+        the same refusal as a level that could not be orthonormalized at all.
         """
         from ..integrals import cauchy, identities, integral_quad
 
@@ -558,6 +612,12 @@ class MPSEigensolver(Eigensolver, Frozen):
                 raise ValueError(f"the level at lam = {float(L.lam):.10g} could not be "
                                  f"orthonormalized ({ef.reason}); its Hadamard matrix would mix "
                                  f"a wrong count")
+            refuse = max(HADAMARD_GRAM_REFUSE * prec, HADAMARD_GRAM_FLOOR)
+            if not ef.gram_residual <= refuse:
+                raise ValueError(f"the level at lam = {float(L.lam):.10g} is normalized only to "
+                                 f"gram_residual = {ef.gram_residual:.1e} (refused above "
+                                 f"{refuse:.0e} at prec = {prec:.0e}); its Hadamard matrix "
+                                 f"would carry that error in every entry")
             efs.append(ef)
         lam = max(float(L.lam) for L in levels)       # the rule is sized for the largest
         key = ("hadamard", lam, float(prec))
@@ -566,7 +626,8 @@ class MPSEigensolver(Eigensolver, Frozen):
             _set(self, _integral_quads={})
             cache = self._integral_quads
         if key not in cache:
-            cache[key] = integral_quad(self.domain, lam, prec=prec, family="integer")
+            cache[key] = integral_quad(self.domain, lam, prec=prec, family="integer",
+                                       corners=INTEGRAL_CORNERS)
         q = cache[key].quad
         cds = [cauchy.cauchy_data(self._pencil.basis, ef.coef, float(L.lam), q)
                for L, ef in zip(levels, efs)]
@@ -582,7 +643,19 @@ class MPSEigensolver(Eigensolver, Frozen):
             if vals is None:
                 vals = np.zeros((v.shape[0], len(curve)))
             vals[:, mask] = v
-        return np.stack([-identities.weighted_integral(cd, "NN", vf) for vf in vals])
+        H = np.stack([-identities.weighted_integral(cd, "NN", vf) for vf in vals])
+        iq = cache[key]
+        resid = tuple(float(ef.gram_residual) for ef in efs)
+        rep = HadamardReport(prec=float(prec), sizing_prec=float(iq.sizing_prec),
+                             shortfalls=tuple(iq.shortfalls), gram_residual=resid,
+                             attained=max([float(iq.sizing_prec)] + list(resid)))
+        if not rep.met:
+            where = ", ".join(w for w, *_ in rep.shortfalls) or "the normalization"
+            warnings.warn(
+                f"the Hadamard matrix at lam = {lam:.10g} is good to {rep.attained:.1e} "
+                f"relative (model bound), short of prec = {prec:.0e}: {where}. "
+                f"report=True returns the details.", PrecisionWarning, stacklevel=2)
+        return (H, rep) if report else H
 
     def solve_interval(self, a, b, *, on_shortfall="flag"):
         """The `Spectrum` of `[a, b]` -- `Eigensolver`'s contract, over `search_interval`.

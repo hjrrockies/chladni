@@ -67,6 +67,25 @@ class Quadrature:
     panel_id: np.ndarray
     panels: tuple = ()
     weight_family: str = "arclength"
+    #: Corner-local frames. A node on an ANCHORED panel (`Panel.anchor`) carries the corner
+    #: it is anchored to and its exact offset from it, `pts == anchor_pt + offset` to
+    #: rounding; elsewhere both are NaN. Near a corner `c`, `pts - c` formed from rounded
+    #: `pts` is only good to `eps * |c|` absolute, which on a re-entrant corner's
+    #: `r^(2 nu - 2)` integrand costs whole digits (`notes/hadamard_accuracy.md`, addendum 2).
+    anchor_pt: np.ndarray = None
+    offset: np.ndarray = None
+
+    def __post_init__(self):
+        nan = np.full(len(self.pts), np.nan + 1j * np.nan)
+        if self.anchor_pt is None:
+            object.__setattr__(self, "anchor_pt", nan)
+        if self.offset is None:
+            object.__setattr__(self, "offset", nan.copy())
+
+    @property
+    def anchored(self):
+        """Mask of the nodes that carry a corner-local frame."""
+        return ~np.isnan(self.anchor_pt.real)
 
     def __len__(self):
         return len(self.pts)
@@ -128,6 +147,8 @@ class Quadrature:
             panel_id=np.concatenate(panel_ids),
             panels=tuple(pan for p in parts for pan in p.panels),
             weight_family=parts[0].weight_family,
+            anchor_pt=cat("anchor_pt"),
+            offset=cat("offset"),
         )
 
 
@@ -145,6 +166,14 @@ class Panel:
     `h^(1+a)` -- and only the layer that chose the weight knows the exponent. Geometry
     owning that arithmetic would be a silent factor-of-h bug waiting for the first
     corner-adapted rule.
+
+    An ANCHORED panel (`anchor` is `"start"` or `"end"`) touches that end of its segment and
+    is laid out in the distance `d` from it: `nodes(d0, d1)` is called with the panel's span
+    in `d` (`d = tau` from the start, `1 - tau` from the end) and returns nodes in `d`. The
+    node positions are then `p_end + seg.offset(d, end)`, and the rule records each node's
+    anchor and offset. Without an anchor, `1 - d` rounds to the nearest representable tau and
+    a node `1e-12` from a corner loses its last four digits of distance before anything else
+    happens.
     """
 
     bdry_idx: int
@@ -152,6 +181,7 @@ class Panel:
     tau0: float
     tau1: float
     nodes: Callable = field(compare=False, repr=False, default=None)
+    anchor: str = None
 
 
 def legendre_nodes(order):
@@ -166,19 +196,42 @@ def legendre_nodes(order):
 
 def nodes_from_plan(seg, panels, panel0=0):
     """Materialize a caller's panel plan on one segment: frames, weights, provenance."""
-    taus, wts, pids, spans = [], [], [], []
+    taus, wts, pids, spans, pts, anchors, offsets = [], [], [], [], [], [], []
     for k, pan in enumerate(panels):
-        tau, w = pan.nodes(float(pan.tau0), float(pan.tau1))
-        tau = np.asarray(tau, dtype=float)
+        t0, t1 = float(pan.tau0), float(pan.tau1)
+        if pan.anchor is None:
+            tau, w = pan.nodes(t0, t1)
+            tau = np.asarray(tau, dtype=float)
+            pts.append(seg.p(tau))
+            anchors.append(np.full(len(tau), np.nan + 1j * np.nan))
+            offsets.append(np.full(len(tau), np.nan + 1j * np.nan))
+        elif pan.anchor in ("start", "end"):
+            at_start = pan.anchor == "start"
+            if (t0 if at_start else t1) != (0.0 if at_start else 1.0):
+                raise ValueError(f"a panel anchored at the {pan.anchor} must touch it; "
+                                 f"got [{t0}, {t1}]")
+            d, w = pan.nodes(*((t0, t1) if at_start else (1.0 - t1, 1.0 - t0)))
+            d, w = np.asarray(d, dtype=float), np.asarray(w, dtype=float)
+            if not at_start:                         # keep tau ascending within the panel
+                d, w = d[::-1], w[::-1]
+            tau = d if at_start else 1.0 - d
+            c = seg.p0 if at_start else seg.p1
+            off = np.asarray(seg.offset(d, pan.anchor), dtype=complex)
+            pts.append(c + off)
+            anchors.append(np.full(len(d), c, dtype=complex))
+            offsets.append(off)
+        else:
+            raise ValueError(f"anchor must be None, 'start' or 'end', got {pan.anchor!r}")
         taus.append(tau)
         wts.append(np.asarray(w, dtype=float) * seg.length)
         pids.append(np.full(len(tau), panel0 + k, dtype=int))
-        spans.append((float(pan.tau0), float(pan.tau1)))
+        spans.append((t0, t1))
     tau = np.concatenate(taus)
     return {
-        "tau": tau, "pts": seg.p(tau), "tangents": seg.T(tau), "normals": seg.N(tau),
+        "tau": tau, "pts": np.concatenate(pts), "tangents": seg.T(tau), "normals": seg.N(tau),
         "wts": np.concatenate(wts), "panel_id": np.concatenate(pids),
         "n_panels": len(panels), "panels": tuple(spans),
+        "anchor_pt": np.concatenate(anchors), "offset": np.concatenate(offsets),
     }
 
 

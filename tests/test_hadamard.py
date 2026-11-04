@@ -149,3 +149,118 @@ def test_a_split_pair_near_a_double_gives_the_doubles_derivatives():
                        and abs(p1.real - 1.0) < 1e-12)
     ev = np.sort(np.linalg.eigvalsh(spec.hadamard([1, 2], V)[0]))
     np.testing.assert_allclose(ev, [-8 * np.pi ** 2, -2 * np.pi ** 2], rtol=5e-3)
+
+
+# --- what the matrix is good for: the report and the refusal (2026-11-03) ----------------------
+#
+# `notes/hadamard_accuracy.md`: the rule's shortfall was dropped and a 16% normalization error
+# passed silently. Both are now reported, and the second is refused.
+
+def _square_record(prec=PREC):
+    dom = rect(1.0, 1.0)
+    return dom, Eigenproblem(dom).solve(1, prec=prec)
+
+
+def _one_field(dom):
+    return _edge_velocity(dom, lambda p0, p1: abs(p0.real - 1.0) < 1e-12
+                          and abs(p1.real - 1.0) < 1e-12)
+
+
+@pytest.mark.slow
+def test_a_bad_normalization_is_refused(monkeypatch):
+    """A level whose Gram residual is far above prec cannot give a derivative: refused, with the
+    same exception as a level that could not be orthonormalized."""
+    from dataclasses import replace
+    from chladni.mps.solver import MPSEigensolver
+
+    dom, spec = _square_record()
+    real = MPSEigensolver.eigenfunctions
+
+    def bad(self, level, *, prec=None):
+        return replace(real(self, level, prec=prec), gram_residual=0.16)
+    monkeypatch.setattr(MPSEigensolver, "eigenfunctions", bad)
+    with pytest.raises(ValueError, match="gram_residual"):
+        spec.hadamard(0, _one_field(dom))
+
+
+@pytest.mark.slow
+def test_a_clean_square_reports_its_precision_met():
+    """No ruled corner, an exact normalization: the report says the matrix meets prec, and the
+    default return is still the bare matrix."""
+    dom, spec = _square_record()
+    H = spec.hadamard(0, _one_field(dom))
+    H2, rep = spec.hadamard(0, _one_field(dom), report=True)
+    np.testing.assert_array_equal(H, H2)
+    assert rep.met and rep.attained <= PREC and rep.shortfalls == ()
+    assert H[0, 0, 0] == pytest.approx(-2 * np.pi ** 2, rel=1e-8)
+
+
+@pytest.mark.slow
+def test_a_rule_shortfall_is_reported_and_warned(monkeypatch):
+    """A ruled corner whose rule falls short of prec: the report names the corner and the call
+    warns. Until 2026-11-03 the L-shape supplied one for free -- the fitted rule stalled at every
+    corner. The graded rule meets prec there, and the corners it still misses (within `NU_MARGIN`
+    of the slit) are expensive to solve on, so the shortfall is injected at the sizing."""
+    from chladni._core import PrecisionWarning
+    from chladni.integrals import rules
+
+    real = rules.graded_order_for_prec
+
+    def short(nu, prec=1e-14, k=1.0, sigma=rules.GRADED_SIGMA):
+        rule, _ = real(nu, prec, k, sigma)
+        return rule, 1e-6
+
+    monkeypatch.setattr(rules, "graded_order_for_prec", short)
+    base = [0, 1j, -1 + 1j, -1 - 1j, 1 - 1j, 1]
+    dom = Polygon(base, bc="dir")
+    spec = Eigenproblem(dom).solve(1, prec=PREC)
+    V = _edge_velocity(dom, lambda p0, p1: True)
+    with pytest.warns(PrecisionWarning, match="Hadamard matrix"):
+        _, rep = spec.hadamard(0, V, report=True)
+    assert not rep.met and any("corner" in w for w, *_ in rep.shortfalls)
+
+
+# --- closed-form identities on corner domains, anywhere in the plane (2026-11-03) ---------------
+#
+# For a Dirichlet eigenpair, a rigid motion leaves `lam` fixed and a dilation scales it:
+#     V = e . n  (translation)  ->  0,      V = (i x) . n  (rotation)  ->  0,
+#     V = x . n  (dilation)     ->  -2 lam  (every eigenvalue of the level's block).
+# Dilation also tests the normalization, since it is `-2 lam ||u||^2`. Measured on the graded rule
+# at prec 1e-12, worst over 6 levels relative to lam: L-shape at the origin 3.7e-14, shifted
+# 3+2i 8.7e-14, the 315-degree notch shifted 9.2e-14, irregular hexagon 8.7e-13 (its eigenvalues'
+# own bound). The fitted rule this replaced read 2.8e-9 on the L-shape's translation identity.
+
+def _linear_fields(dom):
+    segs = [s for b in dom.boundaries for s in b.segments]
+    maps = (lambda z: np.ones_like(z), lambda z: 1j * np.ones_like(z),
+            lambda z: 1j * z, lambda z: z)
+
+    def V(curve, t):
+        s = segs[curve]
+        t = np.asarray(t)
+        p, n = s.p(t), s.N(t)
+        return np.array([(f(p) * n.conjugate()).real for f in maps])
+    return V
+
+
+IDENTITY_CASES = [
+    ("L-shape +(3+2i)", np.array([0, 1j, -1 + 1j, -1 - 1j, 1 - 1j, 1]) + 3 + 2j, 1e-12),
+    ("315 notch +(3+2i)", np.array([2, 2 + 2j, -2 + 2j, -2 - 2j, 2 - 2j, 0]) + 3 + 2j, 1e-12),
+    ("irregular hexagon", np.array([0, 1.0 - 0.1j, 1.6 + 0.5j, 1.3 + 1.3j, 0.4 + 1.5j,
+                                    -0.3 + 0.7j]), 1e-11),
+]
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name, verts, bar", IDENTITY_CASES, ids=[c[0] for c in IDENTITY_CASES])
+def test_rigid_motions_and_dilation_hold_on_corner_domains(name, verts, bar):
+    dom = Polygon(verts, bc="dir")
+    spec = Eigenproblem(dom).solve(6, prec=1e-12)
+    V = _linear_fields(dom)
+    for i in range(len(spec.lam)):
+        H_, rep = spec.hadamard(i, V, report=True)
+        lam = spec.lam[i]
+        assert rep.shortfalls == (), (name, rep.shortfalls)
+        for f in range(3):
+            assert np.abs(H_[f]).max() < bar * lam, (name, i, f)
+        np.testing.assert_allclose(np.linalg.eigvalsh(H_[3]), -2 * lam, rtol=bar)

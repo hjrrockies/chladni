@@ -228,3 +228,86 @@ def test_the_norm_of_a_real_L_shape_candidate_matches_the_interior_oracle():
     assert got == pytest.approx(want, rel=1e-13)
     assert cd.cancellation(np.sqrt([got]), dom.area)[0] < 10
 
+
+
+# --- the graded corner rule in corner-local frames (2026-11-03) --------------------------------
+#
+# `notes/hadamard_accuracy.md`, addenda; `notes/gram_accuracy.md` section. Every sharp test above
+# puts the singular corner AT THE ORIGIN, where a node's absolute position is its distance from
+# the corner. Shifted to 3+2i, that distance is rounded at eps*|3+2i|; the graded rule's anchored
+# panels evaluate in the corner's own frame instead.
+
+SHIFT = 3 + 2j
+
+
+def test_graded_corner_panels_are_anchored_at_their_corner():
+    dom = polyomino([(0, 0), (1, 0), (0, 1)]).translated(SHIFT)
+    iq = P.integral_quad(dom, 40.0, prec=1e-12, corners="graded")
+    corner = next(c for c in dom.corners if c.is_reentrant)
+    q = iq.quad
+    assert q.anchored.any()
+    assert set(np.unique(q.anchor_pt[q.anchored])) == {corner.z}
+    assert np.all(q.wts > 0)
+    np.testing.assert_allclose(q.anchor_pt[q.anchored] + q.offset[q.anchored],
+                               q.pts[q.anchored], atol=4e-16 * abs(SHIFT))
+    assert iq.sizing_prec <= P.integral_prec(1e-12) and iq.shortfalls == ()
+    # The graded rule is the default; the fitted one, kept for measurement, is unanchored.
+    assert P.integral_quad(dom, 40.0, prec=1e-12).quad.anchored.any()
+    assert not P.integral_quad(dom, 40.0, prec=1e-12,
+                               corners="interpolatory").quad.anchored.any()
+
+
+@pytest.mark.parametrize("shift", [0j, SHIFT], ids=["origin", "shifted"])
+def test_the_singular_corner_identity_survives_translation_on_the_graded_rule(shift):
+    """`test_the_identity_at_a_SINGULAR_corner_matches_a_graded_interior_rule`, moved off the
+    origin. The interior oracle is evaluated in the unshifted frame (translation is
+    column-exact), so it does not degrade with the shift."""
+    lam = 23.0
+    dom0 = polyomino([(0, 0), (1, 0), (0, 1)])
+    corner0 = next(c for c in dom0.corners if c.is_reentrant)
+    fam0 = FourierBessel.at_corner(corner0, n=6, domain=dom0)
+    c = np.random.default_rng(5).standard_normal(len(fam0))
+    pts, wts = [], []
+    for (i, j), (ex, ey) in {(0, 0): (1, 1), (1, 0): (0, 1), (0, 1): (1, 0)}.items():
+        p, w = _tensor(_graded(ex), _graded(ey), i, j)
+        pts.append(p)
+        wts.append(w)
+    pts, wts = np.concatenate(pts), np.concatenate(wts)
+    want = float(np.sum(wts * (fam0.values(np.sqrt(lam), pts) @ c) ** 2))
+
+    dom, fam = dom0.translated(shift), fam0.translated(shift)
+    iq = P.integral_quad(dom, lam, prec=1e-12, corners="graded")
+    cd = C.cauchy_data(fam, c, lam, iq.quad)
+    for x0 in (iq.x0, 0.3 + 0.2j + shift, 1.7 + 0.4j + shift):
+        assert I.gram(cd, x0)[0, 0] == pytest.approx(want, rel=1e-13), x0
+
+
+#: Sector apexes for the graded rule, at the origin AND shifted. Measured 2026-11-03, worst over
+#: three origins: 1.3e-15 .. 2.0e-14 (238 .. 578 nodes) against the interpolatory rule's
+#: 1e-14 .. 1.0e-8, which grows toward the slit and with the shift. 1.95 pi (nu = 0.513) is
+#: inside `NU_MARGIN` and demoted by both rules.
+GRADED_SECTOR_ALPHAS = [1.25, 1.5, 1.6, 1.75, 1.9]
+
+
+# The column is an exact eigenfunction, so its radial factor J_nu(k r) vanishes on the arc r = 1:
+# the kernel's RELATIVE error bound there is meaningless (1e1..1e2) while the absolute error, which
+# is what the norm sees, is not. The norm assertion below is the claim.
+@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
+@pytest.mark.parametrize("shift", [0j, SHIFT], ids=["origin", "shifted"])
+@pytest.mark.parametrize("alpha", GRADED_SECTOR_ALPHAS)
+def test_the_exact_sector_norm_on_the_graded_rule_anywhere(alpha, shift):
+    """The sector apex's own Fourier-Bessel column IS `J_nu(k r) sin(nu theta)` up to a constant,
+    read off at one interior point; through `cauchy_data` it gets the corner-local frame."""
+    omega = alpha * np.pi
+    lam = ref.sector_eigs(1, omega=omega)[0]
+    u, norm2 = ref.sector_eigfun(1, 1, omega=omega)
+    dom0 = disk_sector(1.0, omega)
+    apex = next(c for c in dom0.corners if abs(c.z) < 1e-14)
+    fam0 = FourierBessel.at_corner(apex, degrees=[1], domain=dom0)
+    probe = 0.4 * np.exp(0.5j * omega)
+    scale = fam0.values(np.sqrt(lam), np.array([probe]))[0, 0] / u(np.array([probe]))[0]
+    dom = dom0.translated(shift)
+    iq = P.integral_quad(dom, lam, prec=1e-13, corners="graded")
+    cd = C.cauchy_data(fam0.translated(shift), [1.0], lam, iq.quad)
+    for x0 in (iq.x0, 0.2 + 0.1j + shift, -0.3 + 0.4j + shift):
+        assert I.gram(cd, x0)[0, 0] == pytest.approx(norm2 * scale**2, rel=1e-13), x0

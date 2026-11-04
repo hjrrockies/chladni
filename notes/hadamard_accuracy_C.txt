@@ -1,0 +1,9 @@
+=== C ===
+L-shape                prec 1e-10 level 0  lam 9.639724  bound 7.8e-13  |H - FD|/|g| 4.8e-12  (FD settled to 5.7e-12)
+L-shape                prec 1e-10 level 1  lam 15.197252  bound 8.3e-12  |H - FD|/|g| 9.2e-11  (FD settled to 1.7e-11)
+L-shape                prec 1e-10 level 2  lam 19.739209  bound 3.5e-14  |H - FD|/|g| 1.4e-09  (FD settled to 2.8e-11)
+L-shape                prec 1e-10 level 3  lam 29.521481  bound 2.6e-12  |H - FD|/|g| 1.1e-08  (FD settled to 2.1e-10)
+L-shape                prec 1e-12 level 0  lam 9.639724  bound 8.8e-14  |H - FD|/|g| 5.0e-12  (FD settled to 5.7e-12)
+L-shape                prec 1e-12 level 1  lam 15.197252  bound 3.4e-14  |H - FD|/|g| 8.9e-11  (FD settled to 1.7e-11)
+L-shape                prec 1e-12 level 2  lam 19.739209  bound 5.2e-15  |H - FD|/|g| 1.4e-09  (FD settled to 2.8e-11)
+L-shape                prec 1e-12 level 3  lam 29.521481  bound 3.4e-14  |H - FD|/|g| 1.1e-08  (FD settled to 2.1e-10)

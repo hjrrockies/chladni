@@ -76,16 +76,17 @@ class SolveRecord:
 
     # --- what only the record can do -------------------------------------------------------
 
-    def hadamard(self, i, V):
+    def hadamard(self, i, V, report=False):
         """The Hadamard shape derivative of level `i` -- or of levels `i = [i0, i1, ...]` as one
-        block, cross terms included -- `(n_fields, m, m)`: see `MPSEigensolver.hadamard`."""
+        block, cross terms included -- `(n_fields, m, m)`: see `MPSEigensolver.hadamard`.
+        `report=True` returns `(H, HadamardReport)`."""
         if self.solver is None:
             raise ValueError("this record carries no solver; solve with "
                              "chladni.eigenproblem.Eigenproblem to get Hadamard derivatives")
         idx = [int(i)] if np.ndim(i) == 0 else [int(j) for j in i]
         levels = [self.spectrum.levels[j] for j in idx]
         return self.solver.hadamard(levels[0] if np.ndim(i) == 0 else levels, V,
-                                    prec=self.spectrum.prec)
+                                    prec=self.spectrum.prec, report=report)
 
     @property
     def domain(self):
