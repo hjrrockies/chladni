@@ -274,3 +274,12 @@ same commit):
 - **`stage_policy_step4_douse.py 1e-10`**: identical tallies, flags and rungs in every mode; only
   `bound` values differ, by at most 1.8e-5 relative.
 - **`count_audit.py`** re-reads stored solves and never certifies, so it cannot change.
+
+## Out of sample: the hardest douse ratio shapes (`hadamard_hard_shapes.py`, `.sbatch`)
+
+Ten final iterates of `thesis_ratio_v1/v2` runs on ARC (chladni e1ebaf8): eight whose trust
+radius collapsed to ~6e-15, the noise-limited signature, and two plateau controls. Mostly k = 4..5,
+re-entrant corners up to 228 deg, edges down to 0.05. Old against new, identities per level and
+vertex gradients against a Richardson FD reference; a 50-task array, run on ARC because the FD
+references take hours locally. Local smoke result, `v1/N5_k4/task_0` at prec 1e-10: worst
+identity error 8.0e-10 relative (old) against 2.2e-10 (new). Results: pending.
