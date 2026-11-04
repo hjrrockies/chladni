@@ -125,3 +125,19 @@ The Bessel-kernel measurements behind 2.6 and 3.x:
 | mpmath grid (mu <= 300, x <= 120), worst relative error away from zeros of J | 1.7e-10 | 6.6e-13 |
 | worst true error / `rel_err` over the same grid | 16.6 (bound violated) | 0.72 |
 | fast suite under `-W error::UserWarning`, warning filters | 12 files plus 4 blanket marks | none |
+
+The same check on ARC (Linux, scipy 1.18.1; `notes/accuracy_studies.py` bessel, job 8421993):
+
+| kernel | cells | worst true error / `rel_err` | cells over 1 | worst true relative error |
+|---|---|---|---|---|
+| J, orders 0 to 400, x 0.05 to 600 | 43,200 | 1.74 | 106, all scipy branch, all at x >= 368 | 5.3e-9 (near zeros) |
+| Y, integer orders 0 to 79, x to 300 | 8,000 | 0.72 | 0 | 3.3e-12 |
+| Debye, on the cells where scipy underflows | 1,280 | 0.78 | 0 | 1.0e-11 |
+
+- The value bound holds below x of about 360. The douse reference shapes reach `k * diameter` of
+  60 (median 20), so the slip lies far outside chladni's use. It is recorded in `Scaled`'s
+  docstring, not fixed.
+- The derivative misses `rel_err` pointwise by up to 2600x, every time at a near-zero of J'
+  (|J'| at most 2e-3 of |J|). Relative to max(|J|, |J'|), the scale the column-scaled accuracy
+  sees, the worst is 1.5x, and that is again at x near 600. `Scaled` claimed `rel_err` bounds
+  `Sp`'s relative error; the docstring now says what it bounds.

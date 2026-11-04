@@ -85,8 +85,13 @@ class Scaled(NamedTuple):
     """A Bessel value in factored form.
 
     `value = S * exp(sigma)` and `derivative = Sp * exp(sigma)`. `rel_err` bounds the
-    relative error of `S` and `Sp` -- it falls out of the series loop for free (it is
-    `eps * largest_term / |S|`) and is what `Sampling.accuracy` reports upward.
+    relative error of `S` -- it falls out of the series loop for free (it is
+    `eps * largest_term / |S|`) and is what `Sampling.accuracy` reports upward. For `Sp` it
+    bounds the error relative to `max(|S|, |Sp|)`, not to `|Sp|`: near a zero of the
+    derivative its relative error is unbounded (up to 2600x `rel_err` on the ARC grid). The
+    value bound holds over orders 0 to 400 for `k*r` up to about 360; beyond, on Linux's scipy
+    1.18, the scipy branch exceeds it by up to 1.74x at `k*r = 600`. The douse reference shapes
+    reach `k * diameter` of 60. (notes/accuracy_studies.py, ARC 2026-11-03.)
 
     `Sp` is None when the caller passed `derivative=False`. That is not a micro-optimization:
     the scipy branch gets the derivative from `J_{nu-1} - J_{nu+1}`, so asking for it triples
