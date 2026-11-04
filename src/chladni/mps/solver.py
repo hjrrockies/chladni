@@ -400,7 +400,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         from .. import asymp
         from .multiplicity import GAP_RATIO
         from .refine import refine
-        from .search import Level, SolveDiagnostics, SolveResult
+        from .search import Level, SolveDiagnostics, SolveResult, _precision_summary
 
         prec = self.prec if prec is None else check_prec(prec)
         prev = np.atleast_1d(np.asarray(prev, dtype=float))

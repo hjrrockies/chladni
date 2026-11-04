@@ -52,7 +52,7 @@ def run(ci):
         v = v + STEP * scale * (rng.normal(size=len(v)) + 1j * rng.normal(size=len(v)))
         lam = np.asarray(prev.lam, dtype=float)
         mult = np.asarray(prev.mult, dtype=int)
-        h = WINDOW * lam                                  # per level
+        h = WINDOW * np.repeat(lam, mult)[:n]             # per value, as `windows` wants
         c0 = BC.snapshot()
         try:
             spec = Eigenproblem(Polygon(v, bc="dir")).solve(n, prec=PREC, near=prev, windows=h)
