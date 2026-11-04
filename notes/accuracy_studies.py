@@ -194,7 +194,9 @@ def run_eigs(ci, prec):
             return dict(id=c["id"], prec=prec, failed=f"{type(e).__name__}: {str(e)[:300]}",
                         t_solve=time.time() - t0)
     t_solve = time.time() - t0
-    V = fields(rec.solver.domain, verts)
+    # some solve paths (the old tree's, at least) return a record with no solver: the levels
+    # are still a row, only the Hadamard columns go missing
+    V = fields(rec.solver.domain, verts) if rec.solver is not None else None
     levels = []
     for i, L in enumerate(rec.spectrum.levels):
         lam = float(L.lam)
@@ -208,6 +210,8 @@ def run_eigs(ci, prec):
                 row.update(ref=float(r["lam"]), ref_bound=float(r["bound"]),
                            err=abs(lam - float(r["lam"])))
         try:
+            if V is None:
+                raise ValueError("the solve returned no solver")
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 H, rep = rec.hadamard(i, V, report=True)

@@ -23,7 +23,9 @@
 # Then:
 #   ~/projects/thesis/douse/.venv/bin/python accuracy_studies.py analyze accuracy_studies_out
 #
-# douse's venv supplies the dependencies (mpmath included); each task puts the checkout it wants
+# douse's venv supplies the dependencies, but NOT mpmath (the Bessel tasks need it): install it once,
+#   uv pip install --python ~/projects/thesis/douse/.venv/bin/python mpmath
+# (a later `uv sync` removes it again). Each task puts the checkout it wants
 # first on PYTHONPATH and refuses if chladni was imported from anywhere else.
 set -euo pipefail
 ROOT=${THESIS_ROOT:-$HOME/projects/thesis}
