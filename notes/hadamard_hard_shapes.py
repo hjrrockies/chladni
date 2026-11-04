@@ -183,7 +183,14 @@ def _groups(lams, mults, rtol=1e-6):
     return out
 
 
-def _summary(r, fd):
+#: Grouping for the FD comparison. FD differences SORTED eigenvalues, so two levels closer than
+#: the step can move cross between the perturbed shapes and swap indices; a ratio optimum
+#: drives lam_k toward exactly such a cluster. Only a group's SUM is smooth across a crossing,
+#: so the grouped column sums any levels within a few steps of each other.
+FD_GROUP_RTOL = 5 * H_STEP
+
+
+def _summary(r, fd, rtol=1e-6):
     lv = {L["i"]: L for L in r["levels"]}
     ok = [L for L in r["levels"] if "error" not in L]
     errs = [L["error"] for L in r["levels"] if "error" in L]
@@ -192,7 +199,7 @@ def _summary(r, fd):
     fderr = np.nan
     if fd:
         fderr = 0.0
-        for levs, eigs in _groups(r["lams"], r["mults"]):
+        for levs, eigs in _groups(r["lams"], r["mults"], rtol):
             if any("error" in lv[i] for i in levs) or max(eigs) >= len(fd["lams"]):
                 continue
             g = np.sum([lv[i]["grad"] for i in levs], axis=0)
@@ -211,7 +218,8 @@ def analyze(d):
             print("FAILED", r["impl"], r["mode"], r["case"], r["prec"], r["failed"][-300:])
     fds = {r["case"]: r for r in rows if r.get("mode") == "FD" and "failed" not in r}
     hs = {(r["impl"], r["case"], r["prec"]): r for r in rows if r.get("mode") == "H" and "failed" not in r}
-    print(f"{'case':24s} {'impl':4s} {'prec':6s} {'ident/lam':>9s} {'FD/lam':>9s} warn refused  solve")
+    print(f"{'case':24s} {'impl':4s} {'prec':6s} {'ident/lam':>9s} {'FD/lam':>9s} {'FDgrp/lam':>9s}"
+          f" warn refused  solve")
     for ci, c in enumerate(CASES):
         for p in PRECS:
             for impl in ("old", "new"):
@@ -219,7 +227,8 @@ def analyze(d):
                 if r is None:
                     continue
                 ident, fderr, warned, errs = _summary(r, fds.get(ci))
-                print(f"{c['source'][13:]:24s} {impl:4s} {p:6s} {ident:9.1e} {fderr:9.1e} "
+                fdgrp = _summary(r, fds.get(ci), FD_GROUP_RTOL)[1]
+                print(f"{c['source'][13:]:24s} {impl:4s} {p:6s} {ident:9.1e} {fderr:9.1e} {fdgrp:9.1e} "
                       f"{warned:4d} {len(errs):7d} {r['t_solve']:6.0f}s  {errs[0][:70] if errs else ''}")
         if ci in fds:
             gap = max(max(d["richardson_gap"]) for d in fds[ci]["dirs"]) / max(fds[ci]["lams"])
