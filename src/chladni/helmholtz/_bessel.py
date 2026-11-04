@@ -289,9 +289,14 @@ def _y_scipy(m, x, derivative=True):
     else:
         val = yv(m, x)
         der = 0.5 * (yv(m - 1, x) - yv(m + 1, x)) if derivative else None
-    with np.errstate(divide="ignore", invalid="ignore"):
-        rel = np.maximum(_EPS, 4e-16 * (1.0 + m)) + _scale_err(m * np.log(x / 2),
-                                                               gammaln(np.maximum(m, 1.0)))
+    # The same error model as `_j_scipy` (absolute, in units of the envelope past the turning
+    # point): the old flat `4e-16*(1 + m)` under-reported by up to 12x near zeros of Y, measured
+    # against mpmath for m < 20, x <= 300 (`notes/accuracy_studies.py`, 2026-11-03).
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        M = np.sqrt(2.0 / (np.pi * np.sqrt(np.maximum(x * x - m * m, x ** (4.0 / 3.0)))))
+        amp = np.where(x > m, np.maximum(1.0, M / np.abs(val)), 1.0)
+        rel = (np.maximum(120 * _EPS * np.maximum(x, 1.0) ** (1.0 / 3.0), 8e-16 * (1.0 + m)) * amp
+               + _scale_err(m * np.log(x / 2), gammaln(np.maximum(m, 1.0))))
     return Scaled(_rescale(val, sigma),
                   None if der is None else _rescale(der, sigma), sigma, rel,
                   np.zeros_like(x) + _EPS * np.abs(gammaln(np.maximum(m, 1.0))))
