@@ -695,6 +695,12 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 * **[later]** The older public searches (`tests/searches.py`) have no live test: `test_searches.py`
   moved to `notes/evidence_tests/` on 2026-10-09 with the retired baselines. They are reached only
   through `tests/bracketers.py` and `baselines.py`, which `test_bracket_score.py` exercises.
+* **[later]** `_rerank` (`solve(stable_rank=True)`) has no live test. Its only test used the
+  L-shape, whose cells lost their noise tails when the Bessel series stopped losing digits
+  (9de388a, 2026-11-04), so it now re-ranks nothing. A shape with a stable-rank noise tail is needed.
+* **[later]** `test_no_level_claims_prec_past_a_tight_reference` is a strict xfail: references.json
+  has no T2.8-N5s2 value within 0.1*prec, so it compared nothing. Lift it with audit 4.8's tighter
+  references.
 
 ## 6. Small deferred measurements
 

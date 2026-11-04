@@ -153,7 +153,9 @@ def test_accuracy_concatenates_and_follows_cols(mixed):
     full = s.accuracy(K)
     assert len(full) == len(mixed)
     want = np.array([11, 2, 4])
-    assert np.array_equal(s.accuracy(K, cols=want), full[want])
+    # rtol, not exact: Fundamental's order-0 columns take `y0` when a subset holds only them and
+    # `yv` otherwise, and the scipy bound reads the value (near-zero amplification)
+    np.testing.assert_allclose(s.accuracy(K, cols=want), full[want], rtol=1e-12)
 
 
 # --- the composite is itself a family ------------------------------------------------------------

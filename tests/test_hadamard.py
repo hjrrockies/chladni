@@ -12,9 +12,12 @@ whose eigenvalues are the derivatives of the level's members. `V` is a callable
 forms (a rectangle's moving side) and against finite differences of `chladni`'s own eigenvalues
 (the L-shape's re-entrant vertex, where `d_n u` is singular).
 """
+import warnings
+
 import numpy as np
 import pytest
 
+from chladni._core import PrecisionWarning
 from chladni.eigenproblem import Eigenproblem
 from chladni.geometry import Polygon, rect
 
@@ -259,9 +262,15 @@ def test_rigid_motions_and_dilation_hold_on_corner_domains(name, verts, bar):
     spec = Eigenproblem(dom).solve(6, prec=1e-12)
     V = _linear_fields(dom)
     for i in range(len(spec.lam)):
-        H_, rep = spec.hadamard(i, V, report=True)
+        # The hexagon's eigenfunctions carry a Moler-Payne residual just above 1e-12, which
+        # `attained` now includes (audit 2.2): an honest warning, checked against `bar` instead.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=r".*the eigenfunctions' Moler-Payne residual",
+                                    category=PrecisionWarning)
+            H_, rep = spec.hadamard(i, V, report=True)
         lam = spec.lam[i]
         assert rep.shortfalls == (), (name, rep.shortfalls)
+        assert rep.attained <= bar, (name, i, rep.attained)
         for f in range(3):
             assert np.abs(H_[f]).max() < bar * lam, (name, i, f)
         np.testing.assert_allclose(np.linalg.eigvalsh(H_[3]), -2 * lam, rtol=bar)

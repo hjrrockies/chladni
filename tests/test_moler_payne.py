@@ -219,6 +219,10 @@ def test_delta_res_is_admitted_only_where_moler_payne_agrees_roughly():
 
 
 @pytest.mark.slow
+@pytest.mark.xfail(strict=True, reason=
+    "vacuous until the references are regenerated tighter (audit 4.8): references.json's "
+    "T2.8-N5s2 bounds are 1.5e-10 to 1e-8 relative, none within 0.1*prec, so no met level "
+    "is ever compared (found 2026-11-04 by the n_checked assertion)")
 def test_no_level_claims_prec_past_a_tight_reference():
     """The contract the cross-check exists for, against ground truth. T2.8-N5s2 on a Fourier-
     Bessel-only basis (recipe A, the window the bias was seen on) converges to a well 7e-10 off

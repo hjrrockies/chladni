@@ -113,7 +113,7 @@ tests. `test_moler_payne.py:223` can pass while comparing nothing, because it ne
 | 4.1 to 4.7, 4.10 (oracle half) | fixed | 9235d0d |
 | 4.8 | **deferred**: regenerating the stage-policy references at 1e-13 from two bases is a run of its own | -- |
 | 4.9 | no change: the sizer returns `achieved <= prec` by construction; the flake was the node cap, already relaxed | -- |
-| 4.10 (xfail half) | **open**: needs a slow run to see whether the STARVED_SILENT cells now pass | -- |
+| 4.10 (xfail half) | no change: the 2026-11-04 slow run still xfails them (none passed), so they stay non-strict | -- |
 | 1.10 lightning `extent` | **deferred**: `lightning` does not know the domain | -- |
 
 The Bessel-kernel measurements behind 2.6 and 3.x:
