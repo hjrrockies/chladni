@@ -302,6 +302,7 @@ class Eigenproblem:
         return spec
 
     def _solve_cold(self, n, prec, plan, on_shortfall, confirm, solver=None):
+        from ._core import PrecisionShortfall
         from .mps.solver import _raise_on_shortfall
 
         flags = []
@@ -331,7 +332,10 @@ class Eigenproblem:
         from . import asymp
         from .bounds import faber_krahn
 
-        lo = 0.5 * float(faber_krahn(self.domain))
+        # Faber-Krahn PROVES [0, FK) empty, so starting at 0.5 FK only scanned k in [0.71, 0.99]
+        # k_FK for nothing; the count audit needs `lo < FK`, and the warm path already uses
+        # 0.98 FK (`_warm_window`). The slack is for FK's equality on the disk.
+        lo = 0.98 * float(faber_krahn(self.domain))
         hi = float(asymp.weyl_est_poly(n + HEADROOM, self.domain)) * (1.0 + _TOP_PAD)
         if solver is None:
             solver = plan.solver(self.domain, prec=prec)
@@ -567,13 +571,35 @@ def _record(res, n, prec, plan, flags):
     if unmet:
         flags.append(f"unmet: {len(unmet)} of {len(kept)} levels miss prec={prec:.0e}, the first "
                      f"at lam = {unmet[0].lam:.10g} (margin {unmet[0].margin:.3g}; 2 is needed)")
+    # A refused Moler-Payne bound is named, not only counted as unmet: it is the certificate
+    # saying the candidate is not close to an eigenfunction (`search.Level.bound`).
+    refused = [L for L in kept if L.bound_reason and not np.isfinite(L.mp_bound)]
+    if refused:
+        flags.append(f"Moler-Payne refused at {len(refused)} level(s), the first at lam = "
+                     f"{refused[0].lam:.10g}: {refused[0].bound_reason}")
     audit = d.count_audit
     if audit is not None and audit.verdict != "ok":
         flags.append(f"count audit: {audit.verdict}"
                      + (f" ({audit.reason})" if audit.reason else
                         f" (mean Weyl deficit {audit.statistic:.3g})"))
-    if d.n_uncertain:
-        flags.append(f"uncertain: {d.n_uncertain} count(s) could not be certified")
+    # Per level as well as per diagnostics: a result assembled from several searches (the warm
+    # path's windows) used to carry uncertain levels with `n_uncertain = 0`.
+    n_uncertain = max(int(d.n_uncertain), sum(bool(L.count_uncertain) for L in kept))
+    if n_uncertain:
+        flags.append(f"uncertain: {n_uncertain} count(s) could not be certified")
+    # The integral rule the Moler-Payne norm was formed on: a bound off by its model error,
+    # relative. Only a rule that cannot carry a few digits is worth a flag (`search.Level`).
+    from .mps.solver import CERTIFY_RULE_FLAG
+    short_rule = [L for L in kept if getattr(L, "rule_prec", np.nan) > CERTIFY_RULE_FLAG]
+    if short_rule:
+        flags.append(f"integral rule: the Moler-Payne norm at {len(short_rule)} level(s) is "
+                     f"known only to {max(L.rule_prec for L in short_rule):.1e} relative")
+    # The refiner refused a bracket that dipped as deep as an accepted level: a candidate LOST
+    # eigenvalue (`search.SolveDiagnostics.rejected_deep`). It was recorded and never read.
+    deep = [r for r in getattr(d, "rejected_deep", ()) if kept and r[0] <= kept[-1].lam]
+    if deep:
+        flags.append(f"possibly lost: {len(deep)} refused bracket(s) dipped as deep as a located "
+                     f"level, the first at lam ~ {deep[0][0]:.10g} ({deep[0][2]})")
     if d.declined:
         flags.append(f"declined: {d.decline_reason}")
     spectrum = Spectrum(tuple(Level.from_search(L, prec) for L in kept), prec=prec,

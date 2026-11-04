@@ -370,6 +370,10 @@ def graded_model_error(nu, n_levels, order, sigma=GRADED_SIGMA, k=1.0, n_top=1):
     (curved lattice, every integer `m`), in closed form. `k = sqrt(lam_max) * panel length`."""
     nu = float(nu)
     d, w = graded_corner_rule(nu, int(n_levels), int(order), float(sigma), int(n_top))
+    if np.any(d <= 0.0):
+        # Nodes underflowed to the vertex (p ~ 1000 as nu -> 1/2): the rule cannot be evaluated,
+        # let alone trusted. Say so as an infinite error rather than via 0**negative = inf/nan.
+        return float("inf")
     E, C = _graded_lattice(nu, k)
     exact = float(np.sum(C / (E + 1.0)))
     with np.errstate(under="ignore"):

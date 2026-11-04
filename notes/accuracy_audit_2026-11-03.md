@@ -1,0 +1,249 @@
+# Accuracy-reporting audit, 2026-11-03
+
+**Question.** Are there places where tolerances, accuracy estimates or accuracy claims are
+mishandled or misreported, and where fixing the reporting, or calibrating to the accuracy
+actually achieved, would buy performance?
+
+**How it was done.** Four read-only reviews ran on branch `boundary-integrals-accuracy`, one per
+area:
+1. search, bracket, refine and multiplicity;
+2. pencil, certification, solver and planner;
+3. kernels, geometry and reference;
+4. the test suite.
+
+The integrals rework on this branch was already audited in `hadamard_accuracy.md` and was not
+reviewed again.
+
+**Status labels.**
+- **checked** means the claim was confirmed by reading the code or running it in the main
+  session, not only by the reviewer.
+- **reviewer** means it rests on the reviewer's reading alone.
+- **est.** means the saving has not been measured.
+
+## 1. Claims that can be wrong (fix first)
+
+| # | where | defect | status |
+|---|---|---|---|
+| 1.1 | `mps/search.py:271-283` `Level.bound` | When the Moler-Payne bound is refused (`mp_bound = inf`: eps ≥ 1, or the norm clipped), `delta_res_admitted` is False but the `isfinite` guard skips the MP branch, so `bound` falls back to `delta_res` and the level reads **met**. This is the worst MP outcome, reported as success. `bound_reason` is set and nothing reads it. | checked |
+| 1.2 | `mps/solver.py:390-430` `track_levels` | The merged-window branch keeps only `levels` and `evaluations` from each `search_interval`. `n_uncertain`, `rejected_deep` and `n_ambiguous` are dropped, and `eigenproblem._record` flags only `d.n_uncertain`. **The warm path, which is douse's, accepts uncertain counts and possible lost eigenvalues silently.** | checked |
+| 1.3 | `eigenproblem.py:312` | `raise PrecisionShortfall(...)` in `_solve_cold` has no import in scope, so `on_shortfall="raise"` on a geometry-declined shape raises `NameError`. douse catching `PrecisionShortfall` would crash. | checked |
+| 1.4 | `search.py:218-227` `Level.margin` | Messages ("margin 4; 2 is needed") and `_rank`'s rung tie-break use a `delta_res`-only margin, while `met` reads `bound`, which may be MP. A level that failed the MP cross-check reports margin ≥ 2, and the planner ranks that rung as nearly met. | checked |
+| 1.5 | `solver.py` `certify_levels`, `eigenfunctions` | Neither reads the integral rule's `sizing_prec`/`shortfalls`: the same defect as `hadamard()` before this branch. A demoted corner (sizing inf) feeds the MP norm and the Löwdin step unreported. | checked |
+| 1.6 | `bracket.py:380`, `search.py:845` | Purity uses `prec*max(hi, 1.0)` in k, and the merge licence uses `prec*max(lam, 1.0)`. Both are absolute floors, so on large domains (lam < 1, k < 1) brackets and merges loosen to prec/k and prec/lam. The result is not scale-invariant. | checked |
+| 1.7 | `refine.py:452` | A `budget` exit doesn't widen `delta_res` to the triple's width; only `stalled` does. The bar can be optimistic on a pathological refinement. | checked |
+| 1.8 | `multiplicity.py` `reach_multiplicity` | If every branch up to `MAX_BRANCHES` (8), or up to the retained rank, is counted, mu is reported as certain. That count is really a lower bound. | reviewer |
+| 1.9 | `solver.py:618-633` `HadamardReport.attained` | `max(rule, gram_residual)` leaves out the eigenfunction's own error (about `mp_eps`), so `report.met` can claim better than u_n allows. | reasoning, not measured |
+| 1.10 | `helmholtz/_bessel.py` / `_core.py:226` | Evaluating a Fourier-Bessel family at its own vertex (r = 0) crashes: `rel_err` is inf or nan, and `int(log10(inf))` raises `OverflowError`. Any plot or eigenfunction grid that includes a vertex fails. | checked |
+| 1.11 | `eigensolver.py:114` | `count_uncertain = ... or grouping_ambiguous`, although `grouping_ambiguous` is documented as "the count is trustworthy". Trustworthy counts are reported as uncertain, which risks needless replans in douse. | reviewer |
+| 1.12 | `mps/solver.py:255` `findability` | The cache key leaves out the probe count `n`, so a different `n` returns a stale result. | reviewer |
+
+## 2. Honest calibration that should buy speed
+
+| # | where | what | status |
+|---|---|---|---|
+| 2.1 | `eigenproblem.py:334` | The cold window starts at `0.5 * faber_krahn`. The count audit needs only `lo < FK`, and the warm path already uses `0.98 FK`. Every cold solve, including each rung of the planner's climb, scans k in [0.71, 0.99]·k_FK, which Faber-Krahn proves empty. **One-line change.** | checked; saving est. |
+| 2.2 | `solver.py:524-537` | The certification rule is sized at `integral_prec(prec)` (0.1·prec), but the MP bound needs the norm only to a few digits: a norm error δ moves the bound by δ relative. At 1e-10 that means 1e-11 nodes where about 1e-3 would do. Verify on `bound_coverage.py`. | checked; saving est. |
+| 2.3 | `solver.py:397, 429` | `track_levels` certifies merged-window levels twice: once inside `search_interval`, then again over all levels. That is one redundant Moler-Payne pass per cluster window on every warm step, and douse is all warm steps. | checked |
+| 2.4 | `refine.py` loop | The refiner narrows toward `prec*lam` even after the floor (`delta_res`) has exceeded it, running to `stalled`/`budget` (≤ 40 evaluations) on every unmet level in flag mode. The stop planned in `search.md` §2.6, at `max(prec*lam, delta_res)`, was never implemented. | reviewer; saving est. |
+| 2.5 | `geometry/segments.py:238,532,725` | The adaptive polyline tolerance is `prec*length`, so the point count grows like prec^-½: a disk has 1M points at 1e-12 and 16.8M (3 GB) at 1e-14. None of the consumers needs prec-level chords. Cap it at about 1e-10·length. | reviewer (measured there) |
+| 2.6 | `helmholtz/_bessel.py:56` `_LOG_MAXTERM` | The series branch is chosen while its largest term is ≤ 1e3 *absolute*. In the oscillatory regime \|J\| ≪ 1, so it loses 3–4 digits where scipy is exact (checked: mu 15.8, x 21.52 gives 5.3e-11 relative). The bound reports it honestly, but the loss is avoidable and matters at prec ≤ 1e-10. | checked |
+
+## 3. Warning noise that hides real warnings
+
+- **3.1 Wrong scale for the warning.** The Fourier-Bessel `PrecisionWarning` is an *entry-wise
+  relative* bound, so it fires beside every zero of J or of sin(ν θ). On the L-shape it fires
+  at 18 of 73 k values at prec 1e-8 and at 72 of 73 at 1e-12. The worst case was an
+  absolute error of 8e-15 reported as 1e-6. As a result, 12 test files ignore it, among them
+  the end-to-end suites that assert `achieved` and `met`. Nothing downstream consumes
+  `Sampling.accuracy`.
+  - Fix: report a column-scaled bound (`rel_err*|S|*scale`). This is already in TODO.md, and
+    the new data raises its priority.
+  - Two smaller fixes go with it: correct the message's "not the point set" wording, and put
+    the corner and order in the text so that one corner's warning doesn't deduplicate
+    another's.
+- **3.2 The family's prec is never aligned with the solve's.** Each family checks against its own
+  build `prec` (`plan.py:172`). Nothing in `mps/` calls `with_prec`, so a 1e-14 solve on a
+  1e-8 basis never warns, and a 1e-12 basis in a 1e-8 solve warns spuriously.
+- **3.3 The scale-error floor (3–4e-14) is counted as entry error.** It makes the warning fire
+  on every evaluation at prec ≤ 2e-14.
+- **3.4 `pencil.py:73` `_UNSAFE_RATIO = 1e-13` sits above the default rtol for prec below
+  4.5e-11.** `rank_diagnostics` then warns spuriously.
+
+## 4. Tests that would let a regression through
+
+| # | test | defect |
+|---|---|---|
+| 4.1 | `level_score.match_tolerance` → `test_solve.py:164` | The hard-roster pipeline at prec 1e-8 matches within `max(prec, 0.1·min gap)`, which is about 1e-2 for the disk and the L-shape. Eigenvalues wrong in the 3rd digit pass. **(checked)** |
+| 4.2 | `test_hadamard.py:151` | The split pair on rect(1, 1.001) is exact (dλ/dL = −2m²π²/L³), yet it is checked at rtol 5e-3. Five digits of cluster-Hadamard regression would pass. **(checked)** |
+| 4.3 | `test_tension.py:149,158,167` | Tension at the true λ is checked as `< 1e-6`, while 1e-12 to 1e-16 is achieved. **(checked)** |
+| 4.4 | `test_solve.py:67` "reports the accuracy it ACHIEVED" | It asserts only `attained_prec >= 0` or NaN; the known cone roots are never compared. **(checked)** |
+| 4.5 | `test_orthonormal.py:104` | `gram_residual` is never compared with the interior-Gauss Gram, the oracle sitting in the same file. It is the number `hadamard()` refuses on. |
+| 4.6 | `test_scaling.py:229`, `test_bessel_kernel.py:160` | Docstrings say "upper bound", but the assertions allow 20× and 10× under-reporting. |
+| 4.7 | `test_level_resolution.py:109`, `test_on_shortfall.py:96` | A bare `pytest.warns(PrecisionWarning)` is satisfied by the FB noise warning, so the solve-level shortfall warning could be deleted unnoticed. Add `match="short of the requested"`. **(checked)** |
+| 4.8 | `test_stage_policy.py:340` | The reference is chladni rung 2, agreeing with lappy only to about 1e-10, yet it is tested at a 1e-10 bar. |
+| 4.9 | `test_integral_rules.py:414` (mine) | `ach <= 1e-14` has under 2× margin over a platform-dependent floor, the same flake as the node cap. |
+| 4.10 | xfails | `test_solve_interval.py:172,262` are `strict=False` and slow-only, so a fix to STARVED_SILENT would land unnoticed. |
+
+Also, a few blanket `simplefilter("ignore")` calls hide RuntimeWarnings in the precision-ladder
+tests. `test_moler_payne.py:223` can pass while comparing nothing, because it never asserts
+`n_checked >= 1`.
+
+## Areas the reviewers found clean
+
+- The MP bound derivation (`certify.py`), `norm_lower`, `_regularize.py`, `bounds.py`, and the
+  planner's corner sizing.
+- refine's `delta_res` convention, and lam-vs-k handling in bracketing.
+- The policy constants, plane waves, the Y kernel, and `check_prec`.
+- `reference/tables.py`. The closed forms there claim 15.6 digits against a measured 15.5.
+
+## Status after the fixes (branch `accuracy-honesty`, 2026-11-03)
+
+| item | status | commit |
+|---|---|---|
+| 1.1, 1.2, 1.3, 1.4, 1.6, 1.7, 1.8, 1.10, 1.11, 1.12 | fixed, each with a regression test in `tests/test_reporting_honesty.py` | b5ac1c1 |
+| 1.5 | fixed: `Level.rule_prec` is flagged above `CERTIFY_RULE_FLAG`; `HadamardReport.norm_rule_prec` | e08d857 |
+| 1.9 | measured, then fixed: `attained` adds `mp_eps`, documented as an estimate (`hadamard_accuracy.md`) | 5a02def |
+| 2.1 | kept: cold window at 0.98 FK (A/B below) | 9e9d2a6 |
+| 2.2 | kept: certification rule sized for 1e-6; reverting it changes no warm-replay row (A/B below) | 9e9d2a6 |
+| 2.3 | kept: `track_levels` certifies only refined levels; its missing import (NameError on every certified warm solve) fixed (A/B below) | 9e9d2a6, 9d86051 |
+| 2.4 | **deferred**: the floor estimate exists only after the refine loop; it rests on the reviewer's reading alone | -- |
+| 2.5 | **deferred**: rests on the reviewer's measurement alone; it needs a geometry-consumer audit first | -- |
+| 2.6 | fixed, and the fix went further: the series hands off cancelling cells, and scipy's bound is now honest | 9de388a |
+| 3.1 to 3.4 | fixed: column-scaled bound and warning, solver `with_prec`, `_UNSAFE_RATIO` tied to rtol, filters removed | 060312f |
+| 4.1 to 4.7, 4.10 (oracle half) | fixed | 9235d0d |
+| 4.8 | **deferred**: regenerating the stage-policy references at 1e-13 from two bases is a run of its own | -- |
+| 4.9 | no change: the sizer returns `achieved <= prec` by construction; the flake was the node cap, already relaxed | -- |
+| 4.10 (xfail half) | no change: the 2026-11-04 slow run still xfails them (none passed), so they stay non-strict | -- |
+| 1.10 lightning `extent` | **deferred**: `lightning` does not know the domain | -- |
+
+The Bessel-kernel measurements behind 2.6 and 3.x:
+
+| measurement | before | after |
+|---|---|---|
+| L-shape scan, k in [2, 20], 73 k: warnings at 1e-8 / 1e-12 | 16 / 65 (entry-wise) | 0 / 0 |
+| L-shape worst column-scaled error (mpmath truth) | 7.3e-11 | 3.1e-14 |
+| mpmath grid (mu <= 300, x <= 120), worst relative error away from zeros of J | 1.7e-10 | 6.6e-13 |
+| worst true error / `rel_err` over the same grid | 16.6 (bound violated) | 0.72 |
+| fast suite under `-W error::UserWarning`, warning filters | 12 files plus 4 blanket marks | none |
+
+The same check on ARC (Linux, scipy 1.18.1; `notes/accuracy_studies.py` bessel, job 8421993):
+
+| kernel | cells | worst true error / `rel_err` | cells over 1 | worst true relative error |
+|---|---|---|---|---|
+| J, orders 0 to 400, x 0.05 to 600 | 43,200 | 1.74 | 106, all scipy branch, all at x >= 368 | 5.3e-9 (near zeros) |
+| Y, integer orders 0 to 79, x to 300 | 8,000 | 0.72 | 0 | 3.3e-12 |
+| Debye, on the cells where scipy underflows | 1,280 | 0.78 | 0 | 1.0e-11 |
+
+- The value bound holds below x of about 360. The douse reference shapes reach `k * diameter` of
+  60 (median 20), so the slip lies far outside chladni's use. It is recorded in `Scaled`'s
+  docstring, not fixed.
+- The derivative misses `rel_err` pointwise by up to 2600x, every time at a near-zero of J'
+  (|J'| at most 2e-3 of |J|). Relative to max(|J|, |J'|), the scale the column-scaled accuracy
+  sees, the worst is 1.5x, and that is again at x near 600. `Scaled` claimed `rel_err` bounds
+  `Sp`'s relative error; the docstring now says what it bounds.
+
+## Before/after gates (2026-11-04)
+
+Baseline 0d8c353 (before Phase 1) against the branch: 9e9d2a6 for the first three gates, 9d86051
+for warm replay. These compare the whole branch, not Phase 5 alone. Deterministic counts only:
+the wall times were taken on a shared machine.
+
+| gate | before | after |
+|---|---|---|
+| stage policy 1e-10, shipped | 161 ok, 1 flagged, 13 silent; 57,043 evaluations | 166 ok, 0 flagged, 9 silent; 53,132 (-7%) |
+| stage policy 1e-10, coarse | 169 ok, 1 flagged, 5 silent; 65,060 evaluations | 170 ok, 0 flagged, 5 silent; 55,642 (-14%) |
+| phase5 cold path, 1e-8, 35 cases | 34 CLEAN, 1 FLAGGED-OK; rungs {0: 24, 1: 8, 2: 1, 3: 1, 4: 1}; 15,400 assemblies | the same verdicts; rungs {0: 25, 1: 8, 2: 1, 3: 1}; 13,500 (-12%) |
+| bound coverage: configurations with an uncovered level | 9 | 1; L-shape `fb_all` n=24 at 1e-13 finds 19/19, was 0/19 |
+| warm replay, 10 hard shapes x 10 steps at 1e-10 | 89 warm, 10 refused (all shape 5); 17,878 assemblies; 805,030 Cauchy nodes | 82 warm, 18 refused; 16,961 (-5%); 227,044 (-72%) |
+
+The warm replay's 8 new refusals:
+
+- **Shape 9, 7 steps: the Bessel fix (9de388a), through the plan.** On shape 9's starting
+  geometry the planner used to escalate to rung 1 (first-level margin 7.45), because the series
+  branch lost digits. With the accurate kernel, rung 0 genuinely meets 1e-10 at margin 2.18, and
+  that plan is accepted. Warm reuse keeps it, and two steps later the first level genuinely
+  misses (bar 5.3e-9; margin 0.77). A fresh solve on the same shape escalates and meets (margin
+  7.85). Bisected over every commit of the branch; restoring the tight certification rule
+  changes nothing. Every bar is honest: the cost is a plan with no headroom.
+- **Shape 1, step 10: the same thin headroom, on rung 2.** Traced step by step: the first level
+  sits at margin 2.1 to 2.2 on all nine warm steps, then its bar jumps from 2.7e-9 to 1.2e-8
+  (margin 0.48) on the reused plan. A fresh plan on the step-10 shape meets at margin 2.14, so
+  the level's bound hovers at the threshold on every plan and one step's bar landed above it.
+- **Shape 5** misses on every step in both runs. Its margin reads 0.19 where it read 1.4,
+  because margin is now measured from the reported bar (1.4).
+
+douse already absorbs this: a refusal on a plan made at another shape triggers one re-plan at the
+current shape and a second solve (`chladni_backend.eigenvalues`). So the cost on douse is an
+occasional extra plan-and-solve, not a refused shape. The benchmark's "douse would refuse" count
+overstates it, since the benchmark does not re-plan. If the re-plans add up, the planner could
+ask for more headroom than margin 2 from a plan that will be reused warm.
+
+Shape 6 crashed in the first warm replay of the branch: the benchmark passed one window per
+level, and the branch groups shape 6's triple eigenvalue as 2 + 1 where the old code reported
+three single levels. The script now passes one per value, as `Eigenproblem.solve` documents.
+
+## ARC accuracy studies: eigenvalues, Hadamard, starved bases (2026-11-04)
+
+`notes/accuracy_studies.py analyze` on jobs 8420875 and 8421993 (all 244 tasks; output in
+`$DOUSE_RUNS/chladni/chladni_acc/accuracy_studies_out/`). OLD = 5a02def, NEW = 9de388a, so only
+the Bessel kernel differs.
+
+**Eigenvalues: no real miss.** 51 shapes at 1e-10 and 1e-12, 0 failed solves on either tree.
+
+| prec | tree | levels (with a reference) | `met` | reference outside the bar |
+|---|---|---|---|---|
+| 1e-10 | old / new | 425 (321) / 425 (321) | 405 / 405 | 2 / 2 |
+| 1e-12 | old / new | 423 (320) / 426 (321) | 306 / **363** | 3 / 3 |
+
+The 3 "met but wrong" levels are the same on both trees and at both precs, and none is a chladni
+error:
+- **T2.7-lowest, 122.5344119**: the analysis matches only non-provisional references, so it
+  paired this level with its neighbour 122.5342080. The reference's provisional second member of
+  the same group is 122.53441190971, which chladni reproduces to 1e-13.
+- **T1.2, 68.85367366469**: the reference lists a mult-2 group by its first member
+  (68.85367366379). Its run C resolves two values 9e-10 apart, and chladni reports them as two
+  levels; this one is the second, matching run C's to 1e-13.
+- **T2.8-N5s2, 179.30225112**: the reference takes run B's value (179.302250991, bound 1.2e-10)
+  over runs A and C (179.3022511198 and 179.3022512034). chladni agrees with A and C to 3e-12 at
+  both precs. The reference's bound is wrong; this level should be marked provisional.
+
+NEW's gain at 1e-12 is 57 more levels met. T2.6-N3k5-L6-ref0 is the clearest case: OLD's planner
+exhausted its ladder and found 6 of 10 eigenvalues, NEW finds all 10 with no flags. On
+T2.9-ngon8, NEW groups 69.2178 as one double level where OLD reported two singles. Away from
+those, the two trees agree to a median of 2e-14 (1e-12) and 3e-13 (1e-10).
+
+**Hadamard `attained` under-reports on the douse shapes** (850 NEW levels, with `attained` =
+max(rule, norm, gram) + mp_eps as in 5a02def):
+
+| prec | true error > `attained` | median true / `attained` | worst | true > prec but `attained` <= prec (no warning) |
+|---|---|---|---|---|
+| 1e-10 | 274 / 425 | 1.97 | 33.6 | 91, worst 10.5x prec |
+| 1e-12 | 214 / 425 | 1.02 | 8.6 | 38, worst 5.9x prec |
+
+`k * attained` covers 362, 492, 671 and 771 of the 850 levels for k = 1, 2, 3 and 5. The worst
+are T2.3-pre and T2.6 shapes at 1e-10, with the identity error 10 to 30 times gram + mp_eps. The
+40-level sample in `hadamard_accuracy.md` (6 under-reported, worst 2.6) was too small and too
+easy. A log-log fit of the true error on gram and mp_eps leaves a residual s.d. of 0.5 decades;
+the relative gap to the nearest level adds nothing. So `attained` is a typical-case estimate, not
+a bound, and at 1e-10 it misses its own warning on a fifth of levels. **Open:** calibrate it (a
+factor, or a predictor that sees u_n's error) or keep it labelled as an estimate.
+
+**Starved bases: `gram_residual` alone under-reports, but `gram + mp_eps` covers it.** The
+interior oracle (ear-clipped triangles, Duffy-Gauss at n = 40) is not converged on corner
+domains. On T2.8-N5s2 at the full basis it reads 1e-7 to 6e-7, falling to 1e-9 to 1e-11 at
+n = 100 (checked on the Mac). Its readings are flat across starve factors, the signature of the
+rule's own error. Where the oracle is trustworthy (T1.4-hex: 1e-12 at the full basis, the same at
+n = 100), starving the basis to 0.25 or less gives a true Gram defect of 6e-8 to 4e-5 while
+`gram_residual` reads 1e-15 to 3e-9 and `orthonormal` stays True. Every such level is unmet,
+with mp_eps (6e-6 to 2e-2) above the defect. So `HadamardReport.attained`, which adds mp_eps,
+is honest there; `Eigenfunctions.orthonormal`, which looks at gram alone, is not.
+
+## Hard-shapes Hadamard, FD column (2026-11-04)
+
+Job 8419409, all 50 tasks (`notes/hadamard_hard_shapes.py analyze`). The identity column is as
+before: at 1e-12 NEW beats OLD on 9 of 10 shapes, by up to 2000x (v2/N6_k5/task_0: 2.8e-9 to
+1.1e-12). The FD column cannot judge the vertex gradients. With `H_STEP = 4e-3`, a step comparable
+to these shapes' 0.05 edges, the Richardson gap is 5e-6 to 3e-3 of lam_max. The FD-against-
+Hadamard error is identical on OLD and NEW to two digits on every shape, up to 0.11. Only the
+two N8_k4 shapes agree to 3e-10 to 4e-10. A useful FD reference needs a step near 1e-4 (noise
+1e-12 / 1e-4 = 1e-8), which is another ARC run.

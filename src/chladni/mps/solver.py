@@ -89,6 +89,18 @@ class Eigenfunctions:
 #: still refuses a residual of order one (`notes/hadamard_accuracy.md`: a flat triangle at prec
 #: 1e-12 came back with `gram_residual` 0.16 and a dilation identity off by 0.43).
 HADAMARD_GRAM_REFUSE = 1e3
+#: Past this model error of the certification rule, a Moler-Payne bound -- off by about that
+#: much RELATIVE -- is flagged (`eigenproblem._record`). Inf when a singular corner's rule was
+#: demoted. Ordinary rules sit at `integral_prec(prec)`, far below.
+CERTIFY_RULE_FLAG = 1e-3
+
+#: The prec the CERTIFICATION rule is sized for (`integral_quad` sizes to a tenth of it, 1e-6),
+#: unless the solve's own prec is looser. The Moler-Payne bound takes only the NORM from the
+#: rule -- the boundary sup has its own dense sampling (`certify.boundary_sup`) -- and a norm
+#: error delta moves the bound by delta relative, so a few digits are all it needs. Sizing it at
+#: 0.1*prec bought 1e-11 nodes at prec 1e-10 for a 1e-3 question
+#: (`accuracy_audit_2026-11-03.md` 2.2). `eigenfunctions` and `hadamard` keep the tight rule.
+CERTIFY_NORM_PREC = 1e-5
 HADAMARD_GRAM_FLOOR = 1e-8
 
 #: The corner rule (`integrals.integral_quad(..., corners=)`) every boundary integral here uses,
@@ -111,14 +123,32 @@ class HadamardReport:
 
     `sizing_prec` and `shortfalls` are the integral rule's own (`IntegralQuad`): the worst MODEL
     bound over its panels and every panel short of target. `gram_residual` is each level's
-    orthonormality defect (`Eigenfunctions.gram_residual`). `attained` is the larger of the two
-    kinds: the relative precision the matrix can be claimed to, as a model bound."""
+    orthonormality defect (`Eigenfunctions.gram_residual`). `mp_eps` is the worst Moler-Payne
+    relative residual of the levels' eigenfunctions (nan where uncertified).
+
+    `attained` is the largest of the three rule/normalization kinds -- the Hadamard rule, the
+    normalization rule, the orthonormality defect -- PLUS `mp_eps`, since `u_n` from an MPS
+    eigenfunction is wrong to first order in its boundary residual. It is an ESTIMATE, not a
+    bound. Measured 2026-11-03 against the exact identities (translation and rotation give
+    H = 0, dilation eig H = -2 lam) on 40 levels of the corner-domain identity cases and three
+    hard douse shapes (`notes/hadamard_vs_mp_eps.py`, `notes/hadamard_accuracy.md`): the three
+    kinds alone under-reported on 23 of 40 levels, by up to 8x; with `mp_eps` added, on 6 of 40,
+    by at most 2.6x. That sample was too easy. On the 51 douse reference shapes (850 levels, ARC
+    2026-11-04, `notes/accuracy_audit_2026-11-03.md`) `attained` under-reports on 488: median
+    2x, worst 34x at prec 1e-10, worst 8.6x at 1e-12. So `met` (and the warning) can pass an H
+    that is up to ~10x short of prec: on 91 of 425 levels at 1e-10 and 38 of 425 at 1e-12. Read
+    `attained` as a typical-case estimate; calibrating it is open in `TODO.md`."""
 
     prec: float
     sizing_prec: float
     shortfalls: tuple
     gram_residual: tuple
     attained: float
+    #: The worst model bound of the rules the levels were NORMALIZED on (`Eigenfunctions.rule`).
+    #: H scales as 1/||u||^2, so it enters `attained` too; before 2026-11-03 only the Hadamard
+    #: rule's own sizing did (`notes/accuracy_audit_2026-11-03.md`, 1.5).
+    norm_rule_prec: float = float("nan")
+    mp_eps: float = float("nan")
 
     @property
     def met(self):
@@ -162,6 +192,12 @@ class MPSEigensolver(Eigensolver, Frozen):
         # penalty is `reg="tikhonov_qr"`, explicitly. Passing rtol=, rank= or lam_ref= asks for a truncation; lam_ref=(lo, hi)
         # freezes its rank.
 
+        # The families check their own evaluation against their own `prec` (`Sampling.
+        # _check_accuracy`), so they must check against the solve's: a 1e-14 solve on a basis
+        # built at 1e-8 would never warn, and a 1e-8 solve on a 1e-12 basis would warn for
+        # nothing. Only the claim changes; the columns are the same.
+        if getattr(basis, "prec", self.prec) != self.prec:
+            basis = basis.with_prec(self.prec)
         _set(self, _pencil=MPSPencil.from_basis(
             basis, bdry_quad, int_pts, reg=reg, rank=rank, rtol=rtol,
             lam_ref=lam_ref, prec=self.prec))
@@ -240,7 +276,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         """
         from . import calibrate as _cal
 
-        key = (float(a), float(b), float(dk), bool(calibrate))
+        key = (float(a), float(b), float(dk), bool(calibrate), n)
         cache = getattr(self, "_findability", None)
         if cache is None:
             _set(self, _findability={})
@@ -368,7 +404,7 @@ class MPSEigensolver(Eigensolver, Frozen):
         from .. import asymp
         from .multiplicity import GAP_RATIO
         from .refine import refine
-        from .search import Level, SolveDiagnostics, SolveResult
+        from .search import Level, SolveDiagnostics, SolveResult, _precision_summary
 
         prec = self.prec if prec is None else check_prec(prec)
         prev = np.atleast_1d(np.asarray(prev, dtype=float))
@@ -388,6 +424,11 @@ class MPSEigensolver(Eigensolver, Frozen):
             else:
                 windows.append((lo, hi, [int(i)]))
         levels, n_evals, refine_evals = [], 0, 0
+        # What a merged window's search could not certify travels with the result: it used to
+        # be dropped here, and the warm path accepted uncertain counts and deep rejections (a
+        # possible lost eigenvalue) unflagged (`notes/accuracy_audit_2026-11-03.md`, 1.2).
+        doubts = dict(n_uncertain=0, uncertain=(), rejected_deep=(), n_ambiguous=0)
+        searched = []
         for lo, hi, members in windows:
             # A window holding several previous levels, or one wide enough to hold several
             # wells (wider than `WIDE_WINDOW` x the local mean Weyl spacing: an early, large
@@ -398,8 +439,13 @@ class MPSEigensolver(Eigensolver, Frozen):
                 res_w = self.search_interval(lo, hi, prec=prec)
                 if res_w.declined:
                     return None, f"search: the merged window [{lo:.6g}, {hi:.6g}] declined"
-                levels.extend(res_w.levels)
-                n_evals += res_w.diagnostics.evaluations
+                searched.extend(res_w.levels)      # certified by search_interval already
+                dw = res_w.diagnostics
+                n_evals += dw.evaluations
+                doubts["n_uncertain"] += int(dw.n_uncertain)
+                doubts["uncertain"] += tuple(dw.uncertain)
+                doubts["rejected_deep"] += tuple(dw.rejected_deep)
+                doubts["n_ambiguous"] += int(dw.n_ambiguous)
                 continue
             i = members[0]
             obj = self.objective(lo, hi, prec=prec)
@@ -420,15 +466,23 @@ class MPSEigensolver(Eigensolver, Frozen):
             levels.append(Level(lam=float(r.lam), mult=m, sigma=float(r.sigma),
                                 delta_res=float(r.delta_res), bracket=(lo, hi), prec=prec,
                                 count_decided_by="tracked"))
-        levels = tuple(sorted(levels, key=lambda L: L.lam))
+        # Only the REFINED levels are certified here. A merged window's levels were certified by
+        # its own `search_interval`; certifying them again was one redundant Moler-Payne pass per
+        # cluster window on every warm step (`accuracy_audit_2026-11-03.md` 2.3).
+        if self.certify and levels:
+            levels = list(self.certify_levels(SolveResult(levels=tuple(levels)),
+                                              lam_max=float(windows[-1][1]), prec=prec).levels)
+        levels = tuple(sorted(levels + searched, key=lambda L: L.lam))
         audit = asymp.CountAudit("unaudited", reason="tracked windows are not a prefix")
         res = SolveResult(levels=levels,
                           diagnostics=SolveDiagnostics(refine_evals=refine_evals,
                                                        evaluations=n_evals,
-                                                       prec_requested=prec, count_audit=audit))
-        if self.certify and res.levels:
-            res = self.certify_levels(res, lam_max=float(windows[-1][1]), prec=prec)
-            res = _replace(res, diagnostics=_replace(res.diagnostics, count_audit=audit))
+                                                       prec_requested=prec, count_audit=audit,
+                                                       **doubts))
+        if self.certify:
+            unmet, attained = _precision_summary(levels, prec)
+            res = _replace(res, diagnostics=_replace(res.diagnostics, unmet=unmet,
+                                                     attained_prec=attained))
         return res, None
 
     def _mean_spacing(self, lam):
@@ -481,7 +535,7 @@ class MPSEigensolver(Eigensolver, Frozen):
             why = "Moler-Payne needs a Dirichlet condition on the whole boundary"
             levels = tuple(replace(L, bound_reason=why) for L in res.levels)
         else:
-            iq = self._integral_quad(lam_max, prec)
+            iq = self._integral_quad(lam_max, max(float(prec), CERTIFY_NORM_PREC))
             origins = certify.x0_probes(self.domain, iq.x0)
             levels = []
             for L in res.levels:
@@ -510,6 +564,7 @@ class MPSEigensolver(Eigensolver, Frozen):
                                       mp_eps=float(np.max(mp.eps)),
                                       cancellation=float(np.max(mp.cancellation)),
                                       bound_reason=mp.reason,
+                                      rule_prec=float(iq.sizing_prec),
                                       delta_res_admitted=bool(
                                           L.delta_res <= prec * abs(L.lam)
                                           and not (np.max(mp.abs)
@@ -646,14 +701,21 @@ class MPSEigensolver(Eigensolver, Frozen):
         H = np.stack([-identities.weighted_integral(cd, "NN", vf) for vf in vals])
         iq = cache[key]
         resid = tuple(float(ef.gram_residual) for ef in efs)
+        norm_rule = max(float(ef.rule.sizing_prec) for ef in efs)
+        eps = [float(getattr(L, "mp_eps", np.nan)) for L in levels]
+        mp_eps = max((e for e in eps if np.isfinite(e)), default=float("nan"))
         rep = HadamardReport(prec=float(prec), sizing_prec=float(iq.sizing_prec),
                              shortfalls=tuple(iq.shortfalls), gram_residual=resid,
-                             attained=max([float(iq.sizing_prec)] + list(resid)))
+                             attained=(max([float(iq.sizing_prec), norm_rule] + list(resid))
+                                       + (mp_eps if np.isfinite(mp_eps) else 0.0)),
+                             norm_rule_prec=norm_rule, mp_eps=mp_eps)
         if not rep.met:
-            where = ", ".join(w for w, *_ in rep.shortfalls) or "the normalization"
+            where = (", ".join(w for w, *_ in rep.shortfalls)
+                     or ("the eigenfunctions' Moler-Payne residual"
+                         if rep.mp_eps > rep.prec / 2 else "the normalization"))
             warnings.warn(
                 f"the Hadamard matrix at lam = {lam:.10g} is good to {rep.attained:.1e} "
-                f"relative (model bound), short of prec = {prec:.0e}: {where}. "
+                f"relative (estimate), short of prec = {prec:.0e}: {where}. "
                 f"report=True returns the details.", PrecisionWarning, stacklevel=2)
         return (H, rep) if report else H
 
@@ -708,7 +770,8 @@ class MPSEigensolver(Eigensolver, Frozen):
         if len(d.unmet):
             warnings.warn(
                 f"{len(d.unmet)} level(s) in [{float(a):.6g}, {float(b):.6g}] reached only "
-                f"{d.attained_prec:.1e} relative, short of the requested "
+                + (f"{d.attained_prec:.1e} relative" if np.isfinite(d.attained_prec)
+                   else "no finite bar") + f", short of the requested "
                 f"{self.prec:.0e}. The values are correct to the bar reported on the "
                 f"Spectrum; the pencil is what binds here, not the request.",
                 PrecisionWarning, stacklevel=2,
@@ -732,8 +795,9 @@ def _raise_on_shortfall(res, a, b, prec):
     reasons = []
     if short:
         reasons.append(f"{len(short)} level(s) unmet, the first at lam = {short[0].lam:.10g} "
-                       f"(margin {short[0].margin:.3g}: the request spans that many local floor "
-                       f"scales; 2 is needed)")
+                       f"(margin {short[0].margin:.3g}: prec*lam over the reported bar, times "
+                       f"2; 2 is needed" + (f"; {short[0].bound_reason}" if short[0].bound_reason
+                                            else "") + ")")
     if audit is not None and audit.verdict in ("short", "excess"):
         reasons.append(f"the count audit says {audit.verdict} (mean Weyl deficit "
                        f"{audit.statistic:.3g}, at the window's top {audit.top_deficit:.3g}"

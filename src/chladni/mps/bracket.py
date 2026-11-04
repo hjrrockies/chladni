@@ -266,6 +266,9 @@ class SearchDiagnostics:
     prec_requested: float = float("nan")
     #: True when some region stopped narrowing because the objective, not the budget, ran out.
     floor_limited: bool = False
+    #: True when the cover loop stopped on its evaluation BUDGET with regions still impure. It
+    #: was reported as `floor_limited` before (audit 2026-11-03), which named the wrong cause.
+    budget_limited: bool = False
 
     @property
     def met_request(self):
@@ -377,7 +380,11 @@ def width_is_pure(lo, hi, prec_u):
     Keyed to the upper end, which is the binding member -- the scorer's own rule, so the search
     stops exactly where the scorer stops caring and not one evaluation later.
     """
-    return (hi - lo) <= float(prec_u) * max(abs(float(hi)), 1.0)
+    # Relative at every scale, with the arithmetic's own floor. A `max(|hi|, 1)` here made the
+    # rule absolute for k < 1 -- a large domain -- and passed brackets 1/k too wide
+    # (`notes/accuracy_audit_2026-11-03.md`, 1.6).
+    hi = float(hi)
+    return (hi - lo) <= max(float(prec_u) * abs(hi), 4.0 * np.spacing(abs(hi)))
 
 
 def descent_certificate(ks, vs, lo, hi):
@@ -691,7 +698,7 @@ def bracket_interval(obj, *, prec=None, budget=None, rescue_floor=False):
         budget = int(BUDGET_PER_EIG * max(expected or seen, 1.0))
 
     cover_evals = locate_evals = confirm_evals = 0
-    regions, floor_limited = [], False
+    regions, floor_limited, budget_limited = [], False, False
 
     for _ in range(MAX_ROUNDS):
         mark = obj.n_evals
@@ -704,7 +711,8 @@ def bracket_interval(obj, *, prec=None, budget=None, rescue_floor=False):
                                          cover_evals=cover_evals,
                                          n_live_regions=len(live_regions(ks, vs, L))))
         cover_evals += obj.n_evals - mark
-        floor_limited |= stalled
+        floor_limited |= stalled == "floor"
+        budget_limited |= stalled == "budget"
 
         mark = obj.n_evals
         ks, vs, regions, reopened = _locate(obj, ks, vs, regions, prec_u, L, budget)
@@ -735,7 +743,8 @@ def bracket_interval(obj, *, prec=None, budget=None, rescue_floor=False):
     brackets = tuple(Bracket(lo=back(a), hi=back(b), k_hint=back(_hint(ks, vs, a, b)),
                              sigma=_hint_sigma(ks, vs, a, b),
                              certified=descent_certificate(ks, vs, a, b) is not None,
-                             floor_limited=floor_limited and not width_is_pure(a, b, prec_u))
+                             floor_limited=((floor_limited or budget_limited)
+                                            and not width_is_pure(a, b, prec_u)))
                      for a, b in kept)
     # The precision ACHIEVED, over the regions that were still being NARROWED when the loop
     # stopped -- not over every bracket. A bracket holding one eigenvalue is emitted wide on
@@ -743,7 +752,7 @@ def bracket_interval(obj, *, prec=None, budget=None, rescue_floor=False):
     # Reporting the widest bracket instead read 9e-02 on runs that met a 1e-08 request exactly,
     # which would tell a caller its answer was eight orders worse than it was.
     unresolved = [(a, b) for a, b in kept
-                  if floor_limited and not width_is_pure(a, b, prec_u)]
+                  if (floor_limited or budget_limited) and not width_is_pure(a, b, prec_u)]
     attained = max((2.0 * (b - a) / max(b, np.spacing(1.0)) for a, b in unresolved),
                    default=float(prec))
     return SearchResult(brackets, diag(
@@ -751,6 +760,7 @@ def bracket_interval(obj, *, prec=None, budget=None, rescue_floor=False):
         n_live_regions=len(regions), cover_evals=cover_evals,
         locate_evals=locate_evals, confirm_evals=confirm_evals,
         attained_prec=float(attained), floor_limited=bool(floor_limited),
+        budget_limited=bool(budget_limited),
         prec_requested=float(prec)))
 
 
@@ -832,11 +842,12 @@ def _cover(obj, ks, vs, L, L_hist, L_growth, prec_u, span, budget):
                 if not width_is_pure(r[0], r[1], prec_u)
                 and not _certified(obj, ks, vs, r, L)]
         if not todo:
-            return ks, vs, L, L_hist, L_growth, regions, False
+            return ks, vs, L, L_hist, L_growth, regions, None
 
         total = sum(b - a for a, b in todo)
         stalled = stalled + 1 if total >= last_total else 0
         if stalled > STALL_LIMIT or obj.n_evals >= budget:
+            stop = "floor" if stalled > STALL_LIMIT else "budget"
             # **Being asked for more precision than the objective can deliver is not a
             # failure, and must not be reported as one.** The regions in hand still bracket
             # their eigenvalues -- they are merely wider than `prec` asked for -- so they are
@@ -848,7 +859,7 @@ def _cover(obj, ks, vs, L, L_hist, L_growth, prec_u, span, budget):
             # for 4e-13" into "DECLINED, nothing found", which is worse in both directions: it
             # loses brackets that were correct, and it hides the one number the caller needs to
             # decide whether to accept the answer or improve the basis.
-            return ks, vs, L, L_hist, L_growth, regions, True
+            return ks, vs, L, L_hist, L_growth, regions, stop
         last_total = total
 
         # The region with the deepest unexplained dip: the most negative lower bound is where a

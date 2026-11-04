@@ -29,8 +29,7 @@ from chladni.mps import MPSEigensolver
 
 from hard_roster import recipe_basis
 
-pytestmark = [pytest.mark.slow,
-              pytest.mark.filterwarnings("ignore::chladni.helmholtz.PrecisionWarning")]
+pytestmark = pytest.mark.slow
 
 TEN_PI2 = 10 * np.pi ** 2
 PREC = 1e-10

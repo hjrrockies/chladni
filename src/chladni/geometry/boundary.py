@@ -206,7 +206,9 @@ class Boundary(Frozen):
             if not isinstance(s, Segment):
                 raise TypeError(f"expected Segment, got {type(s).__name__}")
         prec = min(s.prec for s in segments)
-        scale = max(max(s.length for s in segments), 1.0)
+        # The boundary's own size, not `max(size, 1)`: a floor at 1 made the gap test absolute
+        # for small domains and accepted a 0.5% gap on a 1e-6 square (audit 2026-11-03, 1.6).
+        scale = max(s.length for s in segments)
         tol = max(prec, 1e-12) * scale
         for i in range(len(segments) - 1):
             if abs(segments[i].p1 - segments[i + 1].p0) > tol:

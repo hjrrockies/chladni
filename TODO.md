@@ -109,11 +109,15 @@ The path, in order:
   - too few interior points inside the wedges;
   - TAPERED lightning clusters (untapered ones made solves decline).
   Until then the planner ends these FLAGGED at its top rung.
-* **[next]** **Fourier-Bessel's accuracy warning is not substantive at 1e-10.** `Sampling.accuracy`
-  bounds read ~1e-7 to 1e-9 on planned bases, while 30-digit mpmath shows the columns good to
-  ~1e-14 (`notes/hard_cases.md`, part 3). So `PrecisionWarning: FourierBessel can deliver about
-  1e-9 ...` fires on ordinary 1e-10 solves, against the warn-only-when-substantive rule.
-  Tighten the bound, or stop warning on it.
+* **[done 2026-11-03: the series hands cancelling cells to scipy (`_SERIES_BUDGET`); scipy's bound
+  measured and made honest]** **Fourier-Bessel's accuracy warning at 1e-10 to 1e-12.** With the
+  warning column-scaled, what still fired was REAL: the series branch lost 7.3e-11 of the column
+  scale at mu 19.3, x 23.6 on the L-shape (mpmath), and about 1e-9 at order 16 in
+  `test_floor_multiplicity`. On a (mu <= 300, x <= 120) mpmath grid the worst relative error away
+  from zeros of J fell from 1.7e-10 to 6.6e-13, and the L-shape column-scaled worst from 1.3e-10 to
+  1.5e-13. scipy's own error is absolute, 260-720 eps of the envelope, growing like x^(1/3); its
+  old flat `4e-16(1+nu)` claim was 10-25x optimistic, and is replaced by the measured form.
+  Remaining: at prec <= 1e-13 the warning fires honestly (that floor is scipy's and the scale's).
 * **[done 2026-10-13, PR #13: probes outside the window are not evaluated]** **The search can ask the
   pencil for a NEGATIVE lam.** `notes/hybrid_bases.py`
   round 2, T2.6-N3k4-L8-ref0 with Fourier-Bessel plus corner lightning (default sigma 4,
@@ -128,6 +132,23 @@ The path, in order:
   L = the corner's clearance, order 1), lightning declined on almost every case, graded
   collocation included: very ill-conditioned columns. The shipped ladder uses Fourier-Bessel plus
   boundary-offset sources instead.
+* **[next]** **Deferred from the 2026-11-03 accuracy audit** (`notes/accuracy_audit_2026-11-03.md`,
+  "Status"):
+  - **2.4, the refiner's floor stop.** Stop at `max(prec*lam, delta_res)` (`search.md` 2.6); the
+    floor estimate is only formed after the loop today.
+  - **2.5, the polyline tolerance cap** (`max(prec, 1e-10) * length`). Audit the geometry
+    consumers first.
+  - **4.8, the coarse-bracketing references.** Regenerate them at 1e-13 from two independent bases.
+  - **`achievable_prec`'s contrast term.** Measure it against an eigenvalue first.
+  - **The absolute geometric thresholds in branch-cut detection.**
+  - **The `lightning` source `extent`.**
+  - **Calibrate `HadamardReport.attained`.** On the douse shapes it under-reports by a median 2x,
+    up to 34x, and stays silent on 91 of 425 levels at 1e-10 (ARC, 2026-11-04). Either a
+    measured factor, or a predictor that sees `u_n`'s error. The data:
+    `$DOUSE_RUNS/chladni/chladni_acc/accuracy_studies_out/eigs_new_*.json`.
+  - **`Eigenfunctions.orthonormal` ignores `mp_eps`.** On a starved basis it reads True with a
+    true Gram defect up to 4e-5.
+  - **The hard-shapes FD column at `H_STEP` near 1e-4.** At 4e-3 it measures the FD's own error.
 * **[next]** **Rebuild T2.8-N5s2's reference on current code.** Its trusted value 179.302250990678
   (status `fem_resolved`: one run, recipe B, plus a finite-element count) does not reproduce.
   Recipe B on current code gives 179.3022510764, uncertified. Every current basis -- corner-only A
@@ -514,7 +535,8 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   simplification candidate -- decided by the two tests not yet run: a high-precision basis on a
   sharp shape (these bases floor at ~2e-7), and a Neumann/Cauchy-data case, where J' from the series
   may beat `jvp`. Repro: `notes/bessel_kernel_vs_scipy.py` (2026-10-06).
-* **[next]** **`FourierBessel`'s `PrecisionWarning` flags per-entry relative error, which is not a
+* **[done 2026-11-03: column-scaled `Sampling.accuracy`, `accuracy_entrywise` kept; the test-file
+  filters removed]** **`FourierBessel`'s `PrecisionWarning` flags per-entry relative error, which is not a
   substantive loss.** The user's rule (2026-10-06): **warn only for precision losses that are
   substantive** -- ones that can move a computed result. `Sampling._check_accuracy`
   (`helmholtz/_core.py`) warns on `max(rel_err)` over all entries, and the series branch's
@@ -680,6 +702,12 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 * **[later]** The older public searches (`tests/searches.py`) have no live test: `test_searches.py`
   moved to `notes/evidence_tests/` on 2026-10-09 with the retired baselines. They are reached only
   through `tests/bracketers.py` and `baselines.py`, which `test_bracket_score.py` exercises.
+* **[later]** `_rerank` (`solve(stable_rank=True)`) has no live test. Its only test used the
+  L-shape, whose cells lost their noise tails when the Bessel series stopped losing digits
+  (9de388a, 2026-11-04), so it now re-ranks nothing. A shape with a stable-rank noise tail is needed.
+* **[later]** `test_no_level_claims_prec_past_a_tight_reference` is a strict xfail: references.json
+  has no T2.8-N5s2 value within 0.1*prec, so it compared nothing. Lift it with audit 4.8's tighter
+  references.
 
 ## 6. Small deferred measurements
 

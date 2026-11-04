@@ -132,8 +132,6 @@ def test_a_rank_deficient_pencil_is_truncated_not_solved():
 # -- where FourierBessel reports a digit less than the requested 1e-8. That is the point of
 # the tests: the rank is frozen at construction and must hold wherever it is later evaluated.
 # Accuracy at those lam is not the claim, and is tested in test_precision.py.
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_a_frozen_rank_gives_a_continuous_tension_curve(pencil):
     """The whole point. Sample the tension densely across a window containing no eigenvalue
     and measure the largest jump between neighbours against the typical one. A rank change
@@ -194,8 +192,6 @@ def test_the_minimizer_never_comes_near_the_truncation_cutoff():
     )
 
 
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_frozen_rank_does_not_depend_on_where_it_is_evaluated(pencil):
     """`rank` is fixed at construction and every later call uses it, whatever lam arrives."""
     r = pencil.rank
@@ -416,8 +412,6 @@ def test_the_short_coef_vector_names_the_same_function_when_padded(pencil):
 # lam = 60 is far above the fixture's lam_ref of 10.89, where FourierBessel reports a digit
 # less than the requested 1e-8. The claim here is about counting directions, not about
 # accuracy at that lam.
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_rank_at_tracks_lam_for_a_non_truncating_mode(pencil):
     """`k + l` is LAPACK's own number and moves with `lam`, so `rank_at` must not be fixed
     at construction. Measured on the L-shape fixture in THRESHOLD mode, where `reg=None`
@@ -804,8 +798,6 @@ def test_a_penalty_inside_its_reach_is_silent(pencil, prec):
 
 # The scan runs to lam = 60, far above the fixture's lam_ref, where FourierBessel reports a
 # digit less than 1e-8. The claim is about counting directions, not accuracy.
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_qr_penalty_never_changes_rank():
     """The stated goal, measured. Over a scan where the threshold rank takes seven values
     (42 to 48 of 50), `"tikhonov_qr"` yields 50 finite tensions at every `lam`: nothing is

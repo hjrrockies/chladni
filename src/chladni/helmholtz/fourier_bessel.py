@@ -225,7 +225,7 @@ class FourierBesselSampling(Sampling):
 
     def _eval(self, k, cols, want_grad):
         s, scale = self._bessel(k, cols, want_grad)
-        self._check_accuracy(s.rel_err)
+        self._check_accuracy(self._column_err(s, scale), cols)
         ang, dang = _take(self._ang, cols), _take(self._dang, cols)
         rad = s.S * scale
         vals = rad * ang
@@ -236,8 +236,12 @@ class FourierBesselSampling(Sampling):
         return vals, grad
 
     def accuracy(self, k, cols=None):
-        """Per-column relative-error bound, reduced over the points. Free: it comes out of
-        the series loop, which already knows its own largest term."""
+        """Per-column bound relative to the column scale (`Sampling.accuracy`). Free: it
+        comes out of the series loop, which already knows its own largest term."""
+        s, scale = self._bessel(check_k(k), cols, derivative=False)
+        return self._column_err(s, scale)
+
+    def accuracy_entrywise(self, k, cols=None):
         s, _ = self._bessel(check_k(k), cols, derivative=False)
         return s.rel_err.max(axis=0)
 
@@ -301,6 +305,10 @@ class FourierBessel(HelmholtzFamily):
 
     def log_scale(self, k, cols=None):
         return _log_envelope(_take(self.orders, cols), check_k(k) * self.radius)
+
+    def _where(self, col):
+        z = complex(self.origin)
+        return f" at the corner ({z.real:.4g}, {z.imag:.4g}) (order {self.orders[col]:.3g})"
 
     def singular_exponents(self):
         return SingularStructure(np.full(self.n_cols, self.origin), self.orders.copy())

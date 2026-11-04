@@ -115,7 +115,7 @@ class FundamentalSampling(Sampling):
 
     def _eval(self, k, cols, want_grad):
         s, scale = self._bessel(k, cols, want_grad)
-        self._check_accuracy(s.rel_err)
+        self._check_accuracy(self._column_err(s, scale), cols)
         ang, dang = _take(self._ang, cols), _take(self._dang, cols)
         rad = s.S * scale
         vals = rad * ang
@@ -127,6 +127,9 @@ class FundamentalSampling(Sampling):
         return vals, grad
 
     def accuracy(self, k, cols=None):
+        return self._column_err(*self._bessel(check_k(k), cols, derivative=False))
+
+    def accuracy_entrywise(self, k, cols=None):
         return self._bessel(check_k(k), cols, derivative=False)[0].rel_err.max(axis=0)
 
 
@@ -310,6 +313,9 @@ class Fundamental(HelmholtzFamily):
 
     def with_prec(self, prec):
         return Fundamental(self.origins, self.order, self.radius, self.extent, prec=prec)
+
+    def _where(self, col):
+        return f" (multipole order {int(self._m[col])})"
 
     def __repr__(self):
         return (f"Fundamental(n_sources={len(self.origins)}, order={self.order}, "

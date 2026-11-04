@@ -93,7 +93,7 @@ def test_raise_on_a_dropped_window_names_the_audit():
 @pytest.mark.slow
 def test_solve_interval_raises_instead_of_warning():
     s = _solver("starved")
-    with pytest.warns(PrecisionWarning):
+    with pytest.warns(PrecisionWarning, match="short of the requested"):
         s.solve_interval(LO, HI)                        # the default still warns and returns
     with pytest.raises(PrecisionShortfall):
         s.solve_interval(LO, HI, on_shortfall="raise")

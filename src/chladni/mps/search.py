@@ -207,6 +207,11 @@ class Level:
     #: and a Moler-Payne bound is in hand, so `bound` reports that bound alone. Set by
     #: `MPSEigensolver.certify_levels`, which knows `prec`; see `bound` for why.
     delta_res_admitted: bool = True
+    #: The model accuracy of the integral rule the Moler-Payne norm was formed on
+    #: (`IntegralQuad.sizing_prec`): infinite when a singular corner's rule was demoted. The
+    #: bound is off by about this much RELATIVE, so only a rule past `CERTIFY_RULE_FLAG` is
+    #: worth a flag. NaN where no bound was computed.
+    rule_prec: float = float("nan")
     #: The request this level was solved for. Stamped by `solve`; NaN on a Level built
     #: elsewhere, which then claims no `margin`, no `resolution` and no shortfall.
     prec: float = float("nan")
@@ -216,15 +221,21 @@ class Level:
 
     @property
     def margin(self):
-        """`prec * lam / (eps/c)`, the plan's R: how many local floor scales the request spans.
+        """`DELTA_SAFETY * prec * lam / bound`: how far the request is from the reported bar,
+        scaled so that `met` holds exactly when `margin >= DELTA_SAFETY`, whichever bar the level
+        reports. It is what a re-plan needs to know: how far short a level fell, not only that
+        it did.
 
-        `delta_res = DELTA_SAFETY * eps / c` (`mps/refine.py`), so this is
-        `DELTA_SAFETY * prec * lam / delta_res`. `met` held exactly when `margin >= DELTA_SAFETY`
-        on all 8062 levels of the douse benchmark (`notes/margin_rule_offline.md`). It is what a
-        re-plan needs to know: how far short a level fell, not only that it did."""
-        if not (np.isfinite(self.prec) and np.isfinite(self.delta_res) and self.delta_res > 0):
+        While the bar is the refiner's `delta_res = DELTA_SAFETY * eps / c` (`mps/refine.py`)
+        this is `prec * lam / (eps/c)`, the plan's R: how many local floor scales the request
+        spans (`notes/margin_rule_offline.md`). It USED to be that always, even after
+        certification had replaced the bar with a Moler-Payne bound, so a level that failed the
+        cross-check read "margin 4; 2 is needed" while unmet, and the planner ranked its rung as
+        nearly met (`notes/accuracy_audit_2026-11-03.md`, 1.4). 0 for a refused (infinite) bar."""
+        b = self.bound
+        if not (np.isfinite(self.prec) and b > 0) or np.isnan(b):
             return float("nan")
-        return float(DELTA_SAFETY * self.prec * abs(self.lam) / self.delta_res)
+        return float(DELTA_SAFETY * self.prec * abs(self.lam) / b)
 
     @property
     def resolution(self):
@@ -271,8 +282,12 @@ class Level:
         reported when it is the tighter -- on the threshold path near 1e-13 it can be 100x
         tighter than Moler-Payne, and it covered the error there to within 2.6x. `delta_res`
         alone where no bound was computed (`certify=False`, or a boundary that is not
-        Dirichlet), and then nothing guards it."""
-        if not self.delta_res_admitted and np.isfinite(self.mp_bound):
+        Dirichlet), and then nothing guards it.
+
+        A REFUSED bound (`mp_bound = inf`, `bound_reason` set) is reported as such: infinite,
+        so the level is unmet. It used to fall through to `delta_res` and read met -- the worst
+        Moler-Payne outcome reported as success (`notes/accuracy_audit_2026-11-03.md`, 1.1)."""
+        if not self.delta_res_admitted and not np.isnan(self.mp_bound):
             return float(self.mp_bound)
         vals = [v for v in (self.delta_res, self.mp_bound) if np.isfinite(v)]
         return float(min(vals)) if vals else float("nan")
@@ -742,8 +757,9 @@ def _precision_summary(levels, prec):
     """`(unmet, attained)`: the levels short of `prec`, and the worst attained precision. One
     place, because `MPSEigensolver` recomputes it after attaching Moler-Payne bounds."""
     unmet = tuple(x.lam for x in levels if not x.met(prec))
-    attained = max((x.attained_prec for x in levels
-                    if np.isfinite(x.attained_prec)), default=prec)
+    if any(not np.isfinite(x.attained_prec) for x in levels):
+        return unmet, float("nan")          # a level with no bar: nothing was attained there
+    attained = max((x.attained_prec for x in levels), default=prec)
     return unmet, float(attained)
 
 
@@ -836,13 +852,20 @@ def _refine_stage(obj, res, prec, abort_unmet):
     return located, refused
 
 
+def _licence(lam, prec):
+    """The merge licence `prec*|lam|`, with the arithmetic's floor -- the form `refine._xatol`
+    uses. Not `prec*max(|lam|, 1)`: that was absolute below lam = 1 and folded levels up to
+    `prec/lam` apart on a large domain (`notes/accuracy_audit_2026-11-03.md`, 1.6)."""
+    return max(prec * abs(float(lam)), 4.0 * np.spacing(abs(float(lam))))
+
+
 def _same_point(obj, first, r, prec, views=None):
     """Are two located roots one level? Only a pair the refinement could not tell apart --
     within the attained bars, or, when the bars disagree, within the shallower root's reach
     down the deeper root's wall -- and never further apart than the licence `prec*lam`. The
     search never merges deliberately, only what it could not resolve. (The "licence" merge,
     every pair within the licence, is in the ablations.)"""
-    licence = prec * max(abs(r.lam), 1.0)
+    licence = _licence(r.lam, prec)
     d = abs(r.lam - first.lam)
     if d > licence:
         return False

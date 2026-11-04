@@ -12,16 +12,16 @@ whose eigenvalues are the derivatives of the level's members. `V` is a callable
 forms (a rectangle's moving side) and against finite differences of `chladni`'s own eigenvalues
 (the L-shape's re-entrant vertex, where `d_n u` is singular).
 """
+import warnings
+
 import numpy as np
 import pytest
 
+from chladni._core import PrecisionWarning
 from chladni.eigenproblem import Eigenproblem
 from chladni.geometry import Polygon, rect
 
 PREC = 1e-10
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
-
 
 def _edge_velocity(dom, pick):
     """`V(curve, t)`: 1 on the segments `pick(p0, p1)` selects, 0 elsewhere; one field."""
@@ -139,16 +139,20 @@ def test_two_distinct_levels_form_one_block_with_their_cross_terms():
 
 @pytest.mark.slow
 def test_a_split_pair_near_a_double_gives_the_doubles_derivatives():
-    """1 x 1.001: the square's 5 pi^2 double split into two close levels. Taken TOGETHER they
-    give a block whose eigenvalues are within O(1e-3) of the square's -2 pi^2 and -8 pi^2 --
-    the model a cluster optimizer needs on the way into a degeneracy."""
+    """1 x 1.001: the square's 5 pi^2 double split into two close levels, (1,2) and (2,1).
+    Taken TOGETHER they give the block a cluster optimizer needs on the way into a degeneracy.
+    It is EXACT here, not O(1e-3) off the square's: moving the x = 1 edge, d(lam)/da =
+    -2 m^2 pi^2 / a^3 with a = 1, so -2 pi^2 and -8 pi^2, and the cross term vanishes because
+    sin(pi y/b) and sin(2 pi y/b) are orthogonal on the edge. Checked to the solve's prec."""
     dom = rect(1.0, 1.001)
     spec = Eigenproblem(dom).solve(3, prec=PREC)
     assert spec.count >= 3 and len(spec.lam) >= 3 and spec.mult[1] == 1
     V = _edge_velocity(dom, lambda p0, p1: abs(p0.real - 1.0) < 1e-12
                        and abs(p1.real - 1.0) < 1e-12)
-    ev = np.sort(np.linalg.eigvalsh(spec.hadamard([1, 2], V)[0]))
-    np.testing.assert_allclose(ev, [-8 * np.pi ** 2, -2 * np.pi ** 2], rtol=5e-3)
+    H = spec.hadamard([1, 2], V)[0]
+    np.testing.assert_allclose(np.sort(np.linalg.eigvalsh(H)), [-8 * np.pi ** 2, -2 * np.pi ** 2],
+                               rtol=10 * PREC)
+    assert abs(H[0, 1]) < 10 * PREC * np.pi ** 2
 
 
 # --- what the matrix is good for: the report and the refusal (2026-11-03) ----------------------
@@ -258,9 +262,15 @@ def test_rigid_motions_and_dilation_hold_on_corner_domains(name, verts, bar):
     spec = Eigenproblem(dom).solve(6, prec=1e-12)
     V = _linear_fields(dom)
     for i in range(len(spec.lam)):
-        H_, rep = spec.hadamard(i, V, report=True)
+        # The hexagon's eigenfunctions carry a Moler-Payne residual just above 1e-12, which
+        # `attained` now includes (audit 2.2): an honest warning, checked against `bar` instead.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=r".*the eigenfunctions' Moler-Payne residual",
+                                    category=PrecisionWarning)
+            H_, rep = spec.hadamard(i, V, report=True)
         lam = spec.lam[i]
         assert rep.shortfalls == (), (name, rep.shortfalls)
+        assert rep.attained <= bar, (name, i, rep.attained)
         for f in range(3):
             assert np.abs(H_[f]).max() < bar * lam, (name, i, f)
         np.testing.assert_allclose(np.linalg.eigvalsh(H_[3]), -2 * lam, rtol=bar)

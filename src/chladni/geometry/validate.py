@@ -29,7 +29,7 @@ def check_nondegenerate(boundary, what="boundary"):
     lo, hi = boundary.bbox          # exact for lines and arcs; no polyline forced
     w = float(hi.real - lo.real)
     h = float(hi.imag - lo.imag)
-    scale = max(w, h, 1.0)
+    scale = max(w, h)
     tol = max(boundary.prec, 1e-12) * scale
     if w <= tol or h <= tol:
         raise ValueError(f"degenerate {what}: zero enclosed area (extent {w:.3g} x {h:.3g})")

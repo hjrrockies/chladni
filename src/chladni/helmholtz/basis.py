@@ -56,12 +56,18 @@ class BasisSampling(Sampling):
         return vals, grad
 
     def accuracy(self, k, cols=None):
+        return self._per_part("accuracy", k, cols)
+
+    def accuracy_entrywise(self, k, cols=None):
+        return self._per_part("accuracy_entrywise", k, cols)
+
+    def _per_part(self, name, k, cols):
         k = check_k(k)
         f = self._family
         cols = _as_cols(cols)
         out = np.empty(f.n_cols if cols is None else len(cols))
         for i, local, dest in f._dispatch(cols):
-            out[dest] = self._parts[i].accuracy(k, local)
+            out[dest] = getattr(self._parts[i], name)(k, local)
         return out
 
 

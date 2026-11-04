@@ -19,9 +19,6 @@ from chladni.reference import L_shape_eigs, eq_tri_eigs, rect_eigs
 PREC = 1e-10
 
 # Fourier-Bessel's per-column error bound is very pessimistic (`notes/hard_cases.md`, part 3).
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
-
 
 def _check_against(spec, truth, n, prec):
     """Every returned value within its bound of the truth, and the first n right with

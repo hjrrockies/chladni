@@ -75,6 +75,17 @@ silently under-delivering: `Domain.achievable_prec` is the pattern.
 `PrecisionWarning` has its own category so a `douse` grid can `simplefilter("ignore",
 PrecisionWarning)` without a blanket filter that would hide everything else.
 
+**Relative tolerances have no absolute floor.** A relative tolerance is `max(prec*|x|, a few
+ulps of x)`, never `prec*max(|x|, 1.0)`: the `1.0` makes the tolerance depend on the domain's
+scale, so that below `lam = 1` (a large domain) it silently loosens to `prec/lam`. Length tests
+(contiguity, closure) scale by the domain's own length, not by `max(length, 1.0)`.
+
+**A level's bar, `met` and `margin` tell one story** (2026-11-03). `bound` is the bar the level
+reports. That is the Moler-Payne bound when `delta_res` was not admitted, including a REFUSED
+one (inf), which is never read as met. `margin = DELTA_SAFETY * prec * |lam| / bound`, so
+`met <=> margin >= DELTA_SAFETY` on every path, and `margin` is nan where there is no bar. A
+level with no bar never reports the request as attained.
+
 ---
 
 # The spectral parameter
@@ -249,10 +260,20 @@ returned column is `psi_j * exp(-sigma_j)`, and `sigma_j` is analytic. That is w
 downstream unit-norm rescale compose without double-counting: the log scales simply add, and a
 coefficient vector means the same function on every point set.
 
-The two concerns stay separate and are owned by different layers. `helmholtz` owns **entry-wise
-relative accuracy** -- a column representable to full relative accuracy is a different object from
-a column of underflowed zeros. `mps` owns **pencil conditioning** -- rescaling to exact unit norm
-if the GSVD wants it. Neither impersonates the other.
+The two concerns stay separate and are owned by different layers. `helmholtz` owns **accuracy
+relative to the column scale** -- a column representable to full relative accuracy is a different
+object from a column of underflowed zeros. `mps` owns **pencil conditioning** -- rescaling to exact
+unit norm if the GSVD wants it. Neither impersonates the other.
+
+The accuracy claim, and the `PrecisionWarning` that enforces it, is **column-scaled**
+(2026-11-03): `Sampling.accuracy(k)` is, per column, the worst entry error over the points divided
+by the column's largest entry there, leaving out the per-column-constant part of the scale's
+rounding (`Scaled.rel_fixed`), which no column-scale-invariant consumer can see. The stricter
+per-entry relative bound is `Sampling.accuracy_entrywise(k)`. The entry-wise bound diverges beside
+every zero of `J` and fired on 16 of 73 k on the L-shape at 1e-8 for no change in any result;
+the column-scaled one fires there on none, and where it does fire the loss is real (checked
+against mpmath: `tests/test_reporting_honesty.py`). The solver re-checks its basis at its own
+`prec` (`basis.with_prec`), so the warning speaks to the solve's request, not the plan's.
 
 **Unscaled coefficients are never materialized.** At a `pi/8` corner with `k*R = 10` the `sigma`
 range spans about 1149 nats. An eigenfunction is always evaluated as `scaled_matrix @ c`, and the

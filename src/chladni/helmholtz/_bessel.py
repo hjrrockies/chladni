@@ -62,6 +62,14 @@ from scipy.special import gammaln, jv, y0, y1, yv
 #: 1e-12 or better while still covering every cell where scipy underflows below nu ~ 515.
 _LOG_MAXTERM = np.log(1e3)
 
+#: ...but a bounded largest term is not a bounded error once `S` itself is small: past the
+#: turning point the series cancels down to an oscillating `|J| << 1`, and `eps*maxterm/|S|`
+#: is what is lost -- 7.3e-11 of the column scale at (nu, x) = (19.3, 23.6), where scipy is
+#: good to 1e-15 (`accuracy_audit_2026-11-03.md` 2.6). So the series keeps a cell only while
+#: its own cancellation bound is within this many eps; the rest go to scipy, and come back
+#: only where scipy underflows. Self-selecting, like the scipy -> Debye fall-through.
+_SERIES_BUDGET = 1e2
+
 #: Hard stop on the series loop. The real counts are small (3 terms at x = 0.01, 24 at
 #: (400, 50), 45 at (400, 100)); this only exists so a pathological call cannot hang.
 _MAX_TERMS = 600
@@ -77,8 +85,13 @@ class Scaled(NamedTuple):
     """A Bessel value in factored form.
 
     `value = S * exp(sigma)` and `derivative = Sp * exp(sigma)`. `rel_err` bounds the
-    relative error of `S` and `Sp` -- it falls out of the series loop for free (it is
-    `eps * largest_term / |S|`) and is what `Sampling.accuracy` reports upward.
+    relative error of `S` -- it falls out of the series loop for free (it is
+    `eps * largest_term / |S|`) and is what `Sampling.accuracy` reports upward. For `Sp` it
+    bounds the error relative to `max(|S|, |Sp|)`, not to `|Sp|`: near a zero of the
+    derivative its relative error is unbounded (up to 2600x `rel_err` on the ARC grid). The
+    value bound holds over orders 0 to 400 for `k*r` up to about 360; beyond, on Linux's scipy
+    1.18, the scipy branch exceeds it by up to 1.74x at `k*r = 600`. The douse reference shapes
+    reach `k * diameter` of 60. (notes/accuracy_studies.py, ARC 2026-11-03.)
 
     `Sp` is None when the caller passed `derivative=False`. That is not a micro-optimization:
     the scipy branch gets the derivative from `J_{nu-1} - J_{nu+1}`, so asking for it triples
@@ -91,6 +104,7 @@ class Scaled(NamedTuple):
     Sp: np.ndarray
     sigma: np.ndarray
     rel_err: np.ndarray
+    rel_fixed: np.ndarray    # the part of rel_err that is one constant per column (see `_scale_err`)
 
 
 # --- the canonical scale -------------------------------------------------------------------
@@ -108,8 +122,9 @@ def _scale_err(a, b):
     It is also, and usefully, CONSTANT ALONG A COLUMN: `nu` is fixed per basis function, and
     while `x = k*r` varies, `nu*log(x/2)` varies only as `nu*log(r)`, so at fixed `k` the
     gammaln half is a pure per-column factor. A scale-invariant consumer -- which the GSVD
-    is -- sees the largest-term part of the bound and not this part. `Sampling.accuracy`
-    reports the honest entrywise number; the solver is entitled to know it is conservative.
+    is -- sees the largest-term part of the bound and not this part. Each branch reports
+    that half separately as `Scaled.rel_fixed`: `Sampling.accuracy_entrywise` keeps it,
+    `Sampling.accuracy` (the column-scaled bound the warning reads) drops it.
     """
     return _EPS * (np.abs(a) + np.abs(b))
 
@@ -171,7 +186,10 @@ def _j_series(nu, x, derivative=True):
         Sp = (None if not derivative else
               np.where(x > 0, Sx / np.where(x > 0, x, 1.0), _dj_at_zero(nu)))
         rel = _EPS * biggest / np.abs(S) + _scale_err(nu * np.log(x / 2), gammaln(nu + 1))
-    return Scaled(_at_zero_value(nu, x, S), Sp, _sigma_j(nu, x), rel)
+    # x = 0 is exact (`_at_zero_value`); log(0) made the bound inf and crashed the warning.
+    rel = np.where(x > 0, rel, _EPS)
+    fixed = np.where(x > 0, _EPS * np.abs(gammaln(nu + 1)), 0.0)
+    return Scaled(_at_zero_value(nu, x, S), Sp, _sigma_j(nu, x), rel, fixed)
 
 
 def _at_zero_value(nu, x, S):
@@ -221,7 +239,8 @@ def _y_series(m, x, derivative=True):
         Sp = (None if not derivative else
               np.where(x > 0, -Sx / np.where(x > 0, x, 1.0), np.inf))
         rel = 4 * _EPS + _scale_err(m * np.log(x / 2), gammaln(np.maximum(m, 1.0)))
-    return Scaled(-S, Sp, _sigma_y(m, x), rel)
+    return Scaled(-S, Sp, _sigma_y(m, x), rel,
+                  np.zeros_like(x) + _EPS * np.abs(gammaln(np.maximum(m, 1.0))))
 
 
 # --- branch B: scipy, rescaled ----------------------------------------------------------------
@@ -244,13 +263,23 @@ def _j_scipy(nu, x, derivative=True):
     # measured at 39% of the whole per-k evaluation on a realistic 600 x 144 block -- more
     # than the Bessel functions it was calling. The symmetric form is used rather than
     # `J_{nu-1} - (nu/x)*J_nu` because the latter cancels where the two terms are close.
-    # scipy's own relative error grows with the order: measured 3e-17 at nu = 10 and
-    # 1.9e-13 at nu = 250. Report that rather than a flat eps nobody measured.
-    with np.errstate(divide="ignore", invalid="ignore"):
-        rel = np.maximum(_EPS, 4e-16 * (1.0 + nu)) + _scale_err(nu * np.log(x / 2),
-                                                                gammaln(nu + 1))
+    # scipy's error, measured against 30-digit mpmath (2026-11-03): ABSOLUTE, in units of the
+    # oscillation's envelope M past the turning point, and growing slowly with x -- worst
+    # 263 eps of M at x < 20, 324 at x < 100, 661 at x < 300, 723 at x < 800, at every order
+    # band from 0 to 300 -- and with the order (1.9e-13 at nu = 250). The old flat
+    # `4e-16*(1 + nu)` was 10-25x optimistic at low order, and near a zero of J, where the
+    # relative error is M/|J| times the absolute one, a flat bound under-reported by 24x.
+    val = jv(nu, x)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        osc = x > nu
+        M = np.sqrt(2.0 / (np.pi * np.sqrt(np.maximum(x * x - nu * nu, x ** (4.0 / 3.0)))))
+        amp = np.where(osc, np.maximum(1.0, M / np.abs(val)), 1.0)
+        rel = (np.maximum(120 * _EPS * np.maximum(x, 1.0) ** (1.0 / 3.0), 8e-16 * (1.0 + nu)) * amp
+               + _scale_err(nu * np.log(x / 2), gammaln(nu + 1)))
+        rel = np.where(x > 0, rel, _EPS)
+    fixed = np.where(x > 0, _EPS * np.abs(gammaln(nu + 1)), 0.0)
     der = None if not derivative else _rescale(0.5 * (jv(nu - 1, x) - jv(nu + 1, x)), sigma)
-    return Scaled(_rescale(jv(nu, x), sigma), der, sigma, rel)
+    return Scaled(_rescale(val, sigma), der, sigma, rel, fixed)
 
 
 def _y_scipy(m, x, derivative=True):
@@ -265,11 +294,17 @@ def _y_scipy(m, x, derivative=True):
     else:
         val = yv(m, x)
         der = 0.5 * (yv(m - 1, x) - yv(m + 1, x)) if derivative else None
-    with np.errstate(divide="ignore", invalid="ignore"):
-        rel = np.maximum(_EPS, 4e-16 * (1.0 + m)) + _scale_err(m * np.log(x / 2),
-                                                               gammaln(np.maximum(m, 1.0)))
+    # The same error model as `_j_scipy` (absolute, in units of the envelope past the turning
+    # point): the old flat `4e-16*(1 + m)` under-reported by up to 12x near zeros of Y, measured
+    # against mpmath for m < 20, x <= 300 (`notes/accuracy_studies.py`, 2026-11-03).
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        M = np.sqrt(2.0 / (np.pi * np.sqrt(np.maximum(x * x - m * m, x ** (4.0 / 3.0)))))
+        amp = np.where(x > m, np.maximum(1.0, M / np.abs(val)), 1.0)
+        rel = (np.maximum(120 * _EPS * np.maximum(x, 1.0) ** (1.0 / 3.0), 8e-16 * (1.0 + m)) * amp
+               + _scale_err(m * np.log(x / 2), gammaln(np.maximum(m, 1.0))))
     return Scaled(_rescale(val, sigma),
-                  None if der is None else _rescale(der, sigma), sigma, rel)
+                  None if der is None else _rescale(der, sigma), sigma, rel,
+                  np.zeros_like(x) + _EPS * np.abs(gammaln(np.maximum(m, 1.0))))
 
 
 # --- branch C: the Olver/Debye uniform asymptotic -----------------------------------------------
@@ -325,7 +360,7 @@ def _j_debye(nu, x):
         shift = np.exp(sigma_d - sigma)
         S = _olver_sum(_U, p, nu) * shift
         Sp = (w / z) * _olver_sum(_V, p, nu) * shift
-    return Scaled(S, Sp, sigma, np.full(np.shape(x), 2e-12))
+    return Scaled(S, Sp, sigma, np.full(np.shape(x), 2e-12), np.zeros(np.shape(x)))
 
 
 # --- the dispatchers --------------------------------------------------------------------------
@@ -338,7 +373,7 @@ def _pick(shape, parts):
     would overflow on the very cells it was not selected for -- and would do the work twice.
     """
     want_deriv = parts[0][1].Sp is not None
-    out = [np.full(shape, np.nan) for _ in range(4)]
+    out = [np.full(shape, np.nan) for _ in Scaled._fields]
     if not want_deriv:
         out[1] = None
     for mask, part in parts:
@@ -384,10 +419,15 @@ def log_j(nu, x, derivative=True):
         log_maxterm = x * x / (4.0 * (nu + 1.0))
     use_series = log_maxterm <= _LOG_MAXTERM
 
-    parts = []
+    keep = use_series                       # cells the series answers
     if np.any(use_series):
-        parts.append((use_series, _j_series(nu[use_series], x[use_series], derivative)))
-    rest = ~use_series
+        ser = _j_series(nu[use_series], x[use_series], derivative)
+        nu_s, x_s = nu[use_series], x[use_series]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            cancel = ser.rel_err - _scale_err(nu_s * np.log(x_s / 2), gammaln(nu_s + 1))
+        keep = _refine(use_series, ~((cancel > _SERIES_BUDGET * _EPS) & (x_s > 0)))
+    rest = ~keep
+    parts = []
     if np.any(rest):
         b = _j_scipy(nu[rest], x[rest], derivative)
         # Self-selecting rather than threshold-driven: branch C is exactly the cells where
@@ -395,11 +435,17 @@ def log_j(nu, x, derivative=True):
         gave_up = (~np.isfinite(b.S)) | ((b.S == 0.0) & (x[rest] > 0))
         parts.append((_refine(rest, ~gave_up),
                       Scaled(*(None if a is None else a[~gave_up] for a in b))))
-        if np.any(gave_up):
-            fell = _refine(rest, gave_up)
+        fell = _refine(rest, gave_up)
+        back = fell & use_series            # the series had them: its bound beats Debye's
+        keep = keep | back
+        fell = fell & ~use_series
+        if np.any(fell):
             parts.append((fell, _j_debye(nu[fell], x[fell])))
             if not derivative:
                 parts[-1] = (fell, parts[-1][1]._replace(Sp=None))
+    if np.any(keep):
+        sel = keep[use_series]
+        parts.append((keep, Scaled(*(None if a is None else a[sel] for a in ser))))
     return _unflatten(_pick(nu.shape, parts), shape)
 
 

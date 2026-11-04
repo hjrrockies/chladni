@@ -162,7 +162,8 @@ def _starved_lshape(n):
 def test_search_interval_carries_the_audit():
     res = _starved_lshape(16).search_interval(LO, 40.0)
     a = res.diagnostics.count_audit
-    assert a is not None and a.verdict == "ok", a       # all five levels in [5, 40] found
+    assert a is not None and a.verdict == "ok", a
+    assert sum(L.mult for L in res.levels) == 5         # all five levels in [5, 40] found
 
 
 @pytest.mark.slow
@@ -174,7 +175,6 @@ def test_search_interval_audits_a_window_the_basis_could_not_see():
 
 
 @pytest.mark.slow
-@pytest.mark.filterwarnings("ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_a_benchmark_drop_is_caught():
     """ngon12 on the stand-in basis D at 1e-10 drops whole doubles (`notes/phase3_rescore.md`):
     no returned level is near them, so only the audit sees it."""

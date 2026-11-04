@@ -22,9 +22,6 @@ from chladni.geometry import L_shape
 from chladni.mps import pencil as _pencil
 from chladni.plan import plan_for
 
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
-
 
 @pytest.fixture
 def p():

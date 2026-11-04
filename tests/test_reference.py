@@ -136,8 +136,8 @@ def test_every_reference_function_declares_its_accuracy():
 def test_closed_forms_claim_float64_and_no_more():
     """A closed form is exact as mathematics and still evaluates in floating point, so it
     claims float64's digits rather than infinity."""
-    assert ref.rect_eigs.digits == pytest.approx(15.6)
-    assert ref.disk_eigfun.digits == pytest.approx(15.6)
+    assert ref.rect_eigs.digits == pytest.approx(15.5)
+    assert ref.disk_eigfun.digits == pytest.approx(15.5)
 
 
 def test_a_table_reports_the_WORST_case_not_the_best():
@@ -183,7 +183,7 @@ def test_two_tabulated_entries_turned_out_to_be_closed_forms():
 
     assert np.allclose(ref.iso_tri_eigs(10, 1.0),
                        ref.iso_right_tri_eigs(10, np.sqrt(2.0)), rtol=0, atol=EXACT)
-    assert ref.iso_tri_eigs.digits_for(1.0) == pytest.approx(15.6)
+    assert ref.iso_tri_eigs.digits_for(1.0) == pytest.approx(15.5)
     assert "CLOSED FORM" in ref.iso_tri_eigs.notes[1.0][None]
 
 

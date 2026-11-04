@@ -289,10 +289,6 @@ def test_the_singular_corner_identity_survives_translation_on_the_graded_rule(sh
 GRADED_SECTOR_ALPHAS = [1.25, 1.5, 1.6, 1.75, 1.9]
 
 
-# The column is an exact eigenfunction, so its radial factor J_nu(k r) vanishes on the arc r = 1:
-# the kernel's RELATIVE error bound there is meaningless (1e1..1e2) while the absolute error, which
-# is what the norm sees, is not. The norm assertion below is the claim.
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 @pytest.mark.parametrize("shift", [0j, SHIFT], ids=["origin", "shifted"])
 @pytest.mark.parametrize("alpha", GRADED_SECTOR_ALPHAS)
 def test_the_exact_sector_norm_on_the_graded_rule_anywhere(alpha, shift):

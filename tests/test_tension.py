@@ -47,8 +47,6 @@ def _rng():
 # reference. The `< 1e-10` assertions below are the evidence, so suppressing here costs
 # nothing that the test does not immediately re-check.
 @pytest.mark.parametrize("omega", [np.pi / 3, np.pi / 2, 2 * np.pi / 3, 3 * np.pi / 2])
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_sector_eigenfunction_is_one_basis_column(omega):
     """`nu = pi/omega`, and the l-th Dirichlet mode is `J_{l*nu}(k r) sin(l*nu*theta)`. With
     a single column the pencil is 1-dimensional, so the tension is the exact relative
@@ -73,8 +71,6 @@ def test_the_sector_eigenfunction_is_one_basis_column(omega):
 
 
 @pytest.mark.parametrize("omega", [2 * np.pi / 3, 3 * np.pi / 2])
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_sector_tension_has_a_minimum_at_each_eigenvalue(omega):
     """Away from an eigenvalue the same single column cannot satisfy the arc condition, so
     the tension is O(1). That gap is what the deferred minimizer will hunt."""
@@ -91,8 +87,6 @@ def test_the_sector_tension_has_a_minimum_at_each_eigenvalue(omega):
         assert off > 1e3 * at, f"no dip at {lam}: {at:.2e} against {off:.2e} nearby"
 
 
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_sector_coefficient_reproduces_the_exact_eigenfunction():
     """The coefficient half of the same reference. With one column the eigenfunction is that
     column, so `coef` must return a scalar multiple of it -- checked on interior points the
@@ -138,6 +132,15 @@ def _waves(dom, lam):
     return PlaneWave.uniform(int(PlaneWave.n_useful(np.sqrt(lam) * R)), radius=R)
 
 
+def _assert_sharp_minimum(p, lam):
+    """Tension at the true lam against prec, and against itself 1% off. Measured 2026-11-03:
+    8.6e-13 (rectangle), 6.9e-16 (disk), 1.6e-12 (triangle) at lam, ~2e-2 at 1.01 lam. The
+    old bar, `< 1e-6`, let four or more digits of regression through."""
+    t = p.tension(lam)
+    assert t < 1e-10
+    assert t < 1e-6 * p.tension(1.01 * lam)
+
+
 def test_the_rectangle():
     """Plane waves alone: a rectangle has no singular corner, `omega = pi/2` gives
     `nu = 2`, and the eigenfunctions are analytic across every vertex."""
@@ -146,7 +149,7 @@ def test_the_rectangle():
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
                              dom.interior_pts(120, rng=_rng()), lam_ref=lam)
-    assert p.tension(lam) < 1e-6
+    _assert_sharp_minimum(p, lam)
 
 
 def test_the_disk():
@@ -155,7 +158,7 @@ def test_the_disk():
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
                              dom.interior_pts(120, rng=_rng()), lam_ref=lam)
-    assert p.tension(lam) < 1e-6
+    _assert_sharp_minimum(p, lam)
 
 
 def test_the_equilateral_triangle():
@@ -164,7 +167,7 @@ def test_the_equilateral_triangle():
     b = _waves(dom, lam)
     p = MPSPencil.from_basis(b, dom.bdry_quad(400),
                              dom.interior_pts(120, rng=_rng()), lam_ref=lam)
-    assert p.tension(lam) < 1e-6
+    _assert_sharp_minimum(p, lam)
 
 
 # --- the corner-singularity benchmark ----------------------------------------------------

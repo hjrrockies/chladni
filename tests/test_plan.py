@@ -49,9 +49,6 @@ def test_the_sizing_carries_the_precision(dom):
     assert plan_for(dom, N, 1e-8).n_cols < plan_for(dom, N, 1e-10).n_cols
 
 
-# Fourier-Bessel's per-column error bound reads ~1e-9 here; measured against 30-digit mpmath the
-# columns are good to ~1e-14 (`notes/hard_cases.md`, part 3), so the warning is not substantive.
-@pytest.mark.filterwarnings("ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_a_pickled_plan_reproduces_exactly(dom):
     p = plan_for(dom, N, PREC, rung=1)
     q = pickle.loads(pickle.dumps(p))
@@ -196,7 +193,6 @@ def test_a_patch_realizes_at_its_planned_size_here_and_nearby():
 
 
 @pytest.mark.slow
-@pytest.mark.filterwarnings("ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_stalled_hexagon_now_plans_cleanly():
     from chladni.eigenproblem import Eigenproblem
     spec = Eigenproblem(STALL).solve(4, prec=PREC)
@@ -246,7 +242,6 @@ def reg_ngon_with_short_edge():
 
 
 @pytest.mark.slow
-@pytest.mark.filterwarnings("ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_a_rung_that_declines_does_not_stop_the_climb():
     """A 1.6 x 0.4 rectangle, in two placements. In one the corner-term rung's search declines
     ("the slope estimate never settled") and the plane-wave rung above it reaches 1e-10; a climb

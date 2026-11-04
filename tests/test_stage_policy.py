@@ -24,9 +24,6 @@ from chladni.mps.policy import Policy
 from chladni.mps.search import Level
 from chladni.plan import plan_for
 
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
-
 LAM = 37.21
 
 
@@ -319,7 +316,10 @@ def test_the_stable_rank_search_keeps_the_l_shapes_spectrum():
         assert abs(ref[np.argmin(abs(ref - L.lam))] - L.lam) <= L.bound
         assert L.met(1e-10)
     d = b.diagnostics
-    assert d.n_reranked > 0 and d.n_rerank_refused == 0
+    # Re-ranking happens only in a cell with a noise tail at the stable rank. Since the Bessel
+    # series stopped losing digits (audit 2.6, 9de388a) the L-shape has none, so `n_reranked`
+    # is 0 here and this test no longer exercises `_rerank` itself (TODO: find a shape that does)
+    assert d.n_rerank_refused == 0
     assert all((L.rank is None) or (0 < L.rank < 203) for L in b.levels)
     assert d.rerank_evals <= 8 * d.n_reranked
     assert d.multiplicity_evals == a.diagnostics.multiplicity_evals == 0
