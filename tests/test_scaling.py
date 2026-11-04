@@ -211,8 +211,8 @@ def test_the_shipped_blend_beats_both_simpler_versions():
 # --- the accuracy diagnostic -----------------------------------------------------------------------
 
 def test_accuracy_bounds_the_error_it_reports_on():
-    """`Sampling.accuracy(k)` is a per-column relative-error bound, free out of the series
-    loop. It has to be an upper bound or it is worse than nothing. Same pattern as
+    """`Sampling.accuracy_entrywise(k)` is a per-column bound on each entry's relative
+    error, free out of the series loop. It has to be an upper bound or it is worse than nothing. Same pattern as
     `Domain.achievable_prec` one layer down: microseconds to compute, and it never claims a
     precision the object cannot deliver."""
     f = fam(np.pi / 8, n=20)
@@ -221,7 +221,7 @@ def test_accuracy_bounds_the_error_it_reports_on():
     theta = THETA_FRAC * f.modes.omega
     pts = r * np.exp(1j * theta)
     s = f.at(pts)
-    bound = s.accuracy(k)
+    bound = s.accuracy_entrywise(k)
     sigma = f.log_scale(k)
     ang = np.sin(f.orders * theta)
     got = f.values(k, pts)

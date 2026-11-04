@@ -68,7 +68,6 @@ def test_an_uncertain_level_is_flagged_even_when_the_diagnostics_did_not_count_i
     assert any(f.startswith("uncertain") for f in spec.flags), spec.flags
 
 
-@pytest.mark.filterwarnings("ignore:FourierBessel can deliver")   # removed in Phase 3
 def test_track_levels_keeps_the_count_doubts_of_a_merged_window(monkeypatch):
     s = Eigenproblem(rect(1.0, 1.1)).solve(3, prec=1e-8).solver
     doubt = (10.0, 2, 1, "reach and gap disagree")
@@ -147,7 +146,6 @@ def test_an_ambiguous_grouping_is_not_an_uncertain_count():
 
 # --- small ones ---------------------------------------------------------------------------------
 
-@pytest.mark.filterwarnings("ignore:FourierBessel can deliver")   # removed in Phase 3
 def test_findability_is_cached_per_probe_count():
     s = Eigenproblem(rect(1.0, 1.1)).solve(2, prec=1e-8).solver
     a = s.findability(10.0, 40.0, dk=0.05, n=3)
@@ -178,3 +176,66 @@ def test_the_hadamard_report_carries_the_normalization_rule():
     _, rep = spec.hadamard(0, V, report=True)
     assert np.isfinite(rep.norm_rule_prec) and rep.norm_rule_prec <= 1e-10
     assert rep.attained >= rep.norm_rule_prec
+
+
+# --- 3: the Fourier-Bessel warning is judged against the column, not the entry -----------------
+
+def _lshape_family(prec):
+    dom = L_shape()
+    c = next(c for c in dom.corners if c.is_reentrant)
+    return dom, FourierBessel.at_corner(c, n=80, domain=dom).with_prec(prec)
+
+
+def test_a_zero_of_j_is_not_a_shortfall():
+    """Beside a zero of J the entry's relative error is unbounded and costs the solve nothing;
+    the column-scaled bound is what the GSVD sees. Measured at 1e-8 over k in [2, 20]: the
+    entry-wise bound exceeded prec at 16 of 73 k, the column-scaled one at none."""
+    dom, fam = _lshape_family(1e-8)
+    s = fam.at(dom.bdry_quad(240))
+    ks = np.linspace(2, 20, 73)
+    assert any(s.accuracy_entrywise(k).max() > 1e-8 for k in ks)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        for k in ks:
+            s.values(k)
+    assert all(np.all(s.accuracy(k) <= s.accuracy_entrywise(k)) for k in ks)
+
+
+def test_the_column_scaled_bound_bounds_the_column_error():
+    """The worst L-shape column at 1e-12 (mu = 19.33, k = 17.75): the series branch really does
+    lose 7.3e-11 of the column's scale there (Phase 4), and the bound must say at least that."""
+    mp = pytest.importorskip("mpmath")
+    mp.mp.dps = 40
+    dom, fam = _lshape_family(1e-12)
+    s = fam.at(dom.bdry_quad(240))
+    k = 17.75
+    bound = s.accuracy(k)
+    L = fam.log_scale(k)
+    for j in np.argsort(bound)[-3:]:
+        mu = float(fam.orders[j])
+        exact = np.array([float(mp.besselj(mu, k * r) * mp.exp(-L[j])) for r in s.r])
+        b, scale = s._bessel(k, [j], derivative=False)          # the radial factor alone
+        err = np.max(np.abs(b.S[:, 0] * scale[:, 0] - exact)) / np.max(np.abs(exact))
+        assert err <= bound[j], (mu, err, bound[j])
+
+
+def test_the_warning_names_the_corner_and_the_order():
+    """One corner's warning must not deduplicate another's."""
+    from chladni._core import PrecisionWarning
+    dom = L_shape()
+    msgs = set()
+    for c in dom.corners[:2]:
+        fam = FourierBessel.at_corner(c, n=40, domain=dom).with_prec(1e-15)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always", PrecisionWarning)
+            fam.values(17.75, dom.bdry_quad(120))
+        msgs |= {str(x.message) for x in w}
+    assert len(msgs) == 2, msgs
+    assert all("at the corner" in m and "(order " in m for m in msgs)
+
+
+def test_the_solver_checks_the_basis_against_its_own_prec():
+    from chladni.mps import MPSEigensolver
+    dom, fam = _lshape_family(1e-8)
+    s = MPSEigensolver(dom, basis=fam, n_bdry=240, n_int=80, prec=1e-12, rng=0)
+    assert s.basis.prec == 1e-12

@@ -24,9 +24,6 @@ from chladni.mps.policy import Policy
 from chladni.mps.search import Level
 from chladni.plan import plan_for
 
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
-
 LAM = 37.21
 
 

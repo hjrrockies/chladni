@@ -88,8 +88,6 @@ def test_tensions_are_deterministic(pencil):
 # shortfall in the kernel's own scale. These two tests assert shape, determinism and thread
 # safety, none of which that digit touches; the accuracy claim itself is tested in
 # test_precision.py, where it is the subject rather than the weather.
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_tensions_take_an_array(solver):
     lams = np.linspace(8.0, 30.0, 17)
     got = solver.tensions(lams)
@@ -97,8 +95,6 @@ def test_tensions_take_an_array(solver):
     assert np.allclose(got[3], solver.tensions(lams[3]), rtol=0, atol=EXACT)
 
 
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_a_solver_is_safe_to_share_across_threads(solver):
     """`douse` runs solves in a thread pool over generated domains, so the object has to be
     holdable. It is immutable, which is the whole argument -- this checks the argument."""
@@ -342,8 +338,6 @@ def test_family_coef_scatters_the_SHORT_frozen_rank_vector(pencil):
     assert np.allclose(V @ fc, I[:, :r] @ x, rtol=0, atol=EXACT * terms)
 
 
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_pencil_cache_survives_threaded_eviction(solver):
     """`tensions(array)` maps over a thread pool while every evaluation stores three cache
     entries, so past `_CACHE_MAX` the eviction runs under threads. It used to be
@@ -356,8 +350,6 @@ def test_the_pencil_cache_survives_threaded_eviction(solver):
     assert np.allclose(parallel, serial, rtol=0, atol=EXACT)
 
 
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_a_threaded_batch_on_the_pencil_matches_the_serial_objective(pencil):
     """`Objective.from_pencil` evaluates a batch of misses on a thread pool; the values and the
     charged count must be the serial objective's, point for point."""

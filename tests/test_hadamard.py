@@ -19,9 +19,6 @@ from chladni.eigenproblem import Eigenproblem
 from chladni.geometry import Polygon, rect
 
 PREC = 1e-10
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
-
 
 def _edge_velocity(dom, pick):
     """`V(curve, t)`: 1 on the segments `pick(p0, p1)` selects, 0 elsewhere; one field."""

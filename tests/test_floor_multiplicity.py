@@ -29,8 +29,11 @@ from chladni.mps import MPSEigensolver
 
 from hard_roster import recipe_basis
 
+# The 1e-10 cases genuinely lose about 1e-9 of the column scale in the Bessel series branch
+# (order 16, k*r past the turning point): `accuracy_audit_2026-11-03.md` 2.6. Until that branch
+# is fixed, the warning is the kernel's, not this test's subject.
 pytestmark = [pytest.mark.slow,
-              pytest.mark.filterwarnings("ignore::chladni.helmholtz.PrecisionWarning")]
+              pytest.mark.filterwarnings("ignore:FourierBessel at the corner")]
 
 TEN_PI2 = 10 * np.pi ** 2
 PREC = 1e-10

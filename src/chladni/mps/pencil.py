@@ -73,8 +73,12 @@ _RANK_SAMPLES = 9
 #: s_r/s_0 = 1e-13 the tension has exactly one local minimum in a one-eigenvalue window and
 #: no wrong-way steps; at 1e-16 it has ninety, with 39% of the steps on the descending wall
 #: going the wrong way. The transition is sharp and sits at eps, so this leaves three
-#: decades of margin.
+#: decades of margin. Lowered to a tenth of the pencil's own `rtol` when that is smaller -- a
+#: cut the pencil was ASKED to make (the default rtol falls below 1e-12 at prec < 4.5e-11) is
+#: not a reason to warn -- but never below `_UNSAFE_FLOOR`, two decades above the measured
+#: transition, or a tight-prec rtol far under eps would switch the warning off.
 _UNSAFE_RATIO = 1e-13
+_UNSAFE_FLOOR = 1e2 * np.finfo(float).eps
 
 
 class RankDiagnostics(tuple):
@@ -497,12 +501,13 @@ class MPSPencil(Frozen):
         if s.size == 0 or s[0] <= 0.0:
             return
         ratio = s[self.rank - 1] / s[0]
-        if ratio >= _UNSAFE_RATIO:
+        safe = min(_UNSAFE_RATIO, max(0.1 * self.rtol, _UNSAFE_FLOOR))
+        if ratio >= safe:
             return
         decade = int(np.floor(np.log10(ratio))) if ratio > 0 else -np.inf
         warnings.warn(
             f"the frozen rank {self.rank} sits at a relative singular value of about "
-            f"1e{decade} at this lam, below the safe level {_UNSAFE_RATIO:.0e}. The retained "
+            f"1e{decade} at this lam, below the safe level {safe:.0e}. The retained "
             f"directions are no longer determined and the tension acquires spurious local "
             f"minima. The numerical rank grows with lam, so this usually means the rank was "
             f"chosen at a single k above the range in use: pass lam_ref=(lo, hi) instead.",

@@ -171,6 +171,12 @@ class MPSEigensolver(Eigensolver, Frozen):
         # penalty is `reg="tikhonov_qr"`, explicitly. Passing rtol=, rank= or lam_ref= asks for a truncation; lam_ref=(lo, hi)
         # freezes its rank.
 
+        # The families check their own evaluation against their own `prec` (`Sampling.
+        # _check_accuracy`), so they must check against the solve's: a 1e-14 solve on a basis
+        # built at 1e-8 would never warn, and a 1e-8 solve on a 1e-12 basis would warn for
+        # nothing. Only the claim changes; the columns are the same.
+        if getattr(basis, "prec", self.prec) != self.prec:
+            basis = basis.with_prec(self.prec)
         _set(self, _pencil=MPSPencil.from_basis(
             basis, bdry_quad, int_pts, reg=reg, rank=rank, rtol=rtol,
             lam_ref=lam_ref, prec=self.prec))

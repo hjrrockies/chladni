@@ -174,7 +174,6 @@ def test_search_interval_audits_a_window_the_basis_could_not_see():
 
 
 @pytest.mark.slow
-@pytest.mark.filterwarnings("ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_a_benchmark_drop_is_caught():
     """ngon12 on the stand-in basis D at 1e-10 drops whole doubles (`notes/phase3_rescore.md`):
     no returned level is near them, so only the audit sees it."""

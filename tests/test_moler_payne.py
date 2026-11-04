@@ -219,7 +219,6 @@ def test_delta_res_is_admitted_only_where_moler_payne_agrees_roughly():
 
 
 @pytest.mark.slow
-@pytest.mark.filterwarnings("ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_no_level_claims_prec_past_a_tight_reference():
     """The contract the cross-check exists for, against ground truth. T2.8-N5s2 on a Fourier-
     Bessel-only basis (recipe A, the window the bias was seen on) converges to a well 7e-10 off

@@ -136,9 +136,6 @@ def _bench_solve(case_id, jit=(0.0, 0.0)):
 
 
 @pytest.mark.slow
-# Basis D is the scoreboard's stand-in, sized at 1.0x lappy's per-corner rule: its Bessel
-# columns warn that they cannot reach 1e-8 on some points. That shortfall is the subject here.
-@pytest.mark.filterwarnings("ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 @pytest.mark.parametrize("case_id, jit", [
     ("T1.5-r2", (0.0, 0.0)),            # values ~1e-5 off: wrong at the licence, right at the bar
     ("T2.2", (0.0, 0.0)),               # every level unmet; the same, ten times over

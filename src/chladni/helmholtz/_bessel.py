@@ -91,6 +91,7 @@ class Scaled(NamedTuple):
     Sp: np.ndarray
     sigma: np.ndarray
     rel_err: np.ndarray
+    rel_fixed: np.ndarray    # the part of rel_err that is one constant per column (see `_scale_err`)
 
 
 # --- the canonical scale -------------------------------------------------------------------
@@ -108,8 +109,9 @@ def _scale_err(a, b):
     It is also, and usefully, CONSTANT ALONG A COLUMN: `nu` is fixed per basis function, and
     while `x = k*r` varies, `nu*log(x/2)` varies only as `nu*log(r)`, so at fixed `k` the
     gammaln half is a pure per-column factor. A scale-invariant consumer -- which the GSVD
-    is -- sees the largest-term part of the bound and not this part. `Sampling.accuracy`
-    reports the honest entrywise number; the solver is entitled to know it is conservative.
+    is -- sees the largest-term part of the bound and not this part. Each branch reports
+    that half separately as `Scaled.rel_fixed`: `Sampling.accuracy_entrywise` keeps it,
+    `Sampling.accuracy` (the column-scaled bound the warning reads) drops it.
     """
     return _EPS * (np.abs(a) + np.abs(b))
 
@@ -173,7 +175,8 @@ def _j_series(nu, x, derivative=True):
         rel = _EPS * biggest / np.abs(S) + _scale_err(nu * np.log(x / 2), gammaln(nu + 1))
     # x = 0 is exact (`_at_zero_value`); log(0) made the bound inf and crashed the warning.
     rel = np.where(x > 0, rel, _EPS)
-    return Scaled(_at_zero_value(nu, x, S), Sp, _sigma_j(nu, x), rel)
+    fixed = np.where(x > 0, _EPS * np.abs(gammaln(nu + 1)), 0.0)
+    return Scaled(_at_zero_value(nu, x, S), Sp, _sigma_j(nu, x), rel, fixed)
 
 
 def _at_zero_value(nu, x, S):
@@ -223,7 +226,8 @@ def _y_series(m, x, derivative=True):
         Sp = (None if not derivative else
               np.where(x > 0, -Sx / np.where(x > 0, x, 1.0), np.inf))
         rel = 4 * _EPS + _scale_err(m * np.log(x / 2), gammaln(np.maximum(m, 1.0)))
-    return Scaled(-S, Sp, _sigma_y(m, x), rel)
+    return Scaled(-S, Sp, _sigma_y(m, x), rel,
+                  np.zeros_like(x) + _EPS * np.abs(gammaln(np.maximum(m, 1.0))))
 
 
 # --- branch B: scipy, rescaled ----------------------------------------------------------------
@@ -252,8 +256,9 @@ def _j_scipy(nu, x, derivative=True):
         rel = np.maximum(_EPS, 4e-16 * (1.0 + nu)) + _scale_err(nu * np.log(x / 2),
                                                                 gammaln(nu + 1))
         rel = np.where(x > 0, rel, _EPS)
+    fixed = np.where(x > 0, _EPS * np.abs(gammaln(nu + 1)), 0.0)
     der = None if not derivative else _rescale(0.5 * (jv(nu - 1, x) - jv(nu + 1, x)), sigma)
-    return Scaled(_rescale(jv(nu, x), sigma), der, sigma, rel)
+    return Scaled(_rescale(jv(nu, x), sigma), der, sigma, rel, fixed)
 
 
 def _y_scipy(m, x, derivative=True):
@@ -272,7 +277,8 @@ def _y_scipy(m, x, derivative=True):
         rel = np.maximum(_EPS, 4e-16 * (1.0 + m)) + _scale_err(m * np.log(x / 2),
                                                                gammaln(np.maximum(m, 1.0)))
     return Scaled(_rescale(val, sigma),
-                  None if der is None else _rescale(der, sigma), sigma, rel)
+                  None if der is None else _rescale(der, sigma), sigma, rel,
+                  np.zeros_like(x) + _EPS * np.abs(gammaln(np.maximum(m, 1.0))))
 
 
 # --- branch C: the Olver/Debye uniform asymptotic -----------------------------------------------
@@ -328,7 +334,7 @@ def _j_debye(nu, x):
         shift = np.exp(sigma_d - sigma)
         S = _olver_sum(_U, p, nu) * shift
         Sp = (w / z) * _olver_sum(_V, p, nu) * shift
-    return Scaled(S, Sp, sigma, np.full(np.shape(x), 2e-12))
+    return Scaled(S, Sp, sigma, np.full(np.shape(x), 2e-12), np.zeros(np.shape(x)))
 
 
 # --- the dispatchers --------------------------------------------------------------------------
@@ -341,7 +347,7 @@ def _pick(shape, parts):
     would overflow on the very cells it was not selected for -- and would do the work twice.
     """
     want_deriv = parts[0][1].Sp is not None
-    out = [np.full(shape, np.nan) for _ in range(4)]
+    out = [np.full(shape, np.nan) for _ in Scaled._fields]
     if not want_deriv:
         out[1] = None
     for mask, part in parts:

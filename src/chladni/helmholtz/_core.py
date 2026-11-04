@@ -34,6 +34,8 @@ import numpy as np
 
 from .._core import PREC, Frozen, PrecisionWarning, _set, check_prec
 
+_EPS = np.finfo(float).eps
+
 __all__ = ["HelmholtzFamily", "Sampling", "SingularStructure", "check_k",
            "PREC", "PrecisionWarning"]
 
@@ -116,6 +118,12 @@ class HelmholtzFamily(Frozen, ABC):
     def __len__(self):
         return self.n_cols
 
+    def _where(self, col):
+        """Where column `col` lives, for a warning message: '' or ' at ... (order ...)'.
+
+        No k-dependent value, or the warning registry would see a new message per k."""
+        return ""
+
     def at(self, pts):
         """Bind to points. Accepts a complex array, or a `Quadrature`, which additionally
         supplies the normals and boundary conditions that `trace` needs."""
@@ -163,7 +171,17 @@ class Sampling(Frozen):
 
     @abstractmethod
     def accuracy(self, k, cols=None):
-        """Per-column bound on the relative error of the returned entries."""
+        """Per-column bound on the error of the returned entries, relative to the column.
+
+        Column-scaled: the worst entry error over the points, divided by the column's
+        largest entry there. That is the error the GSVD sees, since it is invariant to a
+        rescaling of any column. `accuracy_entrywise` is the stricter per-entry relative
+        bound, which a zero of J or of the angular factor drives to 1 at no cost to the solve.
+        """
+
+    def accuracy_entrywise(self, k, cols=None):
+        """Per-column bound on the relative error of each entry, worst over the points."""
+        return self.accuracy(k, cols)
 
     def __len__(self):
         return len(self.pts)
@@ -209,34 +227,60 @@ class Sampling(Frozen):
     def log_scale(self, k, cols=None):
         return self.family.log_scale(check_k(k), _as_cols(cols))
 
-    def _check_accuracy(self, rel_err):
-        """Warn when the entries cannot be delivered to the family's own `prec`.
+    def _check_accuracy(self, col_err, cols):
+        """Warn when the columns cannot be delivered to the family's own `prec`.
 
-        The bound is free -- it falls out of the series loop in `_bessel` -- so this costs one
-        reduction over an array the caller already paid for. Same pattern as
-        `Domain.achievable_prec` two layers down, and the same rule: a reported precision is
-        never a claim contradicted elsewhere in the same object.
+        `col_err` is the column-scaled bound (`accuracy`). The bound is free -- it falls out
+        of the series loop in `_bessel` -- so this costs one reduction over an array the
+        caller already paid for. Same rule as `Domain.achievable_prec` two layers down: a
+        reported precision is never a claim contradicted elsewhere in the same object.
 
-        The message quotes the shortfall rounded to a power of ten rather than its exact
-        value. That is deliberate: Python's default warning filter keys on the message text,
-        so a message carrying a k-dependent float would fire on every one of the hundreds of
-        evaluations in a solve instead of once.
+        The message quotes the shortfall rounded to a power of ten, and names the family
+        (`HelmholtzFamily._where`) and the worst column's order rounded to three figures,
+        rather than any exact value. Python's default warning filter keys on the message
+        text: a k-dependent float would fire on every one of the hundreds of evaluations in a
+        solve, and a message without the family would let one corner's warning hide another's.
         """
-        worst = float(np.max(rel_err))
+        col_err = np.asarray(col_err, float)
+        if col_err.size == 0:
+            return
+        j = int(np.argmax(col_err))
+        worst = float(col_err[j])
         if worst <= self.family.prec:
             return
         if not np.isfinite(worst):          # never int() an inf or a nan
             decade = "inf" if worst > 0 else "nan"
         else:
             decade = int(np.ceil(np.log10(worst)))
+        col = j if cols is None else int(np.asarray(cols)[j])
         warnings.warn(
-            f"{type(self.family).__name__} can deliver about 1e{decade} relative accuracy "
-            f"on these points, short of the requested prec={self.family.prec:.0e}. The "
-            f"limit is the Bessel kernel's own scale, not the point set: see "
-            f"Sampling.accuracy(k) for the per-column bound.",
+            f"{type(self.family).__name__}{self.family._where(col)} can deliver about "
+            f"1e{decade} accuracy relative to the column scale, short of the requested "
+            f"prec={self.family.prec:.0e}. The limit is the Bessel kernel's own evaluation at "
+            f"these (order, k*r): see Sampling.accuracy(k) for the per-column bound.",
             PrecisionWarning,
             stacklevel=4,
         )
+
+    @staticmethod
+    def _column_err(s, scale):
+        """The column-scaled bound from a `Scaled` block and its `exp(sigma - log_scale)`.
+
+        Per entry, the error that varies along the column: `rel_err` less its per-column
+        constant (`rel_fixed`), plus the rounding of the two subtractions that form the
+        scale (`sigma`, then `sigma - log_scale`). Weighted by the entry's radial magnitude
+        `|S|*scale` and normalized by the column's largest, so an entry beside a zero of J
+        counts for what it contributes, not for its own relative error. The angular factor
+        is left out of the weight on purpose: it is at most 1, and the gradient needs the
+        radial part at every angle.
+        """
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            mag = np.abs(s.S) * scale
+            var = (s.rel_err - s.rel_fixed
+                   + _EPS * (np.abs(s.sigma) + np.abs(np.log(np.where(scale > 0, scale, 1.0)))))
+            top = np.max(mag, axis=0)
+            err = np.max(np.where(mag > 0, var * mag, 0.0), axis=0)
+            return np.where(top > 0, err / np.where(top > 0, top, 1.0), _EPS)
 
     def __repr__(self):
         return f"{type(self).__name__}({self.family!r}, n_pts={len(self)})"

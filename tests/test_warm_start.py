@@ -25,9 +25,6 @@ from chladni.geometry import rect
 from chladni.reference import rect_eigs
 
 PREC = 1e-10
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
-
 
 def _truth(L, H, n=20):
     return np.asarray(rect_eigs(n, L, H), float)

@@ -109,11 +109,11 @@ The path, in order:
   - too few interior points inside the wedges;
   - TAPERED lightning clusters (untapered ones made solves decline).
   Until then the planner ends these FLAGGED at its top rung.
-* **[next]** **Fourier-Bessel's accuracy warning is not substantive at 1e-10.** `Sampling.accuracy`
-  bounds read ~1e-7 to 1e-9 on planned bases, while 30-digit mpmath shows the columns good to
-  ~1e-14 (`notes/hard_cases.md`, part 3). So `PrecisionWarning: FourierBessel can deliver about
-  1e-9 ...` fires on ordinary 1e-10 solves, against the warn-only-when-substantive rule.
-  Tighten the bound, or stop warning on it.
+* **[next]** **Fourier-Bessel's accuracy warning at 1e-10 to 1e-12.** Since 2026-11-03 the warning is
+  column-scaled (see the [done] item below), and what still fires is REAL: the series branch
+  (`_LOG_MAXTERM`, `_bessel.py`) loses 7.3e-11 of the column scale at mu 19.3, x 23.6 on the
+  L-shape (mpmath), and about 1e-9 at order 16 in `test_floor_multiplicity`. Fix the branch
+  choice (`accuracy_audit_2026-11-03.md` 2.6), then drop the filter in `test_floor_multiplicity`.
 * **[done 2026-10-13, PR #13: probes outside the window are not evaluated]** **The search can ask the
   pencil for a NEGATIVE lam.** `notes/hybrid_bases.py`
   round 2, T2.6-N3k4-L8-ref0 with Fourier-Bessel plus corner lightning (default sigma 4,
@@ -514,7 +514,8 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   simplification candidate -- decided by the two tests not yet run: a high-precision basis on a
   sharp shape (these bases floor at ~2e-7), and a Neumann/Cauchy-data case, where J' from the series
   may beat `jvp`. Repro: `notes/bessel_kernel_vs_scipy.py` (2026-10-06).
-* **[next]** **`FourierBessel`'s `PrecisionWarning` flags per-entry relative error, which is not a
+* **[done 2026-11-03: column-scaled `Sampling.accuracy`, `accuracy_entrywise` kept; the test-file
+  filters removed]** **`FourierBessel`'s `PrecisionWarning` flags per-entry relative error, which is not a
   substantive loss.** The user's rule (2026-10-06): **warn only for precision losses that are
   substantive** -- ones that can move a computed result. `Sampling._check_accuracy`
   (`helmholtz/_core.py`) warns on `max(rel_err)` over all entries, and the series branch's

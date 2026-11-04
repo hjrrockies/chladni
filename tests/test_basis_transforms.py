@@ -72,8 +72,6 @@ def test_plane_waves_rotate_and_scale_column_by_column():
                                fam.values(K, pts), atol=1e-13)
 
 
-# The kernel's PrecisionWarning is expected here; `bar` accounts for it.
-@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")
 @pytest.mark.parametrize("make", [L_shape, _hexagon], ids=["L", "hexagon"])
 @pytest.mark.parametrize("rung", range(len(LADDER)))
 def test_planned_bases_translate_column_by_column(make, rung):

@@ -47,8 +47,6 @@ def _rng():
 # reference. The `< 1e-10` assertions below are the evidence, so suppressing here costs
 # nothing that the test does not immediately re-check.
 @pytest.mark.parametrize("omega", [np.pi / 3, np.pi / 2, 2 * np.pi / 3, 3 * np.pi / 2])
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_sector_eigenfunction_is_one_basis_column(omega):
     """`nu = pi/omega`, and the l-th Dirichlet mode is `J_{l*nu}(k r) sin(l*nu*theta)`. With
     a single column the pencil is 1-dimensional, so the tension is the exact relative
@@ -73,8 +71,6 @@ def test_the_sector_eigenfunction_is_one_basis_column(omega):
 
 
 @pytest.mark.parametrize("omega", [2 * np.pi / 3, 3 * np.pi / 2])
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_sector_tension_has_a_minimum_at_each_eigenvalue(omega):
     """Away from an eigenvalue the same single column cannot satisfy the arc condition, so
     the tension is O(1). That gap is what the deferred minimizer will hunt."""
@@ -91,8 +87,6 @@ def test_the_sector_tension_has_a_minimum_at_each_eigenvalue(omega):
         assert off > 1e3 * at, f"no dip at {lam}: {at:.2e} against {off:.2e} nearby"
 
 
-@pytest.mark.filterwarnings(
-    "ignore:FourierBessel can deliver:chladni._core.PrecisionWarning")
 def test_the_sector_coefficient_reproduces_the_exact_eigenfunction():
     """The coefficient half of the same reference. With one column the eigenfunction is that
     column, so `coef` must return a scalar multiple of it -- checked on interior points the
