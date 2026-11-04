@@ -103,9 +103,9 @@ tests. `test_moler_payne.py:223` can pass while comparing nothing, because it ne
 | 1.1, 1.2, 1.3, 1.4, 1.6, 1.7, 1.8, 1.10, 1.11, 1.12 | fixed, each with a regression test in `tests/test_reporting_honesty.py` | b5ac1c1 |
 | 1.5 | fixed: `Level.rule_prec` is flagged above `CERTIFY_RULE_FLAG`; `HadamardReport.norm_rule_prec` | e08d857 |
 | 1.9 | measured, then fixed: `attained` adds `mp_eps`, documented as an estimate (`hadamard_accuracy.md`) | 5a02def |
-| 2.1 | cold window at 0.98 FK, **pending the A/B below** | 9e9d2a6 |
-| 2.2 | certification rule sized for 1e-6, **pending the A/B below** | 9e9d2a6 |
-| 2.3 | `track_levels` certifies only refined levels, **pending the A/B below** | 9e9d2a6 |
+| 2.1 | kept: cold window at 0.98 FK (A/B below) | 9e9d2a6 |
+| 2.2 | kept: certification rule sized for 1e-6; reverting it changes no warm-replay row (A/B below) | 9e9d2a6 |
+| 2.3 | kept: `track_levels` certifies only refined levels; its missing import (NameError on every certified warm solve) fixed (A/B below) | 9e9d2a6, 9d86051 |
 | 2.4 | **deferred**: the floor estimate exists only after the refine loop; it rests on the reviewer's reading alone | -- |
 | 2.5 | **deferred**: rests on the reviewer's measurement alone; it needs a geometry-consumer audit first | -- |
 | 2.6 | fixed, and the fix went further: the series hands off cancelling cells, and scipy's bound is now honest | 9de388a |
@@ -141,3 +141,40 @@ The same check on ARC (Linux, scipy 1.18.1; `notes/accuracy_studies.py` bessel, 
   (|J'| at most 2e-3 of |J|). Relative to max(|J|, |J'|), the scale the column-scaled accuracy
   sees, the worst is 1.5x, and that is again at x near 600. `Scaled` claimed `rel_err` bounds
   `Sp`'s relative error; the docstring now says what it bounds.
+
+## Before/after gates (2026-11-04)
+
+Baseline 0d8c353 (before Phase 1) against the branch: 9e9d2a6 for the first three gates, 9d86051
+for warm replay. These compare the whole branch, not Phase 5 alone. Deterministic counts only:
+the wall times were taken on a shared machine.
+
+| gate | before | after |
+|---|---|---|
+| stage policy 1e-10, shipped | 161 ok, 1 flagged, 13 silent; 57,043 evaluations | 166 ok, 0 flagged, 9 silent; 53,132 (-7%) |
+| stage policy 1e-10, coarse | 169 ok, 1 flagged, 5 silent; 65,060 evaluations | 170 ok, 0 flagged, 5 silent; 55,642 (-14%) |
+| phase5 cold path, 1e-8, 35 cases | 34 CLEAN, 1 FLAGGED-OK; rungs {0: 24, 1: 8, 2: 1, 3: 1, 4: 1}; 15,400 assemblies | the same verdicts; rungs {0: 25, 1: 8, 2: 1, 3: 1}; 13,500 (-12%) |
+| bound coverage: configurations with an uncovered level | 9 | 1; L-shape `fb_all` n=24 at 1e-13 finds 19/19, was 0/19 |
+| warm replay, 10 hard shapes x 10 steps at 1e-10 | 89 warm, 10 refused (all shape 5); 17,878 assemblies; 805,030 Cauchy nodes | 82 warm, 18 refused; 16,961 (-5%); 227,044 (-72%) |
+
+The warm replay's 8 new refusals:
+
+- **Shape 9, 7 steps: the Bessel fix (9de388a), through the plan.** On shape 9's starting
+  geometry the planner used to escalate to rung 1 (first-level margin 7.45), because the series
+  branch lost digits. With the accurate kernel, rung 0 genuinely meets 1e-10 at margin 2.18, and
+  that plan is accepted. Warm reuse keeps it, and two steps later the first level genuinely
+  misses (bar 5.3e-9; margin 0.77). A fresh solve on the same shape escalates and meets (margin
+  7.85). Bisected over every commit of the branch; restoring the tight certification rule
+  changes nothing. Every bar is honest: the cost is a plan with no headroom.
+- **Shape 1, step 10.** One step, margin 0.48; not traced, presumably the same mechanism.
+- **Shape 5** misses on every step in both runs. Its margin reads 0.19 where it read 1.4,
+  because margin is now measured from the reported bar (1.4).
+
+douse already absorbs this: a refusal on a plan made at another shape triggers one re-plan at the
+current shape and a second solve (`chladni_backend.eigenvalues`). So the cost on douse is an
+occasional extra plan-and-solve, not a refused shape. The benchmark's "douse would refuse" count
+overstates it, since the benchmark does not re-plan. If the re-plans add up, the planner could
+ask for more headroom than margin 2 from a plan that will be reused warm.
+
+Shape 6 crashed in the first warm replay of the branch: the benchmark passed one window per
+level, and the branch groups shape 6's triple eigenvalue as 2 + 1 where the old code reported
+three single levels. The script now passes one per value, as `Eigenproblem.solve` documents.
