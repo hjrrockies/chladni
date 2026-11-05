@@ -274,3 +274,78 @@ def test_rigid_motions_and_dilation_hold_on_corner_domains(name, verts, bar):
         for f in range(3):
             assert np.abs(H_[f]).max() < bar * lam, (name, i, f)
         np.testing.assert_allclose(np.linalg.eigvalsh(H_[3]), -2 * lam, rtol=bar)
+
+
+# --- the identity residuals, reported (2026-11-05) ----------------------------------------------
+#
+# `hadamard` integrates the four exact identities above on its own nodes alongside the caller's
+# fields, and reports their residuals: translation in x and y, rotation and dilation about the
+# boundary's centroid divided by its radius, so every field has unit size; each relative to
+# lam. `notes/accuracy_audit_2026-11-03.md`, "ARC accuracy studies": `attained` under-reported
+# H's error on the douse shapes by a median 2x, and the identities are the error itself.
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name, verts, bar", IDENTITY_CASES, ids=[c[0] for c in IDENTITY_CASES])
+def test_the_report_carries_the_identity_residuals(name, verts, bar):
+    dom = Polygon(verts, bc="dir")
+    spec = Eigenproblem(dom).solve(6, prec=1e-12)
+    V = _linear_fields(dom)
+    for i in range(len(spec.lam)):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", PrecisionWarning)
+            H_, rep = spec.hadamard(i, V, report=True)
+        lam = spec.lam[i]
+        assert len(rep.identity_fields) == 4
+        assert rep.identity_residual == max(rep.identity_fields) <= bar, (name, i, rep)
+        # translation needs no centre: the caller's own fields give the same residual
+        for f in range(2):
+            assert rep.identity_fields[f] == pytest.approx(np.abs(H_[f]).max() / lam,
+                                                           rel=1e-6, abs=1e-16), (name, i, f)
+
+
+@pytest.mark.slow
+def test_a_loose_solve_reports_a_larger_identity_residual():
+    """The residual measures the eigenfunctions, not a constant: the irregular hexagon at prec
+    1e-6 reads well above its 1e-12 value, and still matches the caller's translation fields."""
+    verts = dict((c[0], c[1]) for c in IDENTITY_CASES)["irregular hexagon"]
+    dom = Polygon(verts, bc="dir")
+    V = _linear_fields(dom)
+    worst = {}
+    for prec in (1e-6, 1e-12):
+        spec = Eigenproblem(dom).solve(4, prec=prec)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", PrecisionWarning)
+            reps = [spec.hadamard(i, V, report=True) for i in range(len(spec.lam))]
+        worst[prec] = max(rep.identity_residual for _, rep in reps)
+        for (H_, rep), lam in zip(reps, spec.lam):
+            assert rep.identity_fields[0] == pytest.approx(np.abs(H_[0]).max() / lam,
+                                                           rel=1e-6, abs=1e-16)
+    assert worst[1e-6] > 100 * worst[1e-12], worst
+
+
+@pytest.mark.slow
+def test_a_starved_level_is_not_called_orthonormal():
+    """`gram_residual` alone reads 1e-15 .. 3e-9 on a starved basis whose true Gram defect is
+    6e-8 .. 4e-5 (`accuracy_studies.py` starved, T1.4-hex at factor <= 0.25); `mp_eps` covers it.
+    A level whose `gram_residual + mp_eps` exceeds the refusal bar is not `orthonormal`, and
+    `hadamard` refuses it."""
+    from dataclasses import replace
+    from chladni.plan import plan_for
+
+    verts = dict((c[0], c[1]) for c in IDENTITY_CASES)["irregular hexagon"]
+    dom = Polygon(verts, bc="dir")
+    plan = plan_for(dom, 6, 1e-10)
+    plan = replace(plan, corner_orders=tuple(max(round(0.25 * m), 1) if m else 0
+                                             for m in plan.corner_orders),
+                   n_sources=round(0.25 * plan.n_sources))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = plan.solver(dom, prec=1e-10)
+        res = s.search_interval(5.0, 60.0)
+    bad = [L for L in res.levels if np.isfinite(L.mp_eps) and L.mp_eps > 1e-7]
+    assert bad, [L.mp_eps for L in res.levels]
+    for L in bad:
+        ef = s.eigenfunctions(L)
+        assert not ef.orthonormal and "Moler-Payne" in ef.reason, (L.lam, L.mp_eps, ef)
+        with pytest.raises(ValueError, match="Moler-Payne"):
+            s.hadamard(L, _linear_fields(dom))

@@ -73,7 +73,9 @@ class Eigenfunctions:
     `basis.values(lam_to_k(lam), pts) @ coef` evaluates them anywhere; L2(Omega)-orthonormal
     when `orthonormal`. `rule` is the `IntegralQuad` the Gram was formed on -- the node set a
     Hadamard derivative will want -- and `gram_residual` the orthonormality defect at a second
-    Rellich origin."""
+    Rellich origin. `orthonormal` is False, with a `reason`, when the Gram is deficient, or when
+    `gram_residual` plus the level's Moler-Payne eps exceeds the bar `hadamard` refuses at
+    (2026-11-05)."""
 
     lam: float
     coef: np.ndarray
@@ -149,6 +151,13 @@ class HadamardReport:
     #: rule's own sizing did (`notes/accuracy_audit_2026-11-03.md`, 1.5).
     norm_rule_prec: float = float("nan")
     mp_eps: float = float("nan")
+    #: The residuals of the four exact identities on the same nodes and eigenfunctions:
+    #: translation x, y (H = 0), rotation (H = 0) and dilation (H = -2 lam I), the last two about
+    #: the boundary's centroid and divided by its radius so every field has unit size; each
+    #: `max |entry| / lam`. They measure H's own error with no reference solve.
+    #: `identity_residual` is their max. (2026-11-05, `notes/hadamard_accuracy.md`.)
+    identity_fields: tuple = ()
+    identity_residual: float = float("nan")
 
     @property
     def met(self):
@@ -623,6 +632,16 @@ class MPSEigensolver(Eigensolver, Frozen):
         cd2 = cauchy.cauchy_data(p.basis, out, lam, iq.quad)
         resid = max(float(np.abs(identities.gram(cd2, x0) - np.eye(m)).max())
                     for x0 in certify.x0_probes(self.domain, iq.x0, n=GRAM_PROBES)[1:])
+        # `gram_residual` alone misses a starved basis: there it read 1e-15 .. 3e-9 against a true
+        # Gram defect of 6e-8 .. 4e-5, which the level's Moler-Payne eps covered every time
+        # (`notes/accuracy_audit_2026-11-03.md`, "ARC accuracy studies"). Past the bar `hadamard`
+        # refuses at, the columns are not called orthonormal.
+        eps = float(getattr(level, "mp_eps", np.nan))
+        bar = max(HADAMARD_GRAM_REFUSE * prec, HADAMARD_GRAM_FLOOR)
+        if ok and np.isfinite(eps) and not resid + eps <= bar:
+            ok, why = False, (f"normalized only to about gram_residual + Moler-Payne eps = "
+                              f"{resid + eps:.1e}, above {bar:.0e}: the eigenfunctions' boundary "
+                              f"residual, not the Gram")
         return Eigenfunctions(lam=lam, coef=out, rule=iq, orthonormal=ok, gram_residual=resid,
                               reason=why)
 
@@ -699,6 +718,12 @@ class MPSEigensolver(Eigensolver, Frozen):
                 vals = np.zeros((v.shape[0], len(curve)))
             vals[:, mask] = v
         H = np.stack([-identities.weighted_integral(cd, "NN", vf) for vf in vals])
+        center = complex(np.sum(q.wts * q.pts) / np.sum(q.wts))
+        rig, R = identities.rigid_weights(q, center)
+        Hid = [-identities.weighted_integral(cd, "NN", w) for w in rig]
+        lams = np.concatenate([[float(L.lam)] * int(L.mult) for L in levels])
+        Hid[3] = Hid[3] + 2 * np.diag(lams) / R           # dilation: -2 lam I, field scaled by 1/R
+        ident = tuple(float(np.abs(h).max()) / lam for h in Hid)
         iq = cache[key]
         resid = tuple(float(ef.gram_residual) for ef in efs)
         norm_rule = max(float(ef.rule.sizing_prec) for ef in efs)
@@ -708,7 +733,8 @@ class MPSEigensolver(Eigensolver, Frozen):
                              shortfalls=tuple(iq.shortfalls), gram_residual=resid,
                              attained=(max([float(iq.sizing_prec), norm_rule] + list(resid))
                                        + (mp_eps if np.isfinite(mp_eps) else 0.0)),
-                             norm_rule_prec=norm_rule, mp_eps=mp_eps)
+                             norm_rule_prec=norm_rule, mp_eps=mp_eps,
+                             identity_fields=ident, identity_residual=max(ident))
         if not rep.met:
             where = (", ".join(w for w, *_ in rep.shortfalls)
                      or ("the eigenfunctions' Moler-Payne residual"

@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["KERNELS", "LOWDIN_GUARD", "weighted_integral", "gram", "norms", "lowdin"]
+__all__ = ["KERNELS", "LOWDIN_GUARD", "weighted_integral", "rigid_weights", "gram", "norms",
+           "lowdin"]
 
 #: The four bilinear Cauchy-data kernels. `'cr'` is the symmetrized cross term.
 KERNELS = ("uv", "NN", "TT", "cr")
@@ -44,6 +45,24 @@ def weighted_integral(cd, kernel, weight):
     if kernel == "cr":
         return (cd.u_t * w).T @ cd.u_n + (cd.u_n * w).T @ cd.u_t
     raise ValueError(f"kernel must be one of {KERNELS}, got {kernel!r}")
+
+
+def rigid_weights(quad, x0):
+    """`V . n` at `quad`'s nodes for translation in x and in y, rotation and dilation about `x0`,
+    `(4, n_nodes)`, with rotation and dilation divided by `R = max |x - x0|` so every field has
+    unit size; and `R`. For a Dirichlet eigenpair, `-oint d_n u_i d_n u_j V ds` is exactly 0 for
+    the first three and `-2 lam delta_ij` for dilation, so their residuals measure the
+    eigenfunctions' `d_n u` with no reference solve (`MPSEigensolver.hadamard`)."""
+    r = quad.pts - complex(x0)
+    a = quad.anchored
+    if a.any():
+        r = r.copy()
+        r[a] = (quad.anchor_pt[a] - complex(x0)) + quad.offset[a]
+    R = float(np.abs(r).max())
+    n = quad.normals
+    rot = 1j * r
+    return np.array([n.real, n.imag, (rot.real * n.real + rot.imag * n.imag) / R,
+                     (r.real * n.real + r.imag * n.imag) / R]), R
 
 
 def _radial(cd, x0):
