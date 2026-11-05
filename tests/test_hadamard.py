@@ -304,6 +304,27 @@ def test_the_report_carries_the_identity_residuals(name, verts, bar):
 
 
 @pytest.mark.slow
+def test_a_block_of_distinct_levels_reads_the_identities_level_by_level():
+    """The identities hold within a level, not across levels: between eigenfunctions of
+    eigenvalues lam != mu, the Rellich form is (lam + mu) <u, v> + (lam - mu)/2 int (v x.grad u
+    - u x.grad v), and translation keeps the second term alone. So over a block of distinct
+    levels the residual is the worst of the levels' own blocks; the cross-level entries are
+    content, not error."""
+    verts = dict((c[0], c[1]) for c in IDENTITY_CASES)["L-shape +(3+2i)"]
+    dom = Polygon(verts, bc="dir")
+    spec = Eigenproblem(dom).solve(3, prec=1e-12)
+    V = _linear_fields(dom)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", PrecisionWarning)
+        H_, rep = spec.hadamard([0, 1, 2], V, report=True)
+        own = [spec.hadamard(i, V, report=True)[1].identity_residual for i in range(3)]
+    assert np.abs(H_[0, 0, 1:]).max() > 1e-3 * spec.lam[0]        # the cross terms are there
+    assert rep.identity_residual <= 1e-12, rep
+    # the same size as the levels' own (the block divides by its largest lam, on that lam's rule)
+    assert rep.identity_residual <= 10 * max(own) + 1e-13, (rep.identity_residual, own)
+
+
+@pytest.mark.slow
 def test_a_loose_solve_reports_a_larger_identity_residual():
     """The residual measures the eigenfunctions, not a constant: the irregular hexagon at prec
     1e-6 reads well above its 1e-12 value, and still matches the caller's translation fields."""

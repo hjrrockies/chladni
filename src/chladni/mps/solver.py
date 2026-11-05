@@ -723,7 +723,11 @@ class MPSEigensolver(Eigensolver, Frozen):
         Hid = [-identities.weighted_integral(cd, "NN", w) for w in rig]
         lams = np.concatenate([[float(L.lam)] * int(L.mult) for L in levels])
         Hid[3] = Hid[3] + 2 * np.diag(lams) / R           # dilation: -2 lam I, field scaled by 1/R
-        ident = tuple(float(np.abs(h).max()) / lam for h in Hid)
+        # the identities hold within a level only: between lam != mu the Rellich and translation
+        # forms keep a (lam - mu) term, so the cross-level entries are content, not error
+        cut = np.cumsum([0] + [int(L.mult) for L in levels])
+        ident = tuple(max(float(np.abs(h[a:b, a:b]).max()) for a, b in zip(cut[:-1], cut[1:]))
+                      / lam for h in Hid)
         iq = cache[key]
         resid = tuple(float(ef.gram_residual) for ef in efs)
         norm_rule = max(float(ef.rule.sizing_prec) for ef in efs)
