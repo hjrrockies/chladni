@@ -329,20 +329,20 @@ def analyze(d):
             print(f"{'':24s} FD Richardson gap / lam_max {gap:.1e}")
 
 
-def _fdref_values(r):
-    """Per expanded eigenvalue: the derivative from the step whose bar is smallest, and that bar.
-    A step's bar is its noise plus its truncation, measured as the change to the next step (the
-    last step borrows the previous difference)."""
+def _fdref_value(r, eigs):
+    """The derivative of the SUM of eigenvalues `eigs` (a cluster: only its sum is smooth across
+    a crossing), from the step whose bar is smallest; that bar; that step. A step's bar is its
+    noise plus its truncation, measured on the sum as the change to the next step (the last step
+    borrows the previous difference). None if a step lacks one of the values."""
     st = r["steps"]
-    m = min(len(x["D"]) for x in st)
-    D = np.array([x["D"][:m] for x in st])
-    noise = np.array([x["noise"][:m] for x in st])
-    trunc = np.abs(np.diff(D, axis=0))
-    trunc = np.vstack([trunc, trunc[-1:]])
-    bar = noise + trunc
-    k = np.argmin(bar, axis=0)
-    cols = np.arange(m)
-    return D[k, cols], bar[k, cols], np.array([st[i]["h"] for i in k])
+    if any(max(eigs) >= len(x["D"]) for x in st):
+        return None
+    D = np.array([np.sum(np.array(x["D"])[eigs]) for x in st])
+    noise = np.array([np.sum(np.array(x["noise"])[eigs]) for x in st])
+    trunc = np.abs(np.diff(D))
+    trunc = np.append(trunc, trunc[-1])
+    k = int(np.argmin(noise + trunc))
+    return D[k], noise[k] + trunc[k], st[k]["h"]
 
 
 def analyze_fdref(d):
@@ -359,8 +359,7 @@ def analyze_fdref(d):
           f"id12/lam  id10/lam  notes")
     for ci, c in enumerate(CASES):
         for di, r in sorted(fd.get(ci, {}).items()):
-            vals, bar, hh = _fdref_values(r)
-            notes = []
+            notes, hh = [], []
             if any(len(set(x["counts"].values())) > 1 or set(x["counts"].values()) != {len(r["lams"])}
                    for x in r["steps"]):
                 notes.append("counts differ")
@@ -375,13 +374,15 @@ def analyze_fdref(d):
                 lv = {L["i"]: L for L in h["levels"]}
                 err, fbar, idr = 0.0, 0.0, 0.0
                 for levs, eigs in _groups(h["lams"], h["mults"], FD_GROUP_RTOL):
-                    if any("error" in lv[i] for i in levs) or max(eigs) >= len(vals):
+                    v = _fdref_value(r, eigs)
+                    if any("error" in lv[i] for i in levs) or v is None:
                         continue
                     g = np.sum([lv[i]["grad"] for i in levs], axis=0)
                     had = np.sum(dz.real * g[0::2] + dz.imag * g[1::2])
                     lam = h["lams"][levs[-1]]
-                    err = max(err, abs(had - vals[eigs].sum()) / lam)
-                    fbar = max(fbar, bar[eigs].sum() / lam)
+                    err = max(err, abs(had - v[0]) / lam)
+                    fbar = max(fbar, v[1] / lam)
+                    hh.append(v[2])
                     R = h["radius"]
                     idr = max(idr, max(max(lv[i]["ident"][0], lv[i]["ident"][1],
                                            lv[i]["ident"][2] / R, lv[i]["dil"] / R) for i in levs))
@@ -390,7 +391,7 @@ def analyze_fdref(d):
                 continue
             e12, f12, i12 = line.get("1e-12", (np.nan,) * 3)
             e10, f10, i10 = line.get("1e-10", (np.nan,) * 3)
-            hmix = "/".join(f"{np.sum(hh == x)}" for x in FDREF_STEPS)
+            hmix = "/".join(f"{hh.count(x) // max(len(line), 1)}" for x in FDREF_STEPS)
             tag = f"{di}" + (f" v{r['vertex']}({r['vertex_angle']:.0f})" if di >= 2 else "")
             print(f"{c['source'][13:]:22s} {tag:12s} {hmix:8s} {np.nanmax([f12, f10]):9.1e} {e12:12.1e} "
                   f"{e10:12.1e} {i12:9.1e} {i10:9.1e}  {', '.join(notes)}")
