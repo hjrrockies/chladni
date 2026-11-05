@@ -392,7 +392,7 @@ def analyze_fdref(d):
             e10, f10, i10 = line.get("1e-10", (np.nan,) * 3)
             hmix = "/".join(f"{np.sum(hh == x)}" for x in FDREF_STEPS)
             tag = f"{di}" + (f" v{r['vertex']}({r['vertex_angle']:.0f})" if di >= 2 else "")
-            print(f"{c['source'][13:]:22s} {tag:12s} {hmix:8s} {max(f12, f10):9.1e} {e12:12.1e} "
+            print(f"{c['source'][13:]:22s} {tag:12s} {hmix:8s} {np.nanmax([f12, f10]):9.1e} {e12:12.1e} "
                   f"{e10:12.1e} {i12:9.1e} {i10:9.1e}  {', '.join(notes)}")
 
 
