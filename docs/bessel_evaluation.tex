@@ -30,8 +30,9 @@ with $kr$ small, and in that regime \code{scipy.special.jv} returns exactly zero
 true value is finite. This note develops what the code does instead: a factorisation
 $J_\nu(x)=S\,e^{\sigma}$ with an \emph{analytic} scale $\sigma$, three evaluation branches
 for $S$, and the argument that the branches overlap rather than abut. It also derives the
-error floor --- which turns out to be $\sigma$ itself and not the summation --- and the
-separate per-column scale that leaves the basis matrix well conditioned. Every numerical
+error floor --- which turns out to be $\sigma$ itself and not the summation --- the
+accuracy bound each branch reports, and the separate per-column scale that leaves the basis
+matrix well conditioned. Every numerical
 claim here is measured --- the accuracy figures against \code{mpmath} at 50 digits --- and
 reproducible from the code.
 \end{abstract}
@@ -169,8 +170,9 @@ The code uses~\eqref{eq:maxterm} with $\nu+1$ in place of $\nu$, which keeps $\n
 and errs further toward the library branch, where the library is exact anyway.
 
 Table~\ref{tab:seriesacc} shows the measured relative error against \code{mpmath} at
-50 digits, alongside the predicted $M$. The error tracks $\eps M$ closely, and the threshold
-the code uses is $M\le10^3$, equivalently $x\lesssim 5.25\sqrt{\nu}$.
+50 digits, alongside the predicted $M$. The error tracks $\eps M$ closely. The code's first
+condition for the series is $M\le10^3$, equivalently $x\lesssim 5.25\sqrt{\nu}$. As the next
+subsection shows, that condition is not enough by itself.
 
 \begin{table}[h]
 \centering
@@ -187,30 +189,62 @@ $100$ & $50$  & $5.00$ & $5.18\times10^{2}$  & $2.2\times10^{-12}$\\
 $200$ & $100$ & $7.07$ & $2.68\times10^{5}$  & $6.8\times10^{-7}$\\
 \bottomrule
 \end{tabular}
-\caption{Branch A against \code{mpmath} at 50 digits. The error tracks $\eps M$. The last
-row lies past the threshold $M\le10^3$ and is where the code hands over to branch B.}
+\caption{The series alone against \code{mpmath} at 50 digits. The error tracks $\eps M$.
+The code serves only the first three rows from the series. The last row lies past $M\le10^3$,
+and the three rows above it fail the cancellation budget of the next subsection, so branch~B
+answers all four.}
 \label{tab:seriesacc}
 \end{table}
 
 The loop terminates when $|t_j|\le\eps|S|$. Term counts are small: three terms at $x=0.01$,
 twenty-four at $(\nu,x)=(400,50)$, forty-five at $(400,100)$.
 
+\subsection{The worst case, and the second condition}
+\label{sec:budget}
+
 It is worth being precise about the worst case, because it is not where one first looks.
-Sweeping the whole admitted region $M\le10^3$, the largest relative error found is
-$2.9\times10^{-11}$, at $(\nu,x)=(400,105)$ --- and $M$ there is not exceptional. What is
-exceptional is $|S|\approx9.8\times10^{-4}$: the point sits near a zero of $J_\nu$, and the
-error is $\eps M/|S|$, with $|S|$ in the \emph{denominator}. Absolute accuracy is untouched;
-it is relative accuracy that degrades near a zero, as it must. The bound the code reports
-there is $3.3\times10^{-11}$, so the diagnostic predicts its own worst case rather than being
-surprised by it.
+Sweeping the whole region $M\le10^3$, the largest relative error of the series is
+$2.9\times10^{-11}$, at $(\nu,x)=(400,105)$, and $M$ there is not exceptional. What is
+exceptional is $|S|\approx9.8\times10^{-4}$. The point sits near a zero of $J_\nu$, and the
+error is $\eps M/|S|$, with $|S|$ in the \emph{denominator}. Past the turning point the series
+cancels down to an oscillating $|J|\ll1$, and the digits lost to that cancellation are lost for
+good. A bounded largest term is therefore not a bounded error. The bound $\eps M/|S|$ predicted
+this worst case, reading $3.3\times10^{-11}$ there.
+
+Because the bound is free and honest, the code uses it to choose the branch. A cell stays with
+the series only while its own cancellation bound is within a budget,
+\[
+  \eps\,M/|S| \;\le\; 10^{2}\,\eps \qquad (\code{\_SERIES\_BUDGET}),
+\]
+and the cells that fail go to branch~B. They come back to the series only where branch~B
+underflows, because there the series' bound still beats the asymptotic branch's. Like the
+fall-through to branch~C, the choice selects itself: a cell is moved by the bound it actually
+reports, not by a threshold in $(\nu,x)$. The cells it moves are exactly the ones where the
+library is healthy:
+\begin{center}
+\begin{tabular}{rrrr}
+\toprule
+$\nu$ & $x$ & series alone & as dispatched\\
+\midrule
+$400$ & $105$ & $2.9\times10^{-11}$ & $4.1\times10^{-14}$\\
+$19.3$ & $23.6$ & $7.3\times10^{-11}$ of the column scale & $1.5\times10^{-15}$\\
+\bottomrule
+\end{tabular}
+\end{center}
+The second row is the case that forced the rule, a Fourier--Bessel column on the L-shape. On an
+$(\nu\le300,\ x\le120)$ grid against \code{mpmath}, the worst relative error away from the zeros
+of $J_\nu$ fell from $1.7\times10^{-10}$ to $6.6\times10^{-13}$. The worst column-scaled error
+on the L-shape fell from $1.3\times10^{-10}$ to $1.5\times10^{-13}$.
 
 \subsection{The diagnostic that falls out}
 
 $M$ is computed anyway inside the loop, so the bound $\eps M/|S|$ costs nothing to report.
-The code returns it as \code{rel\_err}, and the basis reduces it over the evaluation points
-to a per-column relative-accuracy bound. This is the cheap-bound-and-warn pattern the
-geometry layer uses for \code{Domain.achievable\_prec}: compute a bound in microseconds,
-warn only when the request exceeds it.
+The code returns it as \code{rel\_err}, together with the scale term of
+\S\ref{sec:floor}. Every branch reports a bound in the same form, so the caller never needs to
+know which branch answered. This is the cheap-bound-and-warn pattern the geometry layer uses
+for \code{Domain.achievable\_prec}: compute a bound in microseconds, and warn only when the
+request exceeds it. \S\ref{sec:column} describes how the basis reduces the bound to the
+per-column number it warns on.
 
 \section{Branch B: library evaluation, rescaled}
 
@@ -233,12 +267,39 @@ cancellation wherever the two terms are close, which the symmetric form does not
 \code{scipy.special.jvp} is not used: it routes every call through a generic $n$-th
 derivative formula with a Python loop and a binomial coefficient per term, and profiling a
 realistic $600\times144$ basis block put it at $39\%$ of the whole per-$k$ evaluation ---
-more than the Bessel functions it was calling.
+more than the Bessel functions it was calling. The scaled derivative $S'$ carries a bound
+relative to $\max(|S|,|S'|)$, not to $|S'|$. Near a zero of the derivative the relative error
+of $S'$ is unbounded, and on one measured grid it reached $2600$ times \code{rel\_err}.
 
 Because those two extra calls triple the cost of the library branch, the code takes a flag:
 when the caller wants values only --- which is every Dirichlet boundary, the common case ---
-the derivative is not formed at all. Measured on that same block, $26.3$\,ms with the
-derivative against $13.2$\,ms without.
+the derivative is not formed at all. On a $600\times144$ L-shape block, skipping it takes
+the per-$k$ evaluation from $26$\,ms to $15$\,ms.
+
+\subsection{The library's own error}
+\label{sec:scipybound}
+
+The library's accuracy is not the flat relative figure it is easy to assume. Measured against
+\code{mpmath} at 30 digits, \code{jv}'s error is \emph{absolute}, in units of the oscillation's
+envelope
+\[
+  E(\nu,x) \;=\; \sqrt{\frac{2}{\pi\sqrt{\max\big(x^2-\nu^2,\;x^{4/3}\big)}}}
+\]
+past the turning point. It grows slowly with $x$: the worst cases are $263\,\eps E$ for $x<20$,
+$324$ for $x<100$, $661$ for $x<300$ and $723$ for $x<800$, at every order band from $0$ to
+$300$. It also grows with the order, reaching $1.9\times10^{-13}$ at $\nu=250$. Near a zero of
+$J_\nu$ an absolute error becomes a relative one amplified by $E/|J|$. The bound the code
+reports is therefore
+\[
+  \max\!\big(120\,\eps\,\max(x,1)^{1/3},\ 8\times10^{-16}(1+\nu)\big)\cdot
+  \max\!\big(1,\,E/|J_\nu|\big)\ +\ \text{the scale term of \S\ref{sec:floor}},
+\]
+with the amplification applied only past the turning point $x>\nu$. The flat
+$4\times10^{-16}(1+\nu)$ this replaced was optimistic by 10 to 25 times at low order. Near a
+zero it under-reported by up to 24 times for $J$ and 12 times for $Y$, and $Y$ now uses the
+same model. The value bound holds over orders $0$ to $400$ for $x$ up to about $360$. Beyond
+that, on Linux's scipy~1.18, the library exceeds it, by up to $1.74$ times at $x=600$. The reference shapes this solver serves reach
+$k\cdot\mathrm{diameter}\approx60$.
 
 \section{Branch C: the uniform (Debye) asymptotic}
 
@@ -282,41 +343,52 @@ storing them as dense coefficient tuples invited an off-by-one that showed up as
 $2\times10^{-7}$ disagreement with the series. They are stored as explicit
 (power, coefficient) pairs.
 
-Four terms give at worst $7\times10^{-13}$ over the corner of parameter space where this
+Four terms give at worst $1.1\times10^{-12}$ over the corner of parameter space where this
 branch is actually reached ($\nu\gtrsim520$, $z\lesssim0.3$; measured against \code{mpmath}
-at $(\nu,x)$ of $(520,100)$, $(600,130)$, $(600,180)$, $(700,200)$ and $(1000,300)$). It degrades only as $z\to1$, the Airy transition, which is
+at $(\nu,x)$ of $(520,100)$, $(600,130)$, $(600,180)$, $(700,200)$ and $(1000,300)$, the worst
+being the last). The branch reports a flat $2\times10^{-12}$. It degrades only as $z\to1$, the Airy transition, which is
 precisely where the library branch is healthy.
 
 \section{Branch selection, and why the branches overlap}
 
 The rule is:
 \begin{center}
-\begin{tabular}{ll}
+\begin{tabular}{lp{0.62\textwidth}}
 \toprule
-A & $M\le 10^3$, i.e.\ $x\lesssim 5.25\sqrt{\nu}$\\
-B & otherwise\\
-C & B returned exactly $0.0$\\
+A & $M\le 10^3$ (i.e.\ $x\lesssim 5.25\sqrt{\nu}$) \emph{and} $\eps M/|S|\le10^2\eps$
+    (\S\ref{sec:budget})\\
+B & every other cell\\
+A again & a cell that passed $M\le10^3$ but failed the budget, where B returned $0.0$ or a
+    non-finite value\\
+C & a cell with $M>10^3$, where B returned $0.0$ or a non-finite value\\
 \bottomrule
 \end{tabular}
 \end{center}
 The mask is taken over the whole $(\text{points}\times\text{columns})$ block, so each branch
-is a single vectorised call.
+is a single vectorised call. The series runs once, on every cell with $M\le10^3$, and the
+budget is read off its own output.
 
 Branch C selects \emph{itself}: rather than a threshold in $(\nu,x)$, the code runs branch B
 and falls through wherever the library gave up. That is one fewer tuned constant, and it
-cannot drift out of date if the library's own underflow edge moves.
+cannot drift out of date if the library's own underflow edge moves. The cancellation budget
+works the same way, so the only fixed boundary in $(\nu,x)$ is $M\le10^3$.
 
-The safety of the scheme rests on the branches overlapping rather than abutting. Sweeping
-$\nu\in[0.2,600]$ against $x\in[0.5,100]$ on a $220\times220$ logarithmic grid and counting
-cells where \code{jv} underflows \emph{and} $M>10^3$:
+The safety of the scheme rests on the branches overlapping rather than abutting, and there are
+two seams to check. The first is the underflow seam between the series and the library.
+Sweeping $\nu\in[0.2,600]$ against $x\in[0.5,100]$ on a $220\times220$ logarithmic grid and
+counting cells where \code{jv} underflows \emph{and} $M>10^3$:
 \[
   \#\{\text{cells in the gap}\} = 0 \quad\text{out of } 48\,400 .
 \]
 Loosening the series threshold to $M>10^2$ opens the first two gap cells, at $\nu\approx518$.
 So the two principal branches are simultaneously valid over a wide strip, and branch C is a
-safety net for $\nu$ beyond roughly $500$ rather than a workhorse. The overlap is also the
-sharpest available test of the implementation: the two branches are compared against each
-other throughout it, and that comparison fails first if either threshold is edited.
+safety net for $\nu$ beyond roughly $500$ rather than a workhorse. The second is the
+cancellation seam. The budget moves cells only from the series to the library, and only where
+the series is cancelling, which is past the turning point where the library is at its best.
+Where the library underflows instead, the cell is returned to the series, whose bound is still
+the better one. Neither seam can leave a cell with no valid branch. The overlap is also the
+sharpest available test of the implementation: the branches are compared against each other
+throughout it, and that comparison fails first if either threshold is edited.
 
 \section{The error floor is the scale, not the summation}
 \label{sec:floor}
@@ -342,7 +414,7 @@ Table~\ref{tab:floor} shows how badly the first term alone underestimates the tr
 \toprule
 $\nu$ & $x$ & $\eps M/|S|$ & $\eps(|\nu\ln\frac{x}{2}|+|\ln\Gamma(\nu+1)|)$ & measured\\
 \midrule
-$400$ & $50$ & $1.1\times10^{-15}$ & $7.3\times10^{-13}$ & $1.1\times10^{-13}$\\
+$400$ & $50$ & $1.6\times10^{-15}$ & $7.3\times10^{-13}$ & $1.1\times10^{-13}$\\
 $400$ & $20$ & $2.9\times10^{-16}$ & $6.5\times10^{-13}$ & $0$\\
 $100$ & $10$ & $2.9\times10^{-16}$ & $1.2\times10^{-13}$ & $2.8\times10^{-14}$\\
 \bottomrule
@@ -355,10 +427,11 @@ understate the error by two orders of magnitude, in the unsafe direction.}
 \begin{remark}[The floor is mostly invisible to the solver]
 Along a single basis column $\nu$ is fixed, so $\ln\Gamma(\nu+1)$ contributes a constant
 multiplicative error to the whole column. The generalised singular value decomposition that
-consumes these columns is invariant to column scaling, so it does not see that part at all;
-what it sees is the summation term and the $r$-dependence of $\nu\ln(x/2)$. The code reports
-the honest entrywise number from~\eqref{eq:floor} and says in its docstring that the bound is
-conservative for a scale-invariant consumer.
+consumes these columns is invariant to column scaling, so it does not see that part at all.
+What it sees is the summation term and the $r$-dependence of $\nu\ln(x/2)$. The code therefore
+reports the $\eps\,|\ln\Gamma(\nu+1)|$ part separately, as \code{rel\_fixed}, beside the full
+entrywise \code{rel\_err} of~\eqref{eq:floor}. The basis keeps both numbers
+(\S\ref{sec:column}).
 \end{remark}
 
 The practical consequence is a statement worth making once: \emph{the scaled kernel is a
@@ -412,7 +485,9 @@ The two dropped groups of terms are relatively small by the factor
   \exp\!\Big(2n\ln\tfrac{x}{2}-\ln\Gamma(n+1)-\ln\Gamma(n)+\ln\pi\Big),
   \label{eq:ydrop}
 \end{equation}
-and the branch condition is exactly that this be below $10^{-16}$. As with $J_\nu$ the two
+and the branch condition is that this be below $10^{-16}$. There is one override. Where
+$\sigma_Y$ itself exceeds $700$ or is not finite, the library would overflow, so the
+truncated sum is used whatever the ratio says. As with $J_\nu$ the two
 branches overlap: the truncated sum is poor only for $n\lesssim5$ with $x\gtrsim n$, which is
 precisely where the library returns an $O(1)$ number with full accuracy.
 
@@ -512,6 +587,26 @@ the code uses the $C^\infty$ form
 \]
 which has the same two limits.
 
+\subsection{The accuracy the basis reports}
+
+The column scale also decides which error is worth reporting. A per-entry relative bound is
+too strict for this consumer. Beside a zero of $J_\mu(kr)$, or of the angular factor, the
+relative error of one entry can approach $1$ while that entry contributes almost nothing to
+its column, and the decomposition is normwise in each column. On the L-shape, with 80 terms at
+the reentrant corner, the worst entrywise bound was $2.1\times10^{-8}$. The entry it belonged
+to was $1.9\times10^{-6}$ of its column maximum, so the error relative to the column was
+$5\times10^{-15}$, and the eigenvalues came out to about $4\times10^{-14}$ either way.
+
+So \code{Sampling.accuracy}, the number the precision warning reads, is \emph{column-scaled}.
+For each entry it takes the part of the bound that varies along the column (\code{rel\_err}
+less \code{rel\_fixed}), adds the rounding of the two subtractions that form
+$e^{\sigma_J-\sigma_j}$, and weights the result by the entry's radial magnitude
+$|S|\,e^{\sigma_J-\sigma_j}$. It then takes the worst entry and divides by the column's largest
+radial magnitude. The angular factor is left out of the weight because it is at most $1$, and
+the gradient needs the radial part at every angle. \code{Sampling.accuracy\_entrywise} keeps
+the stricter per-entry bound, the column maximum of \code{rel\_err} including
+\code{rel\_fixed}, for a consumer that is not scale-invariant.
+
 \subsection{What it achieves}
 
 Over $\mu$ from $0.05$ to $320$ and $kR$ from $0.5$ to $300$, the maximum of each scaled
@@ -532,9 +627,9 @@ tolerance, the formula has grown a term that should not be there.
 \toprule
 & what it computes & accuracy\\
 \midrule
-A, series & $S$ and $S'$ from one loop & $\eps M/|S|$; $\le 3\times10^{-11}$ over $M\le10^{3}$\\
-B, library & $\code{jv}$, rescaled in logs & $\le 2\times10^{-13}$ up to $\nu\approx400$\\
-C, Debye & four-term uniform asymptotic & $\le 7\times10^{-13}$ where reachable\\
+A, series & $S$ and $S'$ from one loop & $\eps M/|S|\le10^2\eps$, by selection\\
+B, library & $\code{jv}$, rescaled in logs & $\lesssim 720\,\eps$ of the envelope, $x\lesssim360$\\
+C, Debye & four-term uniform asymptotic & $\le 1.1\times10^{-12}$ where reachable\\
 \midrule
 floor & $\eps\,|\sigma_J|$, from \S\ref{sec:floor} & $\sim10^{-13}$ at $\nu=400$\\
 \bottomrule
@@ -542,10 +637,11 @@ floor & $\eps\,|\sigma_J|$, from \S\ref{sec:floor} & $\sim10^{-13}$ at $\nu=400$
 \end{center}
 
 \noindent
-Away from the zeros of $J_\nu$ --- which is almost everywhere --- the series delivers
-$10^{-13}$. The $3\times10^{-11}$ is the price of asking for \emph{relative} accuracy at a
-point where the function is a thousand times smaller than its own series terms, and the
-reported bound says so in advance.
+Every branch reports its bound, plus the scale term, in the same form, so the caller never
+needs to know which branch answered. Near the zeros of $J_\nu$ every relative bound grows as
+$1/|J|$. That growth is the price of asking for \emph{relative} accuracy at a point where the
+function is small, and the reported bound shows it in advance. The column-scaled number the
+basis warns on does not grow there.
 
 The three branches overlap with no gap over the parameter range the solver uses; the
 factorisation makes $|S|\le1$ a checkable invariant; the derivative shares the value's loop

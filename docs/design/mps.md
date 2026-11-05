@@ -570,3 +570,69 @@ A note on method, since this is the third time in this file: every speed compari
 sections above was first measured against a baseline that was itself doing redundant work, and
 every one of those numbers was wrong in the same direction -- flattering the alternative. The
 fix was found by profiling the baseline rather than the alternatives.
+
+## As built, 2026-11-05: the cache holds vectors, never matrices
+
+The Caching paragraph of "The pipeline" says the regularized pencil is cached in a bounded dict,
+"no lock, no eviction policy". Neither half holds at HEAD.
+
+**No matrix is cached** (eabd327, 2026-10-13). `MPSPencil.regularized(lam)` builds the reduced
+pencil fresh on every call. The cache holds VECTORS only, keyed by parameter: tensions,
+equilibration scales, ranks, coefficient vectors, and the stack spectrum. It is bounded at
+`pencil._CACHE_MAX = 256` entries. The reason is memory: a reduced pencil on a 562-column
+basis is 10-20 MB, and the old matrix cache held ~0.5 GB per solver while the douse backend kept
+its last solver alive (N = 6 runs at 3-4.4 GB). A search almost never asks for the same
+parameter's matrices twice.
+
+**Eviction is oldest-first and tolerates threads** (27f3c10, 2026-10-14). The parallel batches
+(`Objective.tensions_many`) write from a thread pool, so `MPSPencil._store` pops the oldest key
+with a default and retries once on a size-changed dict. A lost or duplicated eviction costs
+nothing, because the cache is a memo. There is still no lock and no byte ledger.
+
+**Keys carry a policy** (829bd3e). `MPSPencil.tensions(lam, policy=None)` takes a
+`chladni.mps.policy.Policy`; the pencil's own policy normalizes to `None`, so default keys are
+exactly what they were. See `search.md`'s 2026-11-05 entry on stage policies.
+
+## As built, 2026-11-05: one factorization, three readings
+
+c8078a9 split the `"svd"` mode into its factorization and its reduction.
+`_regularize.svd_factors` returns `StackFactors` (the stack's QR and the SVD of `R`), and
+`reduce_svd` truncates it. `regularize(reg="svd")` is now `reduce_svd(svd_factors(...))`,
+bit-identical. The same factorization serves two more readings:
+- a FROZEN rank (`MPSPencil._regularized_at`, through `regularize` with `rank=`);
+- the COARSE PENALTY `([A_B; tau I], A_I)` at `tau = tau_rel x s[0]`, the stack's spectral norm
+  (`MPSPencil._regularized_for`, `_penalty_tensions`). `reduce_penalty` and `penalty_tensions`
+  get it from a small QR of `[R; tau I]` on `svd_factors`' output, and the tensions by the CS
+  identity, with one SVD and no GSVD. The general GSVD cost +47% to +145% per evaluation
+  (`notes/stage_policy_step2_results.txt`). It requires a `reg="svd"` pencil, and raises
+  otherwise.
+
+Each reading assembles and factors at its own call, since no matrix is cached (above). What is
+shared is the code path, and the stack spectrum each one keeps (`_keep_spectrum`).
+
+This penalty is not `reg="tikhonov_qr"`. That mode scales `tau` by the Frobenius norm, which
+grows with `sqrt(n_cols)`, and it is a whole-pencil mode chosen at construction. The coarse
+penalty is a per-call reading that a search stage asks for, at `TAU_REL = sqrt(eps)`
+independent of `prec`. The five `reg=` modes above are unchanged.
+
+The Structure list is missing `chladni/mps/policy.py` (`Policy`, `stable_rank`,
+`stable_rank_of`), along with the search modules `objective`, `bracket`, `refine`,
+`multiplicity`, `search` and `calibrate`, which `search.md` and `CHLADNI_V1.md` own.
+
+## As built, 2026-11-05: the solver no longer chooses `lam_ref`
+
+Two entries above say `MPSEigensolver` supplies a reference parameter: "takes the geometric
+midpoint of `weyl_window(domain, 10)`", then "passes its whole Weyl window". Neither is true at
+HEAD. `MPSEigensolver.__init__` passes the caller's `lam_ref` straight to `MPSPencil.from_basis`,
+and its default is `None`. With the default `reg="auto"` -- the threshold, re-derived at every
+`lam` -- nothing needs a reference. A rank is frozen only when the caller passes `rank=` or
+`lam_ref=`, and `lam_ref=(lo, hi)` still takes the minimum over the range, as recorded above.
+
+## As built, 2026-11-05: the threshold is the default at every `prec`
+
+"The rank must be chosen over a RANGE" contradicts itself. Its opening paragraph says the
+threshold ships at every `prec` since 2026-10-10. Its later paragraph ("**The default rank rule
+is now threshold**") still says the threshold "is the default only below `prec = 1e-8` (above it
+the default is the penalty)". That second sentence describes 2026-09-24 to 2026-10-10.
+`reg="auto"` resolves to `"svd"` threshold at every `prec`, and the penalty is explicit only
+(`reg="tikhonov_qr"`), as the pipeline's mode list says.

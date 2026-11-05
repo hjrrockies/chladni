@@ -1,7 +1,7 @@
 """Primitives shared by every layer: immutability and the working precision.
 
-These started in `geometry/_core.py`, which is where the conventions doc still points for
-the reasoning. They moved up when `helmholtz` arrived and needed the same `Frozen` contract:
+These started in `geometry/_core.py`; the reasoning is in `docs/conventions.md`, "Immutability"
+and "Precision". They moved up when `helmholtz` arrived and needed the same `Frozen` contract:
 a second copy would be a second `__setattr__` message and a second answer to "is
 `cached_property` safe here", and those have to be one answer. `geometry._core` re-exports
 them, so nothing below changed.

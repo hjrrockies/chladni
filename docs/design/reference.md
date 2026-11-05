@@ -352,3 +352,35 @@ not, and `tests/test_library.py` pins it.
 | `tests/test_library.py` | the new factories construct, validate, and have the expected area and corner count |
 
 `tests/conftest.py` loses its private closed forms and imports from `chladni.reference`.
+
+---
+
+# As built: deltas from this spec
+
+Written 2026-11-05. The sections above are the design as written on 2026-09-01; this records
+what has changed since and supersedes the claims named.
+
+## Closed forms claim 15.5 digits, not 15.6
+
+`FLOAT64_DIGITS`, the `digits` every `@exact` reference reports, is 15.5, measured: the
+Bessel-zero closed forms reach 2.8e-16 to 3.1e-16 relative (accuracy audit, 2026-11-03), which is
+15.5 digits, as "Bessel zeros" above already says. `iso_tri_eigs`'s closed-form `h = 1` entry
+follows it, so "That parameter set goes from 13.0 digits to 15.6" (section 1) now reads 15.5.
+
+## The cross-check's stated reason is out of date
+
+Section 2 rejects a test that re-solves each table with `chladni` because "basis planning is
+deferred". Planning now exists (`chladni.plan`, `Eigenproblem.solve`), so that reason no longer
+holds. The decision stands for a different reason: such a test would still fail for planning
+reasons more often than for reference reasons, and the independent cross-check the rule asks for
+is done outside the test suite, in `benchmarks/douse/` (references by three `chladni` bases
+against FEM upper bounds, `scoreboard.md`).
+
+## `asymp` gained the count audit
+
+`count_audit(eigs, domain, *, lo, top=None, top_is_gap=False)` (2026-10-11,
+`notes/count_audit.md`) belongs in section 6's table as a diagnostic beside `weyl_deficit`. It is
+the solve-level check for a DROPPED eigenvalue: at every mid-gap cut of a prefix spectrum,
+`weyl_count_poly(cut)` against the number returned, judged on the mean over the cuts, as a
+`CountAudit`. Prefix windows and Dirichlet boundaries only. `MPSEigensolver.search_interval`
+attaches it to every search (`audit_count`), so every `Eigenproblem` solve carries it.

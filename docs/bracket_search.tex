@@ -301,8 +301,9 @@ a \emph{half} for the wavenumber. Evaluated at the upper end of the bracket, so 
 \paragraph{The ulp slack.} The round trip $k\mapsto k^2$ is not exact. A bracket that correctly
 fences $k^*$ can fail to fence $\lam^*=(k^*)^2$ after squaring, because an endpoint rounds the
 wrong way; this was observed as a coverage loss of exactly one unit in the last place. Every
-returned endpoint is therefore widened by about four ulps, and brackets that abut after
-widening are merged.
+endpoint is therefore widened outward by four ulps of $\lam$ when the bracket is converted
+(\code{Objective.in\_lam\_bracket}, constant \code{BRACKET\_ULPS}). The same constant is the
+refiner's margin for ``the same point'', and the two interact; \S\ref{sec:endprobe} records how.
 
 \paragraph{And the refiner wants the other variable.} \S\ref{sec:refine} shows that the
 quadratic fit the refinement performs is markedly better in $\lam$ than in $k$. The two stages
@@ -600,9 +601,11 @@ The estimator's error structure is what makes this safe, and it is worth stating
 Measured against the true gap, \eqref{eq:meter} reads at ratio $0.97$--$1.03$ when the
 neighbour is close, and $0.78$--$1.30$ when it is far (Figure~\ref{fig:gate}). It is accurate
 \emph{precisely where the decision is hard} --- when a neighbour is close enough to be a purity
-risk --- and where it is inaccurate it generally \emph{under}-reads the gap. A gate phrased as
-``is the neighbour further away than this region is wide?'' therefore errs toward refusing to
-certify. It is conservative by construction, not by tuning.
+risk. Where it is inaccurate it errs in both directions, but only for neighbours many region
+widths away, where a 30\% misreading does not change the answer to ``is the neighbour further
+away than this region is wide?''. Close in, where a misreading could flip that answer, the meter
+is good to 3\%, and the slope it divides by is an upper bound (rule~2 below), which biases the
+reading toward refusing to certify.
 
 \begin{figure}[t]
   \centering
@@ -707,7 +710,7 @@ about $2\times$ the straddle fraction. That fraction is bounded below by the pre
 descent --- and above by the contraction it buys.
 
 Figure~\ref{fig:straddle} measures both bounds. The parabola's vertex lands within
-$1.2\times10^{-4}$ of the truth at the median and $3.1\times10^{-3}$ at the 90th percentile, as
+$9.4\times10^{-5}$ of the truth at the median and $3.1\times10^{-3}$ at the 90th percentile, as
 fractions of the bracket; the cost rises steadily with the offset above that. The shipped value
 $0.02$ sits about six times above the measured 90th percentile of the prediction error, and
 costs 14 evaluations against 12 at $0.01$ on this pencil.
@@ -824,7 +827,8 @@ afford to re-ask expensive-sounding questions at every step, and why the cost ac
 \caption{\proc{Bracket} --- the top level}
 \label{alg:bracket}
 \SetKwInOut{Input}{input}\SetKwInOut{Output}{output}
-\Input{tension oracle $f(x)\mapsto(\sig_1,\sig_2,\dots)$; window $[a,b]$; precision $\pr$}
+\Input{tension oracle $f(x)\mapsto(\sig_1,\sig_2,\dots)$; window $[a,b]$; precision $\pr$;
+  flag \emph{rescue} (off by default; \S\ref{sec:rescue})}
 \Output{brackets in $\lam$, with diagnostics --- or a decline}
 work in $k=\sqrt{\lam}$; \quad $\pr_u \leftarrow \pr/2$
   \tcp*{\eqref{eq:precu}}
@@ -836,7 +840,7 @@ $S \leftarrow \operatorname{median}(V)$
 $L \leftarrow s\cdot\max_i \abs{(V_{i+1}-V_i)/(X_{i+1}-X_i)}$
   \tcp*{\eqref{eq:L}, $s=1.5$}
 $\text{budget} \leftarrow 600 \cdot \max\bigl(N(b)-N(a),\,1\bigr)$
-  \tcp*{per eigenvalue, never flat}
+  \tcp*{per eigenvalue, never flat; without a Weyl count, $N$ is the number of live regions}
 $\text{floorLimited}\leftarrow\proc{false}$\;
 \For{$\text{round} \leftarrow 1$ \KwTo $5$}{
   $(X,V,L,\mathcal{R},\text{stalled}) \leftarrow \proc{Cover}(\dots)$
@@ -846,10 +850,15 @@ $\text{floorLimited}\leftarrow\proc{false}$\;
     \tcp*{Alg.~\ref{alg:locate}}
   \lIf{$\text{reopened}=0$}{\textbf{break}}
 }
+\If{rescue}{
+  $\mathcal{R} \leftarrow \mathcal{R}\,\cup\,\proc{RescueExcludedWells}(X,V,\mathcal{R},S)$
+    \tcp*{\S\ref{sec:rescue}}
+  $\text{floorLimited} \leftarrow \text{floorLimited} \lor (\text{any were added})$\;
+}
 $\mathcal{K} \leftarrow \proc{Confirm}(X,V,\mathcal{R},L,S)$
   \tcp*{Alg.~\ref{alg:locate}}
-\Return each $(a',b')\in\mathcal{K}$, widened by $4\,\mathrm{ulp}$ and mapped back by
-  $u\mapsto u^2$, merging any that then abut
+\Return each $(a',b')\in\mathcal{K}$, mapped back by $u\mapsto u^2$; each end moves out by
+  $4\,\mathrm{ulp}$ of $\lam$ when the refiner takes it
   \tcp*{\S\ref{sec:whyk}}
 \end{algorithm}
 
@@ -962,6 +971,45 @@ eigenvalues may be merged. The search never decides that. It contracts until a r
 by width or certified single, and the merges it performs are only the ones it could not
 resolve.
 
+\subsection{Rescuing wells the cover excluded}
+\label{sec:rescue}
+
+Remark~\ref{rem:zerothreshold} argued that the zero threshold never bites because the cover
+loop stops on purity by width first. That argument assumes a floor far below the samples. On
+an objective whose floor is \emph{raised} --- the coarse penalty of \S\ref{sec:policy}, whose
+floor sits near $10^{-7}$ --- it fails in one specific case. A simple level is certified single
+and handed to the locator before its samples get close enough to exclude it. A \emph{double}
+is never certified single, because its $\sig_2$ sits on the floor too, so the cover keeps
+sampling into the well until the samples are closer than about $2\varepsilon/L$, and then the
+envelope test excludes the well's own bottom. Every double of two \code{douse} polygons (an
+octagon and an 8-gon) was lost this way.
+
+The remedy is a pass after the cover/locate rounds, enabled by the flag \code{rescue\_floor} of \code{bracket\_interval} and off on the
+default path. Every sampled local minimum below
+$10^{-2}$ of the plateau $S$ (\code{RESCUE\_DEPTH}) that lies outside every live region becomes
+a region again. The new region runs out to the first sample on each side where $\sig_1$
+exceeds ten times the minimum (\code{RESCUE\_RISE}), or to a sampled local maximum if that
+comes first, and overlapping regions are merged. The hump stop matters: walking past one
+merged a \code{douse} pair $1.2\times10^{-5}$ apart into a single bracket, and the count then
+read 1 without any warning. The two thresholds are far from their populations, since genuine
+wells on the coarse penalty sit about $10^{-6}$ below the plateau and plateau ripple never
+reaches $10^{-2}$ of it. Rescue can only \emph{add} a bracket, and the refiner discards a
+spurious one in a few evaluations. Any rescue marks the run floor-limited.
+
+\subsection{Outside this note's scope: stage policy}
+\label{sec:policy}
+
+This note describes the search as v1 designed it: one objective, the pencil's threshold-rank
+tension, used by every stage. \code{chladni} also ships an opt-in variant, the flags
+\code{coarse\_bracket} and \code{stable\_rank} of \code{search.solve}, in which the stages read
+the pencil under different \emph{policies} (\code{chladni.mps.policy}). Stage~1 brackets on a
+coarse penalty that makes no rank decision and is therefore continuous in $\lam$. It runs
+with \code{rescue\_floor=True} at a precision no tighter than $10\sqrt{\varepsilon_{\mathrm m}}$. Each bracket is
+then refined at the threshold rank first, and at a stable rank frozen over the root's cell when
+the root has a noise tail. Every algorithm in this note runs unchanged inside that variant.
+What the variant changes is the objective each stage is handed, and it is documented in
+\code{search.solve} and \code{notes/stage\_policy\_steps.md}, not here.
+
 \section{Refinement}
 \label{sec:refine}
 
@@ -1001,8 +1049,8 @@ information is in the second difference, not in which of two nearly equal values
 \S\ref{sec:whyk} argued for $k$ on the strength of the wall slope. The curvature says the
 opposite, and it governs here. Fitting a quadratic to $\sig_1^2$ over \emph{identical physical
 sample points}, the residual relative to the data range is smaller in $\lam$ than in $k$ in 30
-of 32 levels across four rectangles, with a median advantage of $4.3\times$ in residual and
-$4.8\times$ in the accuracy of the located vertex (Figure~\ref{fig:refinevar}). The originating
+of 32 levels across four rectangles, with a median advantage of $4.4\times$ in residual and
+$4.4\times$ in the accuracy of the located vertex (Figure~\ref{fig:refinevar}). The originating
 measurement reported 17 of 17 and a median of $5.1\times$.
 
 \begin{figure}[t]
@@ -1037,20 +1085,50 @@ that is not the minimum.
 Four guards, each named with the failure it prevents.
 
 \begin{enumerate}
-\item \textbf{Refuse when the parabola never closed.} A non-positive leading coefficient means
-the three points do not describe a single minimum: an empty bracket, or one holding two
-well-separated eigenvalues where the fit is across a W. In the second case the lowest sampled
-point can be a bracket \emph{endpoint}, far from either eigenvalue, and would be returned as a
-success.
-\item \textbf{But only when there was no progress.} The same condition also fires at the
+\item \textbf{A parabola that never closed is a bad start before it is a verdict.} A
+non-positive leading coefficient means the three points do not describe a single minimum. The
+bracket may be empty, or it may hold two eigenvalues with the search's deepest sample on the
+hump between them, so that the fit is across a W. Refusing at once was measured to lose both
+members of such a pair: \code{solve} read the refusal as an empty bracket and still certified
+the count. So with no progress yet the refiner bisects the wider gap beside its lowest sample,
+toward a well if there is one, and tries the parabola again. It does this at most four times
+(\code{\_FALLBACK\_STEPS}) and then refuses with \code{no\_parabola}. A lower sample found this
+way does not count as progress, so guard~2 can still tell the two cases apart. An empty bracket
+still walks to an endpoint within four steps and is refused there.
+\item \textbf{After progress, the same condition means success.} It also fires at the
 \emph{end} of a good refinement, once the three points have collapsed onto the floor and the
 curvature is gone. Treating that as failure discards correct answers.
 \item \textbf{Track the lowest point seen independently.} The triple is re-formed by position
 rather than by value, so a bad vertex can otherwise discard the sub-interval holding the
 minimum.
-\item \textbf{Accept against the cone outside the bracket}, where it must be rising --- not
-against the bracket's own ends, which are all near the floor once the bracket is narrow.
+\item \textbf{Accept only below both sampled ends.} The accepted point must be strictly
+interior (a margin of four ulps) and must have $\sig_1$ strictly below its value at
+\emph{both} ends of the bracket it was handed. Those ends were evaluated on the way in, so the
+test costs nothing. This is ``compare against the cone outside the bracket, where it must be
+rising'', read off the points the bracket already carries. An earlier version probed the cone
+at $\lam\pm4\cdot$width instead. On an empty bracket one wall away from a root, that probe
+jumped over the eigenvalue onto the plateau beyond, read ``rising'' on both sides, and accepted
+a wall point. \S\ref{sec:interiority} generalizes the lesson, and \S\ref{sec:endprobe} covers
+the one case the ends cannot judge.
 \end{enumerate}
+
+Two details of the iteration also matter for its accuracy.
+\begin{itemize}
+\item \textbf{The vertex is centred on the middle point.} The monomial form $-c_1/(2c_2)$
+squares each abscissa about the origin while the samples sit near $\lam$. Each square then
+carries its own $\mathrm{ulp}(\lam^2)$, and the vertex stalls at a spacing of about
+$\lam\sqrt{\varepsilon_{\mathrm m}}$. Under that form the refiner reported convergence at
+$10^{-11}$ to $10^{-9}$ on pencils whose floor is $10^{-15}$. Written in offsets from the middle
+point, the error is a few ulps of $\lam$ at every spacing. The locator of \S\ref{sec:locate}
+uses the same routine.
+\item \textbf{Fence, then stop.} Iterated vertices approach from one side, exactly as
+Remark~\ref{rem:straddle} says, so a triple left to narrow by itself costs a halving per step.
+Once the vertex agrees with the best point to within $0.05\,x_{\text{atol}}$
+(\code{\_SETTLE}), the refiner instead samples at $\pm0.45\,x_{\text{atol}}$ on each side not
+already fenced. That costs at most two evaluations, and the unimodal minimum is then bounded by
+a triple narrower than the tolerance. The remaining disagreement is carried into the reported
+bound, so this setting changes cost and never honesty.
+\end{itemize}
 
 \subsection{The interiority trap}
 \label{sec:interiority}
@@ -1083,7 +1161,73 @@ The lesson generalizes, and it is the one to take away from this section. A prob
 is set by the bracket width cannot know what it is stepping across. A probe whose reach is set
 by a \emph{constant} cannot know that either, and additionally cannot know how accurate the
 point it is stepping from is. The acceptance test that survives compares the candidate against
-the two \emph{sampled} endpoints it already has, and asks nothing new of the objective.
+the two \emph{sampled} endpoints it already has, and asks nothing new of the objective ---
+everywhere except at an end, where \S\ref{sec:endprobe} sets the reach from the point's own
+cone.
+\end{remark}
+
+\subsection{The end probe}
+\label{sec:endprobe}
+
+Guard~4 judges a point by the bracket's ends, and that is sound only when the ends are real.
+They are not quite real. The search hands the refiner a bracket in $k$, and converting it to
+$\lam$ widens each end by four ulps (\S\ref{sec:whyk}). Four ulps is also the interior margin,
+so a sample sitting \emph{exactly on} the search's bracket end is three or four ulps inside
+the widened one, and it passes as interior by rounding alone. That configuration is not
+exotic. The deepest sample the search holds can \emph{be} its bracket end, lying on the wall of
+a \emph{neighbouring} well, and the refiner then collapses onto it. Measured at $130\pi^2$, that
+phantom sat 0.48 licences from the eigenvalue and was accepted as a root. Position cannot
+separate this case from a genuine eigenvalue lying at the search's end, which an evenly spaced
+cluster at $\pr=10^{-14}$ produces, and neither can provenance: a test keyed on the point being
+bit-identical to a handed-in end was defeated by a vertex landing a tenth of an ulp away. What
+differs is the curve \emph{beyond} the end. So the refiner is told the search's own bracket
+(\code{refine(\dots, interior=)}, which every call in \code{search} passes), and
+\code{refine.\_end\_verdict} looks there, spending evaluations only when the following test
+fires.
+
+\paragraph{When a point is ``at an end''.} The question concerns the point's resolution
+radius, not ulps. On the cone the minimum lies about $\sig/c$ from a point of tension $\sig$, so
+the best point counts as at an end when that radius reaches the search's end, or when it is
+within the four-ulp tie. A tie alone let a phantom four ulps inside the upper end through at
+$125\pi^2$, as a fifth level of a four-member cluster, and its radius reached 0.7 bracket
+widths past the end. The slope $c$ is the \emph{steepest} secant from the best point to any
+sample at least a quarter of the search bracket away, and both qualifiers are measured.
+\begin{itemize}
+\item The fitted curvature of the last triple is the wrong slope. That triple sits in the
+ulp-scale noise pressed against the end, and its curvature read a slope 25 times too large.
+\item The secant to the far end alone is also the wrong slope. It assumes the phantom's
+bracket lies on one monotone wall. A bracket spanning a hump read a slope 18 times too shallow
+and overshot the neighbour. Samples past a hump lie below the wall, so they can only make a
+secant shallower, and the steepest secant is therefore the wall's.
+\end{itemize}
+
+\paragraph{Outward.} The refiner evaluates at $\sig/c$, then $\tfrac12\sig/c$, then
+$\tfrac14\sig/c$ beyond the end. These evaluations go straight to the objective rather than
+through the refiner's clamped evaluator, because a first version clamped the probe back onto
+the widened end, read the same value, and passed the phantom. The search stops at the first
+probe that reads below half the point's tension (\code{\_DESCENT\_RATIO}, the same value as the
+confirmation step's dip ratio). A falling curve alone does not prove a phantom, because a
+genuine root located to $x_{\text{atol}}$ near the end also has a radius that crosses it, and
+its probe lands \emph{on} the root. What separates them is where the minimum is. A probe falls
+only within about half a step of the minimum, so the point is ruled a phantom only when the
+falling probe lies more than half a step past the end. The halving covers a slope estimate up
+to six times too shallow. A fixed reach was measured to fail in both directions: one bracket
+width landed on the neighbouring well at $130\pi^2$ and overshot it at $25\pi^2$.
+
+\paragraph{Inward.} If nothing outside falls, the minimum is not outside, but it may be
+\emph{inside} and unsampled. This happens when a bracket is nested in another: the deepest
+cached sample is the outer bracket's end, and the triple collapses there. At $50\pi^2$ this
+refused a member $1.6\times10^{-7}$ inside a side bracket, and at $170\pi^2$ it accepted a root
+$2\times10^{-7}$ from its member. So the refiner probes inward at the same three steps. The
+first probe lower than the end starts \emph{one} nested refinement over the rest of the
+bracket, and if that refinement accepts, its result replaces this one. The nesting goes no
+deeper than one level.
+
+\begin{remark}[What the probe assumes]
+The probe is aimed by the cone. A well with a flat bottom --- produced so far only by a
+penalized objective whose floor approaches the licence, never by the threshold --- defeats it,
+because the steep side of a hump sets $c$ and the reach then falls short of the gentle descent
+toward the neighbour. This is recorded as open work and does not affect the shipped default.
 \end{remark}
 
 \section{Cost, and the shape of the claim}
@@ -1294,7 +1438,7 @@ $\sig_1^2$ quadratic $\Rightarrow$ an exact vertex from three points & that $\la
 for the fit (30 of 32 here, 17 of 17 there)\\
 the precision factor $\pr_u=p\cdot\pr$, \eqref{eq:precu} & ${\sim}26$ evaluations per
 eigenvalue\\
-the cancellation-free $c$, \eqref{eq:clocal} & that $\sig_2/c$ under-reads where it errs\\
+the cancellation-free $c$, \eqref{eq:clocal} & that $\sig_2/c$ is accurate to 3\% where a neighbour is close\\
 $\sig_2/\sig_1 = 1+d/u$, \eqref{eq:ambiguous} & the $\abs{\Om}/\abs{\partial\Om}$ constant
 $\kappa\approx2.6$\\
 \bottomrule
@@ -1314,8 +1458,11 @@ The design records are \code{docs/design/CHLADNI\_V1.md} (the bracketing spec an
 deltas), \code{docs/design/search.md} (the precision contract, the ground-truth definition, and
 the multiplicity and collapse rules not developed here) and \code{docs/design/candidates.md}
 (the stage seams and the comparison protocol). The implementation is
-\code{tests/v1\_bracket.py} and \code{tests/v1\_refine.py}, which live in \code{tests/} because
-a scored candidate lives there until it wins. Figures are regenerated by
+\code{src/chladni/mps/bracket.py} (stage~1, \code{bracket\_interval}) and
+\code{src/chladni/mps/refine.py} (stage~2, \code{refine}), composed with the multiplicity stage
+by \code{src/chladni/mps/search.py} (\code{solve}). Both stages were promoted from candidates in
+\code{tests/} after they won on the scored seam. \code{tests/candidates\_v1.py} keeps the
+adapters that still score them there against the baselines. Figures are regenerated by
 \code{docs/figures/make\_bracket\_figures.py}, which drives the same code the text describes and
 prints every number quoted in a caption.
 

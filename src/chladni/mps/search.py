@@ -1,14 +1,14 @@
 """Stage 4: the composed pipeline, and the only seam a candidate MUST present.
 
-Promoted from `tests/v1_solve.py`, whose remaining `v1_solve` factory now scores THIS module on
-the seam. `docs/design/candidates.md` section 1 calls `solve` "the only mandatory seam": a
+Promoted from the scored v1 candidate, whose remaining `v1_solve` factory
+(`tests/candidates_v1.py`) now scores THIS module on the seam. `docs/design/candidates.md` section 1 calls `solve` "the only mandatory seam": a
 method that does not decompose into bracket -> refine -> multiplicity implements this and
 nothing else, so it is where v1 and a monolithic candidate are compared on equal terms.
 
 `MPSEigensolver.search_interval` is the caller, and `solve_interval` narrows what comes back to
 the method-agnostic `Spectrum` above it.
 
-    solve(obj, *, prec, collapse, merge, rule, reach_slope, phase_d) -> SolveResult
+    solve(obj, *, prec, abort_unmet, stable_rank, coarse_bracket) -> SolveResult
 
 The scored SEAM is narrower than that signature and is what a candidate must present:
 
@@ -38,7 +38,11 @@ the refinement achieved, `prec*lam` -- and not by whatever width the locator hap
 from. Carrying the old bounds forward would preserve an accident of history. Reconstruction
 costs nothing, because every point it selects is already paid for.
 
-# Phase D is BUILT, behind `phase_d=`, and OFF
+# Phase D's Gram angle was BUILT, measured, and moved to the ablations
+
+`solve` ships Phase D's distance prefilter only. The angle rule (`phase_d="angle"`, with
+`_gram_group`) now lives in `notes/evidence_tests/search_ablations.py` (moved 2026-10-14), and
+the record below is why it was not promoted.
 
 Stage 3 answers "how many branches dip HERE"; Phase D answers "are these two reported roots the
 same eigenvalue", which distance provably cannot settle, since one eigenvalue found twice and
@@ -60,8 +64,8 @@ grids at five precisions and eleven bands, plus the roster:
 
 The angle is CONSULTED -- 115 pairs, so the rule is exercised rather than inert, which was the
 expectation going in and was wrong -- and it agrees with the distance rule on every one. It
-regresses nothing and improves nothing, so there is no case for promoting it and the seam keeps
-both reachable. The one wrong cell left at `170*pi^2` is the refiner's residual-abutting-an-
+regresses nothing and improves nothing, so there is no case for promoting it, and the ablation
+keeps it runnable. The one wrong cell left at `170*pi^2` is the refiner's residual-abutting-an-
 exclusion defect and not a grouping question, which is why the angle does not touch it.
 
 The roster asks the angle NOTHING at `prec = 1e-8`: its levels are further apart than a licence,
@@ -185,7 +189,9 @@ class Level:
     uncertain_reason: str = ""
     #: True when this level is the COLLAPSE of a neighbourhood whose internal grouping was
     #: arbitrary. The count is trustworthy; the sub-structure is coarser than `prec` asked for,
-    #: so the level is deliberately wider than the merge licence. See `_collapse_ambiguous`.
+    #: so the level is deliberately wider than the merge licence. Set by the grouping
+    #: cross-check, which the shipped `solve` no longer runs; it survives as
+    #: `_collapse_ambiguous` in `notes/evidence_tests/search_ablations.py`.
     grouping_ambiguous: bool = False
     #: The spacings inside that neighbourhood, so a caller can choose a `prec` that resolves or
     #: merges it rather than re-solving blind.
@@ -651,7 +657,8 @@ def _flag_uncertain_counts(levels, folds_are_duplicates=False):
     flagged and not corrected: raising the count would trade a silent under-count for a silent
     over-count.
 
-    Levels `_collapse_ambiguous` already flagged pass through and are COUNTED. Skipping them made
+    Levels the grouping cross-check already flagged (`grouping_ambiguous`; the cross-check is now
+    only in the ablations) pass through and are COUNTED. Skipping them made
     the branch that detects a disagreement by construction the one whose levels never reached
     `n_uncertain` -- 14% recall on the wip branch, against 93% once they were counted.
 

@@ -14,7 +14,7 @@ without any change in what the numbers meant. `conventions.md` asks that a param
 state its variable; it does not ask a reader to remember which of two siblings is which.
 
 It is also the variable the refinement wants. Fitting a quadratic to `sigma_1**2` over
-identical sample points, the residual is smaller in `lam` in 17 of 17 cases across four
+identical sample points, the residual is smaller in `lam` in 17 of 17 cases across six
 domains -- median 5.1x -- so a search built on this object works in `lam` throughout.
 
 This is also the answer to `docs/design/mps.md`'s second design question -- how to expose a bare-bones solver for bespoke work -- and it is a second object
@@ -343,7 +343,7 @@ class MPSPencil(Frozen):
 
         `conventions.md`: "the log scales simply add, and a coefficient vector means the same
         function on every point set." A column of the equilibrated pencil is
-        `psi_j * exp(-log_scale(k)[j])`, and unscaled coefficients are never materialized --
+        `psi_j * exp(-log_scale(lam)[j])`, and unscaled coefficients are never materialized --
         at a `pi/8` corner the family's half of this spans about 1149 nats.
         """
         return self.basis.log_scale(lam_to_k(lam)) + self._scales(lam)

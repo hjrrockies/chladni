@@ -8,7 +8,7 @@ consistently". Objects cannot desync.
 
 A corner is also not always a turn. Where the boundary condition changes across a straight
 edge there is a junction at interior angle exactly pi, invisible to lappy's
-`abs(turning_angle) > 1e-10`, which only notices three layers up, in
+`abs(turning_angle) > 1e-10`, which only notices three layers up, in lappy's
 `eigfun_integrals.corner_specs`, as a reason to bail out. `is_bc_junction` finds it here.
 
 What that junction does to an eigenfunction is not this module's sentence to write. Geometry

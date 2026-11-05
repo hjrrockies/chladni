@@ -1,5 +1,7 @@
 *Status: requirements, agreed 2026-10-06 (interview with the user; `douse` source read where cited).
-Not yet built. Supersedes nothing; it is the yardstick `TODO.md` section 0 prioritizes by.*
+Built in phases 2026-10-11 to 2026-10-14 -- per-level reporting, the count audit, the planner,
+warm start and Hadamard -- with the dated sections below recording each; "As built" at the end
+records where the interface as shipped differs. It is the yardstick `TODO.md` prioritizes by.*
 
 # What `douse` needs from `chladni`
 
@@ -332,3 +334,58 @@ Read 2026-10-06: `evaluate.py`, `derivative.py`, `certify.py`, `cluster_opt.py`,
 * `objective.py`, `optimize.py`, `constraints.py`, `sampling.py` and `polygon.py` were not read for
   solver needs; `polygon.py` uses `lappy.Polygon` and `lappy.utils` geometry, which `chladni.geometry`
   would have to cover.
+
+## As built: deltas from this spec
+
+Written 2026-11-05. The sections above are kept as written; this records where the shipped
+interface differs, and supersedes the claims it names.
+
+* **"Precision per level ... not designed in detail and not built"** is superseded by the dated
+  Phase 3 and Phase 4 subsections under it: `Level.margin`, `resolution`, `met` and
+  `count_shortfall`, `count_audit`, and `on_shortfall="raise"` with `PrecisionShortfall` are
+  all built. T1.2's near-double ("Not yet traced") is still open.
+* **`solve` returns a `SolveRecord`, not an extended `Spectrum`** (2026-10-14). The record
+  carries `.spectrum` (a tuple of `Level`s; `SpectrumLevel` is now just an alias of `Level`)
+  beside what produced it: `plan`, `solver`, `diagnostics`, `warm`, `warm_depth` and
+  `warm_note`. The spectrum's fields are forwarded (`lam`, `mult`, `bound`, `levels`, `flags`,
+  `count_audit`, ...), so the Phase 5 reads still work; new code should use `.spectrum`. The
+  signature is
+  `Eigenproblem(dom, *, coarse_bracket=False).solve(n, prec=None, plan=None,
+  on_shortfall="flag", *, confirm=False, near=None, windows=None)`.
+  `coarse_bracket=True` routes every search through the stage-policy coarse bracketing, off by
+  default. `prec=None` now means the domain's own `prec`.
+* **`LADDER` has five rungs, not three.** Rung 3 is lappy-style lightning: sources clustered
+  toward the singular corners. Rung 4 adds plane waves to the singular-corner terms, for shapes
+  whose corners are all reflection-closed (a 4:1 rectangle reached no other rung at 1e-10). The
+  offset rungs place a local source patch at short edges (`SHORT_EDGE`, `PATCH_N`). Before any
+  solve the planner declines a shape whose geometry cannot support `prec` (`shape_refusal`:
+  `achievable_prec` and corner clearance), and a rung whose search declined does not stop the
+  climb.
+* **Warm start on caller-supplied windows** (2026-10-14). With `near=` and `windows=` (a half-width
+  `h_i` per value, which `douse` knows from the level's shape derivative and its step), the warm
+  solve re-locates each level in `[lam_i - h_i, lam_i + h_i]` through
+  `MPSEigensolver.track_levels` instead of searching the prefix: an isolated level is refined,
+  not searched, and overlapping windows are merged and searched as a cluster. Nothing between
+  the windows is examined, so COMPLETENESS IS THE CALLER'S, backed by the periodic cold solve
+  (`WARM_COLD_EVERY = 10`). Without `windows`, the prefix-window warm start above is unchanged.
+* **Hadamard, as built** (M5, 2026-10-12; `boundary_integrals.md`, As built):
+
+        H = rec.hadamard(i, V)                    # (n_fields, m, m)
+        H, rep = rec.hadamard([i0, i1], V, report=True)
+
+  - `i` is a level INDEX, or a list of indices for a group, on the `SolveRecord` (which holds
+    the solver). A group gives one block over all members, cross terms included. The members'
+    eigenvalues are not returned beside `H`; they are `rec.levels[i].lam`.
+  - `V(curve, t) -> (n_fields, len(t))` is as specified, with curves numbered over
+    `domain.boundaries` in order, flattened. The node-array fast path was not built.
+  - Dirichlet only (`NotImplementedError` otherwise). A level that cannot be orthonormalized,
+    or whose `gram_residual` is past `max(1e3 * prec, 1e-8)`, is refused with `ValueError`.
+  - **The bound on the integrals is still not there.** `report=True` returns a `HadamardReport`
+    whose `attained` combines the rule's model bound, the normalization rule's, the
+    orthonormality defect and `mp_eps`. It is an ESTIMATE, and it UNDER-reports: on the 51
+    `douse` reference shapes it fell below the true error on 488 of 850 levels, median 2x, worst
+    34x at 1e-10. `met` can therefore pass an `H` about 10x short of `prec`. Calibrating it is
+    open (`TODO.md`).
+* **The Weyl count's signature** is `asymp.weyl_count(lam, domain=None, *, area=None,
+  perim=None, bc_type="dir")`, two terms; the corner-corrected count is
+  `asymp.weyl_count_poly(lam, domain, ...)`, which `count_audit` uses. Not `weyl_count(dom, lam)`.

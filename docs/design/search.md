@@ -1158,3 +1158,138 @@ widened end by the curve beyond it (the phantom probes, then the walk into the b
 the two constants that fought each other -- the 4-ulp bracket widening in
 `Objective.in_lam_bracket` and the 4-ulp same-point margin in `refine` -- are one constant,
 `objective.BRACKET_ULPS`, with the reason recorded beside it.
+
+## As built, 2026-11-05: stage policies, opt-in (2026-10-27)
+
+Nothing in the shipped default changed here: both flags are OFF. What changed is that `solve`
+can now read the pencil differently in different stages, and the record of why is
+`notes/stage_policy_steps.md`, with the diagnosis in `notes/triangle_apex_planner.md` sections
+9-12. The short form: on a basis with a noise tail the threshold rank's cut lands inside the
+tail, rounding decides which noise directions survive, and on a lightning basis `sigma_1` jumps
+~10% between neighbouring samples until stage 1 declines. Bracketing wants a continuous
+`sigma_1`; refinement and the count want the deep digits near one root with no rank change
+across it. One rank cannot serve both.
+
+**The plumbing** (829bd3e, c8078a9). `chladni.mps.policy.Policy` names how a stage reads the
+pencil: `Policy.pencil()` (its own; `None` everywhere, so every existing cache key is
+unchanged), `Policy.frozen(rank)`, and `Policy.penalty(tau_rel)` -- the coarse penalty
+`([A_B; tau I], A_I)` with `tau = TAU_REL x` the stack's spectral norm, `TAU_REL = sqrt(eps)`,
+which chooses no rank and so cannot flip one. The pencil and the `Objective` key their caches
+by policy, and `objective.PolicyView` is an `Objective` read under one policy -- same window,
+same counters, its own `samples`, optionally confined to one root's cell -- so `refine` and
+the multiplicity count need not know policies exist. `MPSPencil.spectrum(lam)` keeps the stack's
+singular values, and `policy.stable_rank_of` reads the STABLE RANK off several of them: the
+count before the first index whose MEDIAN relative movement over consecutive pairs exceeds
+`STABLE_TOL = 1e-2`. Pairs come from inside a root's cell `lam (1 +/- CELL_RHO)`,
+`CELL_RHO = 3e-4`, no closer than `PAIR_ETA = 1e-6`. The median rather than one pair is
+a5a4f16: directions at the tail's edge flicker, and cutting them split a double on the octagon.
+
+**`solve(stable_rank=True)`** (step 4, c162747). After stage 2, each root whose cell has a tail
+-- threshold rank above stable rank -- is re-refined in its cell at the stable rank, frozen, and
+counted at that rank only (`search._rerank`). Its levels carry `Level.rank`.
+`SolveDiagnostics.{rerank_evals, n_reranked, n_rerank_refused}` account for it.
+
+**`solve(coarse_bracket=True)`** (step 5, 4f8ba47, 3e1dd46, c71fa9c). Stage 1 brackets through
+`PolicyView(obj, Policy.penalty())`, asked for `max(prec, COARSE_PREC_FACTOR * TAU_REL)`, with
+`rescue_floor=True` (next section). Stage 2 is `search._refine_coarse`: each bracket is widened
+to the coarse well's floor region (`bracket.well_extent`, which stops at a hump), then refined
+at the THRESHOLD rank first and at the stable rank only where that refuses or misses `prec`
+(`COARSE_FINE = "threshold_first"`). Measured on the apex line, the stable rank cost 3-5x in
+floor and margin where the threshold did not flutter -- the flutter's damage is in bracketing,
+not refinement. `_settle_rank` re-reads a provisional stable rank from the refine's own spectra;
+`_recount_stable` re-counts a threshold root whose count came out uncertain. Every root and
+every level must sit in a coarse well (`RESCUE_DEPTH` x the coarse plateau), and levels that do
+not are dropped and counted in `SolveDiagnostics.n_noise_dropped`.
+`MPSEigensolver.search_interval(coarse_bracket=)` and `Eigenproblem(coarse_bracket=True)` route
+to it.
+
+**Certification** (c71fa9c). `MPSEigensolver.certify_levels(objective=)` certifies each level
+at its own rank AND at the stable rank near it (`search._stable_rank_near`), and keeps the
+smaller Moler-Payne bound. Each is a valid bound.
+
+Why it is not the default: the step-5 gate cleared the 1e-10 douse benchmark's silent cells, but
+`notes/stage_policy_steps.md` records two regressions at other precisions that must be fixed
+first. `TODO.md` carries the item.
+
+## As built, 2026-11-05: the attic section's claim holds only on a zero floor
+
+"The attic was not built, because nothing is pruned" argues that an interval wrongly excluded
+"is not reachable", because exclusion is recomputed from the current `L`. That is true for a
+mistake in `L`. It is false for a mistake in the FLOOR. `_envelope_min >= 0` assumes `sigma_1`
+can reach zero, and on the coarse penalty's floor (~1e-7) the cover excludes a double's well
+once its samples are closer than about `2 floor / L`, whatever `L` is (3e1dd46). No growth in
+`L` revives that well, because the samples that excluded it are the samples beside it.
+
+The remedy is `bracket_interval(rescue_floor=True)`: `bracket._rescue_excluded_wells` puts back
+every sampled local minimum deeper than `RESCUE_DEPTH = 1e-2` x the plateau that the cover
+excluded, each run out by `well_extent` to where `sigma_1` rises `RESCUE_RISE = 10`-fold, and it
+sets `floor_limited`. It is on only for the coarse path, whose floor is far from zero. The
+shipped path's floor is ~1e-15, where the purity-by-width stop comes first.
+
+## As built, 2026-11-05: what a solve reports agrees with what it computed (audit Phase 1)
+
+From `notes/accuracy_audit_2026-11-03.md` section 1, commits b5ac1c1 and e08d857, pinned by
+`tests/test_reporting_honesty.py`. Each item amends the multiplicity contract above.
+
+* **No absolute floors on relative tolerances.** The merge licence `search._licence` is
+  `max(prec*|lam|, 4*spacing(lam))`. It was `prec*max(|lam|, 1)`, absolute below `lam = 1`, so on
+  a large domain it folded levels up to `prec/lam` apart (audit 1.6). Bracket purity
+  (`bracket.width_is_pure`) made the same change.
+* **An exhausted reach is a lower bound, not a count.** When `multiplicity.reach_multiplicity`
+  counts every branch it examined and the list was cut at `max_branches`, it declines rather than
+  returning `mu` (audit 1.8). That decline goes to the side search and to `n_uncertain` like any
+  other.
+* **A refine that stopped on its budget widens its bar to the triple**, as a stalled one already
+  did (`refine.refine`, `reason in ("stalled", "budget")`). An outward end probe never goes below
+  `lam = 0`.
+* **`Level.margin` is measured from the bar the level REPORTS** (`Level.bound`), so `met` holds
+  exactly when `margin >= DELTA_SAFETY` on every path. It used to read `delta_res` after
+  certification had replaced it, so an unmet level read "margin 4" (audit 1.4). A refused
+  Moler-Payne bound stays infinite and unmet, and `bound_reason` names it.
+* **`Level.rule_prec`** carries the certification rule's model accuracy.
+  `MPSEigensolver` flags a level past `CERTIFY_RULE_FLAG = 1e-3`, or one whose rule was demoted
+  (e08d857).
+* **Stage 1 names a budget stop as such**, as `SearchDiagnostics.budget_limited`, where it was
+  reported as `floor_limited`. And `bracket._cover`'s floating-point-floor exit -- no new
+  evaluation fits between two samples -- now returns `"floor"`, so `floor_limited` is set there
+  too. Before that fix it never was.
+
+## As built, 2026-11-05: the removed options, and ambiguous grouping is no longer flagged
+
+The 2026-10-14 entry moved `collapse`, `merge="licence"`, `rule="gap"`/`"floor"`,
+`reach_slope="outside"` and `phase_d="angle"` out of `solve` and into
+`notes/evidence_tests/search_ablations.py`'s `solve_with_options`. So the contract's
+`merge="attained"`, `rule="reach"` and `phase_d="distance"` are the ONLY configuration, not
+named defaults. Its bullet "With `phase_d="angle"`..." describes an ablation, not an option.
+
+One consequence that entry did not state. With `_collapse_ambiguous` gone from `solve`, nothing
+sets `Level.grouping_ambiguous` or `SolveDiagnostics.n_ambiguous`. Both stay False/0, and
+`MPSEigensolver.solve_interval`'s ambiguous-grouping warning cannot fire. So section 2.4a stage
+3's "a collapsed group is DETECTED (`n_ambiguous`, and `solve_interval` warns)" no longer holds.
+What remains is that a level's COUNT disagreements reach `n_uncertain`, and `solve_interval`
+raises on them. A grouping coarser than `prec` asked for is not flagged by the shipped search.
+
+## As built, 2026-11-05: section 8's deferred items, and section 7's test table
+
+**Section 8.** Parallel evaluation shipped (9eee75a): `Objective.tensions_many` maps a batch over
+a thread pool (`objective.DEFAULT_WORKERS`), and `bracket._evaluate_all` uses it for the seed
+grid and the cover's midpoints. The cost currency is unchanged -- misses, counted identically
+to the serial loop. The two-level rank of section 3 is answered differently than proposed, by
+the stage policies above: a coarse penalty for the scan, a threshold or stable rank per root
+for the fine work. Automatic `gamma` escalation is still not built.
+
+**Section 7** was written before the code. These files were never created:
+`tests/test_search_scan.py`, `test_search_refine.py`, `test_search_multiplicity.py`,
+`test_search_precision.py` and `test_search_score.py`. What defends each row at HEAD:
+
+| planned | at HEAD |
+|---|---|
+| Phase A (scan) | `tests/test_bracket_score.py` with `tests/bracket_controls.py`; the exclusion law and `L`'s growth history in `tests/test_search.py`. No test pins revival under a grown `L` directly |
+| Phase B (refine) | `tests/test_refine.py`, `test_refine_controls.py`, `test_refine_regression.py` |
+| Phase C (multiplicity) | `tests/test_multiplicity.py`, `test_floor_multiplicity.py`, `test_cluster_totals.py` |
+| Phase D | `notes/evidence_tests/test_search_collapse.py` (retired, as the table says) |
+| section 2's contract | `tests/test_search.py`, `test_reporting_honesty.py`, and the golden trace `test_search_golden.py` |
+| stage policies | `tests/test_stage_policy.py` |
+| end to end | `tests/test_cluster_totals.py` and the evidence tier under `notes/evidence_tests/` |
+
+The "What is built" table at the top of this section also lacks `chladni.mps.policy`.

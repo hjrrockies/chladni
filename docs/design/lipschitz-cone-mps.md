@@ -407,3 +407,23 @@ specifically to prevent this.
 | $\alpha$ | isolation width factor | $\approx 1/4$ |
 | $G$ | multiplicity gap ratio | 10 to 100 |
 | $\delta_{\rm res}$ | resolution limit | $\sqrt{2\varepsilon\eta}\,/\,c$ |
+
+---
+
+# As built: deltas from this proposal
+
+*Added 2026-11-05.* This is the originating proposal, superseded as a spec. `search.md` is the
+spec built from it, and records which claims were measured and which were wrong.
+`CHLADNI_V1.md` replaced its Phase A (the Lipschitz branch and bound with the attic) with the
+bracketing that ships in `chladni.mps.bracket`. The record in brief, with details in those two
+files:
+
+* **A direct implementation did not work.** `tests/searches.py`'s `lipschitz_search` scored 7/12
+  on the surrogate after five repair attempts (`search.md`, "`lipschitz_search` does not work").
+* **The attic was not built.** Exclusion is recomputed from the current `L` every cover pass, so
+  nothing is pruned. The one way a well is still lost -- a floor far from zero -- is handled by a
+  rescue, not an attic (`search.md`, the attic entries).
+* **Refinement is in `lam`, not `k`** (section 2.2). The scan stays in `k`. `search.md`, "Refine
+  in `lam`, not `k`", measured 17 of 17 cases.
+* **Phase C's gap ratio is not what ships.** The count is the reach rule with a (C2) prominence
+  backstop (`search.md`, "THE MULTIPLICITY CONTRACT").

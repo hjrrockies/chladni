@@ -828,3 +828,65 @@ The end-to-end ground truth in the table above -- the sector eigenfunctions, the
 disk, the equilateral triangle, and the L-shape's `lam_1` -- is written down but not yet
 tested, because there is no eigensolver to test it with. Those are the `mps` layer's first
 tests, not this one's.
+
+## As built, 2026-11-05: transforms, column-scaled accuracy, the kernel's error model
+
+Written after the accuracy audit of 2026-11-03 (`notes/accuracy_audit_2026-11-03.md`, sections
+2.6 and 3). Each item supersedes the earlier text it names.
+
+### Transforms are column-exact; `PlaneWave` has a phase origin
+
+Supersedes "`PlaneWave.translated` returns `self`" (Additions, above). That was true of the
+SPAN and wrong for a coefficient vector: a phase shift rotates within each cosine/sine pair, so
+the fitted coefficients do not carry over. Boundary integrals now evaluate near a corner `c` in
+a frame centred at `c` (`integrals.cauchy`), which needs
+`f.translated(-c).values(k, z - c) == f.values(k, z)` column by column. So `HelmholtzFamily`
+documents every transform as COLUMN-EXACT, and `PlaneWave` takes an `origin`, the point where
+every column has phase zero: `translated(dz)` returns the same directions with the origin moved,
+and `rotated` and `scaled` move it with the plane.
+
+### `Sampling.accuracy` is column-scaled; the entrywise bound has its own name
+
+Supersedes "`Sampling.accuracy` reports the honest entrywise number" (The kernel's error floor)
+and the entrywise warning described under "`prec` governs the claim". A per-entry relative bound
+goes to 1 at every zero of `J` or of the angular factor, at no cost to the solve, because the
+GSVD is invariant to a column's scale. So:
+
+* `Sampling.accuracy(k)` is the worst entry error over the points divided by the column's
+  largest entry, dropping the per-column constant part of the kernel's error (`Scaled.rel_fixed`,
+  which a rescaling absorbs). This is what the warning reads.
+* `Sampling.accuracy_entrywise(k)` keeps the old, stricter per-entry relative bound.
+* `_check_accuracy` warns on the column-scaled number, and the message names the family and the
+  worst column through `HelmholtzFamily._where` -- the corner for a `FourierBessel`, the
+  multipole order for a `Fundamental` -- rounded so the warning registry does not see a new
+  message per `k`.
+
+### The Bessel kernel's error model, measured against mpmath
+
+* **The series hands cancelling cells to scipy.** A bounded largest term is not a bounded error
+  once `S` is small: past the turning point the series cancels to an oscillating `|J| << 1`, and
+  lost 7.3e-11 of the column scale at `(nu, x) = (19.3, 23.6)`, where scipy is good to 1e-15.
+  The series now keeps a cell only while its own cancellation bound is within
+  `_SERIES_BUDGET = 1e2` eps; the rest go to scipy and come back only where scipy underflows.
+  This self-selects like branch C, and like branch C has no tuned threshold in `(nu, x)`.
+* **scipy's bound is absolute, in units of the envelope.** The flat `4e-16 * (1 + nu)` was 10-25x
+  optimistic at low order, and near a zero of `J` under-reported by 24x (`Y` by up to 12x).
+  `_j_scipy` and `_y_scipy` now bound the error in units of the oscillation's envelope past the
+  turning point, growing slowly with `x`, with the order term kept (`notes/accuracy_studies.py`).
+* **`Sp`'s bound is relative to `max(|S|, |Sp|)`**, not to `|Sp|`, since near a zero of the
+  derivative its relative error is unbounded. The value bound holds over orders 0 to 400 out to
+  `k*r` of about 360 (ARC, 2026-11-03); the `douse` reference shapes reach `k * diameter` of 60.
+
+### What was deferred is built
+
+Supersedes "Still deferred", and the `slow` L-shape row's "Deferred until the `mps` layer
+exists" in the ground-truth list:
+
+* **Basis planning** is `chladni.plan` (`LADDER`, `Plan`, `plan_for`), driven by
+  `Eigenproblem.plan` / `Eigenproblem.solve`: Fourier-Bessel at the corners, boundary-offset
+  sources, a lightning rung and a plane-wave rung, each a frozen, shape-relative `Plan`
+  (`douse_requirements.md`, Phase 5). Every family is still constructible from explicit
+  parameters.
+* **The end-to-end ground truth** is tested through the `mps` solver: sector, square, disk and
+  L-shape eigenvalues and eigenfunction norms in, among others, `tests/test_moler_payne.py`,
+  `tests/test_rellich.py`, `tests/test_eigenproblem.py` and `tests/test_level_resolution.py`.

@@ -33,10 +33,12 @@ without a cache it would pay.
 
 # The variable
 
-`x` is whatever the case set up, and truth is given in the same variable; see
-`candidates.md` section 2 for why the canonical setup is `x = k` and why that does not
-contradict `docs/conventions.md`. `from_pencil` is the one place that knows about `lam`, and it
-converts at the `mps` boundary, which is where the conventions doc puts the seam.
+`x` is whatever the caller set up, `k` or `lam` (`variable`), and truth is given in the same
+variable. The shipped solver builds its objective in `lam` (`MPSEigensolver.objective`,
+`variable="lam"`), which is what `docs/conventions.md` asks of everything at and above `mps`;
+the search transforms to `k` internally (`bracket._KView`) and hands brackets back in `lam`. The
+default `variable="k"` is the scored-candidate harness's setup (`candidates.md` section 2).
+`from_pencil` is where a `k` caller is converted: the pencil itself is always called with `lam`.
 """
 from __future__ import annotations
 
@@ -390,11 +392,11 @@ class Objective:
 
     @classmethod
     def from_pencil(cls, pencil, lo, hi, *, variable="k", max_workers=None, **kw):
-        """Wrap an `MPSPencil`. The ONE place in this layer that knows about `lam`.
+        """Wrap an `MPSPencil`, which always takes `lam`, as an objective in `variable`.
 
-        The conversion falls here, at the `mps` boundary, which is where `docs/conventions.md`
-        puts it: the pencil is always called with `lam`, and a caller working in `k` never
-        hands `lam` to something expecting `k` or the reverse.
+        `variable="lam"` (the shipped solver's) passes the abscissa straight through; with `"k"`
+        the conversion falls here, so a caller working in `k` never hands `lam` to something
+        expecting `k` or the reverse (`docs/conventions.md`, "The spectral parameter").
 
         `max_workers` sizes the thread pool `tensions_many` evaluates a batch of misses on
         (`DEFAULT_WORKERS` when None; 1 keeps every evaluation on the calling thread). The work

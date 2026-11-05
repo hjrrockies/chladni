@@ -349,3 +349,18 @@ def test_it_brackets_a_real_rectangle_pencil(prec):
     s = bs.run_case(v1_brackets(), case, prec)
     assert s.coverage == 1.0, f"missed {s.n_true - s.covered} of {s.n_true}"
     assert s.pure, f"{s.impure} impure brackets"
+
+
+def test_the_floating_point_floor_exit_is_reported_as_floor_limited(monkeypatch):
+    """When the next exclusion point is one already sampled, `_cover` has reached the
+    objective's own floor. That exit must say "floor", as the stall exit does, or the caller's
+    `stalled == "floor"` never sees it and `floor_limited` stays False on a run that hit it."""
+    obj = objective(sc.isolated(), 1e-8)
+    lo, hi = obj.lo, obj.hi
+    for x in np.linspace(lo, hi, 64):
+        obj.tension(float(x))
+    ks, vs = obj.samples
+    L = V.SAFETY * float(np.max(V._secants(ks, vs, hi - lo)))
+    monkeypatch.setattr(V, "_add", lambda o, x: o.samples)     # nothing new is ever evaluated
+    *_, stop = V._cover(obj, ks, vs, L, [L], 0, 1e-15, hi - lo, budget=10**6)
+    assert stop == "floor"

@@ -443,14 +443,14 @@ def isolation(obj, ks, vs, lo, hi, c_bound, margin=MARGIN):
 
     One evaluation returns the whole ascending sigma vector, so `sigma_2` costs nothing extra.
     Near a minimizer it is the distance to the NEXT one scaled by the same wall slope. Measured
-    against the true gap: a close neighbour (<= 1e-2) reads at ratio 0.98-1.08, a far one
-    (>= 19) at 0.56-0.87.
+    against the true gap (`docs/figures/make_bracket_figures.py`, the gate figure): a close
+    neighbour reads at ratio 0.97-1.03, a far one at 0.78-1.30.
 
     Two things matter about those numbers. It is accurate precisely where the decision is HARD
-    -- when a neighbour is close enough to be a purity risk -- and where it is inaccurate it
-    UNDERESTIMATES the gap. So a gate phrased as "is the neighbour further away than this
-    region is wide?" errs toward refusing to certify: conservative by construction, not by
-    tuning.
+    -- when a neighbour is close enough to be a purity risk. Where it is inaccurate it errs both
+    ways, but only for neighbours many region widths away, where a 30% misreading cannot change
+    the answer to "is the neighbour further away than this region is wide?". Close in, the
+    slope it divides by is an upper bound, which biases the reading toward refusing to certify.
 
     `c` is estimated from the descent triple itself, cancellation-free: the flanks straddle the
     minimizer, so on a cone `v_lo = c*(lam* - lo)` and `v_hi = c*(hi - lam*)`, hence
@@ -880,7 +880,7 @@ def _cover(obj, ks, vs, L, L_hist, L_growth, prec_u, span, budget):
         if obj.n_evals == before:
             # Nothing new lies between them: the floating-point floor, which is the objective's
             # own limit rather than a failure of the search.
-            return ks, vs, L, L_hist, L_growth, regions, True
+            return ks, vs, L, L_hist, L_growth, regions, "floor"
 
         raw = float(np.max(_secants(ks, vs, span), initial=0.0))
         if SAFETY * raw > L:

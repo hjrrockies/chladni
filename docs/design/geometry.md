@@ -533,3 +533,39 @@ All measured, all with the number that motivated them recorded at the code:
 - `refine()` takes a `scale` floor. A purely relative convergence test cannot converge on a
   quantity whose true value is zero; the disk's centroid drove n to 8192 and one test took 55
   of the suite's 56 seconds.
+
+## Corner-local frames: anchored panels and exact offsets (2026-11-03)
+
+Added for `chladni.integrals`' graded corner rule (`boundary_integrals.md`, As built). A node
+`1e-12` from a corner at `3+2i` is stored as a position rounded to `eps * |3+2i|`, so its
+distance from the corner -- the only thing a corner's `r^(nu - 1)` columns depend on -- is gone
+before anything else happens, and on a re-entrant corner's `r^(2 nu - 2)` integrand that cost
+whole digits (`notes/hadamard_accuracy.md`). The panel seam grew a frame:
+
+- `Panel.anchor` -- `None`, `"start"` or `"end"`. An anchored panel must touch that end of its
+  segment, and its `nodes(d0, d1)` is called with the span in the distance `d` from the corner
+  (`d = tau` from the start, `1 - tau` from the end) rather than in `tau`, so `1 - d` is never
+  rounded to the nearest representable `tau`.
+- `Segment.offset(d, end)` -- `p(tau) - p_end`, formed relative to the endpoint. The generic
+  fallback subtracts two rounded positions; `LineSegment` and `ArcSegment` override it with
+  closed forms (the arc as `2i sin(phi d / 2) e^{i phi d / 2}`, with no `1 - cos` cancellation)
+  and set `exact_offset = True`.
+- `Quadrature.anchor_pt` and `offset`, with the mask `anchored`: each node on an anchored panel
+  carries its corner and exact offset, `pts == anchor_pt + offset` to rounding; both are NaN
+  elsewhere. `concat` and `Boundary.quad` carry them through.
+
+Geometry still chooses no rule: it lays out what it is handed, in the frame it is asked for.
+
+## The size floor came out of two absolute tolerances (2026-11-03)
+
+`Boundary`'s gap test and `check_nondegenerate` scaled their tolerance by `max(size, 1.0)`. The
+floor at 1 made both ABSOLUTE for small domains: a 0.5% gap was accepted on a `1e-6` square
+(`notes/accuracy_audit_2026-11-03.md`, 1.6). Both now scale by the boundary's own size, in
+keeping with "Precision is reported" above.
+
+## `grading="corner"` is no longer the only corner placement
+
+The section on `grading="corner"` above calls it a placeholder until a quadrature layer owns
+node placement. For boundary INTEGRALS that layer now exists: `chladni.integrals` builds its
+corner panels and reaches in through `panels=`, as anticipated. `grading` is unchanged and
+still serves sampling and collocation.

@@ -29,77 +29,25 @@ the floor** (`docs/design/douse_requirements.md`, "Precision per level"). Nearly
 (eps/c)` small; the remedy is to stay out of that regime and say so. Work below 1e-10 is in the
 "Parked" section at the end.
 
-**Where douse-readiness stands (2026-10-13, `notes/session_2026-10-13.md`).** douse calls chladni
-through `ChladniEvaluator` (douse branch `chladni-backend`, pushed, awaiting review; lappy stays
-the default). On douse's constrained ratio workload (N <= 6, k <= 2) all 36 comparison runs
-complete with no errors or stalls, and the backends agree to 1e-10 where the optimizer converges.
-chladni matches lappy's speed at N = 6, k = 1 and is 4-9x slower on k = 2. **Next:** the user's
-review of the douse branch, the douse problems the thesis needs, then speed (the parallel-search
-item in section 4).
+**Where douse-readiness stands.** douse runs on chladni: `ChladniEvaluator`, merged onto douse
+`main` 2026-10-14, where `lappy` is a deprecated optional extra. On douse's constrained ratio
+workload (N <= 6, k <= 2) all 36 comparison runs completed with no errors or stalls, and the
+backends agreed to 1e-10 where the optimizer converges; chladni matched lappy's speed at N = 6,
+k = 1 and was 4-9x slower on k = 2 (2026-10-13, `notes/session_2026-10-13.md`).
 
 The path, in order:
 
-* **[blocking]** **Prune the test suite** (agreed 2026-10-09). Much of it pins trajectories,
-  constants and ablations from when the search was designed on one rectangle family; it costs
-  runtime (the full suite is ~17 min) and flips under `tests/ulp_jitter.py`. First an inventory
-  classifying every test as a douse contract, a mechanism pin, evidence for an open item, or a
-  retired/parked feature, with runtime and jitter flip rate -- and FAIRNESS: how far its case sits
-  from the nearest decision boundary the solver declares (the margin ratio `R`, the merge licence,
-  the reach rule's bias interval, `basis_sufficiency`'s precondition). A test that demands one
-  answer inside a declared-undecidable band is unfair; it should accept any honest outcome
-  (right, declined, flagged) or move off the boundary. The user reviews it, then the
-  pruning goes in a few commits that say where any evidence went.
-* **[done 2026-10-10, Phase 1, PR #3]** **Make the `douse` benchmark a reliable instrument at 1e-10.** It exists
-  (`benchmarks/douse/scoreboard.md`: 41 catalogued shapes, references by three chladni bases plus
-  FEM counts, `lappy`'s cold solves, a scorer). It is not yet reproducible: the window comes from
-  ARPACK FEM eigenvalues with a random start, and counts at near-degeneracies change with ulps of
-  the window (`notes/nondeterminism.md`). Needs: a seeded ARPACK start in `fem.py`; a STABILITY
-  score (each case on a few jittered windows, how often the count changes); rows at `prec = 1e-10`
-  with wall time.
-* **DECIDED 2026-10-10: keep truncation at 1e-10** (`notes/regularization_1e10.md`). On the douse
-  benchmark (basis D, 5 windows): truncation 161 ok / 1 flagged / 13 silent, stable 36/41;
-  `tikhonov_qr` 152 / 10 / 13, 38/41, 1.8x wall, with NEW silent losses on T1.4-oct and ngon8;
-  posterior 161 / 3 / 11, 35/41, 2.9x wall, new silent windows on T1.4-hex and ngon8. Cluster
-  grids under jitter: truncation 115/115. Neither penalty clears the pre-written rule. Open from
-  it: (a) **at 1e-8, where `reg="auto"` ships the penalty, truncation beats it on the benchmark on
-  every axis** (169 ok / 1 silent / 39 of 41 stable vs 155 / 9 / 37, 0.6x wall; cluster grids tie at
-  115/115), and at 1e-6 too (0 silent vs 5). REVERSED 2026-10-11 on `phase2/auto-truncation`
-  (`PENALTY_PREC_MIN = inf`: `"auto"` is the threshold at every `prec`). The Linux rank-flip
-  refusal the penalty once removed was on the suite pencil (`SUITE_RTOL`); at the rung's own
-  `rtol` the cluster grids are 391/391 at 1e-6 and 1e-8 under 16 jitter seeds. **Linux CI is the
-  open check;** (b) the penalty turns truncation's silent
-  T1.2/ngon12 rows at 1e-10 into flags; check whether the margin rule does the same for
-  truncation; (c) E3: the first dropped singular value sits within 10% of the cutoff at 15% of
-  evaluated points, with no outcome yet attributed to it.
-* **Phase 3 BUILT 2026-10-11** (branch `phase3/margin-rule`): `Level.margin`, `Level.resolution`,
-  `Level.count_shortfall`, and `SolveDiagnostics.n_count_shortfall`, reporting only
-  (`tests/test_level_resolution.py`). On the benchmark, rescored (`notes/phase3_rescore.md`): no
-  count is silently wrong on bases D or A at 1e-10 or 1e-8. What is left is DROP rows (Phase 4)
-  and one value bound (the `delta_res` item below). The scoreboard itself still matches at 1e-6;
-  move it to resolution groups when it is next regenerated.
-* **Phase 4 BUILT 2026-10-11: the count audit, then `on_shortfall`.**
-  Calibration on the 31 complete douse reference spectra: the MEAN Weyl deficit over mid-gap cuts
-  (corner-corrected `weyl_count_poly`) sits in [-0.07, 0.04] on complete spectra. A simulated
-  whole-level drop scores >= 0.16 when it lies in the lower two-thirds of the spectrum (all
-  caught) and is caught 88% of the time in the top third. Today's worst-cut statistic
-  (`weyl_deficit`) overlaps: clean up to 1.04, drops from 0.15. In-sample, so:
-  1. DONE 2026-10-11 (`notes/count_audit.md`). Validated on the douse benchmark (100 of 100
-     drops, no false alarm), then widened to 18 shapes with known spectra. That widening found
-     the douse-only threshold too tight: a 5:1 rectangle and the L-shape alarm when complete.
-  2. BUILT 2026-10-11: `asymp.count_audit` (`short` above 0.25, `excess` below -0.6; prefix
-     windows only), wired as `diagnostics.count_audit` (`tests/test_count_audit.py`). No false
-     alarm on any complete spectrum measured; ~94% of single drops caught on spectra of <= 30
-     levels with 4 levels of headroom, and weaker deeper. A backstop: drops stay the planner's.
-  3. BUILT 2026-10-11: `on_shortfall="flag" | "raise"` on `search_interval` and
-     `solve_interval`; `PrecisionShortfall` (`tests/test_on_shortfall.py`).
-  4. MEASURED 2026-10-11 (`notes/early_shortfall.md`): the early abort saves a median 57% of a
-     failing solve's wall time, so `"raise"` stops at the first refined level that misses
-     `prec`. The floor pre-scan predicts unmet levels at AUC 0.59, so it is dropped.
-  5. RESCORED 2026-10-11 (`notes/count_audit.md`): 100 of 101 real drops caught, no false alarm
-     in 654 clean solves. The one miss, a drop replaced by a duplicate of its neighbour, is
-     invisible to counting.
-  **Phase 4 done.** Left for the planner: drops on deep spectra (the audit weakens), and the
-  Faber-Krahn prefix condition on elongated shapes (start windows low).
+* **[later]** **Two leads left from keeping truncation at 1e-10** (`notes/regularization_1e10.md`;
+  `reg="auto"` is the threshold at every `prec`, the penalty is explicit only): (a) the penalty
+  turns truncation's silent T1.2/ngon12 rows at 1e-10 into flags; check whether the margin rule
+  (`Level.margin`) does the same for truncation; (b) E3: the first dropped singular value sits
+  within 10% of the cutoff at 15% of evaluated points, with no outcome yet attributed to it.
+* **[later]** **Move the douse scoreboard to resolution groups** when it is next regenerated
+  (`benchmarks/douse/scoreboard.md`, `notes/phase3_rescore.md`); it still matches at 1e-6.
+* **[with the planner]** **What the count audit leaves to the planner** (`asymp.count_audit`,
+  `notes/count_audit.md`): drops on deep spectra, where the audit weakens (~94% of single drops
+  caught on spectra of <= 30 levels with 4 levels of headroom, less deeper), and the Faber-Krahn
+  prefix condition on elongated shapes (start windows low).
 * **[later]** **Sharp, thin-wedged douse shapes cap near 1e-7, whatever the basis size**
   (`notes/hard_cases.md` parts 2-3): T1.3, T2.2, T2.6-N3k4-L8 and T2.6-N3k5-L6, with corners of
   11-20 degrees (40-55 for the last). It is not Fourier-Bessel evaluation, which agrees with
@@ -109,23 +57,6 @@ The path, in order:
   - too few interior points inside the wedges;
   - TAPERED lightning clusters (untapered ones made solves decline).
   Until then the planner ends these FLAGGED at its top rung.
-* **[done 2026-11-03: the series hands cancelling cells to scipy (`_SERIES_BUDGET`); scipy's bound
-  measured and made honest]** **Fourier-Bessel's accuracy warning at 1e-10 to 1e-12.** With the
-  warning column-scaled, what still fired was REAL: the series branch lost 7.3e-11 of the column
-  scale at mu 19.3, x 23.6 on the L-shape (mpmath), and about 1e-9 at order 16 in
-  `test_floor_multiplicity`. On a (mu <= 300, x <= 120) mpmath grid the worst relative error away
-  from zeros of J fell from 1.7e-10 to 6.6e-13, and the L-shape column-scaled worst from 1.3e-10 to
-  1.5e-13. scipy's own error is absolute, 260-720 eps of the envelope, growing like x^(1/3); its
-  old flat `4e-16(1+nu)` claim was 10-25x optimistic, and is replaced by the measured form.
-  Remaining: at prec <= 1e-13 the warning fires honestly (that floor is scipy's and the scale's).
-* **[done 2026-10-13, PR #13: probes outside the window are not evaluated]** **The search can ask the
-  pencil for a NEGATIVE lam.** `notes/hybrid_bases.py`
-  round 2, T2.6-N3k4-L8-ref0 with Fourier-Bessel plus corner lightning (default sigma 4,
-  corner-graded collocation) at 1e-10. The window is [~25, ~300], and the solve raised
-  `ValueError: lam must be finite and strictly positive, got -348.16` from the Helmholtz layer.
-  Some stage evaluates outside `[lo, hi]`, probably extrapolating a step on an ill-conditioned,
-  flat objective. A search must clip every evaluation to its window, or decline. Reproduce with
-  `HYBRID_ROUND=2 .venv/bin/python notes/hybrid_bases.py` (variant "FBs+L16 graded").
 * **[later]** **Lightning sources, as lappy set them up, were not finished measuring.** Round 3 of
   `notes/hybrid_bases.py` (`HYBRID_ROUND=3`: sigma 1 or 2, poles out to ~1, order 2, a 50/50
   column split with Fourier-Bessel) was stopped to ship Phase 5. With chladni's defaults (sigma 4,
@@ -163,57 +94,30 @@ The path, in order:
 * **[next]** **The planner refuses a basis that fails `basis_sufficiency`'s multiplicity
   precondition.** It is the guard for a double read as simple on a MET level, which only starved
   bases showed (the `count_ratio` grid, R up to 18).
-* **Phase 5 BUILT 2026-10-12: the planner and `Eigenproblem`** (`chladni.plan`,
-  `chladni.eigenproblem`; `notes/phase5_benchmark.md`). With no basis supplied, the douse
-  benchmark comes back right on 33 of 35 cases at 1e-10 (30 unflagged) and 35 of 35 at 1e-8. T2.2
-  is flagged. The one silent row, T2.8, is a suspect reference (item above).
-* **[done 2026-10-12/13]** **The `douse` seam, then M5 Hadamard.** Multi-level Hadamard is PR #12;
-  the seam is douse's `ChladniEvaluator` (branch `chladni-backend`). It re-plans on drift and
-  tracks with the warm start (PR #16), and it was compared against lappy on the constrained ratio
-  workload (`notes/session_2026-10-13.md`).
-
-* **[done 2026-10-14]** **A refusal at a wild shape cost minutes; the planner now declines wild
-  geometry before any solve** (`plan.shape_refusal`: `achievable_prec` above the request, or a
-  corner within `CLEARANCE_FLOOR` x diameter of a non-adjacent boundary), climbs the ladder with
-  early abort (`on_shortfall="raise"` per rung, the best-ranked rung solved in full only when
-  none is accepted; a rung whose search declined does NOT stop the climb -- the 1.6 x 0.4
-  rectangle declines at rung 0 and plans at the plane-wave rung), and hands the accepted rung's
-  solve back (`Eigenproblem.plan_and_solve`) so douse no longer solves a replanned shape twice.
-  Still open: a thin-wedge angle gate (`notes/hard_cases.md` has the shapes), and a wall-time
-  budget on the climb for shapes that pass the geometry but reach no rung.
+* **[later]** **The planner's climb has no angle gate and no wall-time budget.** `plan.shape_refusal`
+  declines wild geometry before any solve (`achievable_prec` above the request, or a corner within
+  `CLEARANCE_FLOOR` x diameter of a non-adjacent boundary), but nothing gates thin wedges by angle
+  (`notes/hard_cases.md` has the shapes), and a shape that passes the geometry but reaches no rung
+  climbs the whole ladder.
 
 ## 1. The eigenvalue search
 
-* **[done 2026-10-14]** **`search.solve` in named steps, behind a golden trace.**
-  `tests/test_search_golden.py` (36 rectangle-suite solves) replays exactly on the split:
-  `_refine_stage`, `_group_roots`, `_count_root` -> `_side_search` + `_attribute`. The retired
-  options (`collapse`, licence merge, gap/floor rules, outside slope, Gram angle) are
-  `notes/evidence_tests/search_ablations.py::solve_with_options`, not parameters of `solve`.
-  `refine._end_verdict` holds the end probe; `objective.BRACKET_ULPS` is the one widening/
-  margin constant. `docs/design/search.md`, "As built, 2026-10-14".
+`tests/candidates_v1.py` holds the two adapters that keep V1 on `candidates.md`'s scored seam, so
+a fourth candidate is still measured on the same instrument.
 
-The search SHIPS. `chladni.mps.{bracket,refine,multiplicity,search}` are the four stages and
-`MPSEigensolver.solve_interval` returns a `Spectrum`, so a `Domain` goes in and eigenvalues
-with multiplicities come out. `tests/candidates_v1.py` holds the two adapters that keep V1 on
-`candidates.md`'s scored seam, so a fourth candidate is still measured on the same instrument.
-
-What is left here is not construction, and since 2026-09-18 it is not Phase D either. The
-`modes(x)` widening landed, the interior Gram angle is built behind `phase_d=` and measured, and
-the multiplicity contract is stated in `docs/design/search.md`'s As-built section. The cluster
-grids (all rectangles) show no wrong totals on macOS; **off rectangles the search is not yet
-trustworthy near the floor**: the L-shape's `10 pi^2` and the spike triangle's x8 (fixed by the (C2)
-change, `tests/test_floor_multiplicity.py`), T1.2's near-double (below), and the `douse` benchmark's
-silent rows (`benchmarks/douse/scoreboard.md`). What is left is the margin rule (section 0), the
-constants still inherited from one rectangle family, and the rank policy that belongs to the
-planner.
+What is left here is not construction. The cluster grids (all rectangles) show no wrong totals on
+macOS; **off rectangles the search is not yet trustworthy near the floor**: T1.2's near-double
+(below) and the `douse` benchmark's silent rows (`benchmarks/douse/scoreboard.md`). What is left
+is the constants still inherited from one rectangle family, and the rank policy that belongs to
+the planner.
 
 * **[next]** **T1.2's near-double is located 1, 2 or 3 times depending on ulps of the window.**
   `notes/nondeterminism.md` (2026-10-09): the solve is deterministic, but a one-ulp change to a
   window end 58-115 units away flips the count at douse's T1.2 pair (two eigenvalues 9e-10 apart,
   ~54 floor scales, so resolvable): 7 of 16 perturbations wrong, none count-flagged. Count 1 misses
   a member; count 3 locates one member twice, 4e-12 apart, and the dedup keeps both. At `prec =
-  1e-12` the pair sits at `R = 4.1`, inside the margin rule's regime (section 0), which may absorb
-  it -- trace stages 1-2 only if it does not.
+  1e-12` the pair sits at `R = 4.1`, inside the margin rule's regime (`Level.margin`), which may
+  absorb it -- trace stages 1-2 only if it does not.
 * **[next]** **Drive the `ulp_sensitive` tests to 0 of N jitter seeds -- one left.** The suite
   pencil is cut for 1e-10 since 2026-10-11 (`rect_suite.FINEST_PREC`; it was 1e-14), and 15 of the
   16 quarantined tests then passed 32 of 32 jitter seeds and went back into per-push CI
@@ -221,8 +125,7 @@ planner.
   near-null directions a `sqrt(1e-14 eps)` cut keeps. Left: `test_floor_multiplicity`'s noisy-floor
   case [A], which builds its own pencil (1 of 32 seeds, and Linux Zen 3 returned 916.08 x2).
   Not re-measured on the new pencil: single cluster-grid cells, which flipped at ~1/16 on the old
-  one (`test_the_cluster_total_GRID`, unmarked). `solve(collapse=True)` and `rule="gap"` are
-  untested options since 2026-10-09 -- retire them or re-test them.
+  one (`test_the_cluster_total_GRID`, unmarked).
 * **[next]** **Under ulp noise, `refine` accepts a bracket in a spectral GAP as a root.** The
   2026-10-09 jitter sweep of the pruned suite (`notes/jitter_sweep_after_prune.json`, seeds 4 and 7):
   `test_refine::test_it_rejects_an_empty_bracket_on_a_real_pencil_cheaply`, re-posed at 1e-10,
@@ -237,7 +140,7 @@ planner.
   `reg="tikhonov_qr"` at 1e-10 wanders ~4e-6 relative, 50x quieter. In a real search stage 1
   rarely brackets a plateau peak, so the exposure is through spurious brackets in noisy regions.
   A depth criterion (relative to the ends or the plateau) is the obvious fix; it touches a
-  calibrated function, so it waits for the margin rule.
+  calibrated function, and the margin rule it waited for is now built (`Level.margin`).
   On the rung-sized suite pencil (2026-10-11) the test passes 32 of 32 seeds: the noise was the
   1e-14 cut's. The missing depth test is still a defect, with less exposure at the default cut.
 * **[next]** **`delta_res` is admitted into `Level.bound` at the very edge of `prec`.** `c1c3f53`
@@ -314,18 +217,18 @@ planner.
   replay pinned refine's reason string and failed 8 of 8 jitter seeds).
 
   **Run on Linux 2026-10-04, and demoted to `[later]` -- PREMATURELY (see the item above, 10-05:
-  the suite row failed again on two of three legs).** The default path at `prec >= 1e-8` is
-  the penalty and has no rank to flip. What stays open is the flip itself, on every TRUNCATION:
-  `reg="auto"` below 1e-8, and any explicit `rtol=`, `rank=` or `lam_ref=`. Its passing on Linux
-  now is a moved bracket end, not a fix, so this item stays until either the penalty's range
-  reaches the bottom rung or the planner owns the rank (the item below). Section 12 of
+  the suite row failed again on two of three legs).** `reg="auto"` is the threshold at every
+  `prec` (decided 2026-10-10, `notes/regularization_1e10.md`), so the flip is open on the default
+  path and on any explicit `rtol=`, `rank=` or `lam_ref=`; only an explicit `reg="tikhonov_qr"`
+  has no rank to flip. Its passing on Linux now is a moved bracket end, not a fix, so this item
+  stays until the planner owns the rank (the item below). Section 12 of
   `notes/smooth_filter.md` added a look past a refused bracket END; it does not cover this case,
-  where the root is inside and the flipped end points away from it. Truncation stays the 1e-10 default (decided 2026-10-10), so this stays open.
+  where the root is inside and the flipped end points away from it.
 * **[next]** **The threshold rank makes the objective piecewise, and a search cannot bound a
   slope across a jump.** DEFERRED TO BASIS PLANNING, deliberately: the rank policy is the
-  planner's to own, it is entangled with `rtol` and the floor it induces, and section 3's planner
-  is where the two halves of the `_UNSAFE_RATIO` question get decided together rather than one at
-  a time. Recorded here in full so the planner inherits the measurement rather than rediscovering
+  planner's to own, it is entangled with `rtol` and the floor it induces, and the planner
+  (`chladni.plan`) is where the two halves of the `_UNSAFE_RATIO` question get decided together
+  rather than one at a time. Recorded here in full so the planner inherits the measurement rather than rediscovering
   it. `notes/landscape_findings.md` section 34. At `145*pi^2` **30 of
   55 cells decline**, every one of them `_seed`'s "the slope estimate never settled", and the
   rising secants that cause it are RANK FLIPS: at every seed density the largest secant sits
@@ -368,17 +271,15 @@ planner.
   robustness plan set" cited here before came from a plan not in this repository, and the "24 of
   45" beside it contradicted `search.solve`'s own table, where 24 is the number RIGHT.
 * **[next]** Carry the in-loop stride correction past the seed. The bracketing stage now has
-  one -- `v1_bracket._seed` sizes from Weyl and then doubles until the largest observed secant
-  stops growing, so no a-priori stride is trusted -- but nothing downstream of it adapts, and
+  one -- `bracket._seed` (`src/chladni/mps/bracket.py:533`) sizes from Weyl and then doubles
+  until the largest observed secant stops growing, so no a-priori stride is trusted -- but nothing downstream of it adapts, and
   the correction was argued for the whole solve. `notes/landscape_findings.md` section 20.2;
   `notes/solver_features.md` F3.
-* **[later]** Two-level rank from one factorization -- the scan wants a low rank, the
-  refinement a high one, and one SVD serves both. A measured pure win; `search.md` section 8,
-  `notes/solver_features.md` F6.
-* **[later]** We should have a "warm-start" solver for eigenproblems that are perturbations of
-  eigenproblems with known solutions: a robust mechanism for taking old estimates and refining
-  them. This will have to handle multiplicity correctly, as well as target precision. The
-  warm-start solver may require bounds on the new eigs.
+* **[later]** Two-level rank from one factorization (`notes/solver_features.md` F6, `search.md`
+  section 8): what is left after the stage policy. `coarse_bracket=True` (section 4) already
+  reads bracketing and refinement under different policies of one pencil (`mps/policy.py`; the
+  coarse penalty is reduced from the same `svd_factors` factorization), but it is opt-in, and
+  F6's own form -- a low rank for the scan, a high one for the refinement -- is not built.
 * **[later/maybe]** If we cannot make the air-tight search have excellent average-case performance,
   as measured by number of GSVD calls, then we should implement a "fast cold start" solver
   which has excellent average-case performance, with guards that can opt back-in to the slower-
@@ -415,42 +316,28 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 3. Unwritten layers
 
-* **[blocking]** **Basis planning.** `MPSEigensolver` requires an explicit `basis=`, so there
-  is no black-box path at all. `notes/handoff_minimization.md` section 4: everything above is
-  quietly waiting on it, and search difficulty is downstream of basis quality -- `eps` varies
-  five orders *within a single L-shape scan*, structurally -- so a search benchmarked against
-  hand-built bases may not predict black-box behaviour. Whatever the planner becomes, its
-  output should include a contract: the `eps` and dip width a search can tolerate. Deferred in
-  `docs/design/mps.md` and `docs/design/particular_solutions.md`;
-  `src/chladni/helmholtz/sources.py:271` defers the taper decision to it.
-
-  It is better equipped than it was, by two measurements made while promoting the search.
-  **The target now has a closed form.** `delta_res = DELTA_SAFETY * eps/c`, so
-  `delta_res <= prec*lam` means `eps <= prec*lam*c/DELTA_SAFETY` -- a floor to hit, where
-  `search.md` section 2.5 previously said no closed form was available. And **it must not
-  hill-climb on column count**: on the L-shape, corner Fourier-Bessel buys thirteen orders over
-  plane waves alone (3.8e-01 -> 4.3e-14) and then REGRESSES 10x from 40 terms per corner to 80,
-  while on the disk plane-wave enrichment from 0.6x to 2.5x `n_useful` moves the floor not at
-  all because the rank saturates. More is better until it is not, and where the turn happens is
-  a property of the family.
-* **[next]** **Boundary integrals, M5: Hadamard** (`docs/design/boundary_integrals.md`), to the
-  interface in `docs/design/douse_requirements.md` (`spec.hadamard(levels, V)`). Still open from M2:
-  a candidate whose basis mixes smooth columns with corner ones. Also open: the Moler-Payne bound
-  is loose on `douse` polygons -- 1e-6..3e-5 relative where three bases agree to ~1e-8
-  (`benchmarks/douse/scoreboard.md`) -- so it cannot yet vouch for a precision tier there.
-* **[next]** `Eigenproblem`, the black-box entry point `CLAUDE.md` names as the ultimate goal.
-  It does not exist; `Eigensolver` plus `weyl_window` is the intended spine. Blocked on the
-  planner (section 0).
+* **[later]** **What the planner (`chladni.plan`) does not yet cover.** It plans Dirichlet
+  polygons only. It publishes no contract for the search -- the `eps` and dip width a search can
+  tolerate; the target has a closed form, `delta_res = DELTA_SAFETY * eps/c`, so
+  `delta_res <= prec*lam` means `eps <= prec*lam*c/DELTA_SAFETY` -- although search difficulty is
+  downstream of basis quality (`eps` varies five orders *within a single L-shape scan*,
+  `notes/handoff_minimization.md` section 4). And `src/chladni/helmholtz/sources.py:274` still
+  defers the lightning taper to it (section 0, the lightning item).
+* **[next]** **Boundary integrals: what M2 and M3 left open** (`docs/design/boundary_integrals.md`).
+  From M2: a candidate whose basis mixes smooth columns with corner ones was never measured in
+  isolation. And the Moler-Payne bound is loose on `douse` polygons -- 1e-6..3e-5 relative where
+  three bases agree to ~1e-8 (`benchmarks/douse/scoreboard.md`) -- so it cannot yet vouch for a
+  precision tier there.
 * **[later]** Eigenfunction and residual plotting. `src/chladni/plotting/_axes.py:3` already
   names them as "still to come" and `prepare` is the seam.
 * **[later]** Corner grading. `grading="corner"` / `_grade_flags` is "a placeholder, not a
-  design" (`docs/design/geometry.md:449`): it over-grades right-angled Dirichlet and Neumann
+  design" (`docs/design/geometry.md:466`): it over-grades right-angled Dirichlet and Neumann
   vertices, and node placement wants the integrand, so a quadrature layer should own the
   choice and reach in through `panels=`. Superseded by `chladni.integrals` (item above), whose
   corner rules replace geometric grading for every integral; `grading="corner"` stays for
   collocation only.
 * **[later]** Interior cubature, deferred until something asks for it
-  (`docs/design/geometry.md:260`). Note that `notes/solver_features.md` A6 argues against ever
+  (`docs/design/geometry.md:268`). Note that `notes/solver_features.md` A6 argues against ever
   making this a project: the interior block wants non-degeneracy, not accuracy, and anything
   that must be *accurate* belongs on the Rellich boundary integrals.
 * **[later]** User-facing documentation -- the "fifth kind" in `docs/README.md`. `docs/_build/`
@@ -458,8 +345,8 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
-* **[next]** **douse follow-up to the graded boundary-integral rule** (chladni branch
-  `boundary-integrals-accuracy`, `notes/hadamard_accuracy.md`):
+* **[next]** **douse follow-up to the graded boundary-integral rule** (chladni PR #21, merged
+  2026-11-04; `notes/hadamard_accuracy.md`):
   - consume `hadamard(..., report=True)`;
   - map the `gram_residual` refusal (`ValueError`) to `ShapeRefusal`;
   - re-record the cluster-optimizer golden trace on the Mac, since gradients on corner domains
@@ -480,48 +367,28 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   meet 0 of 15 at 1e-10, 3 return rung 0 wrong by 1e-6 .. 2e-5 while rungs 1-2 held ~1e-10 values
   (tie-break in `_plan`); rich FB + source bases certify at margins 19-100 but the search declines
   them on threshold-rank jitter (`_seed`). Diagnosis: `notes/triangle_apex_planner.md`.
-  BUILT, OPT-IN (2026-10-27): `Eigenproblem(dom, coarse_bracket=True)` -- coarse-penalty
+  Opt-in since 2026-10-27: `Eigenproblem(dom, coarse_bracket=True)` -- coarse-penalty
   bracketing, threshold-first with stable-rank fallback, every level inside a coarse well
   (`notes/stage_policy_steps.md`). Apex line at 1e-10: (0.05|0.1|0.2, 0.25) go 0/15 -> 15/15;
   (0.1, 0.2) is 12/15 (worst rel. bound 1.3e-9), (0.3, 0.25) 14/15. douse gate at 1e-10:
   161/1/13 -> 169/1/5 ok/flagged/silent, +14% evaluations. **Before it can be the default:**
   T2.2 loses its flag at 1e-8, and T1.5-r2 goes silent at 1e-6 (two jitters).
-* **[done 2026-10-13]** **Short edges get a local source patch.** douse's ratio runs drive an
-  edge toward zero (the N = 6, k = 2 seed-1 stall: an edge 0.042 of a 1.44 diameter). The offset
-  layer at 0.05 D sat farther out than the edge is long, and the plan met 1e-10 at margin 2.0
-  exactly. Now 9 sources sit around each edge shorter than 0.15 D, on the offset rungs:
-  margins 5-26 there, no other benchmark case worse (`notes/short_edge_sources.md`). Open: two
-  adjacent short edges; a short edge beside a reflex corner.
-* **[done 2026-10-13]** **Warm start for douse: `solve(..., near=prev)`.** A narrow prefix window
-  around the previous values, no headroom, continuity checks, a cold solve on any failure and
-  every 10th warm solve. 2.4x on one N = 6 re-solve; on a douse N = 4, k = 1 run, 9 of 12 solves
-  ran warm with no refusals. `notes/warm_start.md`. **Speed levers:** the seed grid (and each doubling) now goes
-  through a thread pool (`Objective.tensions_many`, 2026-10-14; the cover pass is sequential by
-  nature, so this is the ~20% of a cold solve that parallelizes); a refused warm solve no
-  longer rebuilds the pencil for the cold retry. **Measured 2026-10-14
-  (`notes/warm_trace_2026-10-14.md`): the gap to lappy at k = 2 is the warm solve itself** --
-  65-70% of a run, ~90 evaluations each because the warm window is a full prefix; replans are
-  3-9% and all `unmet`. BUILT the same evening: per-level warm windows with the half-widths SET BY
-  THE CALLER (`track_levels`, `solve(windows=)`; douse bounds each level's move from its own
-  Jacobian and the step, and caps the step so windows stay disjoint). Measured: evaluations per
-  warm solve 92 -> 61 on four levels, i.e. the refiner's own ~15 per level, wall -22% and -51%
-  on the two comparable seeds. Next: the refiner's cost per level (start from the predicted
-  position; 6-8 evaluations), cadence 10 -> 20 (now half the cold solves, ~7% of a run), then
-  the Fourier-Bessel kernel, which is where both assembly (93%) and certification go: profiled
-  2026-10-15 on one tracked N = 6 warm solve, certification is 28% of the solve (8.0 s with,
-  5.8 s without), and 60% of that is `_bessel._j_series` evaluating the basis on the Moler-Payne
-  sup-norm sample at each level's own `k`. Columns at one corner share `r` but each has its own
-  order, so deduplicating `(nu, k r)` saves nothing; the series kernel is already
+* **[later]** **Short-edge source patches: two configurations unmeasured** -- two adjacent short
+  edges, and a short edge beside a reflex corner (`notes/short_edge_sources.md`; 9 sources sit
+  around each edge shorter than 0.15 D on the offset rungs).
+* **[later]** **The tracked warm solve's remaining cost** (`notes/warm_trace_2026-10-14.md`;
+  `track_levels`, `solve(windows=)`). Per-level windows took a warm solve to ~15 evaluations per
+  level, the refiner's own. Left, in order: the refiner's cost per level (start from the
+  predicted position; 6-8 evaluations); the cold-solve cadence 10 -> 20 (now half the cold solves,
+  ~7% of a run); then the Fourier-Bessel kernel, where both assembly (93%) and certification go.
+  Profiled 2026-10-15 on one tracked N = 6 warm solve, certification is 28% of the solve (8.0 s
+  with, 5.8 s without), and 60% of that is `_bessel._j_series` evaluating the basis on the
+  Moler-Payne sup-norm sample at each level's own `k`. Columns at one corner share `r` but each
+  has its own order, so deduplicating `(nu, k r)` saves nothing; the series kernel is already
   ~0.12 us per entry (an active-set variant is slower and changes nothing), so the 0.67 s is
   VOLUME -- columns x points x levels; the lever is fewer entries: a Moler-Payne sup-norm sample
   sized by what the bound needs, certify only the levels asked for. Assembly at ~0.1 s per `lam`
   multiplier on all of it.
-* **[done 2026-10-13]** **Memory: the pencil cached matrices.** Up to 64 `lam`s of equilibrated
-  blocks and reduced pencils per solver, ~0.5 GB held between douse steps; N = 6 ratio runs reached
-  3-4.4 GB and an 8+8-worker comparison exhausted 16 GB (kernel panic). The pencil now caches
-  vectors only (tensions, scales, ranks, coefficient vectors), and the integral-rule `lru_cache`s
-  are bounded. At a 562-column N = 6 hexagon: peak 2117 -> 545 MB, solve time unchanged.
-  `tests/test_pencil_cache.py`. The rule: never cache a full pencil; a handful of vectors is fine.
 
 * **[later]** **The factored Bessel kernel's accuracy advantage over plain `scipy.special.jv` is
   unproven end to end.** `helmholtz/_bessel.py` (series / scipy / Olver-Debye, values as
@@ -530,27 +397,17 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   same points, equilibration, regularization and search, raw `jv` columns (underflowed columns
   dropped) give the same eigenvalues: identical on the L-shape (80 terms, 1.6e-14, no underflow),
   and indistinguishable on `douse`'s spike triangle (failure catalogue T1.3) at 1e-9 .. 2e-8,
-  including with 16-20 high-order apex columns lost to underflow. Expected from the normwise
-  argument in the `PrecisionWarning` item above. One of the most complex parts of `chladni`, so a
+  including with 16-20 high-order apex columns lost to underflow. Expected, since the solve is
+  normwise (equilibration, GSVD). One of the most complex parts of `chladni`, so a
   simplification candidate -- decided by the two tests not yet run: a high-precision basis on a
   sharp shape (these bases floor at ~2e-7), and a Neumann/Cauchy-data case, where J' from the series
   may beat `jvp`. Repro: `notes/bessel_kernel_vs_scipy.py` (2026-10-06).
-* **[done 2026-11-03: column-scaled `Sampling.accuracy`, `accuracy_entrywise` kept; the test-file
-  filters removed]** **`FourierBessel`'s `PrecisionWarning` flags per-entry relative error, which is not a
-  substantive loss.** The user's rule (2026-10-06): **warn only for precision losses that are
-  substantive** -- ones that can move a computed result. `Sampling._check_accuracy`
-  (`helmholtz/_core.py`) warns on `max(rel_err)` over all entries, and the series branch's
-  `rel_err = eps * largest_term / |S|` (`helmholtz/_bessel.py`, `_j_series`) blows up at entries
-  near a zero of `J_mu(k r)`. On the L-shape (80 reentrant-corner terms) the worst bound is 2.1e-8
-  at `lam = 42.1`; mpmath gives a true relative error of 2.7e-9 there, on an entry 1.9e-6 of its
-  column maximum -- 5e-15 relative to the column, and at most 2.6e-13 over all entries. The solve
-  is normwise (equilibration, GSVD), so eigenvalues come out to ~4e-14 whether the family's `prec`
-  is 1e-8 (warns occasionally, depending on which `lam` the search visits) or 1e-12 (185 warnings
-  in one search). The likely fix is a column-scaled criterion (`rel_err * |entry| / column scale`,
-  which `log_scale` already supplies), but `docs/conventions.md` records "`helmholtz` owns
-  entry-wise accuracy" as a design choice, so the criterion is the user's decision. Audit the other
-  `PrecisionWarning` sites against the same rule. Repro: `notes/precision_warning_entrywise.py`.
-  Not established: branch C (Olver/Debye); other domains.
+* **[later]** **Audit the other `PrecisionWarning` sites against the substantive-loss rule.** The
+  user's rule (2026-10-06): **warn only for precision losses that are substantive** -- ones that
+  can move a computed result. Fourier-Bessel now warns on the column-scaled `Sampling.accuracy`
+  (`accuracy_entrywise` keeps the per-entry value); the other sites still need the same check.
+  Not established for the column-scaled criterion: branch C (Olver/Debye); domains other than
+  the L-shape. Repro: `notes/precision_warning_entrywise.py`.
 * **[later]** **The two (C2) fixes of 2026-10-07 are measured on two shapes.** `search.solve` now
   (i) uncounts a reach-counted branch that does not dip at the root against the cached wide
   bracket, and (ii) counts a declined branch the side search left unaccounted when it does dip,
@@ -560,36 +417,34 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   tier is unchanged. The cache slope itself is still wrong on a noisy floor -- the guard in
   `_slope_from_cache` is defeated when the floor's noise exceeds its 2x flat-bottom margin -- and
   other consumers of `c` (the side search's exclusion radii, `wide_bracket_for`) still read it.
-* **[next]** **The penalty is the default at `prec >= 1e-8`; what is still open about it.**
-  SHIPPED 2026-09-24: `reg="auto"` on `MPSPencil` and `MPSEigensolver` is `"tikhonov_qr"` with
-  `tau = C_PEN * prec` (`C_PEN = 0.02`) at `prec >= 1e-8`, and the threshold at its derived `rtol`
-  below; an explicit `rtol=`, `rank=` or `lam_ref=` means truncation. An explicit penalty outside
-  its measured reach warns and runs. `notes/smooth_filter.md` section 11 has the grid, and
-  `tests/test_cluster_totals.py` now scores the default pencil beside the suite's.
+* **[later]** **The penalty, `reg="tikhonov_qr"`: explicit only, and what is still open about it.**
+  `reg="auto"` on `MPSPencil` and `MPSEigensolver` is the threshold at its derived `rtol` at every
+  `prec` (decided 2026-10-10, `notes/regularization_1e10.md`: on the douse benchmark truncation
+  beat the penalty at 1e-10, 1e-8 and 1e-6). The penalty is `tau = C_PEN * prec`
+  (`C_PEN = 0.02`); an explicit penalty outside its measured reach warns and runs.
+  `notes/smooth_filter.md` section 11 has the grid.
 
   **What it buys is the removal of a hazard, not a better score.** Against the threshold at its
-  OWN derived `rtol` -- what shipped before -- the 50/65*pi^2 cluster grid is 22 of 22 either way
-  at 1e-6 and 1e-8. The "beats the threshold" rows of section 10.6 were against the suite pencil's
-  fixed `SUITE_RTOL`. At 1e-10 the penalty lost a member the threshold kept (flagged), which is
-  why the range stops at 1e-8 and not at 1e-10 or 1e-12, where a feasible `tau` exists.
+  OWN derived `rtol`, the 50/65*pi^2 cluster grid is 22 of 22 either way at 1e-6 and 1e-8. The
+  "beats the threshold" rows of section 10.6 were against the suite pencil's fixed `SUITE_RTOL`.
+  At 1e-10 the penalty lost a member the threshold kept (flagged).
 
   Still open:
 
-  1. **`calibrate_rtol` under a penalty.** `findability(calibrate=True)` on a default pencil at
-     `prec >= 1e-8` now calibrates a PENALTY's `rtol` with a model written for a truncation cut.
-     Not on the solve path (`src/chladni/mps/solver.py:178`); unmeasured -- except that the
-     reach warning now fires when the calibration loosens `rtol` past it, which is how
-     `tests/test_calibrate.py` found this (its pencils are now explicitly `reg="svd"`).
+  1. **`calibrate_rtol` under a penalty.** `findability(calibrate=True)` on a `"tikhonov_qr"`
+     pencil calibrates a PENALTY's `rtol` with a model written for a truncation cut.
+     Not on the solve path (`src/chladni/mps/solver.py:263`); unmeasured -- except that the
+     reach warning fires when the calibration loosens `rtol` past it, which is how
+     `tests/test_calibrate.py` found this (its pencils are explicitly `reg="svd"`).
   2. **`"tikhonov"`, the literal form, does not remove the rank decision** -- LAPACK's `?ggsvp3`
      decides the interior block's rank itself. Kept as an oracle; whether it stays user-facing is
      open.
-  3. **Cost.** 1.5x per evaluation on the objective (section 9). NOT measured as wall time on the
-     default path: suite time moved 765 s -> 883 s, almost all of it the new default-pencil grid,
-     because nearly every fixture still pins a truncation (section 11).
+  3. **Cost.** 1.5x per evaluation on the objective (section 9); 1.8x wall on the douse benchmark
+     at 1e-10 (`notes/regularization_1e10.md`).
 
 * **[later]** A starved basis DROPS the levels it resolves worst, and for the levels that are
   never BRACKETED no diagnostic added to `solve` can catch it -- `notes/landscape_findings.md`
-  section 38. RECLASSIFIED to basis planning (section 3) rather than an honesty gap in the search.
+  section 38. RECLASSIFIED to the planner (`chladni.plan`) rather than an honesty gap in the search.
   **Re-measured at 1e-10 (2026-10-09)**: `solver_for(disk, 60, pad=0.35)` returns 2 of 6 levels and
   `pad=0.45` 5 of 6, no decline, flag or unmet level -- stage 1 never brackets them. At 1e-12 the same
   losses were caught only incidentally. `tests/test_solve_interval.py` carries three
@@ -628,42 +483,29 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   invalidated the first attempt at this. Invisible on the L-shape, which has no degeneracies and
   is what `test_hard_roster.py` audits.)
 * **[next]** Nothing on the solve path calls `MPSEigensolver.findability`
-  (`src/chladni/mps/solver.py:128`). The check is built, exported and tested
+  (`src/chladni/mps/solver.py:263`). The check is built, exported and tested
   (`src/chladni/mps/calibrate.py`), it costs ~40 evaluations, and it
   reports the scan step a domain actually needs -- a sharp elongated triangle needs 8x the
   density of a square. But `solve_interval` raises, so no caller reaches it, and the searcher
   does not read `required_dk` to size its seed. That composition is the note's fix (2) and is
   the whole point of the check.
 * **[next]** Weyl asymptotics raise for any `bc_type` other than Dirichlet or Neumann
-  (`src/chladni/asymp.py:39`), and there is no curvature term, so a smooth domain gets only
+  (`src/chladni/asymp.py:42`), and there is no curvature term, so a smooth domain gets only
   the two-term law. `docs/design/reference.md:293` records the same limit.
-* **[next]** Decide whether `Sampling._check_accuracy`'s shortfall on Fourier-Bessel is real.
-  It was invisible until the plane-wave conditioning guard was rescoped: eighteen modules
-  suppressed the whole `PrecisionWarning` class to silence that guard, and took this signal
-  with it. Uncovered, it fires on eight tests -- **about 1e-7 against a requested 1e-8** on the
-  L-shape `pencil` fixture evaluated far from its `lam_ref`, and **about 1e2, i.e. no accuracy
-  at all**, on the sector references in `tests/test_tension.py`. Both sites carry an argument
-  for why the bound is not their claim, written before the mark that hid it:
-  `tests/test_regularization.py` (the module-level filterwarnings, "accuracy at those lam is not the claim, and is tested in
-  test_precision.py") and `tests/test_tension.py:43` (with a SINGLE column the common kernel
-  scale divides out of the tension). The arguments are plausible and the `< 1e-10` assertions
-  do re-check the sector case immediately -- but neither has been verified since the warning
-  became visible, and the sector is the project's sharpest ground truth. The suppressions are
-  now targeted by message, so the rank and findability signals stay live while this is open.
-* **[next]** Enrichment is NOT monotone, and nothing tests that it helps at all. Measured on
+* **[next]** Enrichment is NOT monotone, and no test pins the regression. Measured on
   the L-shape, worst tension over the first six levels: plane waves alone **3.8e-01** (the
   basis cannot represent `r**(2/3)` and the solve is meaningless), then corner Fourier-Bessel
   at 5/10/20/40 terms per corner giving 5.7e-03, 3.1e-05, 6.0e-11, **4.3e-14** -- thirteen
   orders, and the whole argument for corner families. But 80 terms per corner reads
   **4.8e-13**, a 10x REGRESSION past the optimum around 40. So "add more basis" is not a safe
-  default and a planner cannot hill-climb on column count. Two things follow: the enrichment
-  claim in `docs/design/particular_solutions.md` is still untested (section 4 above), and the
-  regression above the optimum is not recorded anywhere. Note this is Fourier-Bessel, so it is
+  default and a planner cannot hill-climb on column count (`chladni.plan` climbs a fixed ladder
+  for this reason). `tests/test_tension.py:177` pins that corner enrichment helps; nothing pins
+  the regression above the optimum. Note this is Fourier-Bessel, so it is
   NOT the plane-wave conditioning bound `n_useful` describes -- on the disk, enrichment from
   0.6x to 2.5x `n_useful` moves the floor not at all (rank saturates at 49 from 38 to 160
   columns), which is the case that made the old `log_scale` guard fire on healthy setups.
 * **[next]** `_UNSAFE_RATIO` and `SUITE_RTOL` disagree, and neither cites the other.
-  `src/chladni/mps/pencil.py:68` calls a cut below `1e-13` unsafe, measured on the disk;
+  `src/chladni/mps/pencil.py:80` calls a cut below `1e-13` unsafe, measured on the disk;
   `tests/rect_suite.py` set the suite's threshold rank to `sqrt(FINEST_PREC*eps)` = 1.5e-15 until
   2026-10-11 (1.5e-13 since, cut for 1e-10; the evidence modules keep 1.5e-15), so every
   threshold-rank pencil in the suite cut two decades BELOW the level the frozen-rank guard calls
@@ -673,12 +515,6 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   and which it is has not been measured. Related: `_warn_if_unsafe` fires only for a FROZEN
   rank and only from `rank_diagnostics`, never from `tension`, so a caller looping over
   `tension` with a bad frozen rank is told nothing.
-* **[later]** The end-to-end reference values in `docs/design/particular_solutions.md` --
-  sector eigenfunctions, square, disk, equilateral triangle, and the L-shape's
-  `lam_1 = 9.6397238440219410527` -- are written down but untested, because there is no
-  eigensolver to test them with. They are the `mps` layer's first tests. Includes the L-shape
-  Fourier-Bessel enrichment regression: 1e-12 to 1e-13 with the corner terms against ~1e-5
-  without.
 * **[next]** Accelerate's blocked `dgeqrf` corrupts the heap on macOS 26.5 / M4, and only the
   hot path is routed around it. **Its own regression test is intermittent for the same
   reason**: `test_the_geqrt_route_is_an_economic_qr[shape0]` compares the safe route against
@@ -696,6 +532,19 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   each macOS release with `CHLADNI_ACCELERATE_GEQRF=1` and delete the workaround when it
   passes; scipy/scipy#26145 is the upstream report of the same fault class (`dpotrf`).
   Regression: `tests/test_regularization.py`, the slow `170_pi2` subprocess test.
+* **[later]** **Absolute `1.0` floors that `docs/conventions.md` forbids are still in the code.**
+  "Relative tolerances have no absolute floor" bans `prec*max(|x|, 1.0)` and `max(length, 1.0)`
+  length tests; conventions.md lists these as known exceptions, so decide whether to remove them:
+  - `src/chladni/asymp.py:176` (level grouping in `weyl_deficit`) and `:260` (the count audit,
+    `_AUDIT_RTOL * max(abs(x), 1.0)`);
+  - `src/chladni/reference/_core.py:121` (grouping a reference multiset into levels);
+  - `src/chladni/geometry/segments.py:393-394` (`_line_line_intersection`'s parallel and
+    collinear tests) and `:784` (`SplineSegment.interp_from_pts`'s closure test).
+  The eigenvalue groupings loosen to `rtol/lam` below `lam = 1`, i.e. on large domains.
+* **[later]** **`chladni.reference`'s spectrum functions use `k` for a COUNT** (`rect_eigs(k)`,
+  `disk_eigs(k)`, ..., `reg_ngon_eigs(k, N)`; `reference/_core.py::_check_k`), where the naming
+  discipline reserves `k` for the wavenumber. `docs/conventions.md` records it as an exception.
+  Consider renaming to `n`; it is a douse-facing API, so check douse's callers first.
 
 ## 5. Test-suite hygiene
 
@@ -704,7 +553,7 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   through `tests/bracketers.py` and `baselines.py`, which `test_bracket_score.py` exercises.
 * **[later]** `_rerank` (`solve(stable_rank=True)`) has no live test. Its only test used the
   L-shape, whose cells lost their noise tails when the Bessel series stopped losing digits
-  (9de388a, 2026-11-04), so it now re-ranks nothing. A shape with a stable-rank noise tail is needed.
+  (9de388a, 2026-11-03), so it now re-ranks nothing. A shape with a stable-rank noise tail is needed.
 * **[later]** `test_no_level_claims_prec_past_a_tight_reference` is a strict xfail: references.json
   has no T2.8-N5s2 value within 0.1*prec, so it compared nothing. Lift it with audit 4.8's tighter
   references.
@@ -714,7 +563,7 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 Each is one experiment. None blocks anything.
 
 * Can a coefficient vector be reused across point sets to build Cauchy data, or does that need
-  a GSVD recompute on the new pencil? `docs/design/mps.md:172`. Belongs with the eigenfunction
+  a GSVD recompute on the new pencil? `docs/design/mps.md:175`. Belongs with the eigenfunction
   work.
 * Does the `lam`-over-`k` refinement advantage (17 of 17 cases, median 5.1x) survive at
   `delta_res`-scale brackets, and does it grow at large `lam`? `search.md`, As built.
@@ -757,10 +606,13 @@ Each is one experiment. None blocks anything.
 
 ## 7. Parallelization
 
-`CLAUDE.md` asks that embarrassingly-parallel work be threaded where possible. Today exactly
-one place does: `MPSEigensolver.tensions` maps an array of `lam` onto a thread pool
-(`src/chladni/mps/solver.py:100`), on the argument that the work is LAPACK and releases the
-GIL. Everything below is what that leaves open.
+`CLAUDE.md` asks that embarrassingly-parallel work be threaded where possible. Two places do:
+`MPSEigensolver.tensions` maps an array of `lam` onto a thread pool
+(`src/chladni/mps/solver.py:221`), on the argument that the work is LAPACK and releases the
+GIL; and `Objective.tensions_many` evaluates a grid's cache misses on a pool, which
+`bracket._seed` submits its seed grid and each doubling through. Measured on douse's N = 6,
+k = 2 optimum (`notes/seed_workers.py`, cold solve), that saves 8%: the rest is the sequential
+cover and the refine/multiplicity stages. Everything below is what that leaves open.
 
 * **[later]** Decide whether the candidate instrument scores wall-clock rounds as well as
   evaluations. `candidates.md` sections
@@ -771,19 +623,8 @@ GIL. Everything below is what that leaves open.
   adaptivity is worth less when points are nearly free. This is an ordering risk, not a
   refinement: an evaluation-count-only instrument can crown a winner that a parallel machine
   would not choose.
-* **[done 2026-10-14]** The batch seam: `Objective.tensions_many(xs)` evaluates a grid's cache
-  MISSES through a `batch` callable (a thread pool over the pencil in `from_pencil`) and
-  inserts them on the calling thread in input order, so the miss count and the cache are the
-  serial loop's exactly; `Objective` itself stays lock-free. `bracket._seed` submits the seed
-  grid and each doubling this way. `tests/test_objective.py`, `tests/test_mps_seam.py`.
-  **Measured** (`notes/seed_workers.py`, douse's N = 6, k = 2 optimum, rung 1, 391 columns, cold
-  solve): 193 evaluations, of which the seed is 31 and the cover 67; 5 workers 27.2 s against
-  29.5 s on 1 -- an 8% saving, identical counts and values. The seed is a smaller share than
-  the 20% estimate; the remaining cost is the sequential cover and the refine/multiplicity
-  stages. Parallelism inside one search has about this much left to give; the next lever is
-  per-evaluation cost (assembly) or fewer evaluations.
 * **[next]** Bound the thread pools, and measure the interaction with BLAS. `max_workers` is
-  now exposed on `Objective.from_pencil` (default `DEFAULT_WORKERS`, half the cores up to 8)
+  exposed on `Objective.from_pencil` (default `DEFAULT_WORKERS`, half the cores up to 8)
   and `MPSEigensolver.tensions(array)` still takes the executor default; each worker calls into
   a multithreaded BLAS, and douse runs whole solves in separate processes on top. Measure the
   seed speedup on the N = 6 shape (`notes/warm_start.py` times the search) at 1, 2, 4 and 8
@@ -798,7 +639,7 @@ GIL. Everything below is what that leaves open.
   `tests/test_mps_seam.py:98` is the only test in the repo that actually starts threads, and
   it covers the solver. The thread-safety claim is made much more broadly than that -- it is
   the stated reason `Frozen` and `cached_property` are used at all
-  (`src/chladni/_core.py:55`, `docs/conventions.md:42`) -- and `test_transforms.py` pins the
+  (`src/chladni/_core.py:76`, `docs/conventions.md:42`) -- and `test_transforms.py` pins the
   immutability that implies it without ever running concurrently. A geometry- and
   `helmholtz`-level concurrency test would make the claim real rather than argued.
 * **[later]** Parallelism across *domains* is `douse`'s to own, not `chladni`'s. The obligation
@@ -922,8 +763,8 @@ rediscovery session. Revisit when a benchmark case at a tighter `prec` needs it.
   (n = 128-258) and the hard roster, matching the threshold; `C = 3` is the noise jaw and declines
   honestly. At 1e-14 no `C` is clean at every size and losses are SILENT: the penalty bends the
   span off the eigenspace (large `C`) or noise wins (small `C`). Next:
-  1. A posterior mode in `src/` at `C = 30`, and `reg="auto"` extended from `prec >= 1e-8` to
-     `prec >= 1e-12` -- retiring truncation, and the Linux rank flip, everywhere but 1e-14. Needs:
+  1. A posterior mode in `src/` at `C = 30`, and `reg="auto"` moved to it at `prec >= 1e-12` --
+     retiring truncation, and the Linux rank flip, everywhere but 1e-14. Needs:
      the cost (2-2.7x wall time per evaluation), and the reach warning's message, which still says
      no penalty serves below ~150 eps sqrt(n).
   2. The 1e-14 span: a larger span than `MAX_BRANCHES`; posterior for refine/count only; a
@@ -954,8 +795,8 @@ rediscovery session. Revisit when a benchmark case at a tighter `prec` needs it.
   objective with a floor near the licence produces such a well; the threshold never has. The
   phantom logic carries five calibrated cases and a documented overshoot trap, so this is a
   re-derivation, not a constant. Wanted before any penalty whose floor approaches `prec` is
-  built into `src/`. The shipped default does not: its floor is about 1.4 `C_PEN` prec = 0.03
-  prec, a thirtieth of the licence. `notes/smooth_filter.md` section 10.3.
+  built into `src/`. The explicit `reg="tikhonov_qr"` does not: its floor is about 1.4 `C_PEN`
+  prec = 0.03 prec, a thirtieth of the licence. `notes/smooth_filter.md` section 10.3.
 
   (The same cell ALSO reported one root twice, 1e-12 apart, through a separate defect: the
   cache wall slope `_slope_from_cache` ignored the floor and read 8.45e6 against a true 0.02-0.08,
@@ -971,9 +812,10 @@ rediscovery session. Revisit when a benchmark case at a tighter `prec` needs it.
   flagged (`notes/smooth_filter.md` 10.7). Deciding it needs a search inside the exclusion, the
   same move section 12's inner-end retry makes; not tried here.
 
-* Promote Phase D's angle, or retire it. It is BUILT --
-  `solve(..., phase_d="angle")`, `search._gram_group`, `multiplicity.TAU_GRAM` -- and off by
-  default because it **changes nothing measurable**. Over five cluster grids and the roster it is
+* Promote Phase D's angle, or retire it. It exists as an ablation, not an option of `solve` --
+  `phase_d="angle"` and `_gram_group` in `notes/evidence_tests/search_ablations.py`
+  (`solve_with_options`), `multiplicity.TAU_GRAM` in the package -- because it **changes nothing
+  measurable**. Over five cluster grids and the roster it is
   consulted 115 times and agrees with the distance rule on every one: no regression, no
   improvement (`notes/landscape_findings.md` sections 36, 36.1). The prediction that it would be
   inert was wrong; it is exercised, it just never disagrees.
@@ -996,13 +838,15 @@ rediscovery session. Revisit when a benchmark case at a tighter `prec` needs it.
   uniform scan wearing an adaptive label. `notes/landscape_findings.md` sections 30.3-30.4
   gives three untested repairs.
 
-* Use coarse and fine bases separately to reduce the cost of the search phase. 
-  See `notes/coarse_to_fine_basis.md`.
+* Use coarse and fine bases separately to reduce the cost of the search phase.
+  See `notes/coarse_to_fine_basis.md`. The one-basis form -- bracketing and refinement under
+  different policies of one pencil -- is `coarse_bracket=True` (section 4); separate bases are
+  not built.
 
 * **The second-order penalty** (`notes/tikhonov_derivations.tex`), the only form measured to get
   the slope loop through at 1e-14 (`notes/smooth_filter.md` section 10). Parked until bases are
   right-sized (`notes/coarse_to_fine_basis.md`).
 
-* **The penalty's reach constants are one family's.** `_REACH_FLOOR`, `_REACH_ROUNDING`, `C_PEN` and
-  `PENALTY_PREC_MIN` in `src/chladni/mps/_regularize.py` were measured on near-square rectangles
+* **The penalty's reach constants are one family's.** `_REACH_FLOOR`, `_REACH_ROUNDING` and `C_PEN`
+  in `src/chladni/mps/_regularize.py` were measured on near-square rectangles
   with plane waves. The lower jaw should scale with `eps * sqrt(n)`; unchecked across basis sizes.

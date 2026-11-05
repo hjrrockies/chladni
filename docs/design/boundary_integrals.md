@@ -1,6 +1,7 @@
 *Status: design, approved 2026-10-05. M0 (seams), M1 (rules), M2 (plan, Cauchy data, the
-identity), M3 (the Moler-Payne bound, wired into the solver) and M4 (orthonormal cluster
-eigenfunctions) are in; M5 (Hadamard) is next. Package: `chladni.integrals`.*
+identity), M3 (the Moler-Payne bound, wired into the solver), M4 (orthonormal cluster
+eigenfunctions) and M5 (Hadamard, 2026-10-12) are in; M6 is open. Package: `chladni.integrals`.
+See "As built" at the end for where the code departs from the design below.*
 
 # Overview
 `chladni` is going to rely on accurate boundary integration for two key parts of the MPS solve:
@@ -290,3 +291,93 @@ L-shape (against `L_shape_eigs`): valid on every level, and within a stated fact
   reported the worst. Whether a sharper multi-function bound is worth having is open.
 * **Cost.** `coef` needs a separate-mode GSVD per level, and the Cauchy data one evaluation of the
   basis on the quadrature nodes -- per reported level, not per search step. Unmeasured.
+
+# As built: deltas from this spec
+
+Written 2026-11-05. Everything above is the design as approved and measured through M4; this
+records where M5 (2026-10-12) and the accuracy audit of 2026-11-03
+(`notes/accuracy_audit_2026-11-03.md`, `notes/hadamard_accuracy.md`) took the code, and
+supersedes the claims named below. The live record is the code.
+
+## Hadamard lives in `mps`, not in `integrals`
+
+There is no `integrals/hadamard.py` (Modules, above). The shape derivative is
+`MPSEigensolver.hadamard(level, V, *, prec=None, report=False)` (`mps/solver.py`), reached from
+a black-box solve as `SolveRecord.hadamard(i, V, report=False)` (`eigenproblem.py`), where `i`
+is a level index or a list of them. A list gives one `(n_fields, m, m)` block over every member,
+cross terms included, for a nearly degenerate cluster the solver resolved into distinct levels.
+It needs the solver's orthonormal eigenfunctions, so the layering claim above -- that `douse`
+could take the Hadamard half without the solver -- did not survive. What stays in `integrals`
+is the `'integer'` family and the primitives (`weighted_integral` and its kernels). Dirichlet
+only; anything else raises `NotImplementedError`.
+
+## The corner rule is GRADED now (supersedes items 2 and 5)
+
+Item 2 said corner rules are substitution nodes with fitted weights, "NOT geometric grading".
+Since 2026-11-03 every boundary integral in the solver uses `integral_quad(...,
+corners="graded")`, the default there and `mps.solver.INTEGRAL_CORNERS`:
+`rules.graded_corner_rule`, sized by `rules.graded_order_for_prec` (`GRADED_SIGMA = 0.15`),
+laid out on ANCHORED panels (`geometry.Panel.anchor`) whose nodes `cauchy.cauchy_data`
+evaluates in the corner's own frame, from an exact offset and a column-exact translated family
+(`geometry.md` and `particular_solutions.md`, their As-built sections). The retired sigmoid
+grading above failed for a different reason -- its tau floor truncated the integral -- and the
+graded rule has no such floor. Measured: sector-apex norms at 1e-15 .. 2e-14 out to 1.9 pi,
+where the fitted rule gave 6e-12 .. 1e-8. On a flat triangle the fitted rule integrated one edge
+30% wrong while its model bound claimed 1e-8, and that was a `gram_residual` of 0.16.
+
+One node set now serves both families, so item 5's "two corner families, not interchangeable"
+no longer selects a node set: Hadamard still asks for `family="integer"`, and gets graded
+panels. The fitted rule survives as `corners="interpolatory"`, to be measured against. A graded
+panel on a segment with no exact `offset` is named in `shortfalls`. Certification moved to the
+graded rule only after old-against-new benchmarks (717 levels of `notes/bound_coverage.py`, and
+the `douse` gate at 1e-10): same values, coverage and tallies, bounds within 0.89-1.1x.
+
+## The certification rule is sized for the norm, not for `prec` (supersedes Precision)
+
+"The bound reuses [`integral_prec`]" is no longer true. The Moler-Payne bound takes only the
+norm from the rule, and a norm error `delta` moves the bound by `delta` relative, so it is sized
+at `max(prec, CERTIFY_NORM_PREC)` with `CERTIFY_NORM_PREC = 1e-5` (audit 2.2: sizing at
+`0.1 * prec` bought 1e-11 nodes for a 1e-3 question). `eigenfunctions` and `hadamard` keep the
+tight `integral_prec(prec)` rule. A level whose certification rule's model bound exceeds
+`CERTIFY_RULE_FLAG = 1e-3` (infinite where a singular corner was demoted) is flagged by
+`Eigenproblem`; levels carry it as `rule_prec`.
+
+## Wiring, as built (supersedes Wiring)
+
+* Certification is `MPSEigensolver.certify_levels`, called at the end of `search_interval`.
+  Given the search's objective it certifies each level at its own rank AND at the stable rank
+  near it, and keeps the smaller bound (stage-policy step 6, 2026-10-27): every trial function
+  gives a valid bound, and the threshold rank's flutter made one level's bound vary 70x
+  between runs.
+* `delta_res` is admitted into `Level.bound` only where it met `prec` AND
+  `mp_bound <= MP_CROSSCHECK * prec * lam` (`MP_CROSSCHECK = 20`); a level records the verdict
+  as `delta_res_admitted`, and carries `mp_eps`, `cancellation` and `rule_prec` beside
+  `mp_bound` and `bound_reason`.
+* `eigenfunctions(level)` returns an `Eigenfunctions` record (`lam`, `coef`, `rule`,
+  `orthonormal`, `gram_residual`, `reason`). `gram_residual` is `max |G - I|` recomputed at
+  `GRAM_PROBES = 3` further Rellich origins, not at the single second origin M4 describes.
+
+## Not built: `verify`
+
+`certify.py` has `boundary_sup`, `x0_probes`, `norm_lower` and `moler_payne`. The refinement
+certificate of item 4 (`verify`: shrink the corner panels, difference the Gram) was not built.
+The rule's own figure of merit is still its MODEL bound, `IntegralQuad.sizing_prec`, reported
+with `shortfalls`.
+
+## What the Hadamard matrix reports about itself
+
+Accuracy, above, says Hadamard needs the integrals to near `prec`. What is delivered is
+REPORTED, not assumed (2026-11-03):
+
+* `hadamard` refuses (`ValueError`) a level that could not be orthonormalized, or whose
+  `gram_residual` exceeds `max(HADAMARD_GRAM_REFUSE * prec, HADAMARD_GRAM_FLOOR)` (1e3 and
+  1e-8): `H` scales as `1/||u||^2`, so a normalization error lands in every entry.
+* `report=True` returns `(H, HadamardReport)`: the Hadamard rule's `sizing_prec` and
+  `shortfalls`, the normalization rule's `norm_rule_prec`, each level's `gram_residual`, the
+  worst `mp_eps`, and `attained` -- the largest of the three rule/normalization terms plus
+  `mp_eps`, since `d_n u` of an MPS eigenfunction is wrong to first order in its boundary
+  residual. `met` is `attained <= prec`, and a `PrecisionWarning` names the dominant term.
+* **`attained` is an ESTIMATE, not a bound, and it under-reports.** On the 51 `douse` reference
+  shapes (850 levels, ARC 2026-11-04) it was below the true error on 488 levels, median 2x,
+  worst 34x at prec 1e-10, so `met` can pass an `H` up to about 10x short of `prec`. Read it as
+  a typical-case figure. Calibrating it is open (`TODO.md`); there is no bound on the integrals.

@@ -1,7 +1,8 @@
 # What is in here, and what is not
 
-Four kinds of document live under `docs/`, and they are separated by **half-life** rather
-than by whether they were written before or after the code. The test each one has to pass:
+Three kinds of document live under `docs/`, and two more deliberately do not. They are
+separated by **half-life** rather than by whether they were written before or after the code.
+The test each one has to pass:
 
 > Would a stranger reading the code *at this commit* be helped by it, and is it still true
 > *at this commit*?
@@ -33,9 +34,10 @@ before rebuilding if the algorithm changes.
 
 ### `design/` --- design records
 
-One per layer, each written **before** its implementation as the spec the tests were built
-against, then grown an **"As built: deltas from this spec"** section rather than being
-rewritten.
+**Layer records**, one per layer (`geometry`, `particular_solutions`, `mps`, `search`,
+`boundary_integrals`, `reference`), plus `CHLADNI_V1`, the historical v1 search proposal. Each
+was written **before** its implementation as the spec the tests were built against, then grew
+an **"As built: deltas from this spec"** section rather than being rewritten.
 
 That convention is what makes these worth keeping. A design document that is edited to match
 the code tells you nothing about why the code is what it is, and a design document that is
@@ -45,6 +47,12 @@ most useful thing in the file --- it is where the measurements are, and the alte
 were tried and rejected.
 
 So: **do not edit above the delta section.** Supersede, do not revise.
+
+**Cross-cutting specs** belong to no one layer: what douse needs (`douse_requirements`,
+`douse_failure_cases`), the benchmarks (`benchmarks`), and the search's candidates, models and
+audits (`candidates`, `lipschitz-cone-mps`, `bracket_search_divergence`). The planner, the stage
+policy and calibration have no record of their own; their module docstrings and `notes/` carry
+the reasoning.
 
 ### Not here: `TODO.md`
 
@@ -65,5 +73,5 @@ is ignored separately, being tooling configuration rather than documentation.
 
 ### Later
 
-User-facing documentation is a fifth kind, with tracked source and an ignored build
+User-facing documentation is a fourth kind for `docs/`, with tracked source and an ignored build
 directory. `docs/_build/` is already ignored for it.

@@ -816,3 +816,45 @@ Including the refinement each bracket hands on, at `prec = 1e-8`:
 
 Against this document's ~30. The 35-eigenvalue window is the one worth noting: it is the case a
 flat evaluation cap penalises, and it comes in at 26.
+
+## As built, 2026-11-05: the gate is retired, and stage 1 changed in four ways
+
+**The gate moved out of the suite on 2026-10-09.** The "What is built" row `tests/test_gate.py`
+and "The standing gate, as it stands" describe a file that is now
+`notes/evidence_tests/test_gate.py`. It runs on demand there with `-m gate`, and the marker stays
+in `pyproject.toml` so that module still selects. The counts quoted date from before
+the retirement, not from a current run. The golden trace `tests/test_search_golden.py` (`search.md`, 2026-10-14) is
+what every change to the search must now reproduce.
+
+**The zero threshold does bite, on a floor far from zero.** The first "Corrections" item says the
+cover stops on purity by width before `env >= 0` can exclude a well, "so the zero threshold never
+bites". That holds where the floor is ~1e-15. On the coarse penalty that `search.solve(
+coarse_bracket=True)` brackets on (opt-in, 2026-10-27; `search.md`'s stage-policy entry), the
+floor is ~1e-7. There the cover excluded a double's well once its samples were closer than about
+`2 floor / L`, and the first douse gate of that path dropped doubles silently (3e1dd46). The fix
+adds, never removes. `bracket_interval(rescue_floor=True)` puts back every sampled local minimum
+the cover excluded that is deeper than `RESCUE_DEPTH = 1e-2` x the plateau
+(`bracket._rescue_excluded_wells`). Each is run out by `bracket.well_extent` to where `sigma_1`
+rises `RESCUE_RISE = 10`-fold, or to a hump, and the rescue sets `floor_limited`. The shipped
+path does not pass `rescue_floor`, and on it the correction above still stands.
+
+**A budget stop is `budget_limited`, and the floating-point floor is now `floor_limited`.** "Being
+asked for more than the objective can give" says the stall and budget paths "flag it
+`floor_limited`". Since b5ac1c1 (audit 2026-11-03) `bracket._cover` reports WHICH ran out.
+`"floor"` sets `SearchDiagnostics.floor_limited`: the objective stalled, so the pencil is
+binding. `"budget"` sets `SearchDiagnostics.budget_limited`: the evaluation budget ran out, which
+says nothing about the pencil. A later fix closes the remaining gap: the cover's
+floating-point-floor exit, where no new evaluation fits between two samples, returned a value
+that set neither flag, and now returns `"floor"`. Both flags still emit the narrowed brackets and
+report `attained_prec`.
+
+**Purity is relative at every scale.** `bracket.width_is_pure` was
+`(hi - lo) <= prec_u * max(|hi|, 1)`, absolute below `k = 1`. On a large domain it passed
+brackets `1/k` too wide (`notes/accuracy_audit_2026-11-03.md`, 1.6). It is now
+`max(prec_u * |hi|, 4 * spacing(hi))`. "Tightest must mean relatively tightest" is therefore
+true at every scale and not only above `k = 1`.
+
+**And the seed grid and the cover's midpoints evaluate in parallel** (9eee75a):
+`bracket._evaluate_all` hands a batch to `Objective.tensions_many`, a thread pool. The cache and
+the miss count end up exactly as the serial loop leaves them, so every cost figure in this
+document is unaffected.

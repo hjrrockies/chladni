@@ -157,3 +157,28 @@ found so far so they can still be inspected.
 * Assume the tension floor is any particular number. It varies **five orders within a single
   scan** on a corner domain, structurally, so no absolute threshold on `sigma` can serve as a
   test; thresholds are fractions of the measured plateau.
+
+---
+
+# As built, 2026-11-05: deltas from this ledger
+
+**One `Objective`, several readings of it.** The stage-policy work (2026-10-27; `search.md`'s
+entry of that date, `notes/stage_policy_steps.md`) lets one pipeline read the pencil differently
+per stage, and it keeps section 3's accounting intact. `Objective.tensions(x, policy)` and
+`Objective.samples_for(policy)` key the cache by `chladni.mps.policy.Policy`.
+`objective.PolicyView` wraps an `Objective` under one policy, and optionally one root's cell,
+and it shares the wrapped objective's `n_evals` and `n_calls`. A stage handed a view is
+therefore still "evaluating through the `Objective` it was handed" (section 6), and its misses
+count in the same currency. A candidate that wants a coarse scan and a fine refine should take
+this route rather than a second objective.
+
+**Batches are not a cost discount.** `Objective.tensions_many` evaluates a list over a thread
+pool (9eee75a). The cache and the miss count end as the serial loop leaves them, so per-eigenvalue
+cost (section 3) is unchanged. Wall time is not the metric here.
+
+**The "~4 ulps" of section 2 is a named constant**, `objective.BRACKET_ULPS = 4.0`, used by
+`Objective.in_lam_bracket`. `refine`'s same-point margin is the same constant (8fbc417).
+
+**The adapters take two more keywords than section 1 lists.** `tests/candidates_v1.py`'s
+`brackets(tensions, a, b, *, prec, modes=None, objective=None, expected_count=None)` passes the
+shared objective and the Weyl sizing through. The seams themselves are unchanged.

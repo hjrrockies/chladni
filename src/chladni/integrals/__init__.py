@@ -1,5 +1,7 @@
-"""Boundary integrals: Rellich norms and Gram matrices, Moler-Payne bounds, and (later) Hadamard
-shape derivatives, all from Cauchy data on corner-adapted boundary quadrature.
+"""Boundary integrals: Rellich norms and Gram matrices, Moler-Payne bounds, and the Hadamard
+shape derivatives built on them, all from Cauchy data on corner-adapted boundary quadrature. The
+Hadamard matrix itself is assembled in `chladni.mps.solver` (`MPSEigensolver.hadamard`), which
+holds the eigenfunctions; this package supplies its rule and its integrals.
 
 Design and milestones: `docs/design/boundary_integrals.md`. Depends on `geometry` and
 `helmholtz`; `mps` depends on this, never the reverse. Built so far: `rules` (M1); `plan`,

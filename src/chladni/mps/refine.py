@@ -1,7 +1,7 @@
 """Stage 2: refine a bracket to a located eigenvalue, by iterated parabolic interpolation.
 
-Promoted from `tests/v1_refine.py`, which is now a re-export shim and stays one only until the
-scored candidates are repointed at this module. `docs/design/candidates.md` section 1 is the
+Promoted from the scored v1 candidate's refiner; the `tests/v1_refine.py` shim that re-exported
+it is gone. `docs/design/candidates.md` section 1 is the
 seam it was scored on; `CHLADNI_V1.md` section 3 is the design.
 
 # Why this algorithm, and why not Brent

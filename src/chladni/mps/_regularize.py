@@ -63,7 +63,8 @@ hands LAPACK an orthonormal stack, and its count was `n_int = 63` at all three.
 and that has already cost a real answer. On the cluster grid it ties the threshold rather than
 beating it; on the douse benchmark it LOSES to it at 1e-6, 1e-8 and 1e-10 (more silent losses, a
 looser bound, more wall time). Since 2026-10-10 `"auto"` is the threshold at every `prec`
-(`PENALTY_PREC_MIN` below) and the penalty is explicit only. `"tikhonov"` is kept as the literal
+(`MPSPencil.__init__`; the `PENALTY_PREC_MIN` cutoff that once switched it is gone) and the
+penalty is explicit only. `"tikhonov"` is kept as the literal
 formulation and as an oracle the QR form must agree with; it is not a candidate.
 
 **`tau = C_PEN * prec`, not `sqrt(prec*eps)`.** A penalty's floor is its `tau`, so the truncation's

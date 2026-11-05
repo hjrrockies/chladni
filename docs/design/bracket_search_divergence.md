@@ -155,3 +155,24 @@ failures here were guessed to be it. They are not: measured in licence units the
 FIXED across `prec` from 1e-6 to 1e-14, so the separations that fail are proportional to `prec`
 and the cause is algorithmic rather than a resolution limit. That is what pointed at
 `WIDE_FACTOR`.
+
+---
+
+## As built, 2026-11-05: the ablations left `solve`
+
+Two AS BUILT notes above describe options that no longer exist on the shipped search.
+
+* Section 3: "`gap` is kept reachable as the ablation". It is reachable only through
+  `notes/evidence_tests/search_ablations.py`'s `solve_with_options`, not through
+  `chladni.mps.search.solve`.
+* Section 4: "`_collapse_ambiguous` ... is off by default (`collapse=False`);
+  `tests/test_cluster_totals.py` keeps the evidence". `collapse` is not a `solve` argument.
+  `_collapse_ambiguous` lives only in `search_ablations.py`, and `test_cluster_totals.py` scores
+  the shipped `solve` alone. The tests that pinned the cross-check were retired on 2026-10-09;
+  `git log -S test_the_cross_check_LOSES` finds them.
+
+Both moves are commit 8fbc417 ("The alternatives leave solve", 2026-10-14; `search.md`'s entry
+of that date). `solve_with_options` imports everything else from the live modules, so the
+section 4 table can still be regenerated against the current stages. The constants in section
+3's table are unchanged: `multiplicity.GAP_RATIO = 10.0`, `PROMINENCE = 2.0`,
+`WIDE_FACTOR = 2.0`.

@@ -39,7 +39,7 @@ Three branches, selected by a mask over the WHOLE block so each is one vectorize
 
 They overlap widely rather than abutting. A scan of nu in [0.2, 600] against x in [0.5, 100]
 for cells where scipy underflows AND the series is inaccurate finds ZERO; the gap first opens
-near nu = 515, which is why branch C is a safety net rather than a workhorse.
+near nu = 518, which is why branch C is a safety net rather than a workhorse.
 
 Branch A is not a slow fallback. Measured on a 600 x 100 sharp-corner block (k = 30, r out
 to 0.4, orders 3.5 to 350): 5.7 ms for values AND derivatives, against 4.8 ms for
@@ -59,7 +59,7 @@ from scipy.special import gammaln, jv, y0, y1, yv
 #: Largest series term we will accept, as a log. The series' relative error is about
 #: eps * (largest term), and the fitted largest term is exp(x**2/(4*nu)) -- measured to
 #: predict the real thing within ~20x, always conservatively. log(1e3) keeps branch A at
-#: 1e-12 or better while still covering every cell where scipy underflows below nu ~ 515.
+#: 1e-12 or better while still covering every cell where scipy underflows below nu ~ 518.
 _LOG_MAXTERM = np.log(1e3)
 
 #: ...but a bounded largest term is not a bounded error once `S` itself is small: past the
@@ -344,8 +344,9 @@ def _j_debye(nu, x):
     """The `nu > x` uniform asymptotic, converted back onto the canonical `sigma`.
 
     Only reachable where scipy has already underflowed and the series' largest term is too
-    big to trust, which the branch scan says starts near nu = 515. Measured four-term
-    accuracy at the corner where it is reachable: <= 2e-12. It degrades only as x/nu -> 1,
+    big to trust, which the branch scan says starts near nu = 518. Measured four-term
+    accuracy where it is reachable: worst 1.1e-12, at (nu, x) = (1000, 300) against mpmath, which
+    the flat 2e-12 it reports rounds up. It degrades only as x/nu -> 1,
     the Airy transition -- which is exactly where scipy is fine and this is never called.
     """
     nu, x = np.broadcast_arrays(np.asarray(nu, float), np.asarray(x, float))

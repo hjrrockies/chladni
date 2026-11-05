@@ -66,3 +66,29 @@ We need to test on domain families which cover degenerate and nearly-degenerate 
 
 ## 7. Orthonormal eigenfunctions
 TODO
+
+# As built: deltas from this spec
+
+Written 2026-11-05. The sections above are the plan of 2026-09-17, kept as written; this records
+which of its open items are now built, and two claims that never matched the code.
+
+* **7. Orthonormal eigenfunctions is built** (`boundary_integrals.md`, M4):
+  `MPSEigensolver.eigenfunctions(level)` returns the level's eigenfunctions Löwdin-orthonormalized
+  on a Rellich boundary rule, with `gram_residual` checked at further origins. Its tests compare
+  against interior oracles (`tests/test_orthonormal.py`, `tests/test_rellich.py`).
+* **3 and 4, basis and collocation selection, are built as the planner** (`chladni.plan`,
+  `Eigenproblem.plan`): a ladder of `Recipe` rungs (`LADDER`) sizes the basis and the collocation
+  for a Dirichlet polygon at `prec`, and `Eigenproblem.solve` climbs it until a rung meets `prec`
+  with the count audit clean (`douse_requirements.md`, Phase 5). "Heuristics will follow later"
+  is superseded.
+* **The benchmark that exists is `benchmarks/douse/`**: the shapes of the `lappy` failure
+  catalogue (`douse_failure_cases.md`) as exact vertices (`cases.json`), reference spectra by
+  three `chladni` bases cross-checked against FEM (`references.json`), and a scoreboard
+  (`scoreboard.md`). The black-box run against it is `notes/phase5_benchmark.md`. Frozen bases
+  for closed-form and tabulated families live in `tests/hard_roster.py` and `tests/rect_suite.py`.
+* **No 30-60-90 closed form.** Section 1 lists the hemiequilateral triangle among the domains with
+  closed-form solutions; `chladni.reference` has none. The closed forms shipped are the rectangle,
+  disk, sector, equilateral triangle, isosceles right triangle and polyomino (`reference.md`).
+* **No "orthonormal eigenfunctions needed" flag.** Stage 4a's "default `True`" names a switch that
+  does not exist. Eigenfunctions are formed on demand (`eigenfunctions`, `hadamard`); only the
+  Moler-Payne certification runs by default, and `MPSEigensolver(certify=False)` turns it off.

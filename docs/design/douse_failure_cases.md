@@ -259,3 +259,23 @@ discrepancies against this catalogue in each case's `notes`), reference spectra 
 * **T2.6 `N5k5_contested_run3`**: `lam_1` is simple by theorem, so the at-shape output
   `[20.2672, 20.2672, ...]` is the wrong one, not the frozen plan's. (The reference has one level
   at 20.26722 but marks it provisional: the three runs did not agree on its count flags.)
+
+## As built: what `chladni` does with these cases (2026-11-05)
+
+This catalogue records `lappy`'s failures; how `chladni`'s black-box path scores on the same
+shapes is `notes/phase5_benchmark.md` (2026-10-12, `Eigenproblem(dom).solve(n, prec)` with no
+basis supplied, on the 35 scored cases of `benchmarks/douse/`). At 1e-10: 31 right and unflagged,
+2 right and flagged, T2.2 wrong but FLAGGED, and one silent row, T2.8-N5s2. At 1e-8: 33 right and
+unflagged, 2 right and flagged, none silent. That note was written on the planner's first ladder;
+later rungs and shipped changes are in `douse_requirements.md`.
+
+* **T2.8-N5s2's reference is suspect, and the silent row is probably the reference's.** Its
+  trusted value 179.302250990678 has status `fem_resolved`: one unflagged run (recipe B) plus a
+  finite-element count, and runs A and C disagreed. Recipe B on current code does not reproduce it
+  (179.3022510764, uncertified), while every current basis -- corner-only A and C, and the
+  planner's hybrid, Moler-Payne bound 4.7e-11 -- agrees at 179.3022511196. The reference is
+  marked for a rebuild on current code (`TODO.md`); until then, "reference spectra for all of
+  them" in the section above does not hold for this case. The "biased well" reading in
+  `notes/admission_bound.md` is in doubt with it.
+* **T2.6 `N5k5_contested_run3`'s reference count** was marked provisional above; this pass did
+  not re-check it.

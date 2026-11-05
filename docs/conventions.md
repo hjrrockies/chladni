@@ -43,13 +43,30 @@ stale, so `functools.cached_property` is correct and thread-safe, and `lappy`'s 
 sentinel pattern is unnecessary. It also matters for `douse`, which generates domains in a loop and
 runs solves across threads.
 
-Two implementations of the same idea, chosen by role: `@dataclass(frozen=True)` for pure data
-records, and the hand-rolled `Frozen` base with `_set` for objects with behaviour and
-`cached_property`. Both live in `geometry/_core.py`.
+Two implementations of the same idea: `@dataclass(frozen=True)`, mostly for data records (some,
+like `Spectrum`, also carry behaviour and `cached_property`), and the hand-rolled `Frozen` base
+with `_set` for objects with behaviour. `Frozen` and `_set` live in `chladni/_core.py`, re-exported
+by `geometry/_core.py`, where they started.
+
+What immutability does NOT forbid, and the one object exempt from it:
+
+* **Memo caches keyed by argument.** A `Frozen` object may hold a private dict of results keyed by
+  the parameter they were computed at -- `MPSPencil._cache` (by `lam`, policy and rank),
+  `MPSEigensolver`'s `_objectives` and `_integral_quads`, attached once through `_set`. They
+  never change what the object means, only what it has already paid for.
+* **`Objective` is mutable by design** (`chladni.mps.objective`): its cache and its evaluation
+  counters are the point of it, and it is documented as NOT thread-safe -- one search drives it,
+  sequentially.
+* **`Eigenproblem` is a plain class**, holding a domain and a flag, not a `Frozen`. Nothing
+  mutates it after construction, but nothing stops a caller either.
 
 The transform protocol is `translated` / `rotated` / `scaled` / `reversed` / `with_bc` /
-`with_prec`, defined once on a base class over a private `_rebuilt` hook, with `+` and `*` as
-sugar.
+`with_prec`, with `+` (translate) and `*` (scale) as sugar. There is no shared base class: each
+geometry class implements it, `Segment` declaring it abstract and `Boundary`, `Domain` and
+`ParametricSegment` building over a private `_rebuilt` hook, while `rotated` is `scaled` by
+`exp(1j*theta)` everywhere. `Domain` has no `reversed`. `HelmholtzFamily` implements the subset
+that means something for a family -- `translated`, `rotated`, `scaled`, `with_prec` -- and has no
+`with_bc` or `reversed`.
 
 **Particular-solution transforms are column-exact.** `HelmholtzFamily.translated(dz)` moves each
 column's function, so a coefficient vector fitted in one frame is valid in the other:
@@ -63,10 +80,15 @@ why `PlaneWave` carries a phase `origin`.
 # Precision
 
 **`prec` replaces `tol`.** It is the working *relative* precision, default `1e-8` (`PREC` in
-`geometry/_core.py`), valid down to about `1e-15`. It is set at construction; a composite object
+`chladni/_core.py`, re-exported by `geometry/_core.py`), valid down to about `1e-15`. It is set at construction; a composite object
 takes `min(prec)` over its parts; `.with_prec(p)` returns a new object. Every derived tolerance is
-a documented function of `prec` -- there is no central tolerance helper, because the scale that
-converts relative to absolute is different at every site and belongs in that site's comment.
+a documented function of `prec`, or documented at the site as deliberately independent of it --
+there is no central tolerance helper, because the scale that converts relative to absolute is
+different at every site and belongs in that site's comment. The independent ones are few and say
+why: `chladni.mps.policy`'s `TAU_REL`, `STABLE_TOL`, `CELL_RHO` and `PAIR_ETA` (bracketing and
+rank-freezing do not need the deep digits), and the geometry tests that floor `prec` at `1e-12`
+(`max(prec, 1e-12) * scale` in `Boundary` and `validate`), below which a contiguity test would
+reject legitimate rounding.
 
 **A reported precision is never a claim contradicted elsewhere in the same object.** Where a bound
 on the achievable precision is cheap, compute it and warn when the request exceeds it, rather than
@@ -75,16 +97,39 @@ silently under-delivering: `Domain.achievable_prec` is the pattern.
 `PrecisionWarning` has its own category so a `douse` grid can `simplefilter("ignore",
 PrecisionWarning)` without a blanket filter that would hide everything else.
 
+**A solve that falls short FLAGS by default and raises on request.** `on_shortfall="flag"`
+returns the answer with its unmet levels and flags; `on_shortfall="raise"` raises
+`PrecisionShortfall` (`chladni/_core.py`), a `RuntimeError` carrying `result`, the first short
+`level`, its `margin` and the count `audit` -- the input to a re-plan, not merely the fact of
+failure. Raised early, from inside the search (`solve(abort_unmet=True)`), `result` and `audit`
+are None and `located` holds what was refined so far.
+
 **Relative tolerances have no absolute floor.** A relative tolerance is `max(prec*|x|, a few
 ulps of x)`, never `prec*max(|x|, 1.0)`: the `1.0` makes the tolerance depend on the domain's
 scale, so that below `lam = 1` (a large domain) it silently loosens to `prec/lam`. Length tests
-(contiguity, closure) scale by the domain's own length, not by `max(length, 1.0)`.
+(contiguity, closure) scale by the domain's own length, not by `max(length, 1.0)`. The merge
+licence is the pattern: `max(prec*|lam|, 4*np.spacing(|lam|))`.
+
+Known exceptions, still carrying the `1.0` floor and tracked in `TODO.md` rather than fixed:
+
+* `asymp.py`: level grouping in the Weyl-gap cut (`rtol * max(abs(x), 1.0)`) and in the count
+  audit (`_AUDIT_RTOL * max(abs(x), 1.0)`);
+* `reference/_core.py`: grouping a reference multiset into levels (`rtol * max(abs(x), 1.0)`);
+* `geometry/segments.py`: `_line_line_intersection`'s parallel and collinear tests
+  (`max(scale, 1.0)`, `max(abs(r), 1.0)`), and `SplineSegment.interp_from_pts`'s closure test
+  (`max(1.0, np.abs(pts).max())`).
 
 **A level's bar, `met` and `margin` tell one story** (2026-11-03). `bound` is the bar the level
-reports. That is the Moler-Payne bound when `delta_res` was not admitted, including a REFUSED
-one (inf), which is never read as met. `margin = DELTA_SAFETY * prec * |lam| / bound`, so
-`met <=> margin >= DELTA_SAFETY` on every path, and `margin` is nan where there is no bar. A
-level with no bar never reports the request as attained.
+reports (`chladni.mps.search.Level`, copied into `chladni.eigensolver.Level`). That is the
+Moler-Payne bound when `delta_res` was not admitted, including a REFUSED one (inf), which is never
+read as met; otherwise the tighter of the two finite ones. `margin = DELTA_SAFETY * prec * |lam| /
+bound`, with `DELTA_SAFETY = 2` (`mps/refine.py`), so for a finite positive bar `met <=> margin >=
+DELTA_SAFETY`, and a refused bar gives `margin = 0`, unmet. `margin` is nan where there is no bar
+(`bound` nan), and a level with no bar never reports the request as attained.
+
+Two edges sit outside the equivalence. A level whose `prec` was never stamped (built outside
+`solve`) has `margin` nan whatever its bar. And a bar of exactly `0` reads `margin` nan but
+`met` True, since `attained_prec = 0 <= prec`; nothing is known to produce one.
 
 ---
 
@@ -107,6 +152,12 @@ which was too strong; a later one said there was no seam at all, only a naming d
 was too weak. The naming discipline is the rule and still holds: any function may work in
 whichever variable suits it, provided its argument is *named* for that variable -- `k` or `lam`,
 never an argument whose meaning has to be inferred.
+
+**One documented exception: `chladni.reference`'s `k` is a COUNT.** `rect_eigs(k)`,
+`disk_eigs(k)`, `gww_eigs(k)` and the rest of the prefix queries return the first `k`
+eigenvalues, in `lam`. It is never a wavenumber there, and no function in `chladni.reference` takes a wavenumber,
+so the two meanings never meet in one signature. Elsewhere a count is `n` (`Eigenproblem.plan(n)`,
+`Eigenproblem.solve(n)`).
 
 What the discipline alone did not settle is where the conversion should FALL, and the measurement
 that settles it is this: **`mps` and above is `lam`, `helmholtz` and below is `k`.** The seam is
@@ -139,17 +190,20 @@ algorithmic change in the search combined. In the other direction, fitting `sigm
 quadratic over identical physical points, the residual is smaller in `lam` in 17 of 17 cases
 across six domains, median 5.1x, so the refinement is in `lam`.
 
-**The seam does not move, and the two answers do not fight.** The candidate searcher is driven
-through an objective stated in `lam` (`chladni.mps.objective`), and it transforms to `k` internally
+**The seam does not move, and the two answers do not fight.** The searcher is driven through an
+objective stated in `lam` (`chladni.mps.objective`; `MPSEigensolver.objective` builds it with
+`variable="lam"`), and it transforms to `k` internally
 through a view that shares the caller's evaluation cache (`chladni.mps.bracket`'s `_KView`),
 returning brackets in the variable it was handed. An algorithm owning its own abscissa is not a
 variable convention; it is an implementation detail that the naming discipline above already
 covers, since every argument that crosses the boundary is named for what it carries.
 
-The search is a scored candidate in `tests/` and not part of the package, so this entry describes
-where the conversion falls whenever it is promoted, not a seam that exists in `src/` today.
+The search ships (`chladni.mps.search`, over `bracket`, `refine` and `multiplicity`), so this is
+the seam as it exists in `src/`: `MPSEigensolver.search_interval` hands `search.solve` that
+`lam` objective and gets levels back in `lam`.
 
-Under `Domain.normalized(by=s)`: `lam -> lam * s**2`, equivalently `k -> k * s`.
+`Domain.normalized(by=...)` rescales by the factor `s` that makes `by` (`"diameter"`, `"area"` or
+`"inradius"`) equal to 1. Under it `lam -> lam * s**2`, equivalently `k -> k * s`.
 
 ---
 
@@ -245,11 +299,11 @@ same everywhere:
 | name | meaning |
 |---|---|
 | `u, u_n, u_t` | Cauchy data at quadrature nodes: the value, the OUTWARD normal derivative, the tangential derivative along `T` (CCW on outer boundaries). Arrays `(n_nodes, m)`, one column per function. |
-| `x0` | the Rellich origin. `r = x - x0`, with `r_n = r . N` (`Quadrature.radial(x0)`) and `r_t = r . T`. |
+| `x0` | the Rellich origin. `r = x - x0`, with `r_n = r . N` (`Quadrature.radial(x0)`) and `r_t = r . T` (no public accessor; `integrals.identities` forms both, exactly at an anchored corner). |
 | `family_coef` | a coefficient vector in the coordinates of the family's own pre-scaled columns (`MPSPencil.family_coef`), the only form a consumer off the collocation set can use. |
 | `cancellation` | `max sum_j |c_j| |psi_j| / (||u|| / sqrt|Omega|)`: how far the terms behind a value exceed the function's typical INTERIOR size, so `eps * cancellation` is the floor of anything computed from it. Never the boundary rms, which a good Dirichlet candidate drives to zero by design. |
 | `integral_prec` | the precision the integral quadrature is sized to, `max(0.1 * prec, 1e-14)` by default. |
-| licence | `prec * lam`, the width within which two eigenvalues MAY be reported as one level (British spelling, as in `search.py`). |
+| licence | `max(prec * abs(lam), 4 * np.spacing(abs(lam)))`, the width within which two eigenvalues MAY be reported as one level (British spelling, as in `search.py`'s `_licence`). |
 
 ---
 
