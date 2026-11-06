@@ -648,6 +648,8 @@ class MPSEigensolver(Eigensolver, Frozen):
                 levels.append(replace(L, mp_bound=float(np.max(mp.abs)),
                                       mp_eps=float(np.max(mp.eps)),
                                       cancellation=float(np.max(mp.cancellation)),
+                                      mp_drift=float(np.max(mp.drift)),
+                                      mp_norm_spread=float(np.max(mp.norm_spread)),
                                       bound_reason=mp.reason,
                                       rule_prec=float(iq.sizing_prec),
                                       delta_res_admitted=bool(

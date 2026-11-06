@@ -178,7 +178,7 @@ def test_the_fallback_returns_the_best_ranked_rung_not_the_first(monkeypatch):
 
     monkeypatch.setattr(Eigenproblem, "_solve_with", fake)
     dom = Polygon(np.array([0, 1, 0.1 + 0.25j]))
-    plan, _, _, accepted = Eigenproblem(dom)._plan(15, PREC, False)
+    plan, _, _, accepted, _ = Eigenproblem(dom)._plan(15, PREC, False)
     assert not accepted and plan.rung == 2 and full == [2]
     assert len(LADDER) > 2
 
