@@ -55,17 +55,24 @@ def test_a_rectangles_moving_side_matches_the_closed_form():
 def test_a_double_splits_by_its_members_derivatives():
     """The square's 5 pi^2 double, (1,2) and (2,1): moving the side x = 1 gives -2 pi^2 for the
     first and -8 pi^2 for the second. The matrix's EIGENVALUES are those, whichever orthonormal
-    basis of the eigenspace the solver returned."""
+    basis of the eigenspace the solver returned.
+
+    The estimate 3 eps/alpha sits at prec here (eps ~ 1.4e-11, alpha 0.375): it warns on some
+    BLAS and not others, so the warning is ignored and the estimate checked against the truth."""
     dom = rect(1.0, 1.0)
     spec = Eigenproblem(dom).solve(3, prec=PREC)
     i = int(np.argmin(np.abs(spec.lam - 5 * np.pi ** 2)))
     assert spec.mult[i] == 2
     V = _edge_velocity(dom, lambda p0, p1: abs(p0.real - 1.0) < 1e-12
                        and abs(p1.real - 1.0) < 1e-12)
-    H_ = spec.hadamard(i, V)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", PrecisionWarning)
+        H_, rep = spec.hadamard(i, V, report=True)
     assert H_.shape == (1, 2, 2)
-    np.testing.assert_allclose(np.sort(np.linalg.eigvalsh(H_[0])),
-                               [-8 * np.pi ** 2, -2 * np.pi ** 2], rtol=1e-8)
+    want = np.array([-8 * np.pi ** 2, -2 * np.pi ** 2])
+    got = np.sort(np.linalg.eigvalsh(H_[0]))
+    np.testing.assert_allclose(got, want, rtol=1e-8)
+    assert np.abs(got - want).max() / spec.lam[i] <= rep.attained
 
 
 @pytest.mark.slow
