@@ -22,7 +22,7 @@ import numpy as np
 
 from ._core import PREC, PrecisionWarning, _set, check_prec
 
-__all__ = ["Level", "SpectrumLevel", "Eigensolver", "Spectrum", "lam_to_k", "k_to_lam", "weyl_window",
+__all__ = ["Level", "Cluster", "SpectrumLevel", "Eigensolver", "Spectrum", "lam_to_k", "k_to_lam", "weyl_window",
            "PREC", "PrecisionWarning"]
 
 #: Relative slack below the Faber-Krahn bound. Faber-Krahn is an EQUALITY for the disk, so an
@@ -111,6 +111,13 @@ class Level:
     #: The Moler-Payne relative boundary residual (`search.Level.mp_eps`): the eigenfunction's
     #: own error, which a Hadamard matrix built on it inherits (`HadamardReport.mp_eps`).
     mp_eps: float = float("nan")
+    #: Moler-Payne's alpha (Betcke-Trefethen 2005, Thm 8.1): the relative distance to the nearest
+    #: eigenvalue OUTSIDE the level's cluster, less that eigenvalue's own bar, `|lam_n - lam| /
+    #: lam_n`. The eigenfunctions are then within about `mp_eps / gap` of the true eigenspace
+    #: (`HadamardReport.eigenfunction_bound`). `nan` where no solve set it.
+    gap: float = float("nan")
+    #: The index into `Spectrum.clusters` of the cluster this level belongs to, or None.
+    cluster: object = None
 
     @classmethod
     def from_search(cls, L, prec):
@@ -121,6 +128,33 @@ class Level:
                    count_uncertain=bool(L.count_uncertain),
                    grouping_ambiguous=bool(L.grouping_ambiguous),
                    mp_eps=float(getattr(L, "mp_eps", float("nan"))))
+
+
+@dataclass(frozen=True)
+class Cluster:
+    """Distinct levels whose eigenfunctions are NOT separately determined (2026-11-05).
+
+    Levels are grouped by value. Two can be certified distinct while each one's eigenfunctions
+    carry a piece of the other's: an eigenvalue error eps moves an eigenvector by about
+    eps / gap (Moler-Payne; Betcke-Trefethen 2005, Thm 8.1). The solver links adjacent levels
+    whose Moler-Payne eigenfunction bound exceeds `prec` AND whose measured cross-level Gram
+    exceeds `prec` without moving with the Rellich origin (`eigenproblem.link_clusters`).
+
+    What this promises: the cluster's SPAN, its eigenvalues, and anything invariant under a
+    rotation of its members -- a Hadamard block's eigenvalues and trace -- to `prec`. What it does
+    not: which member is which. `SolveRecord.eigenfunctions(i)` returns members orthonormalized
+    TOGETHER, and quantities built on one member alone carry an error of about `overlap`.
+
+    `levels` are indices into `Spectrum.levels`, contiguous; `mult` their total multiplicity;
+    `spread` `(lam_last - lam_first) / lam_last`; `overlap` the largest cross-level Gram entry
+    measured between the per-level eigenfunctions, before they were orthonormalized together;
+    `bias` the largest change of that entry over Rellich origins -- the gap's own term, and the
+    limit to which the members can be orthonormalized from boundary data."""
+    levels: tuple
+    mult: int
+    spread: float
+    overlap: float
+    bias: float = float("nan")
 
 
 #: The name `Level` had while it was only the black-box path's per-level record.
@@ -166,6 +200,9 @@ class Spectrum:
     #: Everything the caller should know before trusting this answer, as short strings. Empty
     #: means: every level met `prec`, the count audited ok, nothing uncertain.
     flags: tuple = ()
+    #: The levels whose eigenfunctions must be treated together (`Cluster`). Not a flag: the
+    #: values are fine, and a cluster is a property of the spectrum, not a failure of the solve.
+    clusters: tuple = ()
 
     def __post_init__(self):
         levels = tuple(self.levels)
@@ -180,6 +217,7 @@ class Spectrum:
             raise ValueError("levels must be strictly ascending and distinct")
         object.__setattr__(self, "levels", levels)
         object.__setattr__(self, "flags", tuple(self.flags))
+        object.__setattr__(self, "clusters", tuple(self.clusters))
         object.__setattr__(self, "prec", check_prec(self.prec))
 
     # --- the arrays, derived ------------------------------------------------------------------
