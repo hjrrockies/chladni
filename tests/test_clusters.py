@@ -172,3 +172,62 @@ def test_attained_carries_the_eigenfunction_bound(split):
                 eps / a * np.sqrt(1 + (eps / a) ** 2), rel=1e-12)
             assert rep.attained >= HADAMARD_ESTIMATE_K * max(rep.identity_residual,
                                                              rep.eigenfunction_bound)
+
+
+# --- the link rule, on a stub solver (no solve) ---------------------------------------------------
+
+class _SearchLevel:
+    """What `link_clusters` reads off the search's levels."""
+    def __init__(self, lam, eps, bound=1e-12):
+        self.lam, self.mult, self.bound, self.mp_eps = lam, 1, bound, eps
+        self.margin = self.resolution = float("nan")
+        self.count_shortfall = self.count_uncertain = self.grouping_ambiguous = False
+
+    def met(self, prec):
+        return True
+
+
+class _StubSolver:
+    def __init__(self, cross):
+        self.cross = cross                  # {(lam_a, lam_b): overlaps at the four origins}
+
+    def cross_gram(self, A, B, prec=None):
+        return np.asarray(self.cross[(A.lam, B.lam)], float)
+
+
+def _link(lams, eps, cross, prec=1e-10):
+    from chladni.eigenproblem import link_clusters
+    found = [_SearchLevel(l, e) for l, e in zip(lams, eps)]
+    return link_clusters(_StubSolver(cross), found, len(found), prec)
+
+
+def test_an_origin_free_overlap_under_the_moler_payne_ceiling_is_linked():
+    # gap 1e-9 relative, eps 1e-10: eps/alpha ~ 0.1, ceiling 0.2; overlap 1e-5, origin-free
+    lams = [10.0, 20.0, 20.0 + 2e-8, 30.0]
+    levels, clusters = _link(lams, [1e-10] * 4, {(10.0, 20.0): [1e-12] * 4,
+                                                 (20.0, 20.0 + 2e-8): [1e-5] * 4,
+                                                 (20.0 + 2e-8, 30.0): [1e-12] * 4})
+    assert [c.levels for c in clusters] == [(1, 2)]
+    assert [L.cluster for L in levels] == [None, 0, 0, None]
+
+
+def test_an_overlap_that_moves_with_the_origin_is_the_gaps_bias():
+    lams = [20.0, 20.0 + 2e-8]
+    _, clusters = _link(lams, [1e-10] * 2, {(lams[0], lams[1]): [1e-5, 2e-5, 4e-5, 1e-6]})
+    assert clusters == ()
+
+
+def test_an_overlap_above_the_moler_payne_ceiling_is_not_real():
+    """A 0.11 gap at prec 1e-10: eps/alpha ~ 1e-9, so a real overlap is at most ~2e-9. A
+    cross-Gram of 3e-3 there is the gap's bias, even where the four origins happen to agree
+    (seen on a perturbed rectangle in douse's inverse smoke test, 2026-11-05)."""
+    lams = [68.59, 77.26]
+    _, clusters = _link(lams, [1e-10] * 2, {(lams[0], lams[1]): [3.0e-3, 2.9e-3, 3.1e-3, 3.0e-3]})
+    assert clusters == ()
+
+
+def test_a_pair_inside_the_screen_is_not_measured():
+    """eps / alpha <= prec on both sides: resolved by Moler-Payne alone, never measured."""
+    lams = [20.0, 30.0]
+    _, clusters = _link(lams, [1e-14] * 2, {})          # a KeyError if it measured
+    assert clusters == ()

@@ -367,9 +367,14 @@ T2.6-N5k4-L7-ref3 (1.2e-7), T2.7-lowest and -median (1.5e-6), T2.6-N5k4-L7-ref0 
 `||u - u_k|| <= (eps/alpha) sqrt(1 + eps^2/alpha^2)`, alpha the relative gap to the nearest other
 eigenvalue. As a screen, `eps / alpha > prec` caught EVERY entangled pair at all three precs, and
 also 26-28 of 43 that were not (gaps 1e-4 .. 1e-2, where it is loose). So the solver screens by it
-and LINKS a screened pair only when the measured cross-Gram exceeds prec and moves by less than
-`CLUSTER_ORIGIN_SPREAD = 1/3` over four Rellich origins (`eigenproblem.link_clusters`). The
-borderline: T2.6-N3k2 read 30% at 1e-10 (0% at 1e-8 and 1e-12), against the biased pairs' 39%.
+and LINKS a screened pair only when the measured cross-Gram (a) exceeds prec, (b) is at most
+`MP_CEILING = 2` times the Moler-Payne bound -- each member is within the bound of its true
+eigenspace, so real overlap cannot exceed about twice it -- and (c) moves by less than
+`CLUSTER_ORIGIN_SPREAD = 1/3` over four Rellich origins (`eigenproblem.link_clusters`).
+Entangled pairs read overlap / bound 7e-5 .. 1.7e-2; the biased ones a median 4.3, up to 4e6.
+(b) was added after douse's inverse smoke test linked a perturbed rectangle's levels 0.11 apart:
+cross-Gram 3e-3 against a bound of 1e-9, the four origins agreeing by chance. The borderline of
+(c): T2.6-N3k2 read 30% at 1e-10 (0% at 1e-8 and 1e-12), against the biased pairs' 39%.
 
 **Built** (`eigensolver.Cluster`, `Spectrum.clusters`, `Level.cluster`, `Level.gap`;
 `SolveRecord.eigenfunctions`, `.cluster_eigenfunctions`; `MPSEigensolver.joint_eigenfunctions`,

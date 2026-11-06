@@ -59,6 +59,11 @@ WARM_COLD_EVERY = 10
 #: (51 douse shapes, 43 adjacent pairs within 1e-2, prec 1e-8 .. 1e-12) entangled pairs moved
 #: 0 .. 30%, biased ones 39 .. 100% (2026-11-05, `notes/accuracy_studies.py` overlap).
 CLUSTER_ORIGIN_SPREAD = 1.0 / 3.0
+#: ... and only if their cross-level Gram is at most this many times the pair's Moler-Payne
+#: eigenfunction bound: each member is within the bound of its true eigenspace, so their true
+#: overlap is at most about twice it. Above, the Gram is reading the gap's bias. Not tuned:
+#: entangled pairs on the ARC overlap study read at most 1.7e-2 of the bound.
+MP_CEILING = 2.0
 
 
 @dataclass(frozen=True)
@@ -667,11 +672,15 @@ def link_clusters(solver, found, n_kept, prec):
     Each adjacent pair is SCREENED by Moler-Payne (Betcke-Trefethen 2005, Thm 8.1): a level's
     eigenfunctions are within `eps / alpha` of the true eigenspace, `alpha` the relative gap to
     its neighbour less the neighbour's bar, so a pair with `eps / alpha <= prec` on both sides is
-    resolved. A screened pair is LINKED when its measured cross-level Gram exceeds `prec` and
-    moves by less than `CLUSTER_ORIGIN_SPREAD` over the Rellich origins (`cross_gram`). On the
-    ARC overlap study the screen alone caught every entangled pair at 1e-8, 1e-10 and 1e-12, but
-    also 26-28 of 43 pairs that were not (gaps 1e-4 .. 1e-2, where eps / alpha is a loose bound);
-    the measurement separated them. A pair the solver cannot measure is not linked.
+    resolved. A screened pair is LINKED when its measured cross-level Gram (`cross_gram`)
+    exceeds `prec`, stays under `MP_CEILING` times that same bound -- real overlap cannot exceed
+    it, the gap's bias can -- and moves by less than `CLUSTER_ORIGIN_SPREAD` over the Rellich
+    origins. On the ARC overlap study the screen alone caught every entangled pair at 1e-8,
+    1e-10 and 1e-12, but also 26-28 of 43 pairs that were not (gaps 1e-4 .. 1e-2, where
+    eps / alpha is loose); the measurement separated them. Entangled pairs read at most 1.7e-2 of
+    the bound; a perturbed rectangle's 0.11 gap read 3e-3 against a bound of 1e-9, with the four
+    origins agreeing by chance (douse's inverse smoke test). A pair the solver cannot measure is
+    not linked.
     """
     n = len(found)
     eps = [float(getattr(L, "mp_eps", np.nan)) for L in found]
@@ -681,22 +690,27 @@ def link_clusters(solver, found, n_kept, prec):
     def alpha(i, j):                    # level i's relative gap to level j, less j's bar
         return max(abs(lam[j] - lam[i]) - bnd[j], 0.0) / lam[j]
 
-    def screened(i):
-        e = (eps[i], eps[i + 1])
-        a = (alpha(i, i + 1), alpha(i + 1, i))
-        return any(not np.isfinite(x) or (y == 0.0 or x / y > prec) for x, y in zip(e, a))
+    def mp_bound(i):                    # the pair's Moler-Payne eigenfunction bound, worst side
+        out = 0.0
+        for x, y in ((eps[i], alpha(i, i + 1)), (eps[i + 1], alpha(i + 1, i))):
+            if not np.isfinite(x) or y == 0.0:
+                return np.inf
+            out = max(out, (x / y) * np.sqrt(1.0 + (x / y) ** 2))
+        return out
 
     links = {}                          # i -> (overlap, bias) for a linked pair (i, i + 1)
     for i in range(n - 1):
         if i >= n_kept and (i - 1) not in links:
             break                       # past the kept levels, only to finish a cluster
-        if not screened(i):
+        ceiling = mp_bound(i)
+        if not ceiling > prec:
             continue
         try:
             o = solver.cross_gram(found[i], found[i + 1], prec=prec)
         except (AttributeError, ValueError, np.linalg.LinAlgError):
             continue
-        if o[0] > prec and (o.max() - o.min()) < CLUSTER_ORIGIN_SPREAD * o.max():
+        if (prec < o[0] <= MP_CEILING * ceiling
+                and (o.max() - o.min()) < CLUSTER_ORIGIN_SPREAD * o.max()):
             links[i] = (float(o[0]), float(o.max() - o.min()))
     end = n_kept
     while end < n and (end - 1) in links:
