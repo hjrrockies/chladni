@@ -55,17 +55,24 @@ def test_a_rectangles_moving_side_matches_the_closed_form():
 def test_a_double_splits_by_its_members_derivatives():
     """The square's 5 pi^2 double, (1,2) and (2,1): moving the side x = 1 gives -2 pi^2 for the
     first and -8 pi^2 for the second. The matrix's EIGENVALUES are those, whichever orthonormal
-    basis of the eigenspace the solver returned."""
+    basis of the eigenspace the solver returned.
+
+    The estimate 3 eps/alpha sits at prec here (eps ~ 1.4e-11, alpha 0.375): it warns on some
+    BLAS and not others, so the warning is ignored and the estimate checked against the truth."""
     dom = rect(1.0, 1.0)
     spec = Eigenproblem(dom).solve(3, prec=PREC)
     i = int(np.argmin(np.abs(spec.lam - 5 * np.pi ** 2)))
     assert spec.mult[i] == 2
     V = _edge_velocity(dom, lambda p0, p1: abs(p0.real - 1.0) < 1e-12
                        and abs(p1.real - 1.0) < 1e-12)
-    H_ = spec.hadamard(i, V)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", PrecisionWarning)
+        H_, rep = spec.hadamard(i, V, report=True)
     assert H_.shape == (1, 2, 2)
-    np.testing.assert_allclose(np.sort(np.linalg.eigvalsh(H_[0])),
-                               [-8 * np.pi ** 2, -2 * np.pi ** 2], rtol=1e-8)
+    want = np.array([-8 * np.pi ** 2, -2 * np.pi ** 2])
+    got = np.sort(np.linalg.eigvalsh(H_[0]))
+    np.testing.assert_allclose(got, want, rtol=1e-8)
+    assert np.abs(got - want).max() / spec.lam[i] <= rep.attained
 
 
 @pytest.mark.slow
@@ -149,9 +156,16 @@ def test_a_split_pair_near_a_double_gives_the_doubles_derivatives():
     assert spec.count >= 3 and len(spec.lam) >= 3 and spec.mult[1] == 1
     V = _edge_velocity(dom, lambda p0, p1: abs(p0.real - 1.0) < 1e-12
                        and abs(p1.real - 1.0) < 1e-12)
-    H = spec.hadamard([1, 2], V)[0]
+    # Not a cluster (gap 1.2e-3), but `attained` warns: Moler-Payne's eps/alpha is loose on a
+    # resolved pair (4.9e-8 claimed at prec 1e-10), the price of the calibrated estimate.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", PrecisionWarning)
+        H, rep = spec.hadamard([1, 2], V, report=True)
+    H = H[0]
+    assert spec.spectrum.clusters == ()
     np.testing.assert_allclose(np.sort(np.linalg.eigvalsh(H)), [-8 * np.pi ** 2, -2 * np.pi ** 2],
                                rtol=10 * PREC)
+    assert rep.attained >= 10 * PREC                  # the estimate errs on the safe side
     assert abs(H[0, 1]) < 10 * PREC * np.pi ** 2
 
 
@@ -262,15 +276,112 @@ def test_rigid_motions_and_dilation_hold_on_corner_domains(name, verts, bar):
     spec = Eigenproblem(dom).solve(6, prec=1e-12)
     V = _linear_fields(dom)
     for i in range(len(spec.lam)):
-        # The hexagon's eigenfunctions carry a Moler-Payne residual just above 1e-12, which
-        # `attained` now includes (audit 2.2): an honest warning, checked against `bar` instead.
+        # `attained` is a calibrated, conservative estimate (3 x max(identity residual, Moler-
+        # Payne eps/alpha), 2026-11-05). It sits above prec where a neighbour is close -- the
+        # notch's level 4 reads eps/alpha 4.6e-11 against identities of 1e-14, mixing the
+        # identities cannot see -- an honest warning. Checked instead: it covers their error.
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=r".*the eigenfunctions' Moler-Payne residual",
-                                    category=PrecisionWarning)
+            warnings.simplefilter("ignore", PrecisionWarning)
             H_, rep = spec.hadamard(i, V, report=True)
         lam = spec.lam[i]
         assert rep.shortfalls == (), (name, rep.shortfalls)
-        assert rep.attained <= bar, (name, i, rep.attained)
+        assert rep.identity_residual <= rep.attained, (name, i, rep)
         for f in range(3):
             assert np.abs(H_[f]).max() < bar * lam, (name, i, f)
         np.testing.assert_allclose(np.linalg.eigvalsh(H_[3]), -2 * lam, rtol=bar)
+
+
+# --- the identity residuals, reported (2026-11-05) ----------------------------------------------
+#
+# `hadamard` integrates the four exact identities above on its own nodes alongside the caller's
+# fields, and reports their residuals: translation in x and y, rotation and dilation about the
+# boundary's centroid divided by its radius, so every field has unit size; each relative to
+# lam. `notes/accuracy_audit_2026-11-03.md`, "ARC accuracy studies": `attained` under-reported
+# H's error on the douse shapes by a median 2x, and the identities are the error itself.
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name, verts, bar", IDENTITY_CASES, ids=[c[0] for c in IDENTITY_CASES])
+def test_the_report_carries_the_identity_residuals(name, verts, bar):
+    dom = Polygon(verts, bc="dir")
+    spec = Eigenproblem(dom).solve(6, prec=1e-12)
+    V = _linear_fields(dom)
+    for i in range(len(spec.lam)):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", PrecisionWarning)
+            H_, rep = spec.hadamard(i, V, report=True)
+        lam = spec.lam[i]
+        assert len(rep.identity_fields) == 4
+        assert rep.identity_residual == max(rep.identity_fields) <= bar, (name, i, rep)
+        # translation needs no centre: the caller's own fields give the same residual
+        for f in range(2):
+            assert rep.identity_fields[f] == pytest.approx(np.abs(H_[f]).max() / lam,
+                                                           rel=1e-6, abs=1e-16), (name, i, f)
+
+
+@pytest.mark.slow
+def test_a_block_of_distinct_levels_reads_the_identities_level_by_level():
+    """The identities hold within a level, not across levels: between eigenfunctions of
+    eigenvalues lam != mu, the Rellich form is (lam + mu) <u, v> + (lam - mu)/2 int (v x.grad u
+    - u x.grad v), and translation keeps the second term alone. So over a block of distinct
+    levels the residual is the worst of the levels' own blocks; the cross-level entries are
+    content, not error."""
+    verts = dict((c[0], c[1]) for c in IDENTITY_CASES)["L-shape +(3+2i)"]
+    dom = Polygon(verts, bc="dir")
+    spec = Eigenproblem(dom).solve(3, prec=1e-12)
+    V = _linear_fields(dom)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", PrecisionWarning)
+        H_, rep = spec.hadamard([0, 1, 2], V, report=True)
+        own = [spec.hadamard(i, V, report=True)[1].identity_residual for i in range(3)]
+    assert np.abs(H_[0, 0, 1:]).max() > 1e-3 * spec.lam[0]        # the cross terms are there
+    assert rep.identity_residual <= 1e-12, rep
+    # the same size as the levels' own (the block divides by its largest lam, on that lam's rule)
+    assert rep.identity_residual <= 10 * max(own) + 1e-13, (rep.identity_residual, own)
+
+
+@pytest.mark.slow
+def test_a_loose_solve_reports_a_larger_identity_residual():
+    """The residual measures the eigenfunctions, not a constant: the irregular hexagon at prec
+    1e-6 reads well above its 1e-12 value, and still matches the caller's translation fields."""
+    verts = dict((c[0], c[1]) for c in IDENTITY_CASES)["irregular hexagon"]
+    dom = Polygon(verts, bc="dir")
+    V = _linear_fields(dom)
+    worst = {}
+    for prec in (1e-6, 1e-12):
+        spec = Eigenproblem(dom).solve(4, prec=prec)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", PrecisionWarning)
+            reps = [spec.hadamard(i, V, report=True) for i in range(len(spec.lam))]
+        worst[prec] = max(rep.identity_residual for _, rep in reps)
+        for (H_, rep), lam in zip(reps, spec.lam):
+            assert rep.identity_fields[0] == pytest.approx(np.abs(H_[0]).max() / lam,
+                                                           rel=1e-6, abs=1e-16)
+    assert worst[1e-6] > 100 * worst[1e-12], worst
+
+
+@pytest.mark.slow
+def test_a_starved_level_is_not_called_orthonormal():
+    """`gram_residual` alone reads 1e-15 .. 3e-9 on a starved basis whose true Gram defect is
+    6e-8 .. 4e-5 (`accuracy_studies.py` starved, T1.4-hex at factor <= 0.25); `mp_eps` covers it.
+    A level whose `gram_residual + mp_eps` exceeds the refusal bar is not `orthonormal`, and
+    `hadamard` refuses it."""
+    from dataclasses import replace
+    from chladni.plan import plan_for
+
+    verts = dict((c[0], c[1]) for c in IDENTITY_CASES)["irregular hexagon"]
+    dom = Polygon(verts, bc="dir")
+    plan = plan_for(dom, 6, 1e-10)
+    plan = replace(plan, corner_orders=tuple(max(round(0.25 * m), 1) if m else 0
+                                             for m in plan.corner_orders),
+                   n_sources=round(0.25 * plan.n_sources))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = plan.solver(dom, prec=1e-10)
+        res = s.search_interval(5.0, 60.0)
+    bad = [L for L in res.levels if np.isfinite(L.mp_eps) and L.mp_eps > 1e-7]
+    assert bad, [L.mp_eps for L in res.levels]
+    for L in bad:
+        ef = s.eigenfunctions(L)
+        assert not ef.orthonormal and "Moler-Payne" in ef.reason, (L.lam, L.mp_eps, ef)
+        with pytest.raises(ValueError, match="Moler-Payne"):
+            s.hadamard(L, _linear_fields(dom))

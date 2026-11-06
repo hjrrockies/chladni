@@ -250,6 +250,10 @@ same everywhere:
 | `cancellation` | `max sum_j |c_j| |psi_j| / (||u|| / sqrt|Omega|)`: how far the terms behind a value exceed the function's typical INTERIOR size, so `eps * cancellation` is the floor of anything computed from it. Never the boundary rms, which a good Dirichlet candidate drives to zero by design. |
 | `integral_prec` | the precision the integral quadrature is sized to, `max(0.1 * prec, 1e-14)` by default. |
 | licence | `prec * lam`, the width within which two eigenvalues MAY be reported as one level (British spelling, as in `search.py`). |
+| `gap` (alpha) | Moler-Payne's alpha for a level: `|lam_n - lam| / lam_n` to the nearest eigenvalue OUTSIDE its cluster, less that eigenvalue's bar (`Level.gap`). `mp_eps / gap` bounds how far its eigenfunctions sit from the true eigenspace. |
+| cluster | distinct levels whose eigenfunctions are determined only TOGETHER (`eigensolver.Cluster`): values resolved, eigenfunctions entangled. Not a flag. Their span, eigenvalues and rotation-invariant quantities are good to `prec`; which member is which is not. |
+| `overlap` | the largest cross-level Gram entry between two levels' per-level eigenfunctions, each at its own lam (`MPSEigensolver.cross_gram`). Across distinct lam it also carries a bias proportional to the gap, which moves with `x0`; overlap does not. |
+| `attained` | `HadamardReport.attained`: a calibrated ESTIMATE of H's relative error, `max(rules + mp_eps, 3 max(identity_residual, eigenfunction_bound))`. |
 
 ---
 

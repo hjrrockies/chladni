@@ -19,7 +19,7 @@ lappy's `default_basis_for` did.
 from __future__ import annotations
 
 import concurrent.futures as cf
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -29,7 +29,7 @@ from .._core import Frozen, PrecisionShortfall, PrecisionWarning, _set, check_pr
 from ..eigensolver import Eigensolver, Spectrum, lam_to_k, weyl_window
 from .pencil import MPSPencil
 
-__all__ = ["MPSEigensolver", "Eigenfunctions", "DEFAULT_RNG"]
+__all__ = ["MPSEigensolver", "Eigenfunctions", "ClusterEigenfunctions", "DEFAULT_RNG"]
 
 
 #: Seed for the interior fill when the caller names none. A FIXED CONSTANT, not `None`.
@@ -73,7 +73,9 @@ class Eigenfunctions:
     `basis.values(lam_to_k(lam), pts) @ coef` evaluates them anywhere; L2(Omega)-orthonormal
     when `orthonormal`. `rule` is the `IntegralQuad` the Gram was formed on -- the node set a
     Hadamard derivative will want -- and `gram_residual` the orthonormality defect at a second
-    Rellich origin."""
+    Rellich origin. `orthonormal` is False, with a `reason`, when the Gram is deficient, or when
+    `gram_residual` plus the level's Moler-Payne eps exceeds the bar `hadamard` refuses at
+    (2026-11-05)."""
 
     lam: float
     coef: np.ndarray
@@ -82,6 +84,68 @@ class Eigenfunctions:
     gram_residual: float
     reason: str = ""
 
+
+@dataclass(frozen=True)
+class ClusterEigenfunctions:
+    """Eigenfunctions of a cluster's members, orthonormalized TOGETHER (2026-11-05;
+    `SolveRecord.cluster_eigenfunctions`, `SolveRecord.eigenfunctions` for a member).
+
+    Members sit at DIFFERENT `lam`, and a coefficient vector means a function only at its own: a
+    family's columns change with `k`, and the same coefficients read at a neighbour's `lam` were
+    1e-4 .. 2e-2 off on well-separated pairs. So the orthonormal functions are kept as the raw
+    columns plus a mixing matrix: function `a` is `sum_j (basis at lams[j]) @ coef[:, j] *
+    mix[j, a]`. `mix` is near the identity -- off by about the cluster's overlap -- and only the
+    joint span is promised (`eigensolver.Cluster`).
+
+    `lams` per raw column and `gram` their joint Gram (`identities.gram(..., lams=)`); `Lam` is
+    the eigenvalue matrix in the orthonormal basis, `mix^T sym(gram diag(lams)) mix`: the raw
+    column `j` is an eigenfunction at `lams[j]`, so `<u_i, A u_j> = lams[j] gram[i, j]`. It is
+    `diag(lams)` to within `overlap * spread * lam`.
+    `rule`, `orthonormal`, `gram_residual`, `reason` as for `Eigenfunctions`, the residual taken
+    over the whole joint Gram, cross-level entries included. `levels` the level indices covered."""
+
+    lams: np.ndarray
+    coef: np.ndarray
+    mix: np.ndarray
+    gram: np.ndarray
+    rule: object
+    orthonormal: bool
+    gram_residual: float
+    levels: tuple = ()
+    reason: str = ""
+
+    @property
+    def Lam(self):
+        GD = self.gram * self.lams[None, :]
+        return self.mix.T @ (0.5 * (GD + GD.T)) @ self.mix
+
+    def select(self, cols, levels):
+        """The same functions restricted to columns `cols` of `mix` (one member's)."""
+        return replace(self, mix=self.mix[:, list(cols)], levels=tuple(levels))
+
+    def cauchy_data(self, basis, quad):
+        """`CauchyData` of the orthonormal functions on `quad`, each raw column at its own lam."""
+        from ..integrals import cauchy
+        u, un, ut = 0.0, 0.0, 0.0
+        for lam in np.unique(self.lams):
+            j = np.flatnonzero(self.lams == lam)
+            cd = cauchy.cauchy_data(basis, self.coef[:, j] @ self.mix[j], float(lam), quad)
+            u, un, ut = u + cd.u, un + cd.u_n, ut + cd.u_t
+        return cauchy.CauchyData(quad, float(self.lams.max()), u, un, ut)
+
+    def values(self, basis, pts):
+        """The orthonormal functions at `pts`, `(len(pts), n_functions)`."""
+        return sum(basis.values(lam_to_k(float(lam)), pts)
+                   @ (self.coef[:, self.lams == lam] @ self.mix[self.lams == lam])
+                   for lam in np.unique(self.lams))
+
+
+#: `HadamardReport.attained` is at least this many times the worse of the exact-identity residual
+#: and the Moler-Payne eigenfunction bound. Calibrated 2026-11-05 on 327 simple levels of the 51
+#: douse shapes at prec 1e-10 against 1e-12 (`notes/accuracy_studies.py` grad): the vertex-gradient
+#: error over max(identity, eps/alpha) had median 0.29, p99 1.41, worst 2.77
+#: (`notes/hadamard_accuracy.md`, "Calibration").
+HADAMARD_ESTIMATE_K = 3.0
 
 #: How far above `prec` a level's `gram_residual` may sit before `hadamard` refuses it. The
 #: derivative scales with `1/||u||^2`, so a normalization off by `g` puts `g` into every entry;
@@ -126,18 +190,29 @@ class HadamardReport:
     orthonormality defect (`Eigenfunctions.gram_residual`). `mp_eps` is the worst Moler-Payne
     relative residual of the levels' eigenfunctions (nan where uncertified).
 
-    `attained` is the largest of the three rule/normalization kinds -- the Hadamard rule, the
-    normalization rule, the orthonormality defect -- PLUS `mp_eps`, since `u_n` from an MPS
-    eigenfunction is wrong to first order in its boundary residual. It is an ESTIMATE, not a
-    bound. Measured 2026-11-03 against the exact identities (translation and rotation give
-    H = 0, dilation eig H = -2 lam) on 40 levels of the corner-domain identity cases and three
-    hard douse shapes (`notes/hadamard_vs_mp_eps.py`, `notes/hadamard_accuracy.md`): the three
-    kinds alone under-reported on 23 of 40 levels, by up to 8x; with `mp_eps` added, on 6 of 40,
-    by at most 2.6x. That sample was too easy. On the 51 douse reference shapes (850 levels, ARC
-    2026-11-04, `notes/accuracy_audit_2026-11-03.md`) `attained` under-reports on 488: median
-    2x, worst 34x at prec 1e-10, worst 8.6x at 1e-12. So `met` (and the warning) can pass an H
-    that is up to ~10x short of prec: on 91 of 425 levels at 1e-10 and 38 of 425 at 1e-12. Read
-    `attained` as a typical-case estimate; calibrating it is open in `TODO.md`."""
+    `attained` is an ESTIMATE of H's relative error, calibrated rather than proven:
+
+        max( max(sizing, norm_rule, gram_residual) + mp_eps,
+             HADAMARD_ESTIMATE_K * max(identity_residual, eigenfunction_bound) ).
+
+    The first term is what the rules and the normalization can see. The second carries the two
+    errors they cannot: `identity_residual` measures H's own error on the four exact identities,
+    and `eigenfunction_bound` is Moler-Payne's bound on how far the eigenfunctions sit from the
+    true eigenspace, which grows as a neighbour comes close. Each covers what the other misses:
+    on well-separated levels the identities catch a boundary `u_n` error of 5e-8 that eps/alpha
+    reads as 3e-10; on near-pairs eps/alpha reads 5e-6 .. 8e-4 where the identities read 3e-10.
+    Calibrated 2026-11-05 on 327 simple levels of the 51 douse shapes, the vertex gradients at prec
+    1e-10 against 1e-12 (`notes/accuracy_studies.py` grad): error / max(identity, eps/alpha) had
+    median 0.29, p99 1.41, worst 2.77, so `HADAMARD_ESTIMATE_K = 3` covered every one. Silent
+    misses (error above 1e-10, estimate below) fell from 147 of 178 short levels under the old
+    `attained` to none; the price is 90-odd warnings on levels that were not short. Not a bound:
+    Moler-Payne bounds the eigenfunction in L2(Omega), H reads `u_n` on the boundary.
+
+    For a cluster (`groups`), the bound uses its members' worst eps and the cluster's own gap to
+    the outside: the joint span is what is determined. Where a level carries no `gap` (one not
+    from `Eigenproblem.solve`), `eigenfunction_bound` is nan and only the identities enter.
+    Before 2026-11-05 `attained` was the first term alone, and under-reported on 488 of 850
+    levels (`notes/accuracy_audit_2026-11-03.md`)."""
 
     prec: float
     sizing_prec: float
@@ -149,6 +224,16 @@ class HadamardReport:
     #: rule's own sizing did (`notes/accuracy_audit_2026-11-03.md`, 1.5).
     norm_rule_prec: float = float("nan")
     mp_eps: float = float("nan")
+    #: The residuals of the four exact identities on the same nodes and eigenfunctions:
+    #: translation x, y (H = 0), rotation (H = 0) and dilation (H = -2 lam I), the last two about
+    #: the boundary's centroid and divided by its radius so every field has unit size; each
+    #: `max |entry| / lam`. They measure H's own error with no reference solve.
+    #: `identity_residual` is their max. (2026-11-05, `notes/hadamard_accuracy.md`.)
+    identity_fields: tuple = ()
+    identity_residual: float = float("nan")
+    #: Moler-Payne's eigenfunction bound (Betcke-Trefethen 2005, Thm 8.1, eq. 8.2), worst over the
+    #: block: `x sqrt(1 + x^2)`, `x = mp_eps / gap`, a level's or a cluster's (`Level.gap`).
+    eigenfunction_bound: float = float("nan")
 
     @property
     def met(self):
@@ -623,17 +708,96 @@ class MPSEigensolver(Eigensolver, Frozen):
         cd2 = cauchy.cauchy_data(p.basis, out, lam, iq.quad)
         resid = max(float(np.abs(identities.gram(cd2, x0) - np.eye(m)).max())
                     for x0 in certify.x0_probes(self.domain, iq.x0, n=GRAM_PROBES)[1:])
+        # `gram_residual` alone misses a starved basis: there it read 1e-15 .. 3e-9 against a true
+        # Gram defect of 6e-8 .. 4e-5, which the level's Moler-Payne eps covered every time
+        # (`notes/accuracy_audit_2026-11-03.md`, "ARC accuracy studies"). Past the bar `hadamard`
+        # refuses at, the columns are not called orthonormal.
+        eps = float(getattr(level, "mp_eps", np.nan))
+        bar = max(HADAMARD_GRAM_REFUSE * prec, HADAMARD_GRAM_FLOOR)
+        if ok and np.isfinite(eps) and not resid + eps <= bar:
+            ok, why = False, (f"normalized only to about gram_residual + Moler-Payne eps = "
+                              f"{resid + eps:.1e}, above {bar:.0e}: the eigenfunctions' boundary "
+                              f"residual, not the Gram")
         return Eigenfunctions(lam=lam, coef=out, rule=iq, orthonormal=ok, gram_residual=resid,
                               reason=why)
 
-    def hadamard(self, level, V, *, prec=None, report=False):
+    def _joint_cauchy(self, levels, efs, prec):
+        """`(cd, lams, iq)`: several levels' columns, each at its OWN lam, on one integral rule
+        sized for the largest."""
+        from ..integrals import cauchy
+
+        lam_max = max(float(L.lam) for L in levels)
+        iq = self._integral_quad(lam_max, prec)
+        basis = self._pencil.basis
+        cds = [cauchy.cauchy_data(basis, ef.coef, float(L.lam), iq.quad)
+               for L, ef in zip(levels, efs)]
+        cd = cauchy.CauchyData(iq.quad, lam_max, np.hstack([c.u for c in cds]),
+                               np.hstack([c.u_n for c in cds]), np.hstack([c.u_t for c in cds]))
+        lams = np.concatenate([[float(L.lam)] * int(L.mult) for L in levels])
+        return cd, lams, iq
+
+    @staticmethod
+    def _overlap_origins(iq):
+        """The rule's Rellich origin, the boundary's centroid, and the centroid moved by the
+        boundary's radius in x and in y: far enough apart that the gap's bias, affine in the
+        origin, shows (the ARC overlap study's origins, `notes/accuracy_studies.py` overlap)."""
+        q = iq.quad
+        c = complex(np.sum(q.wts * q.pts) / np.sum(q.wts))
+        R = float(np.abs(q.pts - c).max())
+        return (complex(iq.x0), c, c + R, c + 1j * R)
+
+    def cross_gram(self, A, B, *, prec=None):
+        """`max |G_AB|` of the cross-level Gram block of levels `A` and `B` at each of four Rellich
+        origins (`_overlap_origins`), as an array. Real overlap of the two levels' eigenfunctions
+        reads the same at every origin; the gap's own bias, `(lam - mu)/2 int (v r.grad u - u
+        r.grad v)` (`identities.gram`), moves with it. `eigenproblem.link_clusters` reads both."""
+        from ..integrals import identities
+
+        prec = self.prec if prec is None else check_prec(prec)
+        efs = [self.eigenfunctions(L, prec=prec) for L in (A, B)]
+        cd, lams, iq = self._joint_cauchy((A, B), efs, prec)
+        m = int(A.mult)
+        return np.array([float(np.abs(identities.gram(cd, x0, lams=lams)[:m, m:]).max())
+                         for x0 in self._overlap_origins(iq)])
+
+    def joint_eigenfunctions(self, levels, *, prec=None):
+        """Several levels' eigenfunctions orthonormalized TOGETHER, as `ClusterEigenfunctions`:
+        a cluster's (`eigensolver.Cluster`). Each level's own columns first (`eigenfunctions`),
+        then the joint Gram over all of them, each at its own lam (`identities.gram(...,
+        lams=)`), Löwdin-orthonormalized. `gram_residual` is the joint `max |G - I|` at
+        `GRAM_PROBES` further origins: within a cluster it also carries the gap's bias, which is
+        the limit boundary data can orthonormalize the members to."""
+        from ..integrals import certify, identities
+
+        prec = self.prec if prec is None else check_prec(prec)
+        efs = [self.eigenfunctions(L, prec=prec) for L in levels]
+        cd, lams, iq = self._joint_cauchy(levels, efs, prec)
+        coef = np.hstack([ef.coef for ef in efs])
+        ok = all(ef.orthonormal for ef in efs)
+        why = "; ".join(ef.reason for ef in efs if ef.reason)
+        G = identities.gram(cd, iq.x0, lams=lams)
+        try:
+            mix = identities.lowdin(G)
+        except ValueError as err:
+            mix, ok, why = np.diag(np.abs(np.diag(G)) ** -0.5), False, str(err)
+        resid = max(float(np.abs(mix.T @ identities.gram(cd, x0, lams=lams) @ mix
+                                  - np.eye(len(lams))).max())
+                    for x0 in certify.x0_probes(self.domain, iq.x0, n=GRAM_PROBES)[1:])
+        return ClusterEigenfunctions(lams=lams, coef=coef, mix=mix, gram=G, rule=iq,
+                                     orthonormal=ok, gram_residual=resid, reason=why)
+
+    def hadamard(self, level, V, *, prec=None, report=False, groups=()):
         """The Hadamard shape derivative of a Dirichlet level, or of several: `(n_fields, m, m)`.
 
-        `level` may be a SEQUENCE of levels: a nearly degenerate cluster the solver resolved into
-        distinct levels. The block then spans all their members, cross terms included -- the
-        model a cluster optimizer needs on its way into a degeneracy. Each level is
-        orthonormalized on its own, and members of different levels are orthogonal as
-        eigenfunctions of different eigenvalues.
+        `level` may be a SEQUENCE of levels, giving one block over all their members, cross terms
+        included -- the model a cluster optimizer needs on its way into a degeneracy. `groups`
+        names positions in that sequence (contiguous tuples) whose levels form a CLUSTER
+        (`eigensolver.Cluster`): their eigenfunctions are orthonormalized together
+        (`joint_eigenfunctions`). Every other level is orthonormalized on its own. Without the
+        grouping, a cluster's per-level eigenfunctions overlap and the block is wrong at the size
+        of the overlap: 7.8e-4 of lam on a hard douse shape at prec 1e-10, with every identity at
+        2e-10 (2026-11-05, `notes/hadamard_accuracy.md`, "Clusters"). `SolveRecord.hadamard`
+        groups from the spectrum's clusters and refuses a list that cuts through one.
 
         `H[f, i, j] = - oint d_n u_i d_n u_j V_f ds` over the level's eigenfunctions,
         L2-orthonormalized (`eigenfunctions`); its eigenvalues are the derivatives of the level's
@@ -647,11 +811,10 @@ class MPSEigensolver(Eigensolver, Frozen):
         (`notes/hadamard_accuracy.md`). Dirichlet only.
 
         THE RULE AND THE NORMALIZATION ARE REPORTED, NOT ASSUMED (2026-11-03,
-        `notes/hadamard_accuracy.md`). A `PrecisionWarning` is issued when the rule's model bound
-        or a level's `gram_residual` exceeds `prec`, and `report=True` returns
-        `(H, HadamardReport)` with both. A level whose `gram_residual` exceeds
-        `max(HADAMARD_GRAM_REFUSE * prec, HADAMARD_GRAM_FLOOR)` is refused with `ValueError`,
-        the same refusal as a level that could not be orthonormalized at all.
+        `notes/hadamard_accuracy.md`). A `PrecisionWarning` is issued when `attained` exceeds
+        `prec` (`HadamardReport`), and `report=True` returns `(H, HadamardReport)`. A level whose
+        `gram_residual` exceeds `max(HADAMARD_GRAM_REFUSE * prec, HADAMARD_GRAM_FLOOR)` is refused
+        with `ValueError`, the same refusal as a level that could not be orthonormalized at all.
         """
         from ..integrals import cauchy, identities, integral_quad
 
@@ -660,20 +823,30 @@ class MPSEigensolver(Eigensolver, Frozen):
                                       "only (the Neumann and mixed formulas differ)")
         prec = self.prec if prec is None else check_prec(prec)
         levels = [level] if hasattr(level, "lam") else list(level)
+        groups = [tuple(int(j) for j in g) for g in groups if len(g) > 1]
+        grouped = [j for g in groups for j in g]
+        if (len(set(grouped)) != len(grouped) or any(not 0 <= j < len(levels) for j in grouped)
+                or any(g != tuple(range(g[0], g[0] + len(g))) for g in groups)):
+            raise ValueError(f"groups must be disjoint runs of positions in the levels, got "
+                             f"{groups}")
+        units = sorted(groups + [(j,) for j in range(len(levels)) if j not in grouped])
+        refuse = max(HADAMARD_GRAM_REFUSE * prec, HADAMARD_GRAM_FLOOR)
         efs = []
-        for L in levels:
-            ef = self.eigenfunctions(L, prec=prec)
+        for u in units:
+            Ls = [levels[j] for j in u]
+            ef = (self.eigenfunctions(Ls[0], prec=prec) if len(u) == 1
+                  else self.joint_eigenfunctions(Ls, prec=prec))
+            at = "lam = " + ", ".join(f"{float(L.lam):.10g}" for L in Ls)
             if not ef.orthonormal:
-                raise ValueError(f"the level at lam = {float(L.lam):.10g} could not be "
-                                 f"orthonormalized ({ef.reason}); its Hadamard matrix would mix "
-                                 f"a wrong count")
-            refuse = max(HADAMARD_GRAM_REFUSE * prec, HADAMARD_GRAM_FLOOR)
+                raise ValueError(f"the level at {at} could not be orthonormalized ({ef.reason}); "
+                                 f"its Hadamard matrix would mix a wrong count")
             if not ef.gram_residual <= refuse:
-                raise ValueError(f"the level at lam = {float(L.lam):.10g} is normalized only to "
-                                 f"gram_residual = {ef.gram_residual:.1e} (refused above "
-                                 f"{refuse:.0e} at prec = {prec:.0e}); its Hadamard matrix "
-                                 f"would carry that error in every entry")
-            efs.append(ef)
+                raise ValueError(f"the level at {at} is normalized only to gram_residual = "
+                                 f"{ef.gram_residual:.1e} (refused above {refuse:.0e} at prec = "
+                                 f"{prec:.0e}); its Hadamard matrix would carry that error in "
+                                 f"every entry")
+            efs.append((Ls, ef))
+        levels = [L for Ls, _ in efs for L in Ls]
         lam = max(float(L.lam) for L in levels)       # the rule is sized for the largest
         key = ("hadamard", lam, float(prec))
         cache = getattr(self, "_integral_quads", None)
@@ -684,8 +857,9 @@ class MPSEigensolver(Eigensolver, Frozen):
             cache[key] = integral_quad(self.domain, lam, prec=prec, family="integer",
                                        corners=INTEGRAL_CORNERS)
         q = cache[key].quad
-        cds = [cauchy.cauchy_data(self._pencil.basis, ef.coef, float(L.lam), q)
-               for L, ef in zip(levels, efs)]
+        basis = self._pencil.basis
+        cds = [ef.cauchy_data(basis, q) if isinstance(ef, ClusterEigenfunctions)
+               else cauchy.cauchy_data(basis, ef.coef, float(Ls[0].lam), q) for Ls, ef in efs]
         cd = cds[0] if len(cds) == 1 else cauchy.CauchyData(
             q, lam, np.hstack([c.u for c in cds]), np.hstack([c.u_n for c in cds]),
             np.hstack([c.u_t for c in cds]))
@@ -699,20 +873,51 @@ class MPSEigensolver(Eigensolver, Frozen):
                 vals = np.zeros((v.shape[0], len(curve)))
             vals[:, mask] = v
         H = np.stack([-identities.weighted_integral(cd, "NN", vf) for vf in vals])
+        center = complex(np.sum(q.wts * q.pts) / np.sum(q.wts))
+        rig, R = identities.rigid_weights(q, center)
+        Hid = [-identities.weighted_integral(cd, "NN", w) for w in rig]
+        # dilation: -2 Lam, Lam = lam I for a level and the joint eigenvalue matrix for a cluster
+        Lams = [ef.Lam if isinstance(ef, ClusterEigenfunctions)
+                else float(Ls[0].lam) * np.eye(int(Ls[0].mult)) for Ls, ef in efs]
+        cut = np.cumsum([0] + [len(M) for M in Lams])
+        Lam = np.zeros((cut[-1], cut[-1]))
+        for M, a, b in zip(Lams, cut[:-1], cut[1:]):
+            Lam[a:b, a:b] = M
+        Hid[3] = Hid[3] + 2 * Lam / R                     # field scaled by 1/R
+        # the identities hold within a level (or cluster) only: between lam != mu the Rellich and
+        # translation forms keep a (lam - mu) term, so the cross entries are content, not error
+        ident = tuple(max(float(np.abs(h[a:b, a:b]).max()) for a, b in zip(cut[:-1], cut[1:]))
+                      / lam for h in Hid)
         iq = cache[key]
-        resid = tuple(float(ef.gram_residual) for ef in efs)
-        norm_rule = max(float(ef.rule.sizing_prec) for ef in efs)
+        resid = tuple(float(ef.gram_residual) for _, ef in efs)
+        norm_rule = max(float(ef.rule.sizing_prec) for _, ef in efs)
         eps = [float(getattr(L, "mp_eps", np.nan)) for L in levels]
         mp_eps = max((e for e in eps if np.isfinite(e)), default=float("nan"))
+        # Moler-Payne's eigenfunction bound per level or cluster: eps/alpha sqrt(1 + (eps/alpha)^2)
+        bounds = []
+        for Ls, _ in efs:
+            e = max(float(getattr(L, "mp_eps", np.nan)) for L in Ls)
+            a = float(getattr(Ls[0], "gap", np.nan))
+            x = np.nan if not np.isfinite(a) else (e / a if a > 0 else np.inf)
+            bounds.append(x * np.sqrt(1.0 + x * x))
+        eig_bound = max(bounds) if np.all(np.isfinite(bounds) | np.isinf(bounds)) else float("nan")
+        base = (max([float(iq.sizing_prec), norm_rule] + list(resid))
+                + (mp_eps if np.isfinite(mp_eps) else 0.0))
+        calib = HADAMARD_ESTIMATE_K * max(max(ident),
+                                          eig_bound if not np.isnan(eig_bound) else 0.0)
         rep = HadamardReport(prec=float(prec), sizing_prec=float(iq.sizing_prec),
                              shortfalls=tuple(iq.shortfalls), gram_residual=resid,
-                             attained=(max([float(iq.sizing_prec), norm_rule] + list(resid))
-                                       + (mp_eps if np.isfinite(mp_eps) else 0.0)),
-                             norm_rule_prec=norm_rule, mp_eps=mp_eps)
+                             attained=max(base, calib), norm_rule_prec=norm_rule, mp_eps=mp_eps,
+                             identity_fields=ident, identity_residual=max(ident),
+                             eigenfunction_bound=float(eig_bound))
         if not rep.met:
-            where = (", ".join(w for w, *_ in rep.shortfalls)
-                     or ("the eigenfunctions' Moler-Payne residual"
-                         if rep.mp_eps > rep.prec / 2 else "the normalization"))
+            if calib > base:
+                where = ("the eigenfunctions' Moler-Payne bound eps/alpha: a near neighbour"
+                         if eig_bound > max(ident) else "the exact-identity residual")
+            else:
+                where = (", ".join(w for w, *_ in rep.shortfalls)
+                         or ("the eigenfunctions' Moler-Payne residual"
+                             if rep.mp_eps > rep.prec / 2 else "the normalization"))
             warnings.warn(
                 f"the Hadamard matrix at lam = {lam:.10g} is good to {rep.attained:.1e} "
                 f"relative (estimate), short of prec = {prec:.0e}: {where}. "

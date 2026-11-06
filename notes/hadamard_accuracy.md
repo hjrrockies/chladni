@@ -313,3 +313,98 @@ Hadamard matrices are not good to the solve's prec, and the warning now says so.
 too easy. On the douse shapes `attained + mp_eps` under-reports on 488 of 850 levels: worst 33.6x,
 median 2.0x at 1e-10. At 1e-10, 91 levels have an H error above prec while `attained` says met.
 See `accuracy_audit_2026-11-03.md`, "ARC accuracy studies".
+
+## A gradient reference (2026-11-05, `hadamard_hard_shapes.py` FDref, ARC)
+
+The old FD column stepped 4e-3, the size of the shortest edges. `FDref` plans once at the base
+shape and solves every perturbed shape on that plan (no rung switch between steps), over steps
+1e-3, 3e-4, 1e-4 at +-h and +-2h, Richardson-combined. Its bar is the levels' certified noise
+plus the truncation measured on cluster SUMS between consecutive steps. On the 10 hard ratio
+shapes x 4 directions (2 random, x and y of the most re-entrant vertex) the bar is 2e-10 .. 1e-6
+of lam (the unmet-solve cases are the wide ones). Every SIMPLE level agrees with H at 1e-12 and at
+1e-10 within the bar. Every large disagreement is a CLUSTER:
+
+| shape | cluster | spread | H(1e-10) - FD | H(1e-12) - FD |
+|---|---|---|---|---|
+| v2/N6_k5/task_0 | triple, lam 110.961 | 1.6e-10 | 7.8e-4 | 1.7e-5 |
+| v2/N8_k2/task_6 | pair, lam 64.924 | 6.6e-10 | 6.5e-5 | 4.5e-7 |
+| v2/N6_k4/task_0 | pair, lam 125.805 | 9.4e-10 | 1.1e-5 | 6.8e-7 |
+
+(relative to lam, the cluster's summed gradient), with the identities at 1e-10 .. 1e-12. These
+are ratio optima: what douse optimizes.
+
+## Clusters (2026-11-05)
+
+**What goes wrong.** Levels are grouped by value. A triple spread 1.4e-10 at prec 1e-10 or 1e-12
+comes back as 1+1+1 (or 2+1), each level's eigenfunction the near-null vector at its own lam.
+Davis-Kahan: an eigenvalue error eps moves an eigenvector by eps / gap, so between "values
+resolved" and "eigenfunctions resolved" there is a band where each level's vector carries a
+piece of its neighbour's. The per-level vectors then overlap (cross-level Gram 1e-4), and a
+Hadamard block stacked from them is wrong at that size: its trace is the trace over a
+non-orthonormal basis. Orthonormalizing the members TOGETHER fixes it: on the triple, all of
+(a) one joint null space at the mean lam, (b) joint Löwdin of the per-level vectors, (c)
+projection into (a) then Löwdin, agree with FD within its 2e-10 bar.
+
+**The Gram across different lam.** Between Dirichlet eigenfunctions at lam != mu, the boundary
+Rellich form is `(lam + mu) <u, v> + (lam - mu)/2 int (v r.grad u - u r.grad v)`: a bias
+proportional to the gap, FLAT in prec and AFFINE in the Rellich origin; real overlap shrinks with
+prec and is origin-free. Translation alone keeps `(lam - mu) int v a.grad u`, which is also why
+`identity_residual` is read only inside each level's own block (a block of distinct levels read
+0.41 before). Two traps found on the way: evaluating a level's coefficients at a neighbour's lam
+(the basis moves with k) reads 1e-4 .. 2e-2 on well-separated pairs, so every column is evaluated
+at its own lam; and one joint null space at the mean lam fails once the spread is well above prec
+(identity ~ spread, orthonormality 1e-10 on T2.7-lowest).
+
+**ARC overlap study** (`accuracy_studies.py` overlap, 51 shapes, 43 adjacent pairs within 1e-2,
+at 1e-8, 1e-10, 1e-12). Entangled pairs (overlap > prec, origin spread 0 .. 30%) and biased ones
+(flat in prec, origin spread 39 .. 100%, bias up to 2e-2 x gap) separate. Entangled at 1e-12:
+8 of the 10 hard ratio shapes (gaps 1e-10 .. 9e-10, overlap 2e-6 .. 1.4e-5), T1.2 at lam 68.85
+(gap 1.3e-11, overlap 1.6e-4), T2.9-N4opt (1.1e-10, 9e-6), T2.6-N3k5 (8e-9), T2.6-N3k2 (2.6e-8),
+T2.6-N5k4-L7-ref3 (1.2e-7), T2.7-lowest and -median (1.5e-6), T2.6-N5k4-L7-ref0 (1.2e-5), T2.2
+(3.5e-5). Tightening prec does not resolve them: the overlap shrinks, but stays above prec.
+
+**The trigger.** Moler-Payne's eigenfunction bound (Betcke-Trefethen 2005, Thm 8.1, eq. 8.2):
+`||u - u_k|| <= (eps/alpha) sqrt(1 + eps^2/alpha^2)`, alpha the relative gap to the nearest other
+eigenvalue. As a screen, `eps / alpha > prec` caught EVERY entangled pair at all three precs, and
+also 26-28 of 43 that were not (gaps 1e-4 .. 1e-2, where it is loose). So the solver screens by it
+and LINKS a screened pair only when the measured cross-Gram (a) exceeds prec, (b) is at most
+`MP_CEILING = 2` times the Moler-Payne bound -- each member is within the bound of its true
+eigenspace, so real overlap cannot exceed about twice it -- and (c) moves by less than
+`CLUSTER_ORIGIN_SPREAD = 1/3` over four Rellich origins (`eigenproblem.link_clusters`).
+Entangled pairs read overlap / bound 7e-5 .. 1.7e-2; the biased ones a median 4.3, up to 4e6.
+(b) was added after douse's inverse smoke test linked a perturbed rectangle's levels 0.11 apart:
+cross-Gram 3e-3 against a bound of 1e-9, the four origins agreeing by chance. The borderline of
+(c): T2.6-N3k2 read 30% at 1e-10 (0% at 1e-8 and 1e-12), against the biased pairs' 39%.
+
+**Built** (`eigensolver.Cluster`, `Spectrum.clusters`, `Level.cluster`, `Level.gap`;
+`SolveRecord.eigenfunctions`, `.cluster_eigenfunctions`; `MPSEigensolver.joint_eigenfunctions`,
+`.cross_gram`; `hadamard(..., groups=)`). A purified member is the raw columns at their own lam
+plus a mixing matrix (`ClusterEigenfunctions`); `Lam = mix^T sym(G diag(lams)) mix`.
+`SolveRecord.hadamard` refuses a list that holds part of a cluster. Test: the 1 x (1 + 1e-9)
+rectangle, overlap 4.3e-7 at 1e-10, whose block's eigenvalues have a closed form
+(`tests/test_clusters.py`). What a cluster does NOT promise: which member is which. A quantity
+built on one member carries an error of about `Cluster.overlap`.
+
+## Calibration (2026-11-05, `accuracy_studies.py` grad, ARC)
+
+Vertex-hat-field gradients at prec 1e-10 against 1e-12 on all 51 shapes (the 1e-12 reference
+used only where its own identities are at most max(1e-11, 0.1 x the test level's); FDref
+confirms it on the hard shapes). Rule set in advance: adopt `k * estimate` if some k <= 3 covers
+99% of levels with a worst ratio <= 10. On 327 simple levels, error / estimate:
+
+| estimate | median | p99 | worst | silent / 178 short |
+|---|---|---|---|---|
+| `mp_eps` | 4.7 | 1823 | 2526 | 164 |
+| eps / alpha (Moler-Payne) | 0.29 | 182 | 893 | 42 |
+| identity residual | 0.88 | 33 | 113 | 7 |
+| old `attained` | 1.40 | 12 | 34 | 147 |
+| **max(identity, eps / alpha)** | **0.29** | **1.41** | **2.77** | **2** |
+
+The identities catch well-separated levels whose `u_n` is off on the boundary (high-lam
+triangles, 5e-8, where eps/alpha reads 3e-10); eps/alpha catches near-pairs (5e-6 .. 8e-4 where
+the identities read 3e-10). The combination passes the rule at k = 3 (100% covered).
+`HadamardReport.attained` is now `max(rules + mp_eps, 3 max(identity, eps/alpha))`
+(`HADAMARD_ESTIMATE_K`), with `eigenfunction_bound` reported. Cost: about 90 of 327 levels warn
+without being short. Not covered: exact doubles of symmetric shapes (the regular hexagon's split
+error, 4.5e-9 at 1e-10 against a trace error of 4e-14, is inside one level, where alpha is the
+gap to OTHER levels).

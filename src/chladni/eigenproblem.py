@@ -37,7 +37,7 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 
 from ._core import PREC, check_prec
-from .eigensolver import Level, Spectrum
+from .eigensolver import Cluster, Level, Spectrum
 from .plan import HEADROOM, LADDER, plan_for
 
 __all__ = ["Eigenproblem", "SolveRecord"]
@@ -53,6 +53,17 @@ WARM_SPACING_FRACTION = 1.0 / 3.0
 #: A cold solve after this many consecutive warm ones: a backstop against slow drift past the
 #: continuity checks (decided with the user, 2026-10-13).
 WARM_COLD_EVERY = 10
+#: Two screened levels are linked into a cluster only if their cross-level Gram moves by less
+#: than this fraction of itself over the Rellich origins (`MPSEigensolver.cross_gram`). Real
+#: overlap is origin-free; the gap's bias is affine in the origin. On the ARC overlap study
+#: (51 douse shapes, 43 adjacent pairs within 1e-2, prec 1e-8 .. 1e-12) entangled pairs moved
+#: 0 .. 30%, biased ones 39 .. 100% (2026-11-05, `notes/accuracy_studies.py` overlap).
+CLUSTER_ORIGIN_SPREAD = 1.0 / 3.0
+#: ... and only if their cross-level Gram is at most this many times the pair's Moler-Payne
+#: eigenfunction bound: each member is within the bound of its true eigenspace, so their true
+#: overlap is at most about twice it. Above, the Gram is reading the gap's bias. Not tuned:
+#: entangled pairs on the ARC overlap study read at most 1.7e-2 of the bound.
+MP_CEILING = 2.0
 
 
 @dataclass(frozen=True)
@@ -79,14 +90,57 @@ class SolveRecord:
     def hadamard(self, i, V, report=False):
         """The Hadamard shape derivative of level `i` -- or of levels `i = [i0, i1, ...]` as one
         block, cross terms included -- `(n_fields, m, m)`: see `MPSEigensolver.hadamard`.
-        `report=True` returns `(H, HadamardReport)`."""
-        if self.solver is None:
-            raise ValueError("this record carries no solver; solve with "
-                             "chladni.eigenproblem.Eigenproblem to get Hadamard derivatives")
+        `report=True` returns `(H, HadamardReport)`.
+
+        A CLUSTER's levels (`Spectrum.clusters`) are orthonormalized together, and must be
+        passed together, in a run: a list that holds only some of them is refused, since one
+        member's eigenfunctions are not determined apart from the others'
+        (`eigensolver.Cluster`)."""
+        self._need_solver("Hadamard derivatives")
         idx = [int(i)] if np.ndim(i) == 0 else [int(j) for j in i]
+        groups = []
+        for c in sorted({self.spectrum.levels[j].cluster for j in idx} - {None}):
+            members = self.spectrum.clusters[c].levels
+            pos = [idx.index(j) for j in members if j in idx]
+            if len(pos) != len(members):
+                raise ValueError(
+                    f"levels {members} form cluster {c}: their eigenfunctions are determined "
+                    f"only together (overlap {self.spectrum.clusters[c].overlap:.1e}), so a "
+                    f"Hadamard block over part of it is not a derivative. Pass all of them, "
+                    f"e.g. record.hadamard({list(members)}, V)")
+            if pos != list(range(pos[0], pos[0] + len(pos))):
+                raise ValueError(f"cluster {c}'s levels {members} must be adjacent in the list")
+            groups.append(tuple(pos))
         levels = [self.spectrum.levels[j] for j in idx]
         return self.solver.hadamard(levels[0] if np.ndim(i) == 0 else levels, V,
-                                    prec=self.spectrum.prec, report=report)
+                                    prec=self.spectrum.prec, report=report, groups=groups)
+
+    def eigenfunctions(self, i):
+        """Level `i`'s eigenfunctions, L2-orthonormal: `Eigenfunctions` for a level on its own;
+        for a cluster's member, `ClusterEigenfunctions` orthonormalized together with the rest
+        of its cluster and restricted to this member's columns (`eigensolver.Cluster`)."""
+        self._need_solver("eigenfunctions")
+        L = self.spectrum.levels[int(i)]
+        if L.cluster is None:
+            return self.solver.eigenfunctions(L, prec=self.spectrum.prec)
+        c = self.spectrum.clusters[L.cluster]
+        start = sum(int(self.spectrum.levels[j].mult) for j in c.levels[:c.levels.index(int(i))])
+        return self.cluster_eigenfunctions(L.cluster).select(range(start, start + int(L.mult)),
+                                                             (int(i),))
+
+    def cluster_eigenfunctions(self, c):
+        """Cluster `c`'s eigenfunctions, orthonormalized together, with each column's own lam:
+        `ClusterEigenfunctions` (`.coef`, `.mix`, `.lams`, `.Lam`)."""
+        self._need_solver("eigenfunctions")
+        cl = self.spectrum.clusters[int(c)]
+        ce = self.solver.joint_eigenfunctions([self.spectrum.levels[j] for j in cl.levels],
+                                              prec=self.spectrum.prec)
+        return replace(ce, levels=cl.levels)
+
+    def _need_solver(self, what):
+        if self.solver is None:
+            raise ValueError(f"this record carries no solver; solve with "
+                             f"chladni.eigenproblem.Eigenproblem to get {what}")
 
     @property
     def domain(self):
@@ -602,8 +656,83 @@ def _record(res, n, prec, plan, flags):
                      f"level, the first at lam ~ {deep[0][0]:.10g} ({deep[0][2]})")
     if d.declined:
         flags.append(f"declined: {d.decline_reason}")
-    spectrum = Spectrum(tuple(Level.from_search(L, prec) for L in kept), prec=prec,
-                        declined=bool(d.declined),
+    levels, clusters = link_clusters(getattr(res, "solver", None),
+                                     sorted(res.levels, key=lambda L: L.lam), len(kept), prec)
+    spectrum = Spectrum(levels, prec=prec, declined=bool(d.declined),
                         reason=d.decline_reason if d.declined else "",
-                        count_audit=audit, flags=tuple(flags))
+                        count_audit=audit, flags=tuple(flags), clusters=clusters)
     return SolveRecord(spectrum, plan=plan, solver=getattr(res, "solver", None), diagnostics=d)
+
+
+def link_clusters(solver, found, n_kept, prec):
+    """`(levels, clusters)`: the first `n_kept` of the search's levels `found` (ascending) as
+    `Level`s with `gap` and `cluster` set, extended to finish a cluster that straddles the end,
+    and the `Cluster`s among them (2026-11-05, `eigensolver.Cluster`).
+
+    Each adjacent pair is SCREENED by Moler-Payne (Betcke-Trefethen 2005, Thm 8.1): a level's
+    eigenfunctions are within `eps / alpha` of the true eigenspace, `alpha` the relative gap to
+    its neighbour less the neighbour's bar, so a pair with `eps / alpha <= prec` on both sides is
+    resolved. A screened pair is LINKED when its measured cross-level Gram (`cross_gram`)
+    exceeds `prec`, stays under `MP_CEILING` times that same bound -- real overlap cannot exceed
+    it, the gap's bias can -- and moves by less than `CLUSTER_ORIGIN_SPREAD` over the Rellich
+    origins. On the ARC overlap study the screen alone caught every entangled pair at 1e-8,
+    1e-10 and 1e-12, but also 26-28 of 43 pairs that were not (gaps 1e-4 .. 1e-2, where
+    eps / alpha is loose); the measurement separated them. Entangled pairs read at most 1.7e-2 of
+    the bound; a perturbed rectangle's 0.11 gap read 3e-3 against a bound of 1e-9, with the four
+    origins agreeing by chance (douse's inverse smoke test). A pair the solver cannot measure is
+    not linked.
+    """
+    n = len(found)
+    eps = [float(getattr(L, "mp_eps", np.nan)) for L in found]
+    lam = [float(L.lam) for L in found]
+    bnd = [float(L.bound) for L in found]
+
+    def alpha(i, j):                    # level i's relative gap to level j, less j's bar
+        return max(abs(lam[j] - lam[i]) - bnd[j], 0.0) / lam[j]
+
+    def mp_bound(i):                    # the pair's Moler-Payne eigenfunction bound, worst side
+        out = 0.0
+        for x, y in ((eps[i], alpha(i, i + 1)), (eps[i + 1], alpha(i + 1, i))):
+            if not np.isfinite(x) or y == 0.0:
+                return np.inf
+            out = max(out, (x / y) * np.sqrt(1.0 + (x / y) ** 2))
+        return out
+
+    links = {}                          # i -> (overlap, bias) for a linked pair (i, i + 1)
+    for i in range(n - 1):
+        if i >= n_kept and (i - 1) not in links:
+            break                       # past the kept levels, only to finish a cluster
+        ceiling = mp_bound(i)
+        if not ceiling > prec:
+            continue
+        try:
+            o = solver.cross_gram(found[i], found[i + 1], prec=prec)
+        except (AttributeError, ValueError, np.linalg.LinAlgError):
+            continue
+        if (prec < o[0] <= MP_CEILING * ceiling
+                and (o.max() - o.min()) < CLUSTER_ORIGIN_SPREAD * o.max()):
+            links[i] = (float(o[0]), float(o.max() - o.min()))
+    end = n_kept
+    while end < n and (end - 1) in links:
+        end += 1
+    runs, k = [], 0
+    while k < end:
+        r = [k]
+        while r[-1] in links and r[-1] + 1 < end:
+            r.append(r[-1] + 1)
+        runs.append(tuple(r))
+        k = r[-1] + 1
+    levels, clusters = [], []
+    for r in runs:
+        a, b = r[0], r[-1]
+        gaps = ([alpha(a, a - 1)] if a > 0 else []) + ([alpha(b, b + 1)] if b + 1 < n else [])
+        gap = min(gaps) if gaps else float("nan")
+        c = None
+        if len(r) > 1:
+            c = len(clusters)
+            clusters.append(Cluster(levels=r, mult=sum(int(found[j].mult) for j in r),
+                                    spread=(lam[b] - lam[a]) / lam[b],
+                                    overlap=max(links[j][0] for j in r[:-1]),
+                                    bias=max(links[j][1] for j in r[:-1])))
+        levels += [replace(Level.from_search(found[j], prec), gap=gap, cluster=c) for j in r]
+    return tuple(levels), tuple(clusters)

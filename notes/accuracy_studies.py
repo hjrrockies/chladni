@@ -22,11 +22,32 @@ Follow-ups to `notes/accuracy_audit_2026-11-03.md`, sized for ARC rather than a 
            degrade, and each level's `gram_residual` is set beside its Gram matrix from an
            independent interior rule (ear-clipped triangles, Duffy-mapped Gauss).
 
+  grad     (2026-11-05, its own array: `--table grad`) Does the exact-identity residual of H
+           bound the error of the VERTEX gradients? H at 1e-10 against H at 1e-12 on every
+           shape, per vertex hat field. See "grad" below.
+
+  overlap  (2026-11-05, its own array: `--table overlap`) When are two adjacent levels'
+           eigenfunctions entangled? Per adjacent pair within 1e-2 relative, at prec 1e-8, 1e-10
+           and 1e-12, the cross-level Rellich Gram. For lam != mu that Gram reads
+           <u, v> + (lam - mu)/(4 lam) int(v x.grad u - u x.grad v): a bias proportional to the
+           gap, flat in prec and dependent on the origin, where real mixing (about eps/gap)
+           shrinks with prec and is origin-free. Sets the cluster trigger's c in
+           "overlap > max(prec, c gap / lam)". Each level's coefficients are evaluated at its OWN
+           lam: evaluating both at the mean lam (the C0.1 shortcut, column `meanlam`) mismatches
+           the basis by O(gap) and reads 1e-4 .. 2e-2 on well-separated pairs. Smoke, T2.6-N5k4-
+           L7-ref3: separated pairs read 3e-8 .. 6e-8, flat in prec, 82% origin spread (bias,
+           c ~ 1e-5); the 1.2e-7 pair reads 2e-5 / 7e-8 / 5e-9 at 1e-8 / 1e-10 / 1e-12 with 0%
+           origin spread (entangled).
+
 Run:
   python notes/accuracy_studies.py run <study> <args...>        one unit, JSON to stdout
   python notes/accuracy_studies.py task <i> --tip SRC --old SRC --new SRC --out DIR
+  python notes/accuracy_studies.py task <i> --tip SRC --table grad --out DIR
   python notes/accuracy_studies.py analyze DIR
-  python notes/accuracy_studies.py ntasks
+  python notes/accuracy_studies.py task <i> --tip SRC --table overlap --out DIR
+  python notes/accuracy_studies.py analyze_grad DIR
+  python notes/accuracy_studies.py analyze_overlap DIR
+  python notes/accuracy_studies.py ntasks [grad|overlap]
 """
 import json
 import os
@@ -50,6 +71,9 @@ PRECS = ("1e-10", "1e-12")
 STARVED_SHAPES = ["T1.1-good", "T1.4-hex", "T2.2", "T2.6-N5k4-L7-ref0", "T2.8-N5s2",
                   "T2.9-ngon5", "T2.7-median", "T2.4-N5-L5"]
 STARVE_FACTORS = (1.0, 0.6, 0.4, 0.25, 0.15, 0.1, 0.06)
+GRAD_PRECS = (1e-10, 1e-12)
+OVERLAP_PRECS = (1e-8, 1e-10, 1e-12)
+OVERLAP_SCREEN = 1e-2                   # adjacent levels closer than this, relative, are measured
 
 
 def _ref_cases():
@@ -316,6 +340,242 @@ def run_starved(case_id):
     return dict(id=case_id, prec=prec, rows=out)
 
 
+# --- grad (2026-11-05) --------------------------------------------------------------------------
+#
+# Does the exact-identity residual bound the error of the VERTEX gradients? Per shape, H at 1e-10
+# and at 1e-12 (the reference, where its own identities read <= 1e-11; Part A's FD checks it on
+# the hard shapes) for every vertex hat field, plus translation x, y and rotation and dilation
+# about the vertex centroid. Per level: each hat field's tr H and, for a multiple level, the
+# eigenvalues of its block; the identity residuals, rotation and dilation divided by the radius
+# R = max |v - centre| so every field has unit size; attained, gram, mp_eps.
+
+def _grad_levels(rec, V, R):
+    out = []
+    for i, L in enumerate(rec.spectrum.levels):
+        lam = float(L.lam)
+        row = dict(i=i, lam=lam, mult=int(L.mult), met=bool(L.met), bound=float(L.bound),
+                   mp_eps=float(getattr(L, "mp_eps", np.nan)))
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                H, rep = rec.hadamard(i, V, report=True)
+            H = np.asarray(H)
+            I2 = 2 * lam * np.eye(H.shape[1])
+            row.update(ident=[float(np.abs(H[0]).max() / lam), float(np.abs(H[1]).max() / lam),
+                              float(np.abs(H[2]).max() / (lam * R)),
+                              float(np.abs(H[3] + I2).max() / (lam * R))],
+                       tr=[float(np.trace(H[f])) for f in range(4, H.shape[0])],
+                       eig=[np.linalg.eigvalsh(H[f]).tolist() for f in range(4, H.shape[0])],
+                       attained=float(rep.attained), gram=max(np.atleast_1d(rep.gram_residual)),
+                       sizing=float(rep.sizing_prec), norm_rule=float(rep.norm_rule_prec))
+        except Exception as e:                              # noqa: BLE001 -- a refusal is a row
+            row.update(h_error=f"{type(e).__name__}: {str(e)[:200]}")
+        out.append(row)
+    return out
+
+
+def run_grad(ci):
+    sys.path.insert(0, str(HERE))
+    from hadamard_hard_shapes import fields
+    from chladni.eigenproblem import Eigenproblem
+    from chladni.geometry import Polygon
+    c = _shape_cases()[ci]
+    verts = np.array([complex(*v) for v in c["verts"]])
+    refs = c["refs"] or []
+    n = min(sum(int(r["mult"]) for r in refs), 10) if refs else c["n"]
+    center = complex(np.mean(verts))
+    R = float(np.abs(verts - center).max())
+    out = dict(id=c["id"], n_verts=len(verts), radius=R)
+    for prec in GRAD_PRECS:
+        t0 = time.time()
+        try:
+            rec = Eigenproblem(Polygon(verts, bc="dir")).solve(n, prec=prec)
+            V = fields(rec.solver.domain, verts, center)
+            out[f"{prec:.0e}"] = dict(levels=_grad_levels(rec, V, R), flags=list(rec.flags),
+                                      t=time.time() - t0)
+        except Exception as e:                              # noqa: BLE001
+            out[f"{prec:.0e}"] = dict(failed=f"{type(e).__name__}: {str(e)[:300]}")
+    return out
+
+
+def tasks_grad():
+    return [("tip", "grad", ci, None) for ci in range(len(_shape_cases()))]
+
+
+def _grad_pairs(rows, ref_ident=1e-11, ref_rel=0.1):
+    """(test level, reference level) at 1e-10 against 1e-12, matched by lam and mult, where the
+    reference's own identity residual is at most `ref_ident`, or at most `ref_rel` times the test
+    level's. The relative clause is needed: on the smoke triangle (T1.1-good) the 1e-12 solve's
+    y-translation identity reads up to 1.9e-9 at an eigenvalue bar of 1.6e-14, so an absolute
+    1e-11 keeps only the easy levels."""
+    pairs, skipped = [], 0
+    for r in rows:
+        a, b = r.get("1e-10", {}), r.get("1e-12", {})
+        if "levels" not in a or "levels" not in b:
+            continue
+        for L in a["levels"]:
+            if "tr" not in L:
+                continue
+            M = [K for K in b["levels"] if "tr" in K and K["mult"] == L["mult"]
+                 and abs(K["lam"] - L["lam"]) < 1e-7 * L["lam"]]
+            if len(M) != 1 or max(M[0]["ident"]) > max(ref_ident, ref_rel * max(L["ident"])):
+                skipped += 1
+                continue
+            K = M[0]
+            ev = max(max(abs(x - y) for x, y in zip(e1, e2))
+                     for e1, e2 in zip(L["eig"], K["eig"])) / L["lam"]
+            pairs.append(dict(id=r["id"], lam=L["lam"], mult=L["mult"], e_v=ev,
+                              r_id=max(L["ident"]), attained=L["attained"], gram=L["gram"],
+                              mp_eps=L["mp_eps"], ref_id=max(K["ident"])))
+    return pairs, skipped
+
+
+def analyze_grad(d):
+    rows = [json.load(open(f)) for f in sorted(Path(d).glob("grad_*.json"))]
+    bad = [r for r in rows if "failed" in r]
+    for r in bad:
+        print("  CRASH", r.get("a"), r["failed"][-300:].replace("\n", " | "))
+    for p in GRAD_PRECS:
+        fails = [r["id"] for r in rows if "failed" in r.get(f"{p:.0e}", {})]
+        print(f"prec {p:.0e}: {len(rows)} shapes, {len(fails)} failed solves {fails[:6]}")
+    P, skipped = _grad_pairs(rows)
+    print(f"\n{len(P)} levels compared at 1e-10 against 1e-12 ({skipped} skipped: no unique "
+          f"match, or the reference's identities above max(1e-11, 0.1 x the test's)); "
+          f"{len(_grad_pairs(rows, ref_rel=0)[0])} with the absolute 1e-11 alone")
+    if not P:
+        return
+    e = np.array([x["e_v"] for x in P])
+    for name, est in (("r_id", [x["r_id"] for x in P]), ("attained", [x["attained"] for x in P]),
+                      ("max(r_id, attained)", [max(x["r_id"], x["attained"]) for x in P]),
+                      ("max(r_id, mp_eps)", [max(x["r_id"], x["mp_eps"]) for x in P])):
+        q = e / np.array(est)
+        print(f"  e_v / {name:20s} median {np.median(q):6.2f}  p99 {np.percentile(q, 99):6.2f}  "
+              f"max {q.max():6.2f}  k covering 99%: {np.percentile(q, 99):.2f}; "
+              f"over 1: {int((q > 1).sum())}")
+    print("  silent at 1e-10 (e_v > 1e-10, estimate <= 1e-10):",
+          {name: int(((e > 1e-10) & (np.array(est) <= 1e-10)).sum())
+           for name, est in (("r_id", [x["r_id"] for x in P]),
+                             ("attained", [x["attained"] for x in P]))})
+    q = e / np.array([x["r_id"] for x in P])
+    print("  worst e_v / r_id:")
+    for k in np.argsort(-q)[:8]:
+        x = P[k]
+        print(f"    {x['id']:30s} lam {x['lam']:9.3f} m {x['mult']} e_v {x['e_v']:.1e} "
+              f"r_id {x['r_id']:.1e} attained {x['attained']:.1e} mp {x['mp_eps']:.1e} "
+              f"ref_id {x['ref_id']:.1e}")
+
+
+# --- overlap ------------------------------------------------------------------------------------
+
+def _pair_overlap(s, A, B, origins):
+    """Cross-level Gram block of levels A < B on B's rule (sized for the larger lam), each level's
+    coefficients evaluated at its OWN lam, at each origin; and the same with both at the mean lam
+    (the C0.1 study's shortcut, whose basis mismatch is itself O(gap))."""
+    from chladni.integrals import cauchy, identities
+    efA, efB = s.eigenfunctions(A), s.eigenfunctions(B)
+    q, basis = efB.rule.quad, s._pencil.basis
+    lA, lB = float(A.lam), float(B.lam)
+    ma = int(A.mult)
+    cA, cB = cauchy.cauchy_data(basis, efA.coef, lA, q), cauchy.cauchy_data(basis, efB.coef, lB, q)
+    lm = 0.5 * (lA + lB)
+    cd = cauchy.CauchyData(q, lm, np.hstack([cA.u, cB.u]), np.hstack([cA.u_n, cB.u_n]),
+                           np.hstack([cA.u_t, cB.u_t]))
+    over = [float(np.abs(identities.gram(cd, x0)[:ma, ma:]).max()) for x0 in origins]
+    cm = cauchy.cauchy_data(basis, np.hstack([efA.coef, efB.coef]), lm, q)
+    over_mean = float(np.abs(identities.gram(cm, efB.rule.x0)[:ma, ma:]).max())
+    return dict(overlap=over, overlap_meanlam=over_mean,
+                orthonormal=[bool(efA.orthonormal), bool(efB.orthonormal)],
+                gram=[float(efA.gram_residual), float(efB.gram_residual)])
+
+
+def run_overlap(ci):
+    from chladni.eigenproblem import Eigenproblem
+    from chladni.geometry import Polygon
+    c = _shape_cases()[ci]
+    verts = np.array([complex(*v) for v in c["verts"]])
+    refs = c["refs"] or []
+    n = min(sum(int(r["mult"]) for r in refs), 10) if refs else c["n"]
+    center = complex(np.mean(verts))
+    R = float(np.abs(verts - center).max())
+    out = dict(id=c["id"], n_verts=len(verts), radius=R)
+    for prec in OVERLAP_PRECS:
+        t0 = time.time()
+        try:
+            rec = Eigenproblem(Polygon(verts, bc="dir")).solve(n, prec=prec)
+            s, lv = rec.solver, rec.spectrum.levels
+            pairs = []
+            for k in range(len(lv) - 1):
+                A, B = lv[k], lv[k + 1]
+                gap = (float(B.lam) - float(A.lam)) / float(B.lam)
+                if gap > OVERLAP_SCREEN:
+                    continue
+                row = dict(i=k, lam=[float(A.lam), float(B.lam)], mult=[int(A.mult), int(B.mult)],
+                           gap=gap, bound=[float(A.bound), float(B.bound)],
+                           mp_eps=[float(getattr(L, "mp_eps", np.nan)) for L in (A, B)])
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        x0 = s.eigenfunctions(B).rule.x0
+                        row.update(_pair_overlap(s, A, B, (x0, center, center + R, center + 1j * R)))
+                except Exception as e:                      # noqa: BLE001 -- a refusal is a row
+                    row.update(error=f"{type(e).__name__}: {str(e)[:200]}")
+                pairs.append(row)
+            out[f"{prec:.0e}"] = dict(levels=[(float(L.lam), int(L.mult)) for L in lv],
+                                      pairs=pairs, flags=list(rec.flags), t=time.time() - t0)
+        except Exception as e:                              # noqa: BLE001
+            out[f"{prec:.0e}"] = dict(failed=f"{type(e).__name__}: {str(e)[:300]}")
+    return out
+
+
+def tasks_overlap():
+    return [("tip", "overlap", ci, None) for ci in range(len(_shape_cases()))]
+
+
+def analyze_overlap(d):
+    """Per pair, across precs (matched by lam): the overlap at the rule's origin, its spread over
+    origins, and overlap / (gap) -- the bias coefficient if the overlap is bias. A pair whose
+    overlap falls with prec and does not move with the origin is entangled; one flat in prec and
+    origin-dependent is bias."""
+    rows = [json.load(open(f)) for f in sorted(Path(d).glob("overlap_*.json"))]
+    for r in rows:
+        if "failed" in r:
+            print("  CRASH", r.get("a"), r["failed"][-300:].replace("\n", " | "))
+    keys = [f"{p:.0e}" for p in OVERLAP_PRECS]
+    ratios, flagged = [], []
+    for r in rows:
+        if "failed" in r:
+            continue
+        by = {}
+        for k in keys:
+            for P in r.get(k, {}).get("pairs", []):
+                if "overlap" in P:
+                    by.setdefault(round(P["lam"][0], 5), {})[k] = P
+        for lam, per in sorted(by.items()):
+            line = []
+            for k in keys:
+                P = per.get(k)
+                if P is None:
+                    line.append(f"{k}: --")
+                    continue
+                o = P["overlap"]
+                ratio = o[0] / P["gap"] if P["gap"] > 0 else np.inf
+                spread = (max(o) - min(o)) / max(o) if max(o) > 0 else 0.0
+                line.append(f"{k}: m{P['mult']} gap {P['gap']:.1e} ov {o[0]:.1e} "
+                            f"ov/gap {ratio:.1e} orig {spread:.0%} meanlam {P['overlap_meanlam']:.1e}")
+                if k == keys[-1]:
+                    ratios.append(ratio)
+                    if o[0] > float(k) and spread < 0.1:
+                        flagged.append((r["id"], lam, P["gap"], o[0]))
+            print(f"{r['id']:32s} lam {lam:10.4f} | " + " | ".join(line))
+    if ratios:
+        q = np.array([x for x in ratios if np.isfinite(x)])
+        print(f"\noverlap/gap at {keys[-1]} over {len(q)} pairs: median {np.median(q):.2f}, "
+              f"p90 {np.percentile(q, 90):.2f}, p99 {np.percentile(q, 99):.2f}, max {q.max():.2e}")
+    print(f"pairs with overlap > prec and origin spread < 10% at {keys[-1]} (entangled):")
+    for f in flagged:
+        print("   ", f)
+
+
 # --- plumbing -----------------------------------------------------------------------------------
 
 def run(study, *args):
@@ -326,14 +586,18 @@ def run(study, *args):
         r = run_eigs(int(args[0]), args[1])
     elif study == "starved":
         r = run_starved(args[0])
+    elif study == "grad":
+        r = run_grad(int(args[0]))
+    elif study == "overlap":
+        r = run_overlap(int(args[0]))
     else:
         raise SystemExit(f"unknown study {study!r}")
     r.update(study=study, chladni=chladni.__file__)
     return r
 
 
-def task(i, srcs, out):
-    impl, study, a, b = tasks()[i]
+def task(i, srcs, out, table=None):
+    impl, study, a, b = (table or tasks)()[i]
     rest = [q for q in os.environ.get("PYTHONPATH", "").split(os.pathsep) if q]
     src = Path(srcs[impl]).resolve()
     env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(src)] + rest))
@@ -445,10 +709,17 @@ if __name__ == "__main__":
     elif cmd == "task":
         a = sys.argv[3:]
         opts = {a[k].lstrip("-"): a[k + 1] for k in range(0, len(a), 2)}
-        task(int(sys.argv[2]), dict(tip=opts["tip"], old=opts["old"], new=opts["new"]), opts["out"])
+        table = dict(grad=tasks_grad, overlap=tasks_overlap).get(opts.get("table"))
+        task(int(sys.argv[2]), dict(tip=opts["tip"], old=opts.get("old", opts["tip"]),
+                                    new=opts.get("new", opts["tip"])), opts["out"], table)
     elif cmd == "analyze":
         analyze(sys.argv[2])
+    elif cmd == "analyze_grad":
+        analyze_grad(sys.argv[2])
+    elif cmd == "analyze_overlap":
+        analyze_overlap(sys.argv[2])
     elif cmd == "ntasks":
-        print(len(tasks()))
+        print(len(dict(grad=tasks_grad, overlap=tasks_overlap).get(
+            (sys.argv[2:] or [None])[0], tasks)()))
     else:
         raise SystemExit(__doc__)

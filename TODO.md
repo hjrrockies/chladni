@@ -142,13 +142,17 @@ The path, in order:
   - **`achievable_prec`'s contrast term.** Measure it against an eigenvalue first.
   - **The absolute geometric thresholds in branch-cut detection.**
   - **The `lightning` source `extent`.**
-  - **Calibrate `HadamardReport.attained`.** On the douse shapes it under-reports by a median 2x,
-    up to 34x, and stays silent on 91 of 425 levels at 1e-10 (ARC, 2026-11-04). Either a
-    measured factor, or a predictor that sees `u_n`'s error. The data:
-    `$DOUSE_RUNS/chladni/chladni_acc/accuracy_studies_out/eigs_new_*.json`.
-  - **`Eigenfunctions.orthonormal` ignores `mp_eps`.** On a starved basis it reads True with a
-    true Gram defect up to 4e-5.
-  - **The hard-shapes FD column at `H_STEP` near 1e-4.** At 4e-3 it measures the FD's own error.
+  - ~~**Calibrate `HadamardReport.attained`.**~~ Done 2026-11-05: `3 max(identity residual,
+    Moler-Payne eps/alpha)`, no silent miss on 327 levels (`notes/hadamard_accuracy.md`,
+    "Calibration").
+  - ~~**`Eigenfunctions.orthonormal` ignores `mp_eps`.**~~ Done 2026-11-05.
+  - **Exact doubles: the split of a symmetric shape's double.** The regular hexagon's members'
+    derivatives are off by 4.5e-9 at 1e-10 with a trace good to 4e-14; nothing reports it
+    (alpha is the gap to other levels). Study: a two-rung difference estimator.
+  - **Clusters: the origin threshold.** `CLUSTER_ORIGIN_SPREAD = 1/3` sits between entangled
+    pairs' 30% and biased pairs' 39% on one study. A bias-free cross overlap (an interior rule,
+    or eliminating the affine origin term) would remove the threshold.
+  - ~~**The hard-shapes FD column at `H_STEP` near 1e-4.**~~ Replaced by `FDref` (2026-11-05).
 * **[next]** **Rebuild T2.8-N5s2's reference on current code.** Its trusted value 179.302250990678
   (status `fem_resolved`: one run, recipe B, plus a finite-element count) does not reproduce.
   Recipe B on current code gives 179.3022510764, uncertified. Every current basis -- corner-only A

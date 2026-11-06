@@ -13,7 +13,8 @@ of a candidate wrong at the size of the boundary residual. Kept whole, it needs 
 condition and no knowledge of which edge is which.
 
 The Gram matrix of `m` candidates at one `lam` is the polarized form. Candidates at DIFFERENT
-`lam` are never combined here -- Green's identity would divide by `lam_i - lam_j`.
+`lam` are combined only through `gram(..., lams=)`, whose cross entries carry a bias
+proportional to `lam_i - lam_j` (its docstring); Green's identity would divide by it.
 
 Every formula is a fixed combination of one primitive, `weighted_integral` (lappy's design): a
 consumer building its own boundary functional does the same.
@@ -22,7 +23,8 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["KERNELS", "LOWDIN_GUARD", "weighted_integral", "gram", "norms", "lowdin"]
+__all__ = ["KERNELS", "LOWDIN_GUARD", "weighted_integral", "rigid_weights", "gram", "norms",
+           "lowdin"]
 
 #: The four bilinear Cauchy-data kernels. `'cr'` is the symmetrized cross term.
 KERNELS = ("uv", "NN", "TT", "cr")
@@ -46,6 +48,24 @@ def weighted_integral(cd, kernel, weight):
     raise ValueError(f"kernel must be one of {KERNELS}, got {kernel!r}")
 
 
+def rigid_weights(quad, x0):
+    """`V . n` at `quad`'s nodes for translation in x and in y, rotation and dilation about `x0`,
+    `(4, n_nodes)`, with rotation and dilation divided by `R = max |x - x0|` so every field has
+    unit size; and `R`. For a Dirichlet eigenpair, `-oint d_n u_i d_n u_j V ds` is exactly 0 for
+    the first three and `-2 lam delta_ij` for dilation, so their residuals measure the
+    eigenfunctions' `d_n u` with no reference solve (`MPSEigensolver.hadamard`)."""
+    r = quad.pts - complex(x0)
+    a = quad.anchored
+    if a.any():
+        r = r.copy()
+        r[a] = (quad.anchor_pt[a] - complex(x0)) + quad.offset[a]
+    R = float(np.abs(r).max())
+    n = quad.normals
+    rot = 1j * r
+    return np.array([n.real, n.imag, (rot.real * n.real + rot.imag * n.imag) / R,
+                     (r.real * n.real + r.imag * n.imag) / R]), R
+
+
 def _radial(cd, x0):
     """`(x - x0) . n` and `(x - x0) . t`. On anchored nodes `x - x0` is formed as
     `(anchor - x0) + offset`: exact when `x0` is that corner -- the default origin is one -- where
@@ -60,17 +80,26 @@ def _radial(cd, x0):
     return r.real * n.real + r.imag * n.imag, r.real * t.real + r.imag * t.imag
 
 
-def gram(cd, x0):
+def gram(cd, x0, lams=None):
     """`G[i, j] = int_Omega u_i u_j`, `(m, m)`, from the full Rellich identity about `x0`.
 
     The identity holds for every `x0`, so the spread of `gram` over several origins is a
     DETECTOR of quadrature error -- not an error bar, since it also carries the eigenvalue's own
     error through `1/lam` (lappy). `x0` is required: the rule's default lives on `IntegralQuad`.
+
+    `lams`, one per column, for columns at DIFFERENT `lam` (a cluster's members, each evaluated at
+    its own): entry `(i, j)` is divided by `lam_i + lam_j`. Between Dirichlet eigenfunctions at
+    `lam != mu` the Rellich form is `(lam + mu) <u, v> + (lam - mu)/2 int (v r.grad u - u r.grad v)`,
+    so a cross entry carries a BIAS proportional to the gap, flat in prec and moving with `x0`;
+    real overlap does not move (2026-11-05, `notes/hadamard_accuracy.md`, "Clusters"). Only
+    within a cluster, where the gap is tiny, is the cross entry the overlap.
     """
     lam = float(cd.lam)
     r_n, r_t = _radial(cd, x0)
+    den = 2.0 * lam if lams is None else np.add.outer(np.asarray(lams, float),
+                                                       np.asarray(lams, float))
     G = (weighted_integral(cd, "NN", r_n) - weighted_integral(cd, "TT", r_n)
-         + weighted_integral(cd, "cr", r_t)) / (2.0 * lam)
+         + weighted_integral(cd, "cr", r_t)) / den
     G += 0.5 * weighted_integral(cd, "uv", r_n)
     return 0.5 * (G + G.T)
 
