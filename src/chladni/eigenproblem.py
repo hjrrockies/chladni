@@ -267,7 +267,9 @@ class Eigenproblem:
 
     def _plan(self, n, prec, confirm):
         """`(plan, result, window, accepted, ladder)`; `ladder` is the rungs tried, for
-        `SolveRecord.ladder`.
+        `SolveRecord.ladder`, each with `why` (why it was not accepted; "" for the accepted
+        rung) and `evaluations` (pencil factorizations, `_n_evals`: the deterministic cost, where
+        `seconds` depends on the machine).
 
         THE CLIMB ABORTS A RUNG EARLY. Each rung is solved with `on_shortfall="raise"`, so the
         search stops at the first refined level that misses `prec` (`mps.search._abort_if_unmet`:
@@ -285,11 +287,15 @@ class Eigenproblem:
         from ._core import PrecisionShortfall
         tried = {}                              # rung -> (plan, res, window, aborted, rank)
         seconds = {}                            # rung -> wall time, every attempt summed
+        evals = {}                              # rung -> pencil factorizations, summed
+        why = {}                                # rung -> why it was not accepted
 
         def ladder(accepted_rung):
             return tuple(dict(rung=int(r), usable=_usable(t[0]), aborted=bool(t[3]),
                               accepted=(r == accepted_rung), n_cols=int(t[0].n_cols),
-                              score=[float(x) for x in np.ravel(t[4])], seconds=seconds[r])
+                              score=[float(x) for x in np.ravel(t[4])], seconds=seconds[r],
+                              evaluations=int(evals.get(r, 0)),
+                              why="" if r == accepted_rung else why.get(r, ""))
                          for r, t in sorted(tried.items()))
 
         def at(rung, full=False):
@@ -305,19 +311,26 @@ class Eigenproblem:
             p = plan_for(self.domain, n, prec, rung)
             if not _usable(p):
                 tried[rung] = (p, None, None, False, _UNRANKED)
-            elif full:
-                res, window = self._solve_with(p, n, prec, "flag")
-                tried[rung] = (p, res, window, False, _rank(res, n, prec))
-            else:
-                try:
-                    res, window = self._solve_with(p, n, prec, "raise")
-                except PrecisionShortfall as e:
-                    if e.result is not None:    # a late raise: the whole result is in hand
-                        tried[rung] = (p, e.result, None, False, _rank(e.result, n, prec))
-                    else:                       # an early abort: rank by what was met so far
-                        tried[rung] = (p, None, None, True, _rank(e, n, prec))
-                else:
+                why[rung] = "unusable: nothing to place on this shape"
+                return tried[rung]
+            solver = p.solver(self.domain, prec=prec)
+            try:
+                if full:
+                    res, window = self._solve_with(p, n, prec, "flag", solver)
                     tried[rung] = (p, res, window, False, _rank(res, n, prec))
+                else:
+                    try:
+                        res, window = self._solve_with(p, n, prec, "raise", solver)
+                    except PrecisionShortfall as e:
+                        why[rung] = str(e)
+                        if e.result is not None:    # a late raise: the whole result is in hand
+                            tried[rung] = (p, e.result, None, False, _rank(e.result, n, prec))
+                        else:                       # an early abort: rank by what was met so far
+                            tried[rung] = (p, None, None, True, _rank(e, n, prec))
+                    else:
+                        tried[rung] = (p, res, window, False, _rank(res, n, prec))
+            finally:
+                evals[rung] = evals.get(rung, 0) + _n_evals(solver)
             return tried[rung]
 
         best = None
@@ -333,6 +346,11 @@ class Eigenproblem:
             # rung above it reaches 1e-10, so that rule turned douse's routine replan into a
             # refusal (2026-10-14). Keep climbing.
             if aborted or not _accepts(res, n, prec):
+                if not aborted and rung not in why:
+                    d = res.diagnostics
+                    why[rung] = (f"declined: {getattr(d, 'decline_reason', '')}" if d.declined
+                                 else f"not accepted: {rank[0]:.0%} of the levels met, "
+                                      f"log10 margin of the misses {rank[1]:.2f}")
                 continue
             if confirm and rung + 1 < len(LADDER):
                 low = [L for L in _prefix(res, n) if np.isfinite(L.margin)
@@ -340,6 +358,7 @@ class Eigenproblem:
                 nxt = next((at(r, full=True)[1] for r in range(rung + 1, len(LADDER))
                             if at(r, full=True)[1] is not None), None) if low else None
                 if nxt is not None and not _same_counts(low, nxt):
+                    why[rung] = "confirm: the next rung counts more levels at a low margin"
                     continue                    # a hidden partner: the next rung sees more
             return p, res, window, True, ladder(rung)
         p, res, window, _, _ = at(best[1], full=True)
@@ -561,6 +580,12 @@ def _warm_verdict(*, found, prev, n, b, h, top, declined, unmet, uncertain, audi
 
 #: The rank of a rung that placed nothing or found nothing: below every real outcome.
 _UNRANKED = (-1.0, -np.inf)
+
+
+def _n_evals(solver):
+    """Pencil factorizations a solver's searches paid for: the summed `n_evals` of its
+    per-window objectives (`MPSEigensolver.objective`). The ladder's machine-independent cost."""
+    return sum(int(o.n_evals) for o in (getattr(solver, "_objectives", None) or {}).values())
 
 
 def _rank(outcome, n, prec):

@@ -254,7 +254,8 @@ same everywhere:
 | cluster | distinct levels whose eigenfunctions are determined only TOGETHER (`eigensolver.Cluster`): values resolved, eigenfunctions entangled. Not a flag. Their span, eigenvalues and rotation-invariant quantities are good to `prec`; which member is which is not. |
 | `overlap` | the largest cross-level Gram entry between two levels' per-level eigenfunctions, each at its own lam (`MPSEigensolver.cross_gram`). Across distinct lam it also carries a bias proportional to the gap, which moves with `x0`; overlap does not. |
 | `attained` | `HadamardReport.attained`: a calibrated ESTIMATE of H's relative error, `max(rules + mp_eps, 3 max(identity_residual, eigenfunction_bound))`. |
-| report tier | `SolveRecord.report(tier)` (`chladni.report`): 0 = what the record already holds; 1 = what the solve computed and used to drop (search levels as `search_*`, the planner `ladder`, integral-rule shortfalls, `corner_points`), no evaluations; 2 = a little more per level (`tension_*`, `svd_*`, `ef_*`, `hadamard_*` on the identity fields). |
+| evaluations | pencil factorizations (`Objective.n_evals`, summed over a solver's windows by `eigenproblem._n_evals`): the machine-independent cost in a report, beside `seconds`. |
+| report tier | `SolveRecord.report(tier)` (`chladni.report`): 0 = what the record already holds; 1 = what the solve computed and used to drop (search levels as `search_*`, the planner `ladder` with each rung's `why` and `evaluations`, integral-rule shortfalls, `corner_points`), no evaluations; 2 = a little more per level (`tension_*`, `svd_*`, `ef_*`, `hadamard_*` on the identity fields). |
 | `tension_floor_rel` | `sigma(lam*) / (c lam*)`, with `c` the tension's slope beside the root (`report.TENSION_STEP`): the relative width of the noise floor the root sits in. |
 
 ---

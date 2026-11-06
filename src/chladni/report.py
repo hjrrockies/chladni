@@ -13,8 +13,9 @@ Tiers, by cost:
   the pencil's size and truncation, the search's diagnostics.
 * 1 -- computed during the solve and, before this module, thrown away: the search's own per-level
   record (tension floor, `delta_res`, how the count was decided, which term set the bound,
-  Moler-Payne's drift and norm spread), the planner's ladder (each rung tried, its outcome and
-  wall time), the integral rules' shortfalls, and the collocation points near each corner.
+  Moler-Payne's drift and norm spread), the planner's ladder (each rung tried, its outcome, why
+  it was not accepted, its pencil factorizations and wall time), the integral rules'
+  shortfalls, and the collocation points near each corner.
   Keeping them costs nothing; reading them costs microseconds.
 * 2 -- cheap extra work, per level: the slope of the tension at the root and the floor it implies,
   one SVD of the pencil at the root, the eigenfunctions' Gram residual, and a Hadamard report on
@@ -81,6 +82,9 @@ def _run_tier0(record):
                warm_note=None if record.warm_note is None else str(record.warm_note))
     if record.seconds is not None:
         run["seconds"] = record.seconds
+    if getattr(record, "solver", None) is not None:
+        from .eigenproblem import _n_evals
+        run["evaluations"] = _n_evals(record.solver)     # the final solve's; the ladder sums rungs
     if dom is not None:
         run["geometry"] = dict(achievable_prec=_f(dom.achievable_prec), area=_f(dom.area),
                                perimeter=_f(dom.perimeter), diameter=_f(dom.diameter),

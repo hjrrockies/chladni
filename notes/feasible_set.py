@@ -249,6 +249,12 @@ def _unfolded(rec):
     return np.array([float(L.lam) for L in rec.spectrum.levels for _ in range(int(L.mult))])
 
 
+def _evals(rec):
+    """Pencil factorizations the record's solver paid for: the deterministic cost."""
+    from chladni.eigenproblem import _n_evals
+    return _n_evals(getattr(rec, "solver", None))
+
+
 def _solve_base(dom, n, prec):
     """`(record, info)`: the black-box solve, or, when the planner declines on the clearance
     gate, every rung solved on its own plan and the best kept."""
@@ -271,6 +277,7 @@ def _solve_base(dom, n, prec):
         levels = r.spectrum.levels
         met = sum(bool(L.met) for L in levels)
         info["rungs"].append(dict(rung=rung, seconds=time.perf_counter() - t0,
+                                  evaluations=_evals(r),
                                   declined=bool(r.spectrum.declined), n_levels=len(levels),
                                   n_met=met, flags=list(r.spectrum.flags)))
         key = (not r.spectrum.declined, met)
@@ -418,7 +425,7 @@ def _knobs(dom, rec, n, prec):
             vals = _unfolded(r)
             k = min(len(vals), len(base))
             out[name] = dict(levels=_levels_brief(r), n_cols=int(pl.n_cols),
-                             seconds=time.perf_counter() - t0,
+                             seconds=time.perf_counter() - t0, evaluations=_evals(r),
                              max_rel_change=float(np.max(np.abs(vals[:k] - base[:k]) / base[:k]))
                              if k else None,
                              rel_change=(np.abs(vals[:k] - base[:k]) / base[:k]).tolist())

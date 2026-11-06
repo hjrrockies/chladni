@@ -64,7 +64,21 @@ def test_tier1_keeps_what_the_search_and_planner_threw_away(rec):
     accepted = next(r for r in ladder if r["accepted"])
     assert accepted["rung"] == rec.plan.rung and accepted["seconds"] > 0
     assert rep["seconds"] >= sum(r["seconds"] for r in ladder) * 0.99
+    assert accepted["why"] == "" and rep["evaluations"] >= accepted["evaluations"] > 0
     assert len(rep["corner_points"]) == 4
+
+
+@pytest.mark.slow
+def test_the_ladder_says_why_each_rejected_rung_was_rejected_and_what_it_cost():
+    from chladni.geometry import Polygon
+    # a thin triangle the low rungs cannot do at 1e-8: each stops early on an unmet level
+    r = Eigenproblem(Polygon([0, 1, 0.1 + 0.25j])).solve(3, prec=1e-8)
+    rejected = [x for x in r.ladder if not x["accepted"]]
+    assert rejected
+    for x in rejected:
+        assert x["why"], x
+        assert x["evaluations"] > 0 or not x["usable"]
+    assert all("unmet" in x["why"] for x in rejected if x["aborted"])
 
 
 @pytest.mark.slow
