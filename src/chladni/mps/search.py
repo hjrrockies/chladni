@@ -203,6 +203,11 @@ class Level:
     mp_eps: float = float("nan")
     cancellation: float = float("nan")
     bound_reason: str = ""
+    #: Moler-Payne's consistency checks, kept for `SolveRecord.report` (2026-11-06): `mp_drift`
+    #: the boundary sup's change between two samplings, `mp_norm_spread` the L2 norm's spread
+    #: over Rellich origins (`integrals.certify.MolerPayne`). Not used by any decision.
+    mp_drift: float = float("nan")
+    mp_norm_spread: float = float("nan")
     #: False when `delta_res` missed the request it was refined for (`delta_res > prec*lam`)
     #: and a Moler-Payne bound is in hand, so `bound` reports that bound alone. Set by
     #: `MPSEigensolver.certify_levels`, which knows `prec`; see `bound` for why.
