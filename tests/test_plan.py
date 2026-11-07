@@ -255,3 +255,69 @@ def test_a_rung_that_declines_does_not_stop_the_climb():
         plan, rec = Eigenproblem(Polygon(verts, bc="dir")).plan_and_solve(3, prec=1e-10)
         assert not rec.declined and not rec.flags, (verts, rec.flags)
         assert rec.count >= 3
+
+
+# ---- sources outside non-convex shapes (2026-11-07) -------------------------------------------
+# The feasible-set pilot (`notes/feasible_set.py`) found the planner RAISING on two non-convex
+# shapes before any solve: a dumbbell (two unit squares, a neck 0.5 wide) put a short-edge patch
+# source on the neck's wall, and a 300-355 deg V-notch put offset-layer sources across the notch,
+# where halving the whole layer twice did not help. An outward ray from a wall can cross the
+# domain's own gap and come back in; the offset now stops at half the distance to that crossing,
+# source by source, which keeps every source outside by construction and leaves a source whose
+# ray never comes back exactly where it was.
+
+def _dumbbell(w):
+    lo, hi = 0.5 - w / 2, 0.5 + w / 2
+    return Polygon([0, 1, 1 + 1j * lo, 1.5 + 1j * lo, 1.5, 2.5, 2.5 + 1j, 1.5 + 1j,
+                    1.5 + 1j * hi, 1 + 1j * hi, 1 + 1j, 1j], bc="dir")
+
+
+def _notch(omega_deg):
+    """The unit square with a V-notch of interior angle `omega_deg` cut down from its top."""
+    half = (2 * np.pi - np.radians(omega_deg)) / 2
+    d, a = 0.25 / np.tan(half), 0.25
+    if d > 0.5:
+        d, a = 0.5, 0.5 * np.tan(half)
+    return Polygon([0, 1, 1 + 1j, 0.5 + a + 1j, 0.5 + 1j * (1 - d), 0.5 - a + 1j, 1j], bc="dir")
+
+
+def _sources(basis):
+    from chladni.helmholtz import Fundamental
+    parts = getattr(basis, "parts", None) or getattr(basis, "families", None) or [basis]
+    return [f for f in parts if isinstance(f, Fundamental)]
+
+
+_T = np.tan(np.pi / 8)
+NONCONVEX = [("dumbbell 0.5", _dumbbell(0.5)), ("dumbbell 0.1", _dumbbell(0.1)),
+             ("notch 300", _notch(300)), ("notch 355", _notch(355)),
+             # TODO.md's 315 deg notch, which raised on a higher rung since 2026-10
+             ("notch 315", Polygon([0, 1 + 1j * _T, 1 + 1j, -1 + 1j, -1 - 1j, 1 - 1j, 1 - 1j * _T],
+                                   bc="dir"))]
+
+
+@pytest.mark.parametrize("name,d", NONCONVEX, ids=[n for n, _ in NONCONVEX])
+def test_every_rung_realizes_on_a_non_convex_shape_with_every_source_outside(name, d):
+    for rung in range(len(LADDER)):
+        p = plan_for(d, 15, PREC, rung=rung)
+        b, _, _ = p.realize(d)
+        assert len(b) == p.n_cols
+        for f in _sources(b):
+            assert not np.any(d.contains(f.origins)), (name, rung)
+
+
+@pytest.mark.parametrize("name,d", NONCONVEX, ids=[n for n, _ in NONCONVEX])
+def test_the_realization_keeps_its_size_on_a_nearby_non_convex_shape(name, d):
+    p = plan_for(d, 15, PREC, rung=1)
+    v = np.array([c.z for c in d.corners])
+    moved = Polygon(v + 1e-3 * np.exp(1j * np.arange(len(v))), bc="dir")
+    assert len(p.realize(moved)[0]) == p.n_cols
+
+
+def test_on_a_convex_shape_every_source_sits_at_the_full_offset():
+    """A ray leaving a convex shape never comes back, so nothing changes there."""
+    from chladni.geometry import reg_ngon
+    for d in (reg_ngon(7), STALL):
+        p = plan_for(d, N, PREC, rung=1)
+        b, _, _ = p.realize(d)
+        layer = [f for f in _sources(b) if len(f.origins) == p.n_sources]
+        assert layer and np.allclose(layer[0].radius, p.source_offset * d.diameter)

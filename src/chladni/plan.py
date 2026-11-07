@@ -184,20 +184,47 @@ class Plan:
 
 
 def _offset_sources(dom, n, offset, prec):
-    """`n` fundamental-solution sources at `offset` x the diameter outside the boundary, moved
-    closer (halving the offset, twice) where a thin domain would put them inside, as the
-    benchmark's recipe B does."""
+    """`n` fundamental-solution sources `offset` x the diameter out along the outward normal,
+    each one stopped short where its own ray would come back into the domain (`_exterior_reach`).
+    On a convex shape that never happens and every source sits at the full offset."""
     from .helmholtz import Fundamental
 
-    err = None
-    for f in (offset, offset / 2, offset / 4):
-        try:
-            return Fundamental.offset(dom.bdry_quad(int(n)), f * dom.diameter, domain=dom,
-                                      prec=prec)
-        except Exception as e:  # noqa: BLE001 -- SourcesInsideDomain on a thin domain
-            err = e
-    raise ValueError(f"no source offset down to {offset / 4:g} x the diameter keeps the sources "
-                     f"outside this domain: {err}")
+    q = dom.bdry_quad(int(n))
+    pts = np.asarray(q.pts, dtype=complex)
+    nrm = np.asarray(q.normals, dtype=complex)
+    t = _exterior_reach(dom, pts, nrm, offset * dom.diameter)
+    return Fundamental(pts + t * nrm, radius=t, extent=dom.diameter + float(t.max()),
+                       prec=prec).check_exterior(dom)
+
+
+#: A source goes no farther than this share of the way to where its outward ray re-enters the
+#: domain (2026-11-07). On a non-convex shape a wall's normal can cross the domain's own gap -- a
+#: notch, the space between a dumbbell's bulbs -- and a fixed offset put sources inside: the
+#: planner raised on a dumbbell and on 300-355 deg notches before any solve. Half the way keeps
+#: the source as far from the facing wall as from its own.
+RAY_SHARE = 0.5
+
+
+def _exterior_reach(dom, pts, dirs, t_max):
+    """Per point, `min(t_max, RAY_SHARE * t_hit)`, `t_hit` the distance along the unit
+    direction to the first boundary crossing past the point's own edge (infinite when the ray
+    never comes back). `pts + reach * dirs` is then outside by construction: the segment from the
+    boundary to it crosses nothing. Continuous in the shape except where a ray grazes a vertex."""
+    a = np.array([s.p0 for s in _segments(dom)], dtype=complex)
+    e = np.array([s.p1 for s in _segments(dom)], dtype=complex) - a
+
+    def cross(x, y):
+        return (np.conj(x) * y).imag
+
+    ap = a[None, :] - pts[:, None]
+    den = cross(dirs[:, None], e[None, :])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t = cross(ap, e[None, :]) / den
+        u = cross(ap, dirs[:, None]) / den
+    tol = 1e-12 * float(dom.diameter)
+    hit = (np.abs(den) > 0) & (t > tol) & (u >= -1e-12) & (u <= 1 + 1e-12)
+    t_hit = np.where(hit, t, np.inf).min(axis=1)
+    return np.minimum(float(t_max), RAY_SHARE * t_hit)
 
 
 def _segments(dom):
@@ -211,8 +238,10 @@ def _short_edges(dom):
 
 def _edge_patch(dom, i, m, prec):
     """`m` sources over `PATCH_REACH` x e of boundary either side of edge `i`'s midpoint (e its
-    length), each `PATCH_OFFSET` x e out along its own segment's outward normal. Placed by
-    arclength from the shape, so the count -- not the positions -- is what the plan fixes."""
+    length), each `PATCH_OFFSET` x e out along its own segment's outward normal (the bisector,
+    on a reflex vertex), stopped short where that ray would come back into the domain
+    (`_exterior_reach`). Placed by arclength from the shape, so the count -- not the
+    positions -- is what the plan fixes."""
     from .helmholtz import Fundamental
 
     segs = [s for s in dom.boundaries[0].segments]
@@ -222,18 +251,27 @@ def _edge_patch(dom, i, m, prec):
     lengths = np.array([s.length for s in segs])
     starts = np.concatenate([[0.0], np.cumsum(lengths)[:-1]])
     total = lengths.sum()
-    origins = []
+    pts, dirs = [], []
     for t in np.linspace(-PATCH_REACH * e, PATCH_REACH * e, int(m)):
         u = (starts[i] + 0.5 * e + t) % total
         j = int(np.searchsorted(starts, u, side="right") - 1)
         tau = (u - starts[j]) / lengths[j]
-        origins.append(segs[j].p(tau) + PATCH_OFFSET * e * segs[j].N(tau))
-    fam = Fundamental(np.array(origins, dtype=complex), radius=PATCH_OFFSET * e,
-                      extent=dom.diameter + e, prec=prec)
-    try:
-        return fam.check_exterior(dom)
-    except Exception as err:  # noqa: BLE001 -- a reflex neighbour pulled a source inside
-        raise ValueError(f"the source patch at edge {i} falls inside this domain: {err}") from err
+        pts.append(segs[j].p(tau))
+        k = j if tau > 0.5 else (j - 1) % len(segs)       # the vertex ending segment k
+        a, b = segs[k], segs[(k + 1) % len(segs)]
+        if (min(tau, 1 - tau) * lengths[j] < 1e-12 * dom.diameter
+                and (np.conj(a.p1 - a.p0) * (b.p1 - b.p0)).imag < 0):
+            # ON a reflex vertex (a right turn, the outer boundary running counter-clockwise),
+            # where either edge's normal runs along the other edge: the bisector of the two
+            # normals is the outward direction there
+            d = a.N(1.0) + b.N(0.0)
+            dirs.append(d / abs(d))
+        else:
+            dirs.append(segs[j].N(tau))
+    pts, dirs = np.array(pts, dtype=complex), np.array(dirs, dtype=complex)
+    r = _exterior_reach(dom, pts, dirs, PATCH_OFFSET * e)
+    return Fundamental(pts + r * dirs, radius=r, extent=dom.diameter + e,
+                       prec=prec).check_exterior(dom)
 
 
 #: A corner whose clearance (distance to the nearest NON-adjacent boundary) is below this

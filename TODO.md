@@ -469,9 +469,14 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 * **[later]** **Corners within `NU_MARGIN` of the slit** (`nu < 0.52`, apex past ~346 deg) are
   still demoted to the smooth rule (sector 1.95 pi: 0.15). The graded sizing reaches 1e-14 at
   `nu = 0.53`; below it `p = 1/(2 nu - 1)` underflows the nodes.
-* **[later]** **The planner puts offset sources inside some notches.** A 315-degree notch built as
-  `[0, 1+it, 1+i, -1+i, -1-i, 1-i, 1-it]` (`t = tan(pi/8)`) raised "sources inside the domain"
-  on a higher rung; `[2, 2+2i, -2+2i, -2-2i, 2-2i, 0]` solves.
+* **[done 2026-11-07]** **The planner put offset sources inside notches and dumbbells.** A
+  315-degree notch (`[0, 1+it, 1+i, -1+i, -1-i, 1-i, 1-it]`, `t = tan(pi/8)`), 300-355 deg
+  V-notches and a dumbbell (neck 0.5) raised "sources inside the domain" on rungs 1-2 before
+  any solve (feasible-set pilot). Each source now stops at `RAY_SHARE` = half the way to where
+  its outward ray re-enters the domain (`plan._exterior_reach`), so it is outside by
+  construction; a patch sample ON a reflex vertex goes out along the bisector. No source moves
+  on a convex shape or on L, GWW, H, plus or chevron; three spiral patch sources moved off
+  their reflex vertices, farther from the boundary.
 * **[later]** `polyomino(...).translated(dz)` returns a plain `Domain`, which the planner
   refuses; `Polygon(vertices + dz)` works.
 * **[next: default]** **Sharp triangles certify nothing, and the planner returns its worst rung.** Apexes
@@ -490,7 +495,7 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   layer at 0.05 D sat farther out than the edge is long, and the plan met 1e-10 at margin 2.0
   exactly. Now 9 sources sit around each edge shorter than 0.15 D, on the offset rungs:
   margins 5-26 there, no other benchmark case worse (`notes/short_edge_sources.md`). Open: two
-  adjacent short edges; a short edge beside a reflex corner.
+  adjacent short edges. (A short edge beside a reflex corner realizes since 2026-11-07.)
 * **[done 2026-10-13]** **Warm start for douse: `solve(..., near=prev)`.** A narrow prefix window
   around the previous values, no headroom, continuity checks, a cold solve on any failure and
   every 10th warm solve. 2.4x on one N = 6 re-solve; on a douse N = 4, k = 1 run, 9 of 12 solves
