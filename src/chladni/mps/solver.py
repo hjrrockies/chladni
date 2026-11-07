@@ -317,7 +317,8 @@ class MPSEigensolver(Eigensolver, Frozen):
         arr = np.asarray(lam, dtype=float)
         if arr.ndim == 0:
             return self._pencil.tensions(float(arr))
-        with cf.ThreadPoolExecutor() as ex:
+        from .objective import default_workers
+        with cf.ThreadPoolExecutor(max_workers=default_workers()) as ex:
             rows = list(ex.map(self._pencil.tensions, arr))
         w = max(len(r) for r in rows)
         out = np.full((len(rows), w), np.inf)

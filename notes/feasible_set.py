@@ -256,14 +256,17 @@ def _evals(rec):
 
 
 def _solve_base(dom, n, prec):
-    """`(record, info)`: the black-box solve, or, when the planner declines on the clearance
-    gate, every rung solved on its own plan and the best kept."""
+    """`(record, info)`: the black-box solve, or, when the planner declines on the geometry
+    alone (`plan.shape_refusal`: the clearance gate, or float64 precision short of `prec`),
+    every rung solved on its own plan and the best kept. Both refusals are what this study
+    tests, so a decline would answer nothing."""
     from chladni.eigenproblem import Eigenproblem
     from chladni.plan import LADDER, plan_for
     ep = Eigenproblem(dom)
     _, rec = ep.plan_and_solve(n, prec)
     info = dict(gate_bypassed=False)
-    if not (rec.spectrum.declined and "near self-intersection" in rec.spectrum.reason):
+    reason = rec.spectrum.reason if rec.spectrum.declined else ""
+    if not ("near self-intersection" in reason or "geometry supports" in reason):
         return rec, info
     info.update(gate_bypassed=True, gate_reason=rec.spectrum.reason, rungs=[])
     best, best_key = None, None

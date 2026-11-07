@@ -26,7 +26,11 @@ export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
-export PYTHONPATH="$ROOT/chladni_fs/src"
+# The code is the checkout this was submitted from (its notes/ directory), so a rerun can come
+# from a second checkout while the first one's tasks are still running; the output directory
+# stays in chladni_fs, so every task's JSON lands in one place.
+CODE="$(cd "$SLURM_SUBMIT_DIR/.." && pwd)"
+export PYTHONPATH="$CODE/src"
 
-"$ROOT/douse/.venv/bin/python" "$ROOT/chladni_fs/notes/feasible_set.py" task "$SLURM_ARRAY_TASK_ID" \
+"$ROOT/douse/.venv/bin/python" "$CODE/notes/feasible_set.py" task "$SLURM_ARRAY_TASK_ID" \
     --pilot --out "$ROOT/chladni_fs/notes/feasible_set_pilot_out"

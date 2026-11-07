@@ -323,3 +323,21 @@ def test_tensions_many_falls_back_to_the_scalar_function_without_a_batch():
     a = Objective(cone, 1.0, 5.0)
     vals = a.tensions_many([2.0, 3.0, 2.0])
     assert len(vals) == 3 and a.n_evals == 2 and vals[0] is vals[2]
+
+
+def test_the_thread_pool_is_sized_from_the_cores_granted_not_the_machine(monkeypatch):
+    """On an ARC node `os.cpu_count()` is 128 while a `--cpus-per-task=1` task is granted one
+    core (`os.sched_getaffinity`, 2026-11-07), and the pool took 8 threads from the 128: 8
+    concurrent tension evaluations at ~3 GB each on a 3500-column basis, in an 8 GB job,
+    on one core. The pool follows the grant where the platform reports one."""
+    from chladni.mps import objective
+    monkeypatch.setattr(objective.os, "cpu_count", lambda: 128)
+    monkeypatch.setattr(objective.os, "sched_getaffinity", lambda pid: {0}, raising=False)
+    assert objective.granted_cpus() == 1
+    assert objective.default_workers() == 1
+    monkeypatch.setattr(objective.os, "sched_getaffinity", lambda pid: set(range(16)),
+                        raising=False)
+    assert objective.default_workers() == 8
+    monkeypatch.delattr(objective.os, "sched_getaffinity", raising=False)   # macOS
+    monkeypatch.setattr(objective.os, "cpu_count", lambda: 10)
+    assert objective.granted_cpus() == 10 and objective.default_workers() == 5

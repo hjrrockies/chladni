@@ -766,6 +766,23 @@ one place does: `MPSEigensolver.tensions` maps an array of `lam` onto a thread p
 (`src/chladni/mps/solver.py:100`), on the argument that the work is LAPACK and releases the
 GIL. Everything below is what that leaves open.
 
+* **[later]** **Memory per tension evaluation, so threads are affordable** (measured
+  2026-11-07 on the feasible-set flat triangle, rung 2: 10593 x 3531 boundary block). The
+  pencil is 0.40 GB; ASSEMBLING it peaks at 3.09 GB, because each family's evaluation holds
+  ~22 full (points x columns) temporaries (FourierBessel 1654 cols: 0.14 GB out, 3.07 GB
+  peak; Fundamental 1855 cols: 0.16 GB out, 3.36 GB peak): broadcast `x = k r`, branch masks
+  and masked copies in `log_j`/`log_y`, the series loop's arrays, `sigma`/`rel_err`, `scale`,
+  `rad`, and a per-family `vals` copied into the basis output. Only the output must be full
+  size: the accuracy bound needs a column max. Equilibrate peaks at 0.8 GB (scaled copies, and a
+  `vstack` just for column norms), regularize at 1.6 GB (QR needs the stack and Q, ~2x).
+  Fixes, values unchanged: (1) assemble in row blocks; (2) equilibrate in place, norms by
+  block; (3) build the derivative caches (`_dang`, Fundamental's complex `_grad_r`/`_grad_th`,
+  ~5 of its 6 cached copies) lazily -- a Dirichlet tension solve reads only `_ang`; (4) cap the
+  pool by basis size as well as cores. Today ~3.1 GB per concurrent evaluation at 3500
+  columns; after (1)-(2), ~1.2 GB. The pool already follows the GRANTED cores
+  (`objective.default_workers`, 2026-11-07): before that an ARC task with one core ran 8
+  threads (`os.cpu_count()` = 128), and pilot task 10 ran out of 8 GB.
+
 * **[later]** Decide whether the candidate instrument scores wall-clock rounds as well as
   evaluations. `candidates.md` sections
   3 and 4 count GSVD-level cache misses and nothing else, but with `p` concurrent GSVDs the

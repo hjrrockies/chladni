@@ -121,13 +121,25 @@ def weyl_est_poly(k, domain=None, *, area=None, perim=None, angles=None, bc_type
 
     Seeded by `weyl_est`, then bracketed outward. Raises rather than handing `brentq` an
     invalid bracket, which is what lappy does after its widening loop gives up.
+
+    **When the corner sum is at least `k`, the two-term `weyl_est` is returned.** The count at
+    `lam -> 0` is the corner sum itself, so the three-term law then has no root: a corner of
+    angle `omega` adds ~pi/(24*omega), ~130 for a needle tip 5e-4 wide, while its low spectrum
+    sees no such tip. Callers size search windows with this, and the window raised before any
+    solve (feasible-set pilot, 2026-11-07); the two-term value is a usable upper end, and the
+    window widens from there. The count audit still uses the three-term law, so on such a
+    shape it reads "short": a known false alarm, not a dropped eigenvalue.
     """
     scalar = np.ndim(k) == 0
     ks = np.atleast_1d(np.asarray(k, dtype=float))
     ang = _angles(domain, angles)
+    corners = corner_correction(ang)
     out = np.empty(ks.shape)
     for i, kk in enumerate(ks.ravel()):
         lam0 = float(weyl_est(kk, domain, area=area, perim=perim, bc_type=bc_type))
+        if corners >= kk:
+            out.ravel()[i] = lam0
+            continue
         f = lambda x: weyl_count_poly(x, domain, area=area, perim=perim, angles=ang,
                                       bc_type=bc_type) - kk
         lo, hi = max(lam0 / 4, 1e-12), lam0 * 4
