@@ -93,7 +93,7 @@ def _iso_truth(theta, n):
     h = _iso_h(theta)
     for ht in ISO_TABLE_H:
         if abs(h - ht) < 1e-12 * ht:
-            return np.array([iso_tri_eigs(k, ht) for k in range(1, 11)])[:n]
+            return np.asarray(iso_tri_eigs(10, ht), float)[:n]
     return None
 
 
@@ -517,6 +517,9 @@ def task(i, out, pilot=False):
 
 # --- analysis -------------------------------------------------------------------------------
 
+FD_TRUST = 1e-4
+
+
 def _worst(xs):
     xs = [x for x in xs if isinstance(x, (int, float)) and math.isfinite(x)]
     return max(xs) if xs else math.nan
@@ -525,7 +528,8 @@ def _worst(xs):
 def analyze(d):
     """One line per task: family, parameter, prec, status, rung, levels met, the worst error
     against truth (or bound violation), the worst Hadamard attained, the worst tension floor,
-    the worst FD-vs-Hadamard disagreement against the FD bar (`fd/bar`), the part of it beyond
+    the worst FD-vs-Hadamard disagreement against the FD bar (`fd/bar`, only where the FD bar is
+    at most `FD_TRUST` of the FD value), the part of it beyond
     that bar against Hadamard's own estimate (`H/att`: above 1 means `attained` is silent), and
     the knob that moved values most."""
     rows = [json.loads(p.read_text()) for p in sorted(Path(d).glob("*.json"))]
@@ -543,7 +547,10 @@ def analyze(d):
         if "fd_dp" in r and "hadamard_dp" in r:
             qs, hs = [], []
             for hd, fb in zip(r["hadamard_dp"], r["fd_dp"]["best"]):
-                if "d_sum" in hd and isinstance(fb.get("bar"), float) and fb["bar"] > 0:
+                # an FD value whose own bar exceeds 1e-4 of it says nothing about Hadamard: its
+                # step crossed a near-degenerate pair, or was too small for the levels' accuracy
+                if ("d_sum" in hd and isinstance(fb.get("bar"), float)
+                        and 0 < fb["bar"] <= FD_TRUST * abs(fb["d"])):
                     gap = abs(hd["d_sum"] - fb["d"])
                     qs.append(gap / fb["bar"])
                     if isinstance(hd.get("attained_abs"), float) and hd["attained_abs"] > 0:
