@@ -707,6 +707,11 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 * **[later]** `test_no_level_claims_prec_past_a_tight_reference` is a strict xfail: references.json
   has no T2.8-N5s2 value within 0.1*prec, so it compared nothing. Lift it with audit 4.8's tighter
   references.
+* **[later]** `test_a_request_no_rung_accepts_is_flagged_or_raised` (`robust`) fails on main: its
+  premise, that no rung meets 1e-14 on the L-shape, no longer holds. Rung 1 (182 columns) is
+  accepted and all six values match `L_shape_eigs` to <= 2e-15 (checked 2026-11-06), so the
+  solver improved, nothing regressed. It needs a request verified out of reach (1e-15, or a
+  harder shape) so the end-to-end flag/raise path is tested again.
 
 ## 6. Small deferred measurements
 
