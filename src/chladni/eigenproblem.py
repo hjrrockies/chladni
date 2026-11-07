@@ -34,6 +34,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
+import time
+
 import numpy as np
 
 from ._core import PREC, check_prec
@@ -76,7 +78,13 @@ class SolveRecord:
     stage); `warm`, `warm_depth`, `warm_note` say whether this was a warm solve and, when a
     requested warm solve went cold, why. The spectrum's own fields are forwarded (`lam`,
     `unfolded`, `flags`, ...) so a record reads like the `Spectrum` it carries; prefer
-    `.spectrum` in new code (2026-10-14)."""
+    `.spectrum` in new code (2026-10-14).
+
+    For `report` (2026-11-06): `search_levels` are the search's own per-level records behind
+    `spectrum.levels`, index for index; `ladder` one dict per planner rung tried (`rung`,
+    `usable`, `aborted`, `accepted`, `score` (`_rank`: fraction met, then log10 of a margin),
+    `n_cols`, `seconds`), empty when no planning ran;
+    `seconds` the wall time of the call that produced the record."""
     spectrum: Spectrum
     plan: object = None
     solver: object = field(default=None, repr=False, compare=False)
@@ -84,8 +92,20 @@ class SolveRecord:
     warm: bool = False
     warm_depth: int = 0
     warm_note: object = None
+    search_levels: tuple = field(default=(), repr=False, compare=False)
+    ladder: tuple = field(default=(), repr=False, compare=False)
+    seconds: object = field(default=None, repr=False, compare=False)
 
     # --- what only the record can do -------------------------------------------------------
+
+    def report(self, tier=1):
+        """A `chladni.report.SolveReport`: what this solve computed along the way, as one flat,
+        JSON-able record. Tiers 0 and 1 cost nothing (they read what the solve kept); tier 2
+        evaluates a little more per level -- the tension slope at the root, one SVD, the
+        eigenfunctions' Gram residual and a Hadamard report on the exact identity fields. See
+        `chladni.report`."""
+        from .report import solve_report
+        return solve_report(self, tier)
 
     def hadamard(self, i, V, report=False):
         """The Hadamard shape derivative of level `i` -- or of levels `i = [i0, i1, ...]` as one
@@ -217,16 +237,18 @@ class Eigenproblem:
         that selected it -- flagged as `solve` would flag it when no rung met the request.
         douse re-plans a drifted shape and then solved it again on the new plan; this is that
         second solve, for free (2026-10-14)."""
+        t0 = time.perf_counter()
         n, prec = int(n), self._prec(prec)
         declined = self._declined(n, prec)
         if declined is not None:
             return declined.plan, declined
-        plan, res, window, accepted = self._plan(n, prec, confirm)
+        plan, res, window, accepted, ladder = self._plan(n, prec, confirm)
         flags = []
         if not accepted:
             flags.append(f"planner: no rung met prec={prec:.0e}; returning rung {plan.rung} "
                           f"of {len(LADDER) - 1}, the one with the most levels met")
-        return plan, _record(res, n, prec, plan, flags)
+        return plan, replace(_record(res, n, prec, plan, flags, ladder),
+                             seconds=time.perf_counter() - t0)
 
     def _declined(self, n, prec):
         """A DECLINED record when the geometry alone says no plan can meet `prec`
@@ -244,7 +266,10 @@ class Eigenproblem:
         return check_prec(self.domain.prec if prec is None else prec)
 
     def _plan(self, n, prec, confirm):
-        """`(plan, result, window, accepted)`.
+        """`(plan, result, window, accepted, ladder)`; `ladder` is the rungs tried, for
+        `SolveRecord.ladder`, each with `why` (why it was not accepted; "" for the accepted
+        rung) and `evaluations` (pencil factorizations, `_n_evals`: the deterministic cost, where
+        `seconds` depends on the machine).
 
         THE CLIMB ABORTS A RUNG EARLY. Each rung is solved with `on_shortfall="raise"`, so the
         search stops at the first refined level that misses `prec` (`mps.search._abort_if_unmet`:
@@ -261,26 +286,51 @@ class Eigenproblem:
         it held values right to ~1e-10 (`notes/triangle_apex_planner.md`)."""
         from ._core import PrecisionShortfall
         tried = {}                              # rung -> (plan, res, window, aborted, rank)
+        seconds = {}                            # rung -> wall time, every attempt summed
+        evals = {}                              # rung -> pencil factorizations, summed
+        why = {}                                # rung -> why it was not accepted
+
+        def ladder(accepted_rung):
+            return tuple(dict(rung=int(r), usable=_usable(t[0]), aborted=bool(t[3]),
+                              accepted=(r == accepted_rung), n_cols=int(t[0].n_cols),
+                              score=[float(x) for x in np.ravel(t[4])], seconds=seconds[r],
+                              evaluations=int(evals.get(r, 0)),
+                              why="" if r == accepted_rung else why.get(r, ""))
+                         for r, t in sorted(tried.items()))
 
         def at(rung, full=False):
             if rung in tried and not (full and tried[rung][3]):
                 return tried[rung]
+            t0 = time.perf_counter()
+            try:
+                return _at(rung, full)
+            finally:
+                seconds[rung] = seconds.get(rung, 0.0) + time.perf_counter() - t0
+
+        def _at(rung, full):
             p = plan_for(self.domain, n, prec, rung)
             if not _usable(p):
                 tried[rung] = (p, None, None, False, _UNRANKED)
-            elif full:
-                res, window = self._solve_with(p, n, prec, "flag")
-                tried[rung] = (p, res, window, False, _rank(res, n, prec))
-            else:
-                try:
-                    res, window = self._solve_with(p, n, prec, "raise")
-                except PrecisionShortfall as e:
-                    if e.result is not None:    # a late raise: the whole result is in hand
-                        tried[rung] = (p, e.result, None, False, _rank(e.result, n, prec))
-                    else:                       # an early abort: rank by what was met so far
-                        tried[rung] = (p, None, None, True, _rank(e, n, prec))
-                else:
+                why[rung] = "unusable: nothing to place on this shape"
+                return tried[rung]
+            solver = p.solver(self.domain, prec=prec)
+            try:
+                if full:
+                    res, window = self._solve_with(p, n, prec, "flag", solver)
                     tried[rung] = (p, res, window, False, _rank(res, n, prec))
+                else:
+                    try:
+                        res, window = self._solve_with(p, n, prec, "raise", solver)
+                    except PrecisionShortfall as e:
+                        why[rung] = str(e)
+                        if e.result is not None:    # a late raise: the whole result is in hand
+                            tried[rung] = (p, e.result, None, False, _rank(e.result, n, prec))
+                        else:                       # an early abort: rank by what was met so far
+                            tried[rung] = (p, None, None, True, _rank(e, n, prec))
+                    else:
+                        tried[rung] = (p, res, window, False, _rank(res, n, prec))
+            finally:
+                evals[rung] = evals.get(rung, 0) + _n_evals(solver)
             return tried[rung]
 
         best = None
@@ -296,6 +346,11 @@ class Eigenproblem:
             # rung above it reaches 1e-10, so that rule turned douse's routine replan into a
             # refusal (2026-10-14). Keep climbing.
             if aborted or not _accepts(res, n, prec):
+                if not aborted and rung not in why:
+                    d = res.diagnostics
+                    why[rung] = (f"declined: {getattr(d, 'decline_reason', '')}" if d.declined
+                                 else f"not accepted: {rank[0]:.0%} of the levels met, "
+                                      f"log10 margin of the misses {rank[1]:.2f}")
                 continue
             if confirm and rung + 1 < len(LADDER):
                 low = [L for L in _prefix(res, n) if np.isfinite(L.margin)
@@ -303,10 +358,11 @@ class Eigenproblem:
                 nxt = next((at(r, full=True)[1] for r in range(rung + 1, len(LADDER))
                             if at(r, full=True)[1] is not None), None) if low else None
                 if nxt is not None and not _same_counts(low, nxt):
+                    why[rung] = "confirm: the next rung counts more levels at a low margin"
                     continue                    # a hidden partner: the next rung sees more
-            return p, res, window, True
+            return p, res, window, True, ladder(rung)
         p, res, window, _, _ = at(best[1], full=True)
-        return p, res, window, False
+        return p, res, window, False, ladder(None)
 
     # --- solving -----------------------------------------------------------------------------
 
@@ -335,6 +391,7 @@ class Eigenproblem:
         periodic cold solve (`WARM_COLD_EVERY`) are the guarantee (2026-10-14)."""
         if on_shortfall not in ("flag", "raise"):
             raise ValueError(f"on_shortfall must be 'flag' or 'raise', got {on_shortfall!r}")
+        t0 = time.perf_counter()
         n, prec = int(n), self._prec(prec)
         # ONE SOLVER PER SOLVE. The basis is realized and the pencil built once here and shared
         # by the warm attempt and the cold fallback; a refused warm solve used to pay for a
@@ -347,13 +404,13 @@ class Eigenproblem:
                 solver = plan.solver(self.domain, prec=prec)
             spec, note = self._solve_warm(near, plan, n, prec, solver, windows)
             if spec is not None:
-                return spec
+                return replace(spec, seconds=time.perf_counter() - t0)
         else:
             note = None
         spec = self._solve_cold(n, prec, plan, on_shortfall, confirm, solver)
         if note is not None:
             spec = replace(spec, warm_note=note)
-        return spec
+        return replace(spec, seconds=time.perf_counter() - t0)
 
     def _solve_cold(self, n, prec, plan, on_shortfall, confirm, solver=None):
         from ._core import PrecisionShortfall
@@ -366,12 +423,13 @@ class Eigenproblem:
                 if on_shortfall == "raise":
                     raise PrecisionShortfall(declined.reason)
                 return declined
-            plan, res, window, accepted = self._plan(n, prec, confirm)
+            plan, res, window, accepted, ladder = self._plan(n, prec, confirm)
             if not accepted:
                 flags.append(f"planner: no rung met prec={prec:.0e}; returning rung {plan.rung} "
                               f"of {len(LADDER) - 1}, the one with the most levels met")
                 if on_shortfall == "raise":
                     _raise_on_shortfall(res, *window, prec)
+            return _record(res, n, prec, plan, flags, ladder)
         else:
             if plan.prec > prec * (1 + 1e-9):
                 flags.append(f"plan: made for prec={plan.prec:.0e}, looser than the requested "
@@ -524,6 +582,12 @@ def _warm_verdict(*, found, prev, n, b, h, top, declined, unmet, uncertain, audi
 _UNRANKED = (-1.0, -np.inf)
 
 
+def _n_evals(solver):
+    """Pencil factorizations a solver's searches paid for: the summed `n_evals` of its
+    per-window objectives (`MPSEigensolver.objective`). The ladder's machine-independent cost."""
+    return sum(int(o.n_evals) for o in (getattr(solver, "_objectives", None) or {}).values())
+
+
 def _rank(outcome, n, prec):
     """`(met, tie)`, larger is better: how a rung is ranked for the best-rung fallback when no
     rung is accepted. A RANKING, not a measurement: it picks which flagged answer comes back,
@@ -610,7 +674,7 @@ def _same_counts(low, res2):
     return True
 
 
-def _record(res, n, prec, plan, flags):
+def _record(res, n, prec, plan, flags, ladder=()):
     d = res.diagnostics
     kept, count = [], 0
     for L in sorted(res.levels, key=lambda L: L.lam):
@@ -661,7 +725,9 @@ def _record(res, n, prec, plan, flags):
     spectrum = Spectrum(levels, prec=prec, declined=bool(d.declined),
                         reason=d.decline_reason if d.declined else "",
                         count_audit=audit, flags=tuple(flags), clusters=clusters)
-    return SolveRecord(spectrum, plan=plan, solver=getattr(res, "solver", None), diagnostics=d)
+    found = sorted(res.levels, key=lambda L: L.lam)
+    return SolveRecord(spectrum, plan=plan, solver=getattr(res, "solver", None), diagnostics=d,
+                       search_levels=tuple(found[:len(levels)]), ladder=tuple(ladder))
 
 
 def link_clusters(solver, found, n_kept, prec):

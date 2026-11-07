@@ -94,10 +94,29 @@ class Declined:
         return f"Declined({self.reason!r}, {len(self.partial)} partial)"
 
 
-#: Threads for a batch of tension evaluations (`Objective.from_pencil`). Bounded below the
-#: machine's core count because each evaluation is itself a LAPACK call on a BLAS pool, and
-#: douse runs several solves in separate processes besides.
-DEFAULT_WORKERS = max(1, min(8, (os.cpu_count() or 2) // 2))
+def granted_cpus():
+    """The cores this process may run on: `os.sched_getaffinity` where the platform has it
+    (Linux, which a Slurm allocation restricts), else `os.cpu_count()` (macOS). On an ARC node
+    `cpu_count()` is 128 while a `--cpus-per-task=1` task is granted 1 (2026-11-07)."""
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            return max(1, len(os.sched_getaffinity(0)))
+        except OSError:
+            pass
+    return max(1, os.cpu_count() or 2)
+
+
+def default_workers():
+    """Threads for a batch of tension evaluations (`Objective.from_pencil`): half the GRANTED
+    cores, at most 8. Bounded below the core count because each evaluation is itself a LAPACK
+    call on a BLAS pool, and douse runs several solves in separate processes besides. Sized
+    from the machine's cores, it ran 8 threads on one granted core on ARC, each evaluation
+    holding ~3 GB at 3500 columns (`notes/feasible_set.py` pilot, task 10 out of memory)."""
+    return max(1, min(8, granted_cpus() // 2))
+
+
+#: `default_workers()` at import, for callers that read the constant.
+DEFAULT_WORKERS = default_workers()
 
 #: How far (in ulps of `lam`) a bracket converted to `lam` is widened at each end, so that a
 #: minimum whose exact square rounds just outside the `k` bracket is not lost; and, in
@@ -397,7 +416,7 @@ class Objective:
         hands `lam` to something expecting `k` or the reverse.
 
         `max_workers` sizes the thread pool `tensions_many` evaluates a batch of misses on
-        (`DEFAULT_WORKERS` when None; 1 keeps every evaluation on the calling thread). The work
+        (`default_workers()` when None; 1 keeps every evaluation on the calling thread). The work
         is LAPACK, which releases the GIL; the pencil's cache tolerates concurrent writers.
         """
         def evaluate(lam, policy=None):
@@ -426,7 +445,7 @@ class Objective:
 
             def to_lam(x):
                 return float(x)
-        workers = DEFAULT_WORKERS if max_workers is None else max(1, int(max_workers))
+        workers = default_workers() if max_workers is None else max(1, int(max_workers))
 
         def batch(xs):
             lams = [to_lam(x) for x in xs]

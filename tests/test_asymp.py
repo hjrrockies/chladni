@@ -111,6 +111,20 @@ def test_est_poly_inverts_count_poly():
         assert asymp.weyl_count_poly(lam, d) == pytest.approx(k, rel=1e-8)
 
 
+def test_est_poly_falls_back_to_two_terms_when_the_corner_sum_outweighs_k():
+    """A needle tip 5e-4 wide on the unit square: its corner term, ~pi/(24*omega), is ~130, so
+    the three-term count exceeds k = 19 at every lam and has no root. That sized the search
+    window, so the solve raised before it began (feasible-set pilot, 2026-11-07). The two-term
+    estimate is the window's upper end instead; the solver widens from there."""
+    from chladni.geometry import Polygon
+    w = 5e-4
+    d = Polygon([0, 1, 1 + (0.5 - w / 2) * 1j, 2 + 0.5j, 1 + (0.5 + w / 2) * 1j, 1 + 1j, 1j])
+    assert asymp.corner_correction(asymp._angles(d, None)) > 19
+    assert asymp.weyl_est_poly(19, d) == pytest.approx(asymp.weyl_est(19, d))
+    out = asymp.weyl_est_poly([3.0, 19.0], d)
+    assert out == pytest.approx(asymp.weyl_est([3.0, 19.0], d))
+
+
 def test_est_poly_returns_an_array_for_an_array():
     d = rect(2.0, 1.0)
     out = asymp.weyl_est_poly([3.0, 10.0], d)

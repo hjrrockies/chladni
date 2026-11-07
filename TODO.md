@@ -142,17 +142,12 @@ The path, in order:
   - **`achievable_prec`'s contrast term.** Measure it against an eigenvalue first.
   - **The absolute geometric thresholds in branch-cut detection.**
   - **The `lightning` source `extent`.**
-  - ~~**Calibrate `HadamardReport.attained`.**~~ Done 2026-11-05: `3 max(identity residual,
-    Moler-Payne eps/alpha)`, no silent miss on 327 levels (`notes/hadamard_accuracy.md`,
-    "Calibration").
-  - ~~**`Eigenfunctions.orthonormal` ignores `mp_eps`.**~~ Done 2026-11-05.
   - **Exact doubles: the split of a symmetric shape's double.** The regular hexagon's members'
     derivatives are off by 4.5e-9 at 1e-10 with a trace good to 4e-14; nothing reports it
     (alpha is the gap to other levels). Study: a two-rung difference estimator.
   - **Clusters: the origin threshold.** `CLUSTER_ORIGIN_SPREAD = 1/3` sits between entangled
     pairs' 30% and biased pairs' 39% on one study. A bias-free cross overlap (an interior rule,
     or eliminating the affine origin term) would remove the threshold.
-  - ~~**The hard-shapes FD column at `H_STEP` near 1e-4.**~~ Replaced by `FDref` (2026-11-05).
 * **[next]** **Rebuild T2.8-N5s2's reference on current code.** Its trusted value 179.302250990678
   (status `fem_resolved`: one run, recipe B, plus a finite-element count) does not reproduce.
   Recipe B on current code gives 179.3022510764, uncertified. Every current basis -- corner-only A
@@ -712,6 +707,11 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 * **[later]** `test_no_level_claims_prec_past_a_tight_reference` is a strict xfail: references.json
   has no T2.8-N5s2 value within 0.1*prec, so it compared nothing. Lift it with audit 4.8's tighter
   references.
+* **[later]** `test_a_request_no_rung_accepts_is_flagged_or_raised` (`robust`) fails on main: its
+  premise, that no rung meets 1e-14 on the L-shape, no longer holds. Rung 1 (182 columns) is
+  accepted and all six values match `L_shape_eigs` to <= 2e-15 (checked 2026-11-06), so the
+  solver improved, nothing regressed. It needs a request verified out of reach (1e-15, or a
+  harder shape) so the end-to-end flag/raise path is tested again.
 
 ## 6. Small deferred measurements
 
@@ -765,6 +765,23 @@ Each is one experiment. None blocks anything.
 one place does: `MPSEigensolver.tensions` maps an array of `lam` onto a thread pool
 (`src/chladni/mps/solver.py:100`), on the argument that the work is LAPACK and releases the
 GIL. Everything below is what that leaves open.
+
+* **[later]** **Memory per tension evaluation, so threads are affordable** (measured
+  2026-11-07 on the feasible-set flat triangle, rung 2: 10593 x 3531 boundary block). The
+  pencil is 0.40 GB; ASSEMBLING it peaks at 3.09 GB, because each family's evaluation holds
+  ~22 full (points x columns) temporaries (FourierBessel 1654 cols: 0.14 GB out, 3.07 GB
+  peak; Fundamental 1855 cols: 0.16 GB out, 3.36 GB peak): broadcast `x = k r`, branch masks
+  and masked copies in `log_j`/`log_y`, the series loop's arrays, `sigma`/`rel_err`, `scale`,
+  `rad`, and a per-family `vals` copied into the basis output. Only the output must be full
+  size: the accuracy bound needs a column max. Equilibrate peaks at 0.8 GB (scaled copies, and a
+  `vstack` just for column norms), regularize at 1.6 GB (QR needs the stack and Q, ~2x).
+  Fixes, values unchanged: (1) assemble in row blocks; (2) equilibrate in place, norms by
+  block; (3) build the derivative caches (`_dang`, Fundamental's complex `_grad_r`/`_grad_th`,
+  ~5 of its 6 cached copies) lazily -- a Dirichlet tension solve reads only `_ang`; (4) cap the
+  pool by basis size as well as cores. Today ~3.1 GB per concurrent evaluation at 3500
+  columns; after (1)-(2), ~1.2 GB. The pool already follows the GRANTED cores
+  (`objective.default_workers`, 2026-11-07): before that an ARC task with one core ran 8
+  threads (`os.cpu_count()` = 128), and pilot task 10 ran out of 8 GB.
 
 * **[later]** Decide whether the candidate instrument scores wall-clock rounds as well as
   evaluations. `candidates.md` sections
