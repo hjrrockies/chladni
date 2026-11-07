@@ -275,15 +275,29 @@ class Domain(Frozen):
 
     # --- quadrature and sampling --------------------------------------------------------
 
-    def bdry_quad(self, n=None, *, n_per_bdry=None, rule="legendre", grading=None,
-                  panels=None, weight_family="arclength"):
+    def bdry_quad(self, n=None, *, n_per_bdry=None, n_per_seg=None, rule="legendre",
+                  grading=None, panels=None, weight_family="arclength"):
         """Boundary quadrature over every boundary.
 
         `panels` is the seam for a corner-adapted rule built one layer up: a flat sequence
         of `Panel`, each naming its boundary, segment, tau span and node generator. See
         `Panel` for why the weights come back in tau and geometry only converts to ds.
+
+        `n_per_seg` gives every segment its own count, flattened over `boundaries` in order.
+        It is how a split decided one layer up arrives here (`chladni.mps.bdry_counts`): which
+        segments a basis needs points on is not a geometric question.
         """
         bs = self.boundaries
+        if n_per_seg is not None:
+            counts = np.asarray(n_per_seg, dtype=int)
+            sizes = [len(b.segments) for b in bs]
+            if counts.shape != (sum(sizes),):
+                raise ValueError(f"n_per_seg has {counts.size} entries for {sum(sizes)} segments")
+            cuts = np.cumsum(sizes)[:-1]
+            return Quadrature.concat([
+                b.quad(n_per_seg=c, rule=rule, grading=grading, bdry_idx=k)
+                for k, (b, c) in enumerate(zip(bs, np.split(counts, cuts)))
+            ])
         if panels is not None:
             by_bdry = {}
             for pan in panels:

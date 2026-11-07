@@ -15,7 +15,10 @@ nearby iterate.
   left at 27%, and on a thin triangle left at 10%. Rungs 1-2 are that hybrid.
 - Corner-clustered "lightning" sources were left out. With chladni's tight defaults they
   declined everywhere, and clustering produces very ill-conditioned columns.
-- Collocation density was never binding.
+- Collocation density was never binding on planner-sized bases. Where a corner's demand would
+  starve a short far side (bespoke bases, a near-straight apex carrying most columns), the
+  basis-aware split raises it, and `plan_for` freezes the per-segment counts
+  (`chladni.mps.bdry_counts`, `notes/collocation_allocation.md`).
 
 **Sizing.** lappy's per-corner rule takes orders up to `k r + 2 (k r)^(1/3) + 3`, with `r` the
 distance to the farthest vertex. It has no precision in it. This takes orders up to
@@ -32,7 +35,7 @@ planner ends those FLAGGED: honest, not solved.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -130,6 +133,10 @@ class Plan:
     edge_patches: tuple = ()          # ((segment index, sources), ...) at short edges
     bdry_ratio: float = 3.0
     int_ratio: float = 1.0
+    #: Boundary points per segment (`dom.boundaries` flattened), frozen by `plan_for` on the
+    #: planning shape so every nearby iterate is collocated identically; () = computed on the
+    #: shape at `solver` time (`chladni.mps.bdry_counts`).
+    bdry_counts: tuple = ()
 
     @property
     def n_cols(self):
@@ -175,12 +182,14 @@ class Plan:
     def solver(self, dom, *, prec=None, rng=0):
         """An `MPSEigensolver` for `dom` built from this plan, at `prec` (default: the plan's).
         A tighter `prec` than the plan's is solved on the plan's basis and reports its
-        shortfall; it does not enlarge the basis."""
-        from .mps import MPSEigensolver
+        shortfall; it does not enlarge the basis. The boundary points go per segment: the
+        plan's frozen `bdry_counts`, or the basis-aware split on `dom` when it has none."""
+        from .mps import MPSEigensolver, bdry_counts
 
         basis, n_bdry, n_int = self.realize(dom)
-        return MPSEigensolver(dom, basis=basis, n_bdry=n_bdry, n_int=n_int,
-                              prec=self.prec if prec is None else prec, rng=rng)
+        counts = self.bdry_counts or bdry_counts(dom, basis, n_bdry, k=self.k_max)
+        return MPSEigensolver(dom, basis=basis, bdry_quad=dom.bdry_quad(n_per_seg=counts),
+                              n_int=n_int, prec=self.prec if prec is None else prec, rng=rng)
 
 
 def _offset_sources(dom, n, offset, prec):
@@ -339,6 +348,13 @@ def plan_for(dom, n, prec=None, rung=0):
         from .helmholtz import PlaneWave
         n_pw = int(np.ceil(rc.plane_waves * PlaneWave.n_useful(k_max * dom.diameter, prec)))
     patches = (tuple((i, PATCH_N) for i in _short_edges(dom)) if rc.source_offset > 0 else ())
-    return Plan(prec=prec, k_max=k_max, corner_orders=orders, rung=int(rung), n_sources=n_src,
+    plan = Plan(prec=prec, k_max=k_max, corner_orders=orders, rung=int(rung), n_sources=n_src,
                 source_offset=rc.source_offset, lightning_n=n_light, n_plane_waves=n_pw,
                 edge_patches=patches)
+    if not any(orders) and not n_src and not n_pw:
+        return plan                     # nothing to place: `realize` refuses, and so would this
+    from .mps import bdry_counts
+
+    basis, n_bdry, _ = plan.realize(dom)
+    counts = bdry_counts(dom, basis, n_bdry, k=k_max)
+    return replace(plan, bdry_counts=tuple(int(c) for c in counts))

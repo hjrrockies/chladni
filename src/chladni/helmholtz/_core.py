@@ -144,6 +144,15 @@ class HelmholtzFamily(Frozen, ABC):
     def deriv(self, k, pts, vecs, cols=None):
         return self.at(pts).deriv(k, vecs, cols)
 
+    def collocation_demand(self, domain):
+        """Boundary points this family needs on each segment of `domain` (flattened over
+        `domain.boundaries`, in order), as a float array. A segment where the family's columns
+        satisfy the boundary condition EXACTLY tells the solver nothing about their
+        coefficients, so a family whose columns do that somewhere states what it needs on the
+        rest; `chladni.mps.bdry_counts` turns the sum into per-segment counts. Zero by default:
+        a family with no exact side is served by the length split."""
+        return np.zeros(sum(len(b.segments) for b in domain.boundaries))
+
     def __add__(self, other):
         from .basis import Basis
 

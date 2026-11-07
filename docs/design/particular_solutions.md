@@ -275,7 +275,11 @@ or it does not ship.
 
 **Deliberately absent**: any analogue of `pts_per_seg(domain, fb_basis)`. Geometry's spec
 already lists it under "Dropped: which cannot exist here". Its honest replacement is a
-polymorphic collocation hint on the family, which belongs with basis *planning* -- deferred.
+polymorphic collocation hint on the family, which belongs with basis *planning*. **Built
+2026-11-07** as `HelmholtzFamily.collocation_demand(domain)` (zero by default; a
+`FourierBessel` asks for 2 points per column on its far sides, split by subtended angle),
+turned into per-segment counts by `chladni.mps.bdry_counts` and handed to geometry as
+`bdry_quad(n_per_seg=...)` (`notes/collocation_allocation.md`).
 
 # The scaled Bessel kernel
 

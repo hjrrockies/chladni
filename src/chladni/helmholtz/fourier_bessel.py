@@ -71,6 +71,15 @@ _BLEND = 4.0
 #: and the cap alone is right. This keeps the division finite without a separate branch.
 _MU_FLOOR = 1e-12
 
+#: Boundary points a corner asks for per column, on the sides it does not touch
+#: (`collocation_demand`). lappy's `pts_per_seg` used 2, and 2 is what restored the thin
+#: isosceles triangle: with 100 apex columns, a base of 24 or 83 points left a flat spurious
+#: tension floor and 200 gave a real well (`notes/collocation_allocation.md`).
+COLLOCATION_MULT = 2.0
+#: Samples per segment for the angle a segment subtends. A straight segment needs only its
+#: ends (the angle is monotone along it); the rest are for arcs and parametric curves.
+_SPAN_SAMPLES = 65
+
 
 def evaluation_radius(domain, origin):
     """The largest `|z - origin|` over Omega: the radius that sets a corner family's scale.
@@ -312,6 +321,33 @@ class FourierBessel(HelmholtzFamily):
 
     def singular_exponents(self):
         return SingularStructure(np.full(self.n_cols, self.origin), self.orders.copy())
+
+    def collocation_demand(self, domain):
+        """`COLLOCATION_MULT` points per column, spread over the segments by the angle each
+        subtends from the corner.
+
+        Every column satisfies the boundary condition on the corner's own two sides, and those
+        sides subtend no angle -- seen from the vertex they lie on the rays `theta = 0` and
+        `theta = omega` -- so they are given nothing without being looked up. Angle rather than
+        length because the angular factors `sin(mu theta)` are orthogonal: a side seen face-on
+        separates the columns well-conditionedly, while one seen edge-on varies them only
+        through `J_mu(k r)`, monomial-like or phase-degenerate in `r`. At equal length and 2N
+        points the edge-on singular-value ratio was 1e-6..1e-17, face-on 0.85-0.99
+        (`notes/collocation_allocation.md`). Visibility is not checked: on a non-convex shape a
+        side partly hidden behind a reflex vertex is credited its whole span."""
+        tau = np.linspace(0.0, 1.0, _SPAN_SAMPLES)
+        span = []
+        for b in domain.boundaries:
+            for s in b.segments:
+                z = (np.asarray(s.p(tau), dtype=complex) - self.origin) / self.t_out
+                z = z[np.abs(z) > 1e-12 * self.radius]          # the vertex itself has no angle
+                theta = np.unwrap(np.angle(z))
+                span.append(float(np.abs(np.diff(theta)).sum()) if len(theta) > 1 else 0.0)
+        span = np.array(span)
+        total = span.sum()
+        if total <= 0.0:
+            return np.zeros(len(span))
+        return COLLOCATION_MULT * self.n_cols * span / total
 
     def _sample(self, pts, normals, bc):
         return FourierBesselSampling(self, pts, normals, bc)

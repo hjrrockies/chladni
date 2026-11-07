@@ -158,6 +158,9 @@ class Basis(HelmholtzFamily):
             out[dest] = self.families[i].log_scale(k, local)
         return out
 
+    def collocation_demand(self, domain):
+        return sum(f.collocation_demand(domain) for f in self.families)
+
     def singular_exponents(self):
         parts = [f.singular_exponents() for f in self.families]
         return SingularStructure(

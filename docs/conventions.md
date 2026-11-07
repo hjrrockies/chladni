@@ -210,7 +210,9 @@ fact about the wedge -- the reflections in its two edges generate a finite group
 neighbourhood of the vertex -- and geometry needs it to place graded panels. It builds no
 expansion, reads no offset and imports no basis. That line is load-bearing: `lappy` crossed it with
 `geometry.pts_per_seg(domain, fb_basis)`, a layer-1 signature taking a layer-2 object, and the whole
-`Corner` design exists so that function has nowhere to come back.
+`Corner` design exists so that function has nowhere to come back. What it did is still needed, and
+now lives on the right side of the line: each family states its `collocation_demand(domain)`,
+`mps.bdry_counts` turns it into per-segment counts, and geometry only receives `n_per_seg`.
 
 **"Singular", unqualified, means the eigenfunction is not smooth there. Only `helmholtz` may say
 it.** The word carries three technical senses in this project and they were already colliding inside
