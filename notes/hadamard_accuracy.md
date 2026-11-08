@@ -408,3 +408,20 @@ the identities read 3e-10). The combination passes the rule at k = 3 (100% cover
 without being short. Not covered: exact doubles of symmetric shapes (the regular hexagon's split
 error, 4.5e-9 at 1e-10 against a trace error of 4e-14, is inside one level, where alpha is the
 gap to OTHER levels).
+
+## A corner near another edge (2026-11-08)
+
+douse's N = 6 stall (a 250-degree corner 0.156 from a long edge, prec 1e-9) read an identity residual
+of 9.9e-7 on level 1 at a sizing of 1e-10. Swapping a converged composite reference (agreeing with
+itself to 1e-14) onto that one edge took translation-y from 9.9e-7 to 1.3e-10 and rotation from 5.6e-7
+to 1.2e-11, on the same coefficients. Boundary `|u|` was at most 1.5e-9 on every edge.
+
+The cause: smooth panels were sized on wavenumber alone. Along a straight edge `u_n` continues
+analytically to each other vertex's `t* +- i y`, and Gauss converges only toward the nearest. A
+polygon's eigenfunctions are singular at its vertices and nowhere else, so that is the complete list.
+`integrals.plan._smooth_panels` halves a panel toward those points until admissible, then sets the
+order from the Bernstein parameter, and leaves any panel the wavenumber order already covers
+node for node. Same stall after: 9.2e-10 worst identity, Gram residual 2.8e-7 to 1.7e-10, 26 more nodes
+on that one edge.
+
+`HADAMARD_ESTIMATE_K` was calibrated before this; its coverage has not been re-measured since.
