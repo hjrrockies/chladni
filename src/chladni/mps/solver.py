@@ -27,6 +27,7 @@ import warnings
 
 from .._core import Frozen, PrecisionShortfall, PrecisionWarning, _set, check_prec
 from ..eigensolver import Eigensolver, Spectrum, lam_to_k, weyl_window
+from .collocation import bdry_counts
 from .pencil import MPSPencil
 
 __all__ = ["MPSEigensolver", "Eigenfunctions", "ClusterEigenfunctions", "DEFAULT_RNG"]
@@ -245,8 +246,9 @@ class MPSEigensolver(Eigensolver, Frozen):
 
     Collocation may be FIXED or BUDGETED: pass `bdry_quad`/`int_pts` to say exactly where the
     points go, or `n_bdry`/`n_int` to have them built from the domain. Both reach the same
-    pencil; the first is for bespoke work and the second is what a planner will eventually
-    fill in.
+    pencil; the first is for bespoke work and the second is what a planner fills in. A budgeted
+    `n_bdry` is a floor, not a total: every side gets at least what the basis needs there
+    (`chladni.mps.bdry_counts`), so `self.n_bdry` can exceed it.
 
     `rng` seeds the interior points, and defaults to `DEFAULT_RNG` rather than to `None`. It was
     not optional in spirit and is no longer optional in fact: lappy's unseeded default made
@@ -267,7 +269,9 @@ class MPSEigensolver(Eigensolver, Frozen):
         if bdry_quad is None:
             if n_bdry is None:
                 raise ValueError("pass either bdry_quad or n_bdry")
-            bdry_quad = domain.bdry_quad(n_bdry)
+            # Budgeted: `n_bdry` split by length, raised wherever the basis needs more on a
+            # side than its length share (`bdry_counts`, `notes/collocation_allocation.md`).
+            bdry_quad = domain.bdry_quad(n_per_seg=bdry_counts(domain, basis, n_bdry))
         if int_pts is None:
             if n_int is None:
                 raise ValueError("pass either int_pts or n_int")

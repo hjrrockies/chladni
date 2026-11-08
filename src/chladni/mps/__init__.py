@@ -21,6 +21,7 @@ from ._gsvd import coef, coef_of, tensions, tensions_of
 from ._regularize import RegularizedPencil, choose_rank, regularize
 from .calibrate import (RtolCalibration, calibrate_rtol, findability_target,
                         required_dk, sigma_base)
+from .collocation import bdry_counts
 from .pencil import MPSPencil, RankDiagnostics, assemble, equilibrate
 # A MODULE NAMED AFTER ITS VERB DOES NOT RE-EXPORT THE VERB. Importing `refine` or
 # `multiplicity` here would rebind the package attribute from the submodule to the function, so
@@ -40,7 +41,7 @@ from .solver import DEFAULT_RNG, Eigenfunctions, HadamardReport, MPSEigensolver
 __all__ = [
     "Eigensolver", "MPSEigensolver", "MPSPencil", "DEFAULT_RNG", "Eigenfunctions",
     "HadamardReport",
-    "assemble", "equilibrate", "choose_rank", "regularize", "RegularizedPencil",
+    "assemble", "equilibrate", "bdry_counts", "choose_rank", "regularize", "RegularizedPencil",
     "tensions", "tensions_of", "coef", "coef_of", "RankDiagnostics",
     "RefineResult", "Multiplicity", "wide_bracket_for",
     "Bracket", "SearchResult", "SearchDiagnostics", "bracket_interval",

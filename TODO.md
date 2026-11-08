@@ -457,6 +457,21 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
 
 ## 4. Known gaps in what is built
 
+* **[later]** **A corner's collocation demand is diluted on non-convex shapes.**
+  `FourierBessel.collocation_demand` spreads `2 x terms` over the TOTAL angle its far edges sweep,
+  including edges outside its wedge and edges hidden behind others. Total swept angle / omega:
+  H 3.18, U 3.00, plus 2.41, GWW1 4.18, chevron 5.88, so the sides facing the corner get 1/2 to 1/6
+  of their intended share (`notes/collocation_allocation.md`). No current plan changes because of
+  it (93 of 95 census plans are bit-identical). Proposed: a fixed rate of `2 x terms / omega` per
+  radian, applied to the span inside `[0, omega]` only. **Prerequisite:** the spiral's corners read
+  90-100% of their span OUTSIDE the wedge under the winding-adjusted lift, so clipping would zero
+  the demand on the sides that face them; check the lift there first.
+* **[later]** **Points along a side are Gauss-Legendre, not angle-adapted.** A corner's angular
+  modes need points densest where a far side passes closest to the corner (the foot of the
+  perpendicular); GL in arclength bunches them at the side's ends instead. Not measured; with
+  `COLLOCATION_MULT = 2` it is probably harmless. Measure before changing: one corner, a long
+  far side seen obliquely, the corner block's singular values on GL vs angle-uniform nodes.
+
 * **[next]** **douse follow-up to the graded boundary-integral rule** (chladni branch
   `boundary-integrals-accuracy`, `notes/hadamard_accuracy.md`):
   - consume `hadamard(..., report=True)`;

@@ -570,3 +570,14 @@ A note on method, since this is the third time in this file: every speed compari
 sections above was first measured against a baseline that was itself doing redundant work, and
 every one of those numbers was wrong in the same direction -- flattering the alternative. The
 fix was found by profiling the baseline rather than the alternatives.
+
+## The point budget is basis-aware per side (2026-11-07)
+
+A budgeted `n_bdry` is a floor, not a total. Each segment gets the largest of its length share,
+the basis's `collocation_demand` there, and (from a plan) `k L / pi`; `MPSEigensolver.n_bdry` can
+therefore exceed what was passed. The length split alone starved a short side opposite a heavily
+loaded corner -- a Fourier-Bessel column is exact on its own corner's sides, so only far sides
+constrain it -- and left a flat, spurious tension floor (thin isosceles, 100 terms per corner:
+24 base points, declined; 200, a real well). Planner-sized bases are almost never affected (93 of
+95 census plans unchanged); `plan_for` freezes the counts so nearby iterates are collocated
+identically. `notes/collocation_allocation.md`.
