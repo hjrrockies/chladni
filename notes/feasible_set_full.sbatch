@@ -9,16 +9,18 @@
 #SBATCH --account=siallocation
 #SBATCH --output=feasible_set_full_%A_%a.out
 
-# notes/feasible_set.py on ARC (2026-11-06): the FULL sweep, every family at every parameter and prec, no knobs. Array size = `python feasible_set.py ntasks` (844); at most 200 run at once. Submit only after the pilot has been read: its timings may change --time and --mem, or the families kept.
+# notes/feasible_set.py on ARC: the FULL sweep, every family at every parameter and prec, no knobs. Two arrays, from the pilot's timings (2026-11-08): the tasks the pilot could not finish in 24 h get 72 h and 32G (`feasible_set.py array slow`). Each task writes its JSON as each stage lands (`status: partial`), so a timed-out task keeps its base solve and report; resubmitting finishes partial tasks and skips done ones.
 #
-# Its OWN checkout. From ~/projects/thesis:
-#   git -C chladni fetch origin
-#   git -C chladni worktree add ../chladni_fs origin/solve-report
-# (later: git -C chladni_fs pull --ff-only  -- not while jobs from it are running)
+# Run on the locked tag, from its OWN checkout, once no jobs are running from it. From ~/projects/thesis:
+#   git -C chladni fetch origin --tags
+#   git -C chladni_fs checkout thesis-lock-1
 # Submit FROM its notes directory (the logs land there):
-#   cd ~/projects/thesis/chladni_fs/notes && sbatch --mail-user=$DOUSE_SLURM_MAIL --mail-type=END,FAIL feasible_set_full.sbatch
+#   cd ~/projects/thesis/chladni_fs/notes
+#   PY=~/projects/thesis/douse/.venv/bin/python
+#   sbatch --array=$($PY feasible_set.py array normal)%200 --mail-user=$DOUSE_SLURM_MAIL --mail-type=END,FAIL feasible_set_full.sbatch
+#   sbatch --array=$($PY feasible_set.py array slow)%60 --mem=32G --time=72:00:00 --mail-user=$DOUSE_SLURM_MAIL --mail-type=END,FAIL feasible_set_full.sbatch
 # Then:
-#   ~/projects/thesis/douse/.venv/bin/python feasible_set.py analyze feasible_set_out
+#   $PY feasible_set.py analyze feasible_set_out
 set -euo pipefail
 ROOT=${THESIS_ROOT:-$HOME/projects/thesis}
 
