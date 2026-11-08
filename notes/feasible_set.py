@@ -41,6 +41,7 @@ Run:
   python notes/feasible_set.py ntasks [pilot]
   python notes/feasible_set.py run <family> <index> <prec> [--knobs]    JSON to stdout
   python notes/feasible_set.py task <i> --out DIR [--pilot]             the Slurm entry point
+  python notes/feasible_set.py array normal|slow                        the full run's two arrays
   python notes/feasible_set.py analyze DIR
 """
 import json
@@ -445,7 +446,9 @@ def _richardson(f, p, eps):
     return (4 * d1 - d2) / 3
 
 
-def run(family, index, prec, knobs=False):
+def run(family, index, prec, knobs=False, checkpoint=None):
+    """One task's row. `checkpoint(row)`, when given, is called with a `status="partial"` copy as
+    each stage lands, so a task killed at its time limit keeps its base solve and report."""
     fam = FAMILIES[family]
     p = fam.params[int(index)]
     prec = float(prec)
@@ -454,6 +457,12 @@ def run(family, index, prec, knobs=False):
     row = dict(family=family, index=int(index), param=p, prec=prec, n=n,
                vertices=[[float(c.real), float(c.imag)] for c in z])
     t0 = time.perf_counter()
+
+    def save():
+        if checkpoint is not None:
+            checkpoint(_plain({**row, "status": "partial", "error": "", "traceback": [],
+                               "seconds": time.perf_counter() - t0, "warnings": {}}))
+
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         try:
@@ -464,6 +473,7 @@ def run(family, index, prec, knobs=False):
             row["report"] = rec.report(2).as_dict()
             vals = _unfolded(rec)
             row["values"] = vals.tolist()
+            save()
             for key, fn in (("truth", fam.truth), ("truth_upper", fam.upper),
                             ("truth_lower", fam.lower)):
                 t = None if fn is None else fn(p, n)
@@ -480,6 +490,7 @@ def run(family, index, prec, knobs=False):
                 eps = 1e-4 * (abs(p) if fam.fd_scale == "rel" else float(fam.fd_scale))
                 dz = _richardson(lambda q: np.asarray(fam.verts(q), dtype=complex), p, eps)
                 row["hadamard_dp"] = _hadamard_dp(rec, dom, z, dz)
+                save()
                 row["fd_dp"] = _fd_dp(fam, p, rec, n, prec)
                 if fam.truth is not None and fam.truth(p, n) is not None:
                     tdp = _richardson(lambda q: np.asarray(fam.truth(q, n), float), p, eps)
@@ -487,6 +498,7 @@ def run(family, index, prec, knobs=False):
                     row["truth_dp"] = [float(tdp[pos[u[0]]:pos[u[-1] + 1]].sum())
                                        if pos[u[-1] + 1] <= len(tdp) else None
                                        for u in _units(rec)]
+            save()
             if knobs and not rec.spectrum.declined and rec.plan is not None:
                 row["knobs"] = _knobs(dom, rec, n, prec)
             row["status"] = "ok"
@@ -507,12 +519,40 @@ def task(i, out, pilot=False):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     path = out / f"{family}_{index:03d}_{prec:.0e}.json"
-    if path.exists():
+    if path.exists() and json.loads(path.read_text()).get("status") != "partial":
         return
-    row = run(family, index, prec, knobs=pilot)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(row))
-    tmp.rename(path)
+
+    def write(row):
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(row))
+        tmp.rename(path)
+
+    write(run(family, index, prec, knobs=pilot, checkpoint=write))
+
+
+def _slow(family, p):
+    """The tasks the pilot could not finish in 24 h, or that came close (2026-11-08): narrow
+    wedges, necks and fingers, many sides, high levels. They go in their own array, with more
+    time and memory (`feasible_set_full.sbatch`)."""
+    if family == "highk":
+        return True
+    if family == "iso":
+        return p < 5.0
+    if family == "flat":
+        return p < 0.02
+    if family in ("needle", "finger"):
+        return p < 0.02
+    if family == "ngon":
+        return p >= 24
+    return family == "dumbbell" and p < 0.1
+
+
+def array(which):
+    """The full run's Slurm `--array` list for `which` = "normal" or "slow"."""
+    keep = (which == "slow")
+    ids = [i for i, (name, index, _) in enumerate(tasks())
+           if _slow(name, FAMILIES[name].params[index]) == keep]
+    return ",".join(map(str, ids))
 
 
 # --- analysis -------------------------------------------------------------------------------
@@ -582,6 +622,8 @@ if __name__ == "__main__":
     elif cmd == "task":
         a = sys.argv[3:]
         task(int(sys.argv[2]), a[a.index("--out") + 1], pilot="--pilot" in a)
+    elif cmd == "array":
+        print(array(sys.argv[2]))
     elif cmd == "analyze":
         analyze(sys.argv[2])
     else:
