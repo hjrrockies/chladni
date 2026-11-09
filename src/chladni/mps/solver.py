@@ -86,6 +86,20 @@ class Eigenfunctions:
     reason: str = ""
 
 
+def _identity_residual(h, Lam, tol):
+    """The largest entry of an identity's block `h` that the identity says is zero: in `Lam`'s
+    eigenbasis, the pairs within `tol` of one eigenvalue.
+
+    A CLUSTER'S MEMBERS SIT AT DIFFERENT EIGENVALUES, so its cross entries keep `(lam - mu)` times
+    an integral that need not be small. Reading them as error made the rotation identity report
+    the cluster's spread: on douse's N = 6 and 7 lam_6 triples, 1.6e-7 where the block's measured
+    error is 2.5e-11, which then set the optimizer's certificate (2026-11-09,
+    `notes/hadamard_accuracy.md`)."""
+    w, Q = np.linalg.eigh(Lam)
+    r = Q.T @ h @ Q
+    return float(np.abs(r[np.abs(w[:, None] - w[None, :]) <= tol]).max())
+
+
 @dataclass(frozen=True)
 class ClusterEigenfunctions:
     """Eigenfunctions of a cluster's members, orthonormalized TOGETHER (2026-11-05;
@@ -891,10 +905,10 @@ class MPSEigensolver(Eigensolver, Frozen):
         for M, a, b in zip(Lams, cut[:-1], cut[1:]):
             Lam[a:b, a:b] = M
         Hid[3] = Hid[3] + 2 * Lam / R                     # field scaled by 1/R
-        # the identities hold within a level (or cluster) only: between lam != mu the Rellich and
-        # translation forms keep a (lam - mu) term, so the cross entries are content, not error
-        ident = tuple(max(float(np.abs(h[a:b, a:b]).max()) for a, b in zip(cut[:-1], cut[1:]))
-                      / lam for h in Hid)
+        # the identities hold within a level only: between lam != mu the Rellich and rigid-motion
+        # forms keep a (lam - mu) term, so the cross entries are content, not error
+        ident = tuple(max(_identity_residual(h[a:b, a:b], M, prec * lam)
+                          for M, a, b in zip(Lams, cut[:-1], cut[1:])) / lam for h in Hid)
         iq = cache[key]
         resid = tuple(float(ef.gram_residual) for _, ef in efs)
         norm_rule = max(float(ef.rule.sizing_prec) for _, ef in efs)
