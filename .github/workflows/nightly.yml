@@ -63,5 +63,5 @@ jobs:
       # Steps below call .venv/bin/python directly rather than `uv run`, which would sync
       # the project environment itself and could undo the `[test]` install above.
 
-      - name: Run the gate and the robust tier
+      - name: Run the robust tier
         run: .venv/bin/python -m pytest -m "robust and not ulp_sensitive" -W error::UserWarning

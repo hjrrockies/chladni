@@ -174,7 +174,8 @@ def test_the_clearance_cap_is_what_keeps_a_long_edge_accurate():
         iq = P.integral_quad(dom, lam, prec=1e-13, clearance_frac=cf)
         cd = C.CauchyData.from_functions(iq.quad, lam, u, g)
         errs[cf] = abs(I.gram(cd, 0.3 - 0.4j)[0, 0] / norm2 - 1)
-    assert errs[P.CLEARANCE_FRAC] < 1e-13 and errs[None] > 1e-6, errs
+    # Without the cap the sizing now measures the far end of the long panel and resolves it.
+    assert errs[P.CLEARANCE_FRAC] < 1e-13 and errs[None] < 1e-12, errs
 
 
 # --- cancellation ------------------------------------------------------------------------------
