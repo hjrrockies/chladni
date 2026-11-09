@@ -27,6 +27,14 @@ the corner, so the far end of a long panel cannot resolve the oscillation. lappy
 twelve orders lost without that cap on a 1 x 16 strip, and a fixed fraction of the EDGE did not
 substitute (it grows with the edge).
 
+An eigenfunction on a polygon is singular at the vertices and nowhere else, so along a straight
+edge a smooth panel has exactly one more thing to resolve than its wavenumber: each other singular
+corner, which continues to `tau = t* +- i y`, `y` the corner's distance from the edge's line. Where
+Gauss's convergence toward those points needs more than the wavenumber's order, the panel is halved
+toward them until each is admissible (panel no wider than its distance away) and raised to the order
+left over (`_smooth_panels`). Sized on wavenumber alone, a 250-degree corner 0.156 from a long edge
+integrated that edge to 1e-6 at a claimed 1e-10 (douse's N = 6 stall, 2026-11-08).
+
 # Sizing, and what it is not
 
 Each corner panel's order comes from `rules.corner_order_for_prec` on the corner's own model
@@ -78,6 +86,10 @@ SMOOTH_SAFETY = 2.0
 #: Margin above the slit limit `nu = 1/2`. At 0.51 the Jacobi exponent is -0.96 and the
 #: innermost node meets the coordinate floor by order 32, so nearer corners are demoted.
 NU_MARGIN = 0.02
+
+
+#: Coarsest panel `_smooth_panels` will halve to. A guard: a vertex on an edge is an invalid domain.
+NEAR_MIN_PANEL = 1e-6
 
 
 def integral_prec(prec):
@@ -205,6 +217,47 @@ def _legendre(order):
     return build
 
 
+def _near_singularities(specs, bdry_idx, seg_idx, seg):
+    """Where the singular corners not on this straight segment sit in its `tau`, as `t* + i y`
+    (`y >= 0`; the conjugate is the same distance). A corner the smooth rule integrates anyway
+    (`kind == 'smooth'`) has nothing to resolve, and a curved segment has no such closed form:
+    both give none."""
+    if not _straight(seg):
+        return np.array([], dtype=complex)
+    a, b = seg.p(0.0), seg.p(1.0)
+    out = []
+    for s in specs:
+        c = s.corner
+        if s.kind == "smooth" or (c.bdry_idx == bdry_idx and seg_idx in (c.seg_out, c.seg_in)):
+            continue
+        w = (complex(c.z) - a) / (b - a)
+        out.append(complex(w.real, abs(w.imag)))
+    return np.array(out, dtype=complex)
+
+
+def _smooth_panels(lo, hi, near, size, target):
+    """`[(a, b, order, achieved), ...]` covering `[lo, hi]`, Gauss-Legendre on each. `size(h)` is
+    the wavenumber's `(order, achieved)` for a panel of width `h`; `near` the singularities in
+    tau. Gauss on `[lo, hi]` converges like `rho^(-2 n)`, `rho` the Bernstein parameter of the
+    nearest of them, so a panel whose wavenumber order already covers that stays exactly as it
+    was. Otherwise it is halved while wider than its distance to `near`, then raised."""
+    order, ach = size(hi - lo)
+    if near.size == 0:
+        return [(lo, hi, order, ach)]
+    x = (2.0 * near - (lo + hi)) / (hi - lo)
+    s = np.sqrt(x * x - 1.0 + 0j)
+    rho = float(np.maximum(np.abs(x + s), np.abs(x - s)).min())
+    need = 2 * int(np.ceil(np.log(1.0 / target) / (4.0 * np.log(rho))))
+    if need <= order:
+        return [(lo, hi, order, ach)]
+    dist = float(np.abs(near - np.clip(near.real, lo, hi)).min())
+    if hi - lo > max(dist, NEAR_MIN_PANEL):
+        mid = 0.5 * (lo + hi)
+        return (_smooth_panels(lo, mid, near, size, target)
+                + _smooth_panels(mid, hi, near, size, target))
+    return [(lo, hi, need, ach)]
+
+
 def integral_quad(domain, lam_max, prec=1e-8, *, x0=None, clearance_frac=CLEARANCE_FRAC,
                   smooth_safety=SMOOTH_SAFETY, family="even", corners="graded"):
     """An `IntegralQuad` for `domain`, sized so the Rellich and Gram integrals of functions with
@@ -288,9 +341,12 @@ def integral_quad(domain, lam_max, prec=1e-8, *, x0=None, clearance_frac=CLEARAN
                 panels.append(Panel(bi, si, 1.0 - frac, 1.0, nodes, anchor=anchor))
                 hi = 1.0 - frac
         if hi - lo > 1e-12:
-            o, a = rules.smooth_order_for_prec(k * seg.length * (hi - lo) * smooth_safety, target)
-            panels.append(Panel(bi, si, lo, hi, _legendre(o)))
-            smooth_ach[(bi, si)] = a
+            pieces = _smooth_panels(
+                lo, hi, _near_singularities(specs, bi, si, seg),
+                lambda h: rules.smooth_order_for_prec(k * seg.length * h * smooth_safety, target),
+                target)
+            panels.extend(Panel(bi, si, a, b, _legendre(o)) for a, b, o, _ in pieces)
+            smooth_ach[(bi, si)] = max(a for *_, a in pieces)
         elif s0 is None and s1 is None:
             raise AssertionError("a segment with no corner panel must get a smooth one")
 

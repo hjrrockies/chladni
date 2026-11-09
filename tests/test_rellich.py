@@ -11,11 +11,14 @@ Three kinds of ground truth, none of them another chladni integral:
   apex among them.
 * ORIGIN INDEPENDENCE, which the identity guarantees and a quadrature error breaks.
 """
+import warnings
+
 import numpy as np
 import pytest
 
 from chladni import reference as ref
-from chladni.geometry import disk, disk_sector, polyomino, rect
+from chladni._core import PrecisionWarning
+from chladni.geometry import Polygon, disk, disk_sector, polyomino, rect
 from chladni.geometry._adaptive import gauss_legendre
 from chladni.helmholtz import FourierBessel, PlaneWave
 from chladni.integrals import cauchy as C
@@ -307,3 +310,72 @@ def test_the_exact_sector_norm_on_the_graded_rule_anywhere(alpha, shift):
     cd = C.cauchy_data(fam0.translated(shift), [1.0], lam, iq.quad)
     for x0 in (iq.x0, 0.2 + 0.1j + shift, -0.3 + 0.4j + shift):
         assert I.gram(cd, x0)[0, 0] == pytest.approx(norm2 * scale**2, rel=1e-13), x0
+
+
+# --- a corner near another edge (2026-11-08) --------------------------------------------------
+# An eigenfunction on a polygon is singular at the vertices and nowhere else, so along an edge its
+# continuation in tau is singular at each OTHER vertex's `t* +- i y`, `y` the vertex's distance
+# from the edge's line. A smooth panel sized by wavenumber alone cannot see that: douse's N = 6
+# stall (a 250-degree corner 0.156 from the long edge) integrated that edge to 1e-6 at a claimed
+# 1e-10, with every identity pointing at it and the eigenfunctions good to 1e-9.
+
+_STALL = np.array([1.199468, 1.402903 + 0.281831j, 1.286492 + 0.768503j, 0.586380 + 0.837491j,
+                   0.544682 + 0.156420j, 0.0])
+
+
+def _edge(iq, seg):
+    m = np.asarray(iq.quad.seg_idx) == seg
+    return np.asarray(iq.quad.pts)[m], np.asarray(iq.quad.wts)[m]
+
+
+@pytest.mark.parametrize("prec", [1e-9, 1e-12])
+def test_an_edge_passing_near_another_corner_resolves_that_corners_singularity(prec):
+    """The corner's own leading power, seen from the edge it does not touch: `|z - v|^gamma`."""
+    dom = Polygon(_STALL)
+    v, gamma = _STALL[4], 2 * np.pi / np.deg2rad(250.474) - 2
+    iq = P.integral_quad(dom, 31.33, prec=prec, family="integer", corners="graded")
+    pts, wts = _edge(iq, 5)
+    x, w = gauss_legendre(40)
+    edges = np.linspace(0.0, _STALL[0].real, 201)
+    nodes = (edges[:-1, None] + np.diff(edges)[:, None] * x).ravel()
+    exact = np.sum((np.diff(edges)[:, None] * w).ravel() * np.abs(nodes - v) ** gamma)
+    assert abs(np.sum(wts * np.abs(pts - v) ** gamma) - exact) <= 10 * P.integral_prec(prec)
+
+
+def test_a_panel_is_split_toward_a_near_corner_and_left_alone_otherwise():
+    """Sizing against wavenumber alone already covers a far singularity: then nothing changes."""
+    def by_wave(h):
+        return 16, 0.0
+    # one singularity just off the middle of the panel: the panels shrink toward it
+    pieces = P._smooth_panels(0.0, 1.0, np.array([0.45 + 0.13j]), by_wave, 1e-10)
+    widths = {round((a + b) / 2, 3): b - a for a, b, _, _ in pieces}
+    assert len(pieces) > 1 and pieces[0][0] == 0.0 and pieces[-1][1] == 1.0
+    assert all(p[1] == q[0] for p, q in zip(pieces[:-1], pieces[1:]))
+    assert widths[min(widths, key=lambda c: abs(c - 0.45))] == min(widths.values())
+    # a far one: exactly the panel wavenumber sizing gave
+    assert P._smooth_panels(0.0, 1.0, np.array([0.5 + 2j]), by_wave, 1e-10) == [(0.0, 1.0, 16, 0.0)]
+    assert P._smooth_panels(0.0, 1.0, np.array([], dtype=complex), by_wave, 1e-10) == [(0.0, 1.0, 16, 0.0)]
+
+
+@pytest.mark.parametrize("name, verts", [
+    ("regular hexagon", np.exp(2j * np.pi * np.arange(6) / 6)),
+    ("square", np.array([0, 1, 1 + 1j, 1j])),
+    ("triangle", np.array([0, 1, 0.3 + 0.8j]))])
+def test_shapes_with_no_near_corner_keep_their_rule_node_for_node(name, verts, monkeypatch):
+    dom = Polygon(verts)
+    q = P.integral_quad(dom, 40.0, prec=1e-10, family="integer", corners="graded").quad
+    monkeypatch.setattr(P, "_near_singularities", lambda *a: np.array([], dtype=complex))
+    q0 = P.integral_quad(dom, 40.0, prec=1e-10, family="integer", corners="graded").quad
+    assert np.array_equal(q.pts, q0.pts) and np.array_equal(q.wts, q0.wts)
+
+
+@pytest.mark.slow
+def test_the_hadamard_identities_close_on_the_stalled_shape():
+    """Level 1 of the stall read 9.9e-7 here before; a converged reference on that one edge gave
+    1.3e-10."""
+    from chladni.eigenproblem import Eigenproblem
+    rec = Eigenproblem(Polygon(_STALL)).solve(1, prec=1e-9)
+    with warnings.catch_warnings():     # short of 1e-9 on the eigenfunction term, honestly
+        warnings.simplefilter("ignore", PrecisionWarning)
+        _, rep = rec.hadamard(0, lambda c, t: np.ones((1, len(t))), report=True)
+    assert rep.identity_residual <= 1e-8, rep.identity_fields
