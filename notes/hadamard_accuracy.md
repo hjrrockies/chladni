@@ -355,6 +355,8 @@ prec and is origin-free. Translation alone keeps `(lam - mu) int v a.grad u`, wh
 at its own lam; and one joint null space at the mean lam fails once the spread is well above prec
 (identity ~ spread, orthonormality 1e-10 on T2.7-lowest).
 
+**Identities inside a cluster (2026-11-09).** The rule above stopped at the level: a CLUSTER'S block was still read whole, cross entries included, and its members sit at different `lam`. The rotation identity then reported about the spread (the 1 x (1 + 3e-8) rectangle: 4.9e-8, every other identity 1e-15). On douse's lam_6 triples at N = 6, 7 it read 1.6e-7 and 1.4e-7 against a block error of 2.5e-11 and 2.8e-11, measured at 1e-9 against rung 0 at 1e-10; `attained` is 3x that and set douse's `eps_g`, so runs certified at criticality 9e-4. The check now reads the pairs at one eigenvalue, in `Lam`'s eigenbasis (`_identity_residual`). `HADAMARD_ESTIMATE_K` was calibrated on simple levels, which this does not change.
+
 **ARC overlap study** (`accuracy_studies.py` overlap, 51 shapes, 43 adjacent pairs within 1e-2,
 at 1e-8, 1e-10, 1e-12). Entangled pairs (overlap > prec, origin spread 0 .. 30%) and biased ones
 (flat in prec, origin spread 39 .. 100%, bias up to 2e-2 x gap) separate. Entangled at 1e-12:

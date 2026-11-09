@@ -174,6 +174,50 @@ def test_attained_carries_the_eigenfunction_bound(split):
                                                              rep.eigenfunction_bound)
 
 
+# --- the identity check inside a cluster ----------------------------------------------------------
+
+def test_an_identity_ignores_the_cross_entries_of_distinct_lam():
+    """Between distinct eigenvalues a rigid-motion form keeps `(lam - mu) int v grad u`: content,
+    not error. Only the diagonal in `Lam`'s own basis, and pairs at one eigenvalue, are zero."""
+    from chladni.mps.solver import _identity_residual
+    Lam = np.diag([100.0, 100.0 + 1e-3])
+    h = np.array([[2e-9, 7.0], [7.0, -3e-9]])
+    assert _identity_residual(h, Lam, 1e-8) == pytest.approx(3e-9)
+
+
+def test_the_check_reads_in_lams_eigenbasis():
+    from chladni.mps.solver import _identity_residual
+    c, s = np.cos(0.3), np.sin(0.3)
+    Q = np.array([[c, -s], [s, c]])
+    Lam = Q @ np.diag([100.0, 100.0 + 1e-3]) @ Q.T
+    assert _identity_residual(Q @ np.array([[0.0, 7.0], [7.0, 0.0]]) @ Q.T, Lam, 1e-8) < 1e-10
+
+
+def test_a_multiple_eigenvalue_keeps_its_off_diagonal():
+    """At one eigenvalue the identity holds for every pair, so a cross entry is error."""
+    from chladni.mps.solver import _identity_residual
+    assert _identity_residual(np.array([[0.0, 5e-6], [5e-6, 0.0]]), 100.0 * np.eye(2), 1e-8) == 5e-6
+
+
+@pytest.mark.slow
+def test_a_clusters_identity_residual_is_not_its_spread():
+    """The 1 x b rectangle with b = 1 + 3e-8 splits the square's double by 3.6e-8. Before the
+    fix the rotation identity read 4.9e-8, about the spread, and that estimate was 2e4 times the block's
+    real error on douse shapes, where it set the certificate's tolerance."""
+    b = 1.0 + 3e-8
+    rec = Eigenproblem(rect(1.0, b)).solve(4, prec=PREC)
+    assert [c.levels for c in rec.spectrum.clusters] == [(1, 2)], rec.spectrum.clusters
+    segs = [s for bd in rec.domain.boundaries for s in bd.segments]
+
+    def V(curve, t):
+        return np.zeros((1, len(t))) if curve else np.atleast_2d(segs[0].p(np.asarray(t)).real)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", PrecisionWarning)
+        _, rep = rec.hadamard([1, 2], V, report=True)
+    assert rep.identity_residual <= 1e-11, rep.identity_fields
+
+
 # --- the link rule, on a stub solver (no solve) ---------------------------------------------------
 
 class _SearchLevel:
