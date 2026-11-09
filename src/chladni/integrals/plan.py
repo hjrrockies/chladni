@@ -153,7 +153,7 @@ def corner_specs(domain, smooth_orders, prec):
         gamma = 2.0 * mu - 2.0
         straight = _straight(c.segment_out) and _straight(c.segment_in)
         order = max(smooth_orders[(c.bdry_idx, c.seg_out)], smooth_orders[(c.bdry_idx, c.seg_in)])
-        if rules.smooth_power_error(gamma, order) <= prec:
+        if rules.smooth_power_error(gamma, order, mu) <= prec:
             specs.append(CornerSpec(c, mu, gamma, straight, "smooth", np.nan))
             continue
         reason = ""
@@ -218,17 +218,18 @@ def _legendre(order):
 
 
 def _near_singularities(specs, bdry_idx, seg_idx, seg):
-    """Where the singular corners not on this straight segment sit in its `tau`, as `t* + i y`
-    (`y >= 0`; the conjugate is the same distance). A corner the smooth rule integrates anyway
-    (`kind == 'smooth'`) has nothing to resolve, and a curved segment has no such closed form:
-    both give none."""
+    """Where the singular corners sit in this straight segment's `tau`, as `t* + i y` (`y >= 0`;
+    the conjugate is the same distance). Its own two corners count, at `tau = 0` and 1, since
+    the smooth panels start where their corner panels end. A corner the smooth rule integrates
+    anyway (`kind == 'smooth'`) has nothing to resolve, and a curved segment has no such closed
+    form: both give none."""
     if not _straight(seg):
         return np.array([], dtype=complex)
     a, b = seg.p(0.0), seg.p(1.0)
     out = []
     for s in specs:
         c = s.corner
-        if s.kind == "smooth" or (c.bdry_idx == bdry_idx and seg_idx in (c.seg_out, c.seg_in)):
+        if s.kind == "smooth":
             continue
         w = (complex(c.z) - a) / (b - a)
         out.append(complex(w.real, abs(w.imag)))
@@ -242,6 +243,7 @@ def _smooth_panels(lo, hi, near, size, target):
     nearest of them, so a panel whose wavenumber order already covers that stays exactly as it
     was. Otherwise it is halved while wider than its distance to `near`, then raised."""
     order, ach = size(hi - lo)
+    near = near[(near.imag > 0.0) | (near.real < lo) | (near.real > hi)]    # a corner with no panel
     if near.size == 0:
         return [(lo, hi, order, ach)]
     x = (2.0 * near - (lo + hi)) / (hi - lo)

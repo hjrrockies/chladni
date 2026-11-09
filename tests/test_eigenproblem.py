@@ -78,16 +78,16 @@ def test_a_tighter_request_than_the_plan_is_flagged_not_enlarged():
 
 
 @pytest.mark.robust          # three rungs, twice: minutes
+@pytest.mark.filterwarnings("ignore::chladni._core.PrecisionWarning")  # 1e-15 is the point
 def test_a_request_no_rung_accepts_is_flagged_or_raised():
-    """1e-14 on the L-shape: the hybrid top rung meets it on the first six levels, but not on
-    the HEADROOM above them that the count audit relies on, so no rung is accepted. Default: the
-    best rung, FLAGGED -- the six values may be fine, and the flag says the audit could not be
-    trusted to show they are complete. On request: `PrecisionShortfall`."""
+    """A request beyond every rung on the L-shape. Default: the best rung, FLAGGED -- the values
+    may be fine, and the flag says the audit could not be trusted to show they are complete. On
+    request: `PrecisionShortfall`. (1e-14 stopped being such a request: the top rung meets it.)"""
     ep = Eigenproblem(L_shape())
-    spec = ep.solve(6, prec=1e-14)
+    spec = ep.solve(6, prec=1e-15)
     assert any(f.startswith("planner:") for f in spec.flags), spec.flags
     with pytest.raises(PrecisionShortfall):
-        ep.solve(6, prec=1e-14, on_shortfall="raise")
+        ep.solve(6, prec=1e-15, on_shortfall="raise")
 
 
 def test_the_planner_refuses_what_it_does_not_cover():

@@ -244,16 +244,24 @@ def corner_order_for_prec(kind, nu, gamma=None, sub=None, curved=True, prec=1e-1
 
 
 @lru_cache(maxsize=_RULE_CACHE)
-def smooth_power_error(gamma, order):
+def smooth_power_error(gamma, order, nu=None):
     """Relative error of `order`-point Gauss-Legendre on `int_0^1 tau^gamma dtau`: does a corner
     need the corner rule at all? An integer `gamma` is a polynomial; a large fractional one is
     smooth enough; a small fractional one -- a corner near 135 degrees -- is not, whether or not
-    the corner is re-entrant. Infinite for `gamma < 0`, which plain Gauss cannot integrate."""
+    the corner is re-entrant. Infinite for `gamma < 0`, which plain Gauss cannot integrate.
+
+    With `nu`, the worst of the corner series' first terms too, `gamma + j nu`, j <= 2. The
+    leading term alone passes every half-integer `nu` (120 degrees: `gamma = 1`, a polynomial),
+    while the next term, `tau^2.5`, is the one that limits the rule: 7.5e-9 on the regular
+    hexagon's double levels, against a reported 8e-11, because the identities cancel there."""
     if gamma <= 0:
         return float("inf") if gamma < 0 else 0.0
     tau, w = gauss_legendre(int(order))
-    exact = 1.0 / (gamma + 1.0)
-    return float(abs(np.sum(w * tau**gamma) - exact) / exact)
+    errors = []
+    for j in range(3 if nu is not None else 1):
+        e = gamma + j * (float(nu) if nu is not None else 0.0)
+        errors.append(abs(np.sum(w * tau**e) * (e + 1.0) - 1.0))
+    return float(max(errors))
 
 
 @lru_cache(maxsize=_RULE_CACHE)
@@ -334,11 +342,55 @@ def graded_corner_rule(nu, n_levels, order, sigma=GRADED_SIGMA, n_top=1):
     return _frozen(S ** p, W * p * S ** (p - 1.0))
 
 
+#: The products the graded rule is measured on: `(a, b)` of the corner terms `J_(a nu) J_(b nu)`,
+#: each with the weights `d^m`, `m` in `_GRADED_WEIGHTS` (the velocity is linear along an edge).
+_GRADED_PAIRS = ((1, 1), (1, 2), (2, 2), (1, 3))
+_GRADED_WEIGHTS = (0, 1)
+
+
+def _corner_term(order, k, d):
+    """`d^(-order) Gamma(order + 1) (2/k)^order J_order(k d)`: the corner term with its power of
+    `d` removed, 1 at the vertex, so the nodes a small `nu` crowds at the vertex cannot underflow."""
+    from scipy.special import gammaln, jv
+    x = k * d
+    with np.errstate(under="ignore", over="ignore", divide="ignore", invalid="ignore"):
+        h = np.exp(gammaln(order + 1.0) + order * (np.log(2.0) - np.log(x))) * jv(order, x)
+    return np.where(x < 1e-3 * np.sqrt(order + 1.0), 1.0 - x * x / (4.0 * (order + 1.0)), h)
+
+
+def _graded_integrands(nu, k, d):
+    """The measured integrands at `d`, one row per product and weight (`_GRADED_PAIRS`)."""
+    rows = []
+    with np.errstate(under="ignore"):
+        for a, b in _GRADED_PAIRS:
+            kernel = (a * b * nu * nu * _corner_term(a * nu, k, d) * _corner_term(b * nu, k, d)
+                      * d ** ((a + b) * nu - 2.0))
+            rows += [kernel * d**m for m in _GRADED_WEIGHTS]
+    return np.array(rows)
+
+
+@lru_cache(maxsize=_RULE_CACHE)
+def _graded_reference(nu, k):
+    """The integrals of `_graded_integrands` over `[0, 1]`, by composite Gauss after the
+    substitution `d = s^p` that smooths the vertex."""
+    x, w = gauss_legendre(60)
+    edges = np.concatenate([[0.0], np.geomspace(1e-7, 1.0, 50)])
+    s = np.concatenate([a + (b - a) * x for a, b in zip(edges[:-1], edges[1:])])
+    ws = np.concatenate([(b - a) * w for a, b in zip(edges[:-1], edges[1:])])
+    p = max(1.0, 1.0 / (2.0 * nu - 1.0)) * 3.0
+    with np.errstate(under="ignore"):
+        d = s**p
+        keep = d > 0.0                        # underflowed nodes carry weight of order s^2
+        return np.sum(_graded_integrands(nu, k, d[keep]) * p * s[keep] ** (p - 1.0) * ws[keep],
+                      axis=1)
+
+
+#: Below this a Bessel check measures rounding in the reference, not the rule.
+_GRADED_CHECK_FLOOR = 2e-13
+
+
 #: The corner panel as a fraction of the corner expansion's radius of convergence, for the
-#: model's geometric decay in `j`. The eigenfunction's corner series converges out to the next
-#: singularity, so its coefficients need not decay factorially; the corner panel is capped at
-#: `plan.CLEARANCE_FRAC` of the clearance, and 1/2 is the prototype study's convention
-#: (`notes/hadamard_rule_denominators.py`), measured against real eigenfunctions there.
+#: lattice's geometric decay in `j`.
 _GRADED_RHO = 2.0
 
 
@@ -366,9 +418,15 @@ def _graded_lattice(nu, k, n_j=40, n_m=40):
 
 @lru_cache(maxsize=_RULE_CACHE)
 def graded_model_error(nu, n_levels, order, sigma=GRADED_SIGMA, k=1.0, n_top=1):
-    """Relative error of the graded rule on the model integrand `sum C(j, m) d^(gamma + j nu + m)`
-    (curved lattice, every integer `m`), in closed form. `k = sqrt(lam_max) * panel length`."""
-    nu = float(nu)
+    """Relative error of the graded rule, the worse of two measurements. `k = sqrt(lam_max) *
+    panel length`.
+
+    The lattice `sum C(j, m) d^(gamma + j nu + m)` covers the corner series and analytic weights
+    at low wavenumber, but its coefficients are all positive, so its integral is far larger than
+    an oscillating integrand's and the rule's errors cancel inside it: it claimed 1.1e-13 for a
+    127-degree corner at `k = 15` where the rule delivers 1.1e-6 (2026-11-08). The real corner
+    products (`_graded_integrands`) close that, measured against the leading one's integral."""
+    nu, k = float(nu), float(k)
     d, w = graded_corner_rule(nu, int(n_levels), int(order), float(sigma), int(n_top))
     if np.any(d <= 0.0):
         # Nodes underflowed to the vertex (p ~ 1000 as nu -> 1/2): the rule cannot be evaluated,
@@ -378,7 +436,12 @@ def graded_model_error(nu, n_levels, order, sigma=GRADED_SIGMA, k=1.0, n_top=1):
     exact = float(np.sum(C / (E + 1.0)))
     with np.errstate(under="ignore"):
         approx = float(np.sum(C * (w[None, :] * d[None, :] ** E[:, None]).sum(axis=1)))
-    return abs(approx / exact - 1.0)
+    lattice = abs(approx / exact - 1.0)
+    bessel_k = max(k, 2.0)
+    products = _graded_reference(nu, bessel_k)
+    bessel = float(np.max(np.abs(np.sum(w * _graded_integrands(nu, bessel_k, d), axis=1)
+                                 - products)) / abs(products[0]))
+    return max(lattice, bessel if bessel > _GRADED_CHECK_FLOOR else 0.0)
 
 
 #: Outermost-level splits `graded_order_for_prec` tries. One is enough below `k ~ 2` on every

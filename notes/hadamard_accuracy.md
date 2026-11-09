@@ -425,3 +425,16 @@ node for node. Same stall after: 9.2e-10 worst identity, Gram residual 2.8e-7 to
 on that one edge.
 
 `HADAMARD_ESTIMATE_K` was calibrated before this; its coverage has not been re-measured since.
+
+## Corner sizing, 2026-11-08
+
+Two gaps let the integral rules claim more than they delivered at corners, both found by comparing
+each matrix entry against a dense reference (traces cancel on symmetric doubles).
+
+An angle with half-integer `nu = pi/alpha` (120 degrees, 72) has an integer leading exponent
+`gamma = 2 nu - 2`, so the rule read as smooth; the next terms, `gamma + nu`, are not integers.
+`smooth_power_error` now tests `gamma + j nu` for j <= 2.
+
+`graded_model_error` summed positive coefficients inside one absolute value, so a lattice of opposite
+signs cancelled: 127 degrees claimed 1e-10 and delivered 3e-8. It now also integrates products of the
+corner's own Bessel functions against the rule, floored at 2e-13.

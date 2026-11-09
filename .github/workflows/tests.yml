@@ -85,7 +85,7 @@ jobs:
         # failure; the suite is clean under it. Warnings a test provokes on purpose are
         # either asserted with pytest.warns or silenced with a per-test
         # `filterwarnings` mark that says at the site why the warning is not the claim.
-        run: .venv/bin/python -m pytest -m "not gate and not robust and not ulp_sensitive" -W error::UserWarning
+        run: .venv/bin/python -m pytest -m "not robust and not ulp_sensitive" -W error::UserWarning
 
       - name: Confirm geometry still imports without matplotlib
         # A test asserts this too, in a subprocess. Repeated here because it is the one
