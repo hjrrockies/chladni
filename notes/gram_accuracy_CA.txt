@@ -1,0 +1,142 @@
+=== C ===
+  lam: 2736.5578051275074
+  rel_bound: 8.68829497058678e-08
+  flags: ['planner: no rung met prec=1e-12; returning rung 3 of 4, the one with the most levels met', 'unmet: 10 of 10 levels miss prec=1e-12, the first at lam = 631.2436974 (margin 0.835; 2 is needed)', 'uncertain: 1 count(s) could not be certified']
+  rung: 3
+  coef_norm: 74275.28936477906
+  interior_norm2: 0.0005104484700029339
+  terms_x0: {'NN': 0.00035802872395879616, 'TT': -1.0855424233954207e-20, 'cr': -5.241651207342411e-13, 'uv': 1.0213887503808602e-21}
+  gram_x0: 0.00035802872343463103
+  terms_probe: {'NN': 0.00041603224589835137, 'TT': -6.766172768068875e-21, 'cr': -8.467264052436473e-13, 'uv': 6.593962278842767e-22}
+  gram_probe: 0.000416032245051625
+  boundary_u_max_over_interior_rms: 3.4086058077693553e-09
+  cancellation: 21974.54084785393
+  rule_sizing: 9.860997129962357e-09
+  rule_shortfalls: [['corner 2', '9.860997129962357e-09', 'model bound above target']]
+=== A ===
+rect 1x0.7               prec 1e-10 lvl 0 x1 lam    30.0117 rung 0 | bound 6e-13 | TRUE |G-I| 1.1e-15 | gram_residual 0.0e+00 | 4-origin max 1.1e-16 | rule model 1e-11 | cub 3e-16
+rect 1x0.7               prec 1e-10 lvl 1 x1 lam    59.6205 rung 0 | bound 2e-12 | TRUE |G-I| 2.2e-16 | gram_residual 1.1e-16 | 4-origin max 1.1e-16 | rule model 1e-11 | cub 3e-16
+rect 1x0.7               prec 1e-10 lvl 2 x1 lam    90.4378 rung 0 | bound 3e-12 | TRUE |G-I| 6.7e-16 | gram_residual 1.1e-16 | 4-origin max 3.3e-16 | rule model 1e-11 | cub 3e-16
+rect 1x0.7               prec 1e-10 lvl 3 x1 lam   108.9685 rung 0 | bound 9e-13 | TRUE |G-I| 2.6e-14 | gram_residual 1.1e-16 | 4-origin max 1.1e-16 | rule model 1e-11 | cub 3e-16
+rect 1x0.7               prec 1e-10 lvl 4 x1 lam   120.0466 rung 0 | bound 5e-13 | TRUE |G-I| 3.6e-14 | gram_residual 2.2e-16 | 4-origin max 5.6e-16 | rule model 1e-11 | cub 3e-16
+rect 1x0.7               prec 1e-10 lvl 5 x1 lam   169.3946 rung 0 | bound 4e-12 | TRUE |G-I| 1.2e-13 | gram_residual 3.3e-16 | 4-origin max 8.9e-16 | rule model 1e-11 | cub 3e-16
+rect 1x0.7               prec 1e-10 lvl 6 x1 lam   178.0557 rung 0 | bound 5e-12 | TRUE |G-I| 1.2e-13 | gram_residual 8.3e-15 | 4-origin max 1.5e-14 | rule model 1e-11 | cub 3e-16
+rect 1x0.7               prec 1e-10 lvl 7 x1 lam   191.1481 rung 0 | bound 9e-12 | TRUE |G-I| 5.8e-13 | gram_residual 4.9e-15 | 4-origin max 8.7e-14 | rule model 1e-11 | cub 3e-16
+rect 1x0.7               prec 1e-12 lvl 0 x1 lam    30.0117 rung 0 | bound 3e-14 | TRUE |G-I| 8.9e-16 | gram_residual 0.0e+00 | 4-origin max 1.1e-16 | rule model 1e-13 | cub 3e-16
+rect 1x0.7               prec 1e-12 lvl 1 x1 lam    59.6205 rung 0 | bound 1e-14 | TRUE |G-I| 1.0e-14 | gram_residual 1.1e-16 | 4-origin max 1.1e-16 | rule model 1e-13 | cub 3e-16
+rect 1x0.7               prec 1e-12 lvl 2 x1 lam    90.4378 rung 0 | bound 1e-14 | TRUE |G-I| 3.1e-15 | gram_residual 0.0e+00 | 4-origin max 2.2e-16 | rule model 1e-13 | cub 3e-16
+rect 1x0.7               prec 1e-12 lvl 3 x1 lam   108.9685 rung 0 | bound 4e-14 | TRUE |G-I| 1.0e-15 | gram_residual 2.2e-16 | 4-origin max 2.2e-16 | rule model 1e-13 | cub 3e-16
+rect 1x0.7               prec 1e-12 lvl 4 x1 lam   120.0466 rung 0 | bound 2e-14 | TRUE |G-I| 3.0e-15 | gram_residual 2.2e-16 | 4-origin max 2.2e-16 | rule model 1e-13 | cub 3e-16
+rect 1x0.7               prec 1e-12 lvl 5 x1 lam   169.3946 rung 0 | bound 4e-14 | TRUE |G-I| 2.0e-15 | gram_residual 4.4e-16 | 4-origin max 4.4e-16 | rule model 1e-13 | cub 3e-16
+rect 1x0.7               prec 1e-12 lvl 6 x1 lam   178.0557 rung 0 | bound 1e-13 | TRUE |G-I| 4.2e-14 | gram_residual 1.1e-16 | 4-origin max 1.1e-16 | rule model 1e-13 | cub 3e-16
+rect 1x0.7               prec 1e-12 lvl 7 x1 lam   191.1481 rung 0 | bound 2e-13 | TRUE |G-I| 2.0e-13 | gram_residual 4.4e-16 | 4-origin max 7.8e-16 | rule model 1e-13 | cub 3e-16
+rect 1x0.7 +(3+2i)       prec 1e-10 lvl 0 x1 lam    30.0117 rung 0 | bound 4e-13 | TRUE |G-I| 5.6e-16 | gram_residual 2.2e-16 | 4-origin max 2.2e-16 | rule model 1e-11 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-10 lvl 1 x1 lam    59.6205 rung 0 | bound 2e-13 | TRUE |G-I| 8.9e-16 | gram_residual 2.2e-16 | 4-origin max 2.2e-16 | rule model 1e-11 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-10 lvl 2 x1 lam    90.4378 rung 0 | bound 2e-12 | TRUE |G-I| 5.3e-15 | gram_residual 3.3e-16 | 4-origin max 3.3e-16 | rule model 1e-11 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-10 lvl 3 x1 lam   108.9685 rung 0 | bound 2e-13 | TRUE |G-I| 3.5e-14 | gram_residual 1.1e-16 | 4-origin max 2.2e-16 | rule model 1e-11 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-10 lvl 4 x1 lam   120.0466 rung 0 | bound 1e-11 | TRUE |G-I| 8.7e-15 | gram_residual 0.0e+00 | 4-origin max 2.2e-16 | rule model 1e-11 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-10 lvl 5 x1 lam   169.3946 rung 0 | bound 2e-13 | TRUE |G-I| 6.8e-14 | gram_residual 1.8e-15 | 4-origin max 1.8e-15 | rule model 1e-11 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-10 lvl 6 x1 lam   178.0557 rung 0 | bound 5e-12 | TRUE |G-I| 1.0e-12 | gram_residual 4.4e-15 | 4-origin max 4.4e-15 | rule model 1e-11 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-10 lvl 7 x1 lam   191.1481 rung 0 | bound 3e-13 | TRUE |G-I| 3.0e-13 | gram_residual 3.3e-15 | 4-origin max 3.9e-15 | rule model 1e-11 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-12 lvl 0 x1 lam    30.0117 rung 0 | bound 3e-14 | TRUE |G-I| 4.4e-16 | gram_residual 0.0e+00 | 4-origin max 1.1e-16 | rule model 1e-13 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-12 lvl 1 x1 lam    59.6205 rung 0 | bound 1e-14 | TRUE |G-I| 1.2e-15 | gram_residual 0.0e+00 | 4-origin max 0.0e+00 | rule model 1e-13 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-12 lvl 2 x1 lam    90.4378 rung 0 | bound 8e-14 | TRUE |G-I| 8.4e-15 | gram_residual 7.8e-16 | 4-origin max 1.6e-15 | rule model 1e-13 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-12 lvl 3 x1 lam   108.9685 rung 0 | bound 9e-14 | TRUE |G-I| 2.4e-14 | gram_residual 0.0e+00 | 4-origin max 1.1e-16 | rule model 1e-13 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-12 lvl 4 x1 lam   120.0466 rung 0 | bound 6e-14 | TRUE |G-I| 1.0e-14 | gram_residual 1.1e-16 | 4-origin max 1.1e-16 | rule model 1e-13 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-12 lvl 5 x1 lam   169.3946 rung 0 | bound 5e-14 | TRUE |G-I| 1.7e-15 | gram_residual 0.0e+00 | 4-origin max 0.0e+00 | rule model 1e-13 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-12 lvl 6 x1 lam   178.0557 rung 0 | bound 5e-14 | TRUE |G-I| 1.2e-14 | gram_residual 0.0e+00 | 4-origin max 1.1e-16 | rule model 1e-13 | cub 1e-15
+rect 1x0.7 +(3+2i)       prec 1e-12 lvl 7 x1 lam   191.1481 rung 0 | bound 1e-13 | TRUE |G-I| 3.8e-14 | gram_residual 0.0e+00 | 4-origin max 2.2e-16 | rule model 1e-13 | cub 1e-15
+square (5pi^2 double)    prec 1e-10 lvl 0 x1 lam    19.7392 rung 0 | bound 4e-13 | TRUE |G-I| 1.1e-14 | gram_residual 2.2e-16 | 4-origin max 2.2e-16 | rule model 1e-11 | cub 4e-16
+square (5pi^2 double)    prec 1e-10 lvl 1 x2 lam    49.3480 rung 0 | bound 8e-15 | TRUE |G-I| 4.2e-15 | gram_residual 4.4e-16 | 4-origin max 4.4e-16 | rule model 1e-11 | cub 4e-16
+square (5pi^2 double)    prec 1e-10 lvl 2 x1 lam    78.9568 rung 0 | bound 2e-12 | TRUE |G-I| 2.7e-14 | gram_residual 2.2e-16 | 4-origin max 4.4e-16 | rule model 1e-11 | cub 4e-16
+square (5pi^2 double)    prec 1e-10 lvl 3 x2 lam    98.6960 rung 0 | bound 9e-13 | TRUE |G-I| 2.5e-13 | gram_residual 2.9e-15 | 4-origin max 3.6e-15 | rule model 1e-11 | cub 4e-16
+square (5pi^2 double)    prec 1e-10 lvl 4 x2 lam   128.3049 rung 0 | bound 7e-12 | TRUE |G-I| 6.3e-13 | gram_residual 5.7e-15 | 4-origin max 1.2e-14 | rule model 1e-11 | cub 4e-16
+square (5pi^2 double)    prec 1e-12 lvl 0 x1 lam    19.7392 rung 0 | bound 9e-15 | TRUE |G-I| 6.7e-16 | gram_residual 2.2e-16 | 4-origin max 4.4e-16 | rule model 1e-13 | cub 4e-16
+square (5pi^2 double)    prec 1e-12 lvl 1 x2 lam    49.3480 rung 0 | bound 1e-14 | TRUE |G-I| 2.2e-15 | gram_residual 2.2e-16 | 4-origin max 1.1e-15 | rule model 1e-13 | cub 4e-16
+square (5pi^2 double)    prec 1e-12 lvl 2 x1 lam    78.9568 rung 0 | bound 3e-15 | TRUE |G-I| 3.1e-15 | gram_residual 2.2e-16 | 4-origin max 2.2e-16 | rule model 1e-13 | cub 4e-16
+square (5pi^2 double)    prec 1e-12 lvl 3 x2 lam    98.6960 rung 0 | bound 2e-14 | TRUE |G-I| 9.8e-14 | gram_residual 1.0e-15 | 4-origin max 1.0e-15 | rule model 1e-13 | cub 4e-16
+square (5pi^2 double)    prec 1e-12 lvl 4 x2 lam   128.3049 rung 0 | bound 6e-14 | TRUE |G-I| 3.7e-14 | gram_residual 8.9e-16 | 4-origin max 1.8e-15 | rule model 1e-13 | cub 4e-16
+L-shape                  prec 1e-10 lvl 0 x1 lam     9.6397 rung 0 | bound 1e-13 | TRUE |G-I| 4.4e-15 | gram_residual 3.3e-16 | 4-origin max 6.7e-15 | rule model 1e-11 | cub 3e-16
+L-shape                  prec 1e-10 lvl 1 x1 lam    15.1973 rung 0 | bound 6e-13 | TRUE |G-I| 3.3e-16 | gram_residual 8.9e-16 | 4-origin max 2.4e-15 | rule model 1e-11 | cub 3e-16
+L-shape                  prec 1e-10 lvl 2 x1 lam    19.7392 rung 0 | bound 3e-13 | TRUE |G-I| 8.9e-16 | gram_residual 0.0e+00 | 4-origin max 1.7e-15 | rule model 1e-11 | cub 3e-16
+L-shape                  prec 1e-10 lvl 3 x1 lam    29.5215 rung 0 | bound 2e-13 | TRUE |G-I| 8.9e-16 | gram_residual 2.2e-16 | 4-origin max 4.4e-16 | rule model 1e-11 | cub 3e-16
+L-shape                  prec 1e-10 lvl 4 x1 lam    31.9126 rung 0 | bound 3e-13 | TRUE |G-I| 3.1e-15 | gram_residual 1.1e-15 | 4-origin max 7.8e-15 | rule model 1e-11 | cub 3e-16
+L-shape                  prec 1e-10 lvl 5 x1 lam    41.4745 rung 0 | bound 1e-13 | TRUE |G-I| 1.0e-14 | gram_residual 3.1e-15 | 4-origin max 7.2e-15 | rule model 1e-11 | cub 3e-16
+L-shape                  prec 1e-10 lvl 6 x1 lam    44.9485 rung 0 | bound 2e-12 | TRUE |G-I| 1.9e-13 | gram_residual 2.0e-14 | 4-origin max 4.1e-14 | rule model 1e-11 | cub 3e-16
+L-shape                  prec 1e-10 lvl 7 x2 lam    49.3480 rung 0 | bound 6e-13 | TRUE |G-I| 2.6e-13 | gram_residual 9.2e-14 | 4-origin max 1.5e-13 | rule model 1e-11 | cub 3e-16
+L-shape                  prec 1e-12 lvl 0 x1 lam     9.6397 rung 0 | bound 1e-14 | TRUE |G-I| 1.1e-15 | gram_residual 3.3e-16 | 4-origin max 6.9e-15 | rule model 1e-13 | cub 3e-16
+L-shape                  prec 1e-12 lvl 1 x1 lam    15.1973 rung 0 | bound 1e-13 | TRUE |G-I| 1.1e-16 | gram_residual 1.1e-16 | 4-origin max 2.2e-16 | rule model 1e-13 | cub 3e-16
+L-shape                  prec 1e-12 lvl 2 x1 lam    19.7392 rung 0 | bound 7e-14 | TRUE |G-I| 7.5e-15 | gram_residual 2.2e-16 | 4-origin max 1.1e-15 | rule model 1e-13 | cub 3e-16
+L-shape                  prec 1e-12 lvl 3 x1 lam    29.5215 rung 0 | bound 4e-14 | TRUE |G-I| 4.4e-15 | gram_residual 2.2e-16 | 4-origin max 6.7e-16 | rule model 1e-13 | cub 3e-16
+L-shape                  prec 1e-12 lvl 4 x1 lam    31.9126 rung 0 | bound 7e-14 | TRUE |G-I| 2.4e-15 | gram_residual 1.0e-15 | 4-origin max 1.3e-14 | rule model 1e-13 | cub 3e-16
+L-shape                  prec 1e-12 lvl 5 x1 lam    41.4745 rung 0 | bound 1e-13 | TRUE |G-I| 1.6e-15 | gram_residual 8.9e-16 | 4-origin max 4.8e-15 | rule model 1e-13 | cub 3e-16
+L-shape                  prec 1e-12 lvl 6 x1 lam    44.9485 rung 0 | bound 8e-14 | TRUE |G-I| 4.3e-14 | gram_residual 1.0e-15 | 4-origin max 3.6e-15 | rule model 1e-13 | cub 3e-16
+L-shape                  prec 1e-12 lvl 7 x2 lam    49.3480 rung 0 | bound 1e-14 | TRUE |G-I| 6.9e-15 | gram_residual 4.8e-15 | 4-origin max 1.1e-14 | rule model 1e-13 | cub 3e-16
+L-shape +(3+2i)          prec 1e-10: solve failed: the planner covers Dirichlet polygons only, and this is a Domain: build an MPSEigensolver with an explicit basis
+L-shape +(3+2i)          prec 1e-12: solve failed: the planner covers Dirichlet polygons only, and this is a Domain: build an MPSEigensolver with an explicit basis
+triangle                 prec 1e-10: no solver (('planner: no rung met prec=1e-10; returning rung 4 of 4, the one with the most levels met',))
+triangle                 prec 1e-12: no solver (('planner: no rung met prec=1e-12; returning rung 3 of 4, the one with the most levels met',))
+flat triangle            prec 1e-10 lvl 0 x1 lam   631.2437 rung 2 | bound 5e-10 | TRUE |G-I| 5.0e-10 | gram_residual 1.1e-10 | 4-origin max 5.4e-10 | rule model 1e-11 | cub 2e-16
+flat triangle            prec 1e-10 lvl 1 x1 lam   920.7618 rung 2 | bound 3e-11 | TRUE |G-I| 1.5e-10 | gram_residual 1.2e-10 | 4-origin max 1.2e-10 | rule model 4e-11 | cub 2e-16
+flat triangle            prec 1e-10 lvl 2 x1 lam  1181.6722 rung 2 | bound 9e-11 | TRUE |G-I| 4.4e-10 | gram_residual 2.1e-10 | 4-origin max 5.7e-10 | rule model 2e-10 | cub 2e-16
+flat triangle            prec 1e-10 lvl 3 x1 lam  1463.6953 rung 2 | bound 3e-11 | TRUE |G-I| 6.7e-11 | gram_residual 5.1e-11 | 4-origin max 2.7e-10 | rule model 3e-10 | cub 2e-16
+flat triangle            prec 1e-10 lvl 4 x1 lam  1754.1989 rung 2 | bound 8e-11 | TRUE |G-I| 1.2e-10 | gram_residual 6.5e-11 | 4-origin max 2.3e-10 | rule model 1e-09 | cub 2e-16
+flat triangle            prec 1e-10 lvl 5 x1 lam  2060.9456 rung 2 | bound 6e-11 | TRUE |G-I| 2.6e-11 | gram_residual 1.7e-10 | 4-origin max 2.2e-10 | rule model 3e-09 | cub 2e-16
+flat triangle            prec 1e-10 lvl 6 x1 lam  2223.7717 rung 2 | bound 1e-09 | TRUE |G-I| 9.7e-10 | gram_residual 6.4e-10 | 4-origin max 6.4e-10 | rule model 4e-09 | cub 2e-16
+flat triangle            prec 1e-10 lvl 7 x1 lam  2398.7365 rung 2 | bound 4e-11 | TRUE |G-I| 3.1e-11 | gram_residual 5.0e-11 | 4-origin max 5.0e-11 | rule model 6e-09 | cub 2e-16
+flat triangle            prec 1e-12 lvl 0 x1 lam   631.2437 rung 3 | bound 2e-08 | TRUE |G-I| 1.1e-11 | gram_residual 4.7e-11 | 4-origin max 6.0e-11 | rule model 4e-12 | cub 2e-16
+flat triangle            prec 1e-12 lvl 1 x1 lam   920.7618 rung 3 | bound 2e-08 | TRUE |G-I| 2.5e-11 | gram_residual 2.1e-12 | 4-origin max 3.9e-12 | rule model 4e-11 | cub 2e-16
+flat triangle            prec 1e-12 lvl 2 x1 lam  1181.6722 rung 3 | bound 3e-08 | TRUE |G-I| 2.2e-10 | gram_residual 1.4e-10 | 4-origin max 1.4e-10 | rule model 2e-10 | cub 2e-16
+flat triangle            prec 1e-12 lvl 3 x1 lam  1463.6953 rung 3 | bound 2e-08 | TRUE |G-I| 2.1e-11 | gram_residual 5.6e-12 | 4-origin max 6.4e-11 | rule model 3e-10 | cub 2e-16
+flat triangle            prec 1e-12 lvl 4 x1 lam  1754.1989 rung 3 | bound 2e-08 | TRUE |G-I| 2.4e-10 | gram_residual 6.9e-11 | 4-origin max 9.6e-11 | rule model 1e-09 | cub 2e-16
+flat triangle            prec 1e-12 lvl 5 x1 lam  2060.9456 rung 3 | bound 5e-08 | TRUE |G-I| 1.2e-10 | gram_residual 8.1e-11 | 4-origin max 8.1e-11 | rule model 3e-09 | cub 2e-16
+flat triangle            prec 1e-12 lvl 6 x1 lam  2223.7717 rung 3 | bound 7e-08 | TRUE |G-I| 2.8e-11 | gram_residual 4.0e-11 | 4-origin max 2.1e-10 | rule model 4e-09 | cub 2e-16
+flat triangle            prec 1e-12 lvl 7 x1 lam  2398.7365 rung 3 | bound 2e-08 | TRUE |G-I| 1.1e-10 | gram_residual 3.8e-11 | 4-origin max 3.8e-11 | rule model 6e-09 | cub 2e-16
+hexagon (irregular)      prec 1e-10 lvl 0 x1 lam     8.8570 rung 0 | bound 4e-11 | TRUE |G-I| 2.6e-12 | gram_residual 4.7e-12 | 4-origin max 5.6e-12 | rule model 1e-11 | cub 4e-16
+hexagon (irregular)      prec 1e-10 lvl 1 x1 lam    20.8493 rung 0 | bound 2e-11 | TRUE |G-I| 1.4e-12 | gram_residual 6.8e-13 | 4-origin max 9.3e-13 | rule model 1e-11 | cub 4e-16
+hexagon (irregular)      prec 1e-10 lvl 2 x1 lam    23.9075 rung 0 | bound 1e-11 | TRUE |G-I| 1.5e-12 | gram_residual 1.3e-12 | 4-origin max 1.7e-12 | rule model 1e-11 | cub 4e-16
+hexagon (irregular)      prec 1e-10 lvl 3 x1 lam    37.5201 rung 0 | bound 1e-11 | TRUE |G-I| 6.9e-14 | gram_residual 5.8e-13 | 4-origin max 8.8e-13 | rule model 1e-11 | cub 4e-16
+hexagon (irregular)      prec 1e-10 lvl 4 x1 lam    40.8503 rung 0 | bound 4e-12 | TRUE |G-I| 2.5e-13 | gram_residual 9.1e-14 | 4-origin max 1.2e-13 | rule model 1e-11 | cub 4e-16
+hexagon (irregular)      prec 1e-10 lvl 5 x1 lam    47.8472 rung 0 | bound 5e-12 | TRUE |G-I| 9.8e-14 | gram_residual 2.2e-14 | 4-origin max 3.0e-14 | rule model 3e-11 | cub 4e-16
+hexagon (irregular)      prec 1e-10 lvl 6 x1 lam    58.5341 rung 0 | bound 1e-12 | TRUE |G-I| 5.1e-13 | gram_residual 1.5e-13 | 4-origin max 1.5e-13 | rule model 1e-10 | cub 4e-16
+hexagon (irregular)      prec 1e-10 lvl 7 x1 lam    61.3406 rung 0 | bound 9e-13 | TRUE |G-I| 8.6e-13 | gram_residual 2.2e-13 | 4-origin max 2.2e-13 | rule model 1e-10 | cub 4e-16
+hexagon (irregular)      prec 1e-12 lvl 0 x1 lam     8.8570 rung 3 | bound 9e-14 | TRUE |G-I| 5.6e-15 | gram_residual 8.4e-15 | 4-origin max 8.7e-15 | rule model 1e-13 | cub 4e-16
+hexagon (irregular)      prec 1e-12 lvl 1 x1 lam    20.8493 rung 3 | bound 3e-14 | TRUE |G-I| 4.2e-14 | gram_residual 1.0e-14 | 4-origin max 1.1e-14 | rule model 1e-13 | cub 4e-16
+hexagon (irregular)      prec 1e-12 lvl 2 x1 lam    23.9075 rung 3 | bound 4e-14 | TRUE |G-I| 1.8e-14 | gram_residual 2.2e-14 | 4-origin max 2.6e-14 | rule model 3e-13 | cub 4e-16
+hexagon (irregular)      prec 1e-12 lvl 3 x1 lam    37.5201 rung 3 | bound 1e-13 | TRUE |G-I| 2.7e-14 | gram_residual 1.9e-14 | 4-origin max 2.0e-14 | rule model 7e-12 | cub 4e-16
+hexagon (irregular)      prec 1e-12 lvl 4 x1 lam    40.8503 rung 3 | bound 1e-13 | TRUE |G-I| 7.2e-14 | gram_residual 1.3e-14 | 4-origin max 2.5e-14 | rule model 1e-11 | cub 4e-16
+hexagon (irregular)      prec 1e-12 lvl 5 x1 lam    47.8472 rung 3 | bound 2e-13 | TRUE |G-I| 3.0e-14 | gram_residual 1.0e-13 | 4-origin max 1.5e-13 | rule model 3e-11 | cub 4e-16
+hexagon (irregular)      prec 1e-12 lvl 6 x1 lam    58.5341 rung 3 | bound 4e-13 | TRUE |G-I| 1.3e-13 | gram_residual 5.4e-14 | 4-origin max 5.4e-14 | rule model 1e-10 | cub 4e-16
+hexagon (irregular)      prec 1e-12 lvl 7 x1 lam    61.3406 rung 3 | bound 2e-13 | TRUE |G-I| 2.2e-13 | gram_residual 7.7e-14 | 4-origin max 8.9e-14 | rule model 1e-10 | cub 4e-16
+hexagon +(3+2i)          prec 1e-10 lvl 0 x1 lam     8.8570 rung 0 | bound 4e-11 | TRUE |G-I| 2.7e-12 | gram_residual 4.7e-12 | 4-origin max 5.6e-12 | rule model 1e-11 | cub 2e-16
+hexagon +(3+2i)          prec 1e-10 lvl 1 x1 lam    20.8493 rung 0 | bound 2e-11 | TRUE |G-I| 1.5e-12 | gram_residual 7.3e-13 | 4-origin max 9.9e-13 | rule model 1e-11 | cub 2e-16
+hexagon +(3+2i)          prec 1e-10 lvl 2 x1 lam    23.9075 rung 0 | bound 1e-11 | TRUE |G-I| 1.5e-12 | gram_residual 1.3e-12 | 4-origin max 1.8e-12 | rule model 1e-11 | cub 2e-16
+hexagon +(3+2i)          prec 1e-10 lvl 3 x1 lam    37.5201 rung 0 | bound 1e-11 | TRUE |G-I| 1.5e-13 | gram_residual 5.5e-13 | 4-origin max 8.6e-13 | rule model 1e-11 | cub 2e-16
+hexagon +(3+2i)          prec 1e-10 lvl 4 x1 lam    40.8503 rung 0 | bound 4e-12 | TRUE |G-I| 2.8e-13 | gram_residual 6.1e-14 | 4-origin max 6.1e-14 | rule model 1e-11 | cub 2e-16
+hexagon +(3+2i)          prec 1e-10 lvl 5 x1 lam    47.8472 rung 0 | bound 5e-12 | TRUE |G-I| 9.6e-14 | gram_residual 2.3e-14 | 4-origin max 2.3e-14 | rule model 3e-11 | cub 2e-16
+hexagon +(3+2i)          prec 1e-10 lvl 6 x1 lam    58.5341 rung 0 | bound 2e-12 | TRUE |G-I| 1.2e-13 | gram_residual 2.2e-13 | 4-origin max 3.5e-13 | rule model 9e-11 | cub 2e-16
+hexagon +(3+2i)          prec 1e-10 lvl 7 x1 lam    61.3406 rung 0 | bound 8e-13 | TRUE |G-I| 2.9e-13 | gram_residual 4.2e-13 | 4-origin max 4.2e-13 | rule model 1e-10 | cub 2e-16
+hexagon +(3+2i)          prec 1e-12 lvl 0 x1 lam     8.8570 rung 3 | bound 9e-14 | TRUE |G-I| 0.0e+00 | gram_residual 3.2e-15 | 4-origin max 3.4e-15 | rule model 1e-13 | cub 2e-16
+hexagon +(3+2i)          prec 1e-12 lvl 1 x1 lam    20.8493 rung 3 | bound 3e-14 | TRUE |G-I| 2.6e-14 | gram_residual 1.6e-14 | 4-origin max 2.1e-14 | rule model 1e-13 | cub 2e-16
+hexagon +(3+2i)          prec 1e-12 lvl 2 x1 lam    23.9075 rung 3 | bound 3e-14 | TRUE |G-I| 2.1e-14 | gram_residual 1.0e-14 | 4-origin max 1.6e-14 | rule model 3e-13 | cub 2e-16
+hexagon +(3+2i)          prec 1e-12 lvl 3 x1 lam    37.5201 rung 3 | bound 8e-14 | TRUE |G-I| 2.8e-14 | gram_residual 3.2e-14 | 4-origin max 3.2e-14 | rule model 6e-12 | cub 2e-16
+hexagon +(3+2i)          prec 1e-12 lvl 4 x1 lam    40.8503 rung 3 | bound 9e-14 | TRUE |G-I| 1.4e-13 | gram_residual 2.0e-13 | 4-origin max 2.5e-13 | rule model 1e-11 | cub 2e-16
+hexagon +(3+2i)          prec 1e-12 lvl 5 x1 lam    47.8472 rung 3 | bound 2e-13 | TRUE |G-I| 2.9e-13 | gram_residual 1.4e-13 | 4-origin max 1.4e-13 | rule model 3e-11 | cub 2e-16
+hexagon +(3+2i)          prec 1e-12 lvl 6 x1 lam    58.5341 rung 3 | bound 2e-13 | TRUE |G-I| 1.2e-13 | gram_residual 1.4e-13 | 4-origin max 1.4e-13 | rule model 9e-11 | cub 2e-16
+hexagon +(3+2i)          prec 1e-12 lvl 7 x1 lam    61.3406 rung 3 | bound 2e-13 | TRUE |G-I| 1.4e-13 | gram_residual 1.4e-13 | 4-origin max 1.5e-13 | rule model 1e-10 | cub 2e-16
+octagon (irregular)      prec 1e-10 lvl 0 x1 lam     6.9300 rung 1 | bound 1e-11 | TRUE |G-I| 6.4e-12 | gram_residual 1.3e-12 | 4-origin max 2.3e-12 | rule model 1e-11 | cub 3e-16
+octagon (irregular)      prec 1e-10 lvl 1 x1 lam    17.2559 rung 1 | bound 5e-12 | TRUE |G-I| 2.3e-12 | gram_residual 6.8e-13 | 4-origin max 1.3e-12 | rule model 1e-11 | cub 3e-16
+octagon (irregular)      prec 1e-10 lvl 2 x1 lam    17.6179 rung 1 | bound 4e-12 | TRUE |G-I| 5.0e-13 | gram_residual 3.4e-13 | 4-origin max 5.0e-13 | rule model 1e-11 | cub 3e-16
+octagon (irregular)      prec 1e-10 lvl 3 x1 lam    28.7786 rung 1 | bound 2e-12 | TRUE |G-I| 4.6e-13 | gram_residual 5.6e-14 | 4-origin max 5.1e-13 | rule model 1e-11 | cub 3e-16
+octagon (irregular)      prec 1e-10 lvl 4 x1 lam    33.8179 rung 1 | bound 2e-12 | TRUE |G-I| 2.3e-14 | gram_residual 8.5e-14 | 4-origin max 1.4e-13 | rule model 1e-11 | cub 3e-16
+octagon (irregular)      prec 1e-10 lvl 5 x1 lam    35.5225 rung 1 | bound 8e-12 | TRUE |G-I| 2.3e-13 | gram_residual 3.4e-13 | 4-origin max 8.2e-13 | rule model 1e-11 | cub 3e-16
+octagon (irregular)      prec 1e-10 lvl 6 x1 lam    46.2594 rung 1 | bound 1e-12 | TRUE |G-I| 9.3e-13 | gram_residual 3.1e-13 | 4-origin max 5.2e-13 | rule model 1e-11 | cub 3e-16
+octagon (irregular)      prec 1e-10 lvl 7 x1 lam    46.9266 rung 1 | bound 6e-12 | TRUE |G-I| 1.0e-12 | gram_residual 3.1e-13 | 4-origin max 5.4e-13 | rule model 1e-11 | cub 3e-16
+octagon (irregular)      prec 1e-12 lvl 0 x1 lam     6.9300 rung 3 | bound 9e-14 | TRUE |G-I| 4.8e-14 | gram_residual 1.1e-14 | 4-origin max 1.8e-14 | rule model 1e-13 | cub 3e-16
+octagon (irregular)      prec 1e-12 lvl 1 x1 lam    17.2559 rung 3 | bound 6e-14 | TRUE |G-I| 5.4e-14 | gram_residual 1.5e-14 | 4-origin max 2.6e-14 | rule model 1e-13 | cub 3e-16
+octagon (irregular)      prec 1e-12 lvl 2 x1 lam    17.6179 rung 3 | bound 5e-14 | TRUE |G-I| 6.4e-15 | gram_residual 1.0e-14 | 4-origin max 2.2e-14 | rule model 1e-13 | cub 3e-16
+octagon (irregular)      prec 1e-12 lvl 3 x1 lam    28.7786 rung 3 | bound 1e-13 | TRUE |G-I| 6.4e-15 | gram_residual 1.4e-15 | 4-origin max 1.7e-14 | rule model 3e-13 | cub 3e-16
+octagon (irregular)      prec 1e-12 lvl 4 x1 lam    33.8179 rung 3 | bound 2e-13 | TRUE |G-I| 8.6e-14 | gram_residual 1.2e-13 | 4-origin max 1.9e-13 | rule model 8e-13 | cub 3e-16
+octagon (irregular)      prec 1e-12 lvl 5 x1 lam    35.5225 rung 3 | bound 2e-13 | TRUE |G-I| 4.8e-14 | gram_residual 3.9e-14 | 4-origin max 7.3e-14 | rule model 1e-12 | cub 3e-16
+octagon (irregular)      prec 1e-12 lvl 6 x1 lam    46.2594 rung 3 | bound 1e-13 | TRUE |G-I| 1.9e-14 | gram_residual 2.9e-14 | 4-origin max 5.3e-14 | rule model 6e-12 | cub 3e-16
+octagon (irregular)      prec 1e-12 lvl 7 x1 lam    46.9266 rung 3 | bound 1e-13 | TRUE |G-I| 1.3e-13 | gram_residual 5.1e-14 | 4-origin max 7.2e-14 | rule model 7e-12 | cub 3e-16
