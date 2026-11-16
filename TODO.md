@@ -454,6 +454,27 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   that must be *accurate* belongs on the Rellich boundary integrals.
 * **[later]** User-facing documentation -- the "fifth kind" in `docs/README.md`. `docs/_build/`
   is already ignored for it.
+* **[later]** **Fourier-parameterized smooth domains, as fully featured as polygons** (after the
+  thesis; `notes/smooth_domains_2026-11-16.md`). The aim is to replicate Osting (2010), "Optimization
+  of spectral functions of Dirichlet-Laplacian eigenvalues", and to put `douse`'s smooth-domain
+  results beside its polygon ones. Its smooth lambda_11/lambda_1 optimum, a double at 10.34, is
+  beaten by certified polygon triples in the same basin (10.36579 at N = 6, 10.36917 at N = 7).
+  Testing whether his point is a true smooth local maximum needs a smooth-domain optimizer.
+  Pieces:
+  * A `FourierSegment` / `FourierBoundary`, with r(t) = sum (a_k cos kt + b_k sin kt) about a
+    centre and exact derivatives; cosine-only as the mirror-symmetric case.
+    `ParametricSegment` already carries such a curve.
+  * The planner for smooth Dirichlet domains (it refuses them today). A single interior
+    Fourier-Bessel expansion with integer orders works on mild shapes, but is limited by how far
+    the eigenfunctions extend analytically: expect trouble on the wavy n = 8, 12 domains.
+    Candidates there are several expansion centres, or MFS sources outside the boundary.
+  * Symmetry classes as a first-class feature: even/odd solves for a mirror-symmetric domain
+    (half the basis, and doubles kept apart).
+  * The count audit on non-polygon solves. A too-small FB basis lost 11 of 16 roots silently
+    (the note above); whatever plans smooth bases must catch that.
+  * Hadamard on a smooth boundary: no corners, so the plain integral of |du/dn|^2 V.n, for
+    `douse` to pull back to the coefficients. `douse` needs a Fourier-coefficient family with
+    the same cluster handling, certificates and subproblem cases as its polygon families.
 
 ## 4. Known gaps in what is built
 
