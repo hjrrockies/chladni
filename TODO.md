@@ -563,6 +563,19 @@ eigenvalue, against 26-27 on rectangles. What it has not settled is below.
   are bounded. At a 562-column N = 6 hexagon: peak 2117 -> 545 MB, solve time unchanged.
   `tests/test_pencil_cache.py`. The rule: never cache a full pencil; a handful of vectors is fine.
 
+* **[done 2026-11-23]** **Memory: dead solvers outlived their last user.** `MPSEigensolver.objective`
+  cached an `Objective` whose `expected_count` lambda closed over `self`, a reference cycle, so
+  every solved shape's solver and pencil waited for the cyclic GC. On ARC (Python 3.12) douse
+  tasks held dozens of dead pencils at once: N13-16 peaks of 5-9 GB and OOMs at 8 GB, where a single
+  solve peaks near 1-2 GB. Replayed F2 N15_k4_mirror s2 under tracemalloc: pencil sampling blocks
+  grew 172 -> 810 over 10 h. The lambda now closes over the domain. Rule: nothing cached on a
+  solver may refer back to it. `tests/test_mps_seam.py::*freed_by_refcount`.
+* **[later]** **Certification samples gradients it never uses.** `integrals.certify.boundary_sup`
+  evaluates at `2 n_per_seg` points per segment through `basis.values`, which builds a full
+  `Sampling` (angular parts, their derivatives, complex gradient blocks): about 0.46 GB of
+  unused arrays beside a 0.11 GB value matrix on a 622-column N = 15 shape. A values-only
+  sampling or chunking the points would cut the transient about 5x.
+
 * **[later]** **The factored Bessel kernel's accuracy advantage over plain `scipy.special.jv` is
   unproven end to end.** `helmholtz/_bessel.py` (series / scipy / Olver-Debye, values as
   `S * exp(sigma)`, with the Airy-regularized envelope in `fourier_bessel.py`) is validated as a

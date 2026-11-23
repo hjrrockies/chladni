@@ -363,3 +363,42 @@ def test_a_threaded_batch_on_the_pencil_matches_the_serial_objective(pencil):
     for g, w in zip(got, want):
         assert np.allclose(g, w, rtol=0, atol=EXACT)
     assert list(serial._cache) == list(threaded._cache)
+
+
+# --- a solved shape is freed by refcount, not left to the cyclic GC -------------------------
+
+
+def _freed_without_gc(make):
+    """True when the object `make()` returns dies as soon as its last reference does."""
+    import gc
+    import weakref
+    was = gc.isenabled()
+    gc.disable()
+    try:
+        ref = weakref.ref(make())
+        return ref() is None
+    finally:
+        if was:
+            gc.enable()
+
+
+def test_a_solver_with_an_objective_is_freed_by_refcount(poly, basis):
+    """The objective cache must not close over the solver: a cycle keeps the pencil alive until
+    the cyclic GC runs, which on ARC held dozens of dead pencils (5-9 GB peaks, 2026-11-23)."""
+    def make():
+        s = MPSEigensolver(poly, basis=basis, n_bdry=300, n_int=120,
+                           rng=np.random.default_rng(0), lam_ref=LAM)
+        s.objective(8.0, 30.0)
+        return s
+    assert _freed_without_gc(make)
+
+
+@pytest.mark.filterwarnings("ignore::chladni.mps.PrecisionWarning")
+def test_a_solved_solver_is_freed_by_refcount(poly, basis):
+    """The fixture's thin basis cannot certify [8, 30] and says so; only the lifetime is tested."""
+    def make():
+        s = MPSEigensolver(poly, basis=basis, n_bdry=300, n_int=120,
+                           rng=np.random.default_rng(0), lam_ref=LAM)
+        s.solve_interval(8.0, 30.0)
+        return s
+    assert _freed_without_gc(make)
