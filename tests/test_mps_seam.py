@@ -393,7 +393,9 @@ def test_a_solver_with_an_objective_is_freed_by_refcount(poly, basis):
     assert _freed_without_gc(make)
 
 
+@pytest.mark.filterwarnings("ignore::chladni.mps.PrecisionWarning")
 def test_a_solved_solver_is_freed_by_refcount(poly, basis):
+    """The fixture's thin basis cannot certify [8, 30] and says so; only the lifetime is tested."""
     def make():
         s = MPSEigensolver(poly, basis=basis, n_bdry=300, n_int=120,
                            rng=np.random.default_rng(0), lam_ref=LAM)
