@@ -431,9 +431,14 @@ class MPSEigensolver(Eigensolver, Frozen):
             _set(self, _objectives={})
             cache = self._objectives
         if key not in cache:
+            # Close over the domain, never `self`: the Objective lives in `self._objectives`, so a
+            # lambda over `self` is a reference cycle, and the solver -- pencil and all, hundreds of
+            # MB on a large shape -- then outlives its last user until the cyclic GC happens to run.
+            # On ARC that held dozens of dead pencils at once (5-9 GB peaks, 2026-11-23).
+            domain = self.domain
             cache[key] = Objective.from_pencil(
                 self._pencil, float(a), float(b), variable="lam", prec=prec,
-                expected_count=lambda lo, hi: asymp.expected_count(lo, hi, self.domain))
+                expected_count=lambda lo, hi: asymp.expected_count(lo, hi, domain))
         return cache[key]
 
     def search_interval(self, a, b, *, prec=None, objective=None, on_shortfall="flag",
